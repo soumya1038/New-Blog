@@ -1,0 +1,412 @@
+import React, { useState, useContext, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { AuthContext } from '../context/AuthContext';
+import { VscEye, VscEyeClosed } from 'react-icons/vsc';
+import { SyncLoader } from 'react-spinners';
+import axios from 'axios';
+
+const Login = () => {
+  const { t } = useTranslation();
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState('');
+  const { login, user } = useContext(AuthContext);
+  const navigate = useNavigate();
+
+  // Forgot Password States
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotUsername, setForgotUsername] = useState('');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotError, setForgotError] = useState('');
+  const [sendingCode, setSendingCode] = useState(false);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [verifyCode, setVerifyCode] = useState('');
+  const [verifyError, setVerifyError] = useState('');
+  const [showNewPasswordModal, setShowNewPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [sendingChangeCode, setSendingChangeCode] = useState(false);
+  const [showFinalCodeModal, setShowFinalCodeModal] = useState(false);
+  const [finalCode, setFinalCode] = useState('');
+  const [finalError, setFinalError] = useState('');
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  useEffect(() => {
+    if (user) navigate('/');
+    
+    const saved = localStorage.getItem('credentials');
+    if (saved) {
+      const { username: u, password: p } = JSON.parse(saved);
+      setUsername(u);
+      setPassword(p);
+      setRememberMe(true);
+    }
+  }, [user, navigate]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      const data = await login(username, password, rememberMe);
+      if (data.user.role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Login failed');
+    }
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotError('');
+    setSendingCode(true);
+    try {
+      await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/forgot-password/request`, { username: forgotUsername, email: forgotEmail });
+      setShowForgotModal(false);
+      setShowVerifyModal(true);
+    } catch (err) {
+      setForgotError(err.response?.data?.message || 'Failed to send verification code');
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  const handleVerifyCode = async (e) => {
+    e.preventDefault();
+    setVerifyError('');
+    try {
+      await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/forgot-password/verify`, { username: forgotUsername, email: forgotEmail, code: verifyCode });
+      setShowVerifyModal(false);
+      setShowNewPasswordModal(true);
+    } catch (err) {
+      setVerifyError(err.response?.data?.message || 'Invalid verification code');
+    }
+  };
+
+  const handleRequestPasswordChange = async (e) => {
+    e.preventDefault();
+    setPasswordError('');
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters');
+      return;
+    }
+    setSendingChangeCode(true);
+    try {
+      await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/forgot-password/change`, { username: forgotUsername, email: forgotEmail, newPassword });
+      setShowNewPasswordModal(false);
+      setShowFinalCodeModal(true);
+    } catch (err) {
+      setPasswordError(err.response?.data?.message || 'Failed to send confirmation code');
+    } finally {
+      setSendingChangeCode(false);
+    }
+  };
+
+  const handleConfirmPasswordChange = async (e) => {
+    e.preventDefault();
+    setFinalError('');
+    try {
+      await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/forgot-password/confirm`, { username: forgotUsername, email: forgotEmail, code: finalCode });
+      setShowFinalCodeModal(false);
+      setShowSuccessModal(true);
+    } catch (err) {
+      setFinalError(err.response?.data?.message || 'Invalid confirmation code');
+    }
+  };
+
+  const handleSuccessClose = () => {
+    setShowSuccessModal(false);
+    setForgotUsername('');
+    setForgotEmail('');
+    setVerifyCode('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setFinalCode('');
+    setError('');
+    navigate('/login');
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+        <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">{t('Welcome Back')}</h2>
+        
+        {error && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4">{error}</div>}
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-gray-700 mb-2">{t('Username')}</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+              minLength={3}
+            />
+          </div>
+          
+          <div>
+            <label className="block text-gray-700 mb-2">{t('Password')}</label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                required
+                minLength={6}
+              />
+              {password && (
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                >
+                  {showPassword ? <VscEyeClosed size={20} /> : <VscEye size={20} />}
+                </button>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="mr-2"
+              />
+              <label className="text-gray-700">{t('Remember Me')}</label>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowForgotModal(true)}
+              className="text-blue-600 hover:underline text-sm"
+            >
+              {t('Forgot Password?')}
+            </button>
+          </div>
+          
+          <button
+            type="submit"
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition"
+          >
+            {t('Login')}
+          </button>
+        </form>
+        
+        <p className="text-center mt-4 text-gray-600">
+          {t("Don't have an account?")} <Link to="/register" className="text-blue-600 hover:underline">{t('Sign Up')}</Link>
+        </p>
+      </div>
+
+      {/* Forgot Password Modal - Step 1: Enter Username and Email */}
+      {showForgotModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-blue-600 mb-4">{t('Forgot Password')}</h3>
+            <p className="text-gray-700 mb-4">{t('Enter your account details to verify your identity')}</p>
+            {forgotError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{forgotError}</div>}
+            <form onSubmit={handleForgotPassword}>
+              <input
+                type="text"
+                value={forgotUsername}
+                onChange={(e) => setForgotUsername(e.target.value)}
+                placeholder={t('Username')}
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
+                required
+                minLength={3}
+              />
+              <input
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="your@email.com"
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                required
+              />
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+                  disabled={sendingCode}
+                >
+                  {sendingCode ? <SyncLoader color="#fff" size={8} /> : t("Verify that It's you")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowForgotModal(false); setForgotUsername(''); setForgotEmail(''); setForgotError(''); }}
+                  className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300"
+                >
+                  {t('Cancel')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Verify Code Modal - Step 2 */}
+      {showVerifyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-blue-600 mb-4">{t('Enter Verification Code')}</h3>
+            <p className="text-gray-700 mb-4">{t('A 6-digit code has been sent to your email.')}</p>
+            {verifyError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{verifyError}</div>}
+            <form onSubmit={handleVerifyCode}>
+              <input
+                type="text"
+                value={verifyCode}
+                onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-center text-2xl tracking-widest"
+                maxLength={6}
+                required
+              />
+              <div className="flex gap-3">
+                <button type="submit" className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">{t('Verify')}</button>
+                <button type="button" onClick={() => { setShowVerifyModal(false); setVerifyCode(''); setVerifyError(''); }} className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300">{t('Cancel')}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* New Password Modal - Step 3 */}
+      {showNewPasswordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-blue-600 mb-4">{t('Create New Password')}</h3>
+            {passwordError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{passwordError}</div>}
+            <form onSubmit={handleRequestPasswordChange}>
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">{t('New Password')}</label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                    required
+                    minLength={6}
+                  />
+                  {newPassword && (
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showNewPassword ? <VscEyeClosed size={20} /> : <VscEye size={20} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">{t('Confirm Password')}</label>
+                <div className="relative">
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                    required
+                    minLength={6}
+                  />
+                  {confirmPassword && (
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showConfirmPassword ? <VscEyeClosed size={20} /> : <VscEye size={20} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+                  disabled={sendingChangeCode}
+                >
+                  {sendingChangeCode ? <SyncLoader color="#fff" size={8} /> : t('Change Password')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowNewPasswordModal(false); setNewPassword(''); setConfirmPassword(''); setPasswordError(''); }}
+                  className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300"
+                >
+                  {t('Cancel')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Final Confirmation Code Modal - Step 4 */}
+      {showFinalCodeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-blue-600 mb-4">{t('Enter Confirmation Code')}</h3>
+            <p className="text-gray-700 mb-4">{t('A final confirmation code has been sent to your email.')}</p>
+            {finalError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{finalError}</div>}
+            <form onSubmit={handleConfirmPasswordChange}>
+              <input
+                type="text"
+                value={finalCode}
+                onChange={(e) => setFinalCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-center text-2xl tracking-widest"
+                maxLength={6}
+                required
+              />
+              <div className="flex gap-3">
+                <button type="submit" className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">{t('Confirm')}</button>
+                <button type="button" onClick={() => { setShowFinalCodeModal(false); setFinalCode(''); setFinalError(''); }} className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300">{t('Cancel')}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full text-center">
+            <div className="mb-4">
+              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+            <h3 className="text-2xl font-bold text-green-600 mb-4">{t('Success!')}</h3>
+            <p className="text-gray-700 mb-6">{t('Password changed successfully! Please login with your new password.')}</p>
+            <button
+              onClick={handleSuccessClose}
+              className="w-full bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-semibold"
+            >
+              {t('Go to Login')}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Login;
