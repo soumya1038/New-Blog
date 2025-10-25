@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import { Send as SendIcon, ArrowBack as ArrowBackIcon, MoreVert as MoreVertIcon, Done as DoneIcon, DoneAll as DoneAllIcon } from '@mui/icons-material';
 import { getConversations, getMessages, sendMessage, deleteMessage } from '../services/messageService';
+import api from '../services/api';
 
 const Chat = () => {
   const location = useLocation();
@@ -18,6 +19,10 @@ const Chat = () => {
   const [sending, setSending] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
+  const [userStatuses, setUserStatuses] = useState({});
+  const [selectedUserStatuses, setSelectedUserStatuses] = useState([]);
+  const [currentStatusIndex, setCurrentStatusIndex] = useState(0);
+  const [statusProgress, setStatusProgress] = useState(0);
   const messagesEndRef = useRef(null);
   const currentUser = JSON.parse(localStorage.getItem('user'));
 
@@ -49,6 +54,28 @@ const Chat = () => {
     
     return () => clearInterval(interval);
   }, [selectedUser?._id]);
+  
+  // Status slideshow with progress bar
+  useEffect(() => {
+    if (!selectedUserStatuses.length) return;
+    
+    const progressInterval = setInterval(() => {
+      setStatusProgress(prev => {
+        if (prev >= 100) return 0;
+        return prev + (100 / 30); // 3 seconds = 30 intervals of 100ms
+      });
+    }, 100);
+    
+    const slideInterval = setInterval(() => {
+      setCurrentStatusIndex(prev => (prev + 1) % selectedUserStatuses.length);
+      setStatusProgress(0);
+    }, 3000);
+    
+    return () => {
+      clearInterval(progressInterval);
+      clearInterval(slideInterval);
+    };
+  }, [selectedUserStatuses.length]);
 
   // Handle location state (when coming from notification)
   useEffect(() => {
@@ -62,10 +89,24 @@ const Chat = () => {
     try {
       const data = await getConversations();
       setConversations(data.conversations);
+      
+      // Fetch statuses for all users in conversations
+      const userIds = data.conversations.map(c => c.user._id);
+      await fetchUserStatuses(userIds);
     } catch (error) {
       console.error('Failed to load conversations:', error);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const fetchUserStatuses = async (userIds) => {
+    if (!userIds || userIds.length === 0) return;
+    try {
+      const { data } = await api.post('/users/statuses/check', { userIds });
+      setUserStatuses(data.statusMap || {});
+    } catch (error) {
+      console.error('Failed to fetch user statuses:', error);
     }
   };
 
@@ -83,7 +124,7 @@ const Chat = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSelectUser = (user) => {
+  const handleSelectUser = async (user) => {
     setSelectedUser(user);
     loadMessages(user._id);
     
@@ -91,6 +132,20 @@ const Chat = () => {
     setConversations(prev => prev.map(c => 
       c.user._id === user._id ? { ...c, unreadCount: 0 } : c
     ));
+    
+    // Fetch user's statuses
+    try {
+      const { data } = await api.get(`/users/profile/${user._id}`);
+      console.log('Fetched user profile:', data);
+      const activeStatuses = data.user.statuses?.filter(s => new Date() < new Date(s.expiresAt)) || [];
+      console.log('Active statuses:', activeStatuses);
+      setSelectedUserStatuses(activeStatuses);
+      setCurrentStatusIndex(0);
+      setStatusProgress(0);
+    } catch (error) {
+      console.error('Failed to fetch user statuses:', error);
+      setSelectedUserStatuses([]);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -170,9 +225,22 @@ const Chat = () => {
                       overlap="circular"
                       anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
                     >
-                      <Avatar src={conv.user.profileImage} alt={conv.user.username}>
-                        {conv.user.username?.[0]?.toUpperCase() || 'U'}
-                      </Avatar>
+                      <Box
+                        sx={{
+                          position: 'relative',
+                          display: 'inline-block',
+                          padding: userStatuses[conv.user._id] ? '3px' : '0',
+                          background: userStatuses[conv.user._id] ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent',
+                          borderRadius: '50%'
+                        }}
+                      >
+                        <Avatar 
+                          src={conv.user.profileImage} 
+                          alt={conv.user.username}
+                        >
+                          {conv.user.username?.[0]?.toUpperCase() || 'U'}
+                        </Avatar>
+                      </Box>
                     </Badge>
                   </ListItemAvatar>
                   <ListItemText
@@ -190,14 +258,90 @@ const Chat = () => {
           {selectedUser ? (
             <>
               {/* Chat Header */}
-              <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 2 }}>
-                <IconButton onClick={() => setSelectedUser(null)} sx={{ display: { sm: 'none' } }}>
+              <Box 
+                sx={{ 
+                  p: 2, 
+                  borderBottom: 1, 
+                  borderColor: 'divider', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 2,
+                  position: 'relative',
+                  minHeight: '80px',
+                  cursor: selectedUserStatuses.length > 0 ? 'pointer' : 'default',
+                  backgroundImage: selectedUserStatuses.length > 0 && selectedUserStatuses[currentStatusIndex]?.image
+                    ? `url(${selectedUserStatuses[currentStatusIndex].image})` 
+                    : 'none',
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                  backgroundRepeat: 'no-repeat',
+                  '&::before': selectedUserStatuses.length > 0 ? {
+                    content: '""',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    bgcolor: 'rgba(255, 255, 255, 0.75)',
+                    zIndex: 0
+                  } : {}
+                }}
+                onClick={() => {
+                  console.log('Header clicked, statuses:', selectedUserStatuses);
+                  if (selectedUserStatuses.length > 0 && selectedUserStatuses[currentStatusIndex]?.image) {
+                    window.open(selectedUserStatuses[currentStatusIndex].image, '_blank');
+                  }
+                }}
+              >
+                {/* Progress Bar */}
+                {selectedUserStatuses.length > 0 && (
+                  <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+                    <Box sx={{ display: 'flex', gap: 0.5, px: 1, pt: 0.5 }}>
+                      {selectedUserStatuses.map((_, idx) => (
+                        <Box
+                          key={idx}
+                          sx={{
+                            flex: 1,
+                            height: 3,
+                            bgcolor: 'rgba(0,0,0,0.2)',
+                            borderRadius: 1,
+                            overflow: 'hidden'
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              height: '100%',
+                              bgcolor: '#4caf50',
+                              width: idx === currentStatusIndex ? `${statusProgress}%` : idx < currentStatusIndex ? '100%' : '0%',
+                              transition: 'width 0.1s linear'
+                            }}
+                          />
+                        </Box>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+                <IconButton onClick={(e) => { e.stopPropagation(); setSelectedUser(null); }} sx={{ display: { sm: 'none' }, zIndex: 1 }}>
                   <ArrowBackIcon />
                 </IconButton>
-                <Avatar src={selectedUser.profileImage} alt={selectedUser.username || selectedUser.name}>
-                  {(selectedUser.username || selectedUser.name || 'U')[0].toUpperCase()}
-                </Avatar>
-                <Typography variant="h6">{selectedUser.username || selectedUser.name || 'User'}</Typography>
+                <Box
+                  sx={{
+                    position: 'relative',
+                    display: 'inline-block',
+                    padding: userStatuses[selectedUser._id] ? '3px' : '0',
+                    background: userStatuses[selectedUser._id] ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent',
+                    borderRadius: '50%',
+                    zIndex: 1
+                  }}
+                >
+                  <Avatar 
+                    src={selectedUser.profileImage} 
+                    alt={selectedUser.username || selectedUser.name}
+                  >
+                    {(selectedUser.username || selectedUser.name || 'U')[0].toUpperCase()}
+                  </Avatar>
+                </Box>
+                <Typography variant="h6" sx={{ zIndex: 1 }}>{selectedUser.username || selectedUser.name || 'User'}</Typography>
               </Box>
 
               {/* Messages */}

@@ -15,6 +15,7 @@ const apiRoutes = require('./routes/apiRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const callRoutes = require('./routes/callRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const chatSocket = require('./socket/chatSocket');
 const { cleanupOldNotifications } = require('./controllers/socialController');
@@ -55,6 +56,7 @@ app.use('/api/external', apiRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/calls', callRoutes);
 
 // Error handler
 app.use(errorHandler);

@@ -38,5 +38,19 @@ router.post('/statuses', protect, upload.single('statusImage'), createStatus);
 router.get('/statuses', protect, getStatuses);
 router.put('/statuses/:statusId', protect, upload.single('statusImage'), updateStatus);
 router.delete('/statuses/:statusId', protect, deleteStatus);
+router.post('/statuses/check', protect, async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    const users = await require('../models/User').find({ _id: { $in: userIds } }).select('_id statuses');
+    const statusMap = {};
+    users.forEach(user => {
+      const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
+      statusMap[user._id.toString()] = activeStatuses.length > 0;
+    });
+    res.json({ success: true, statusMap });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 module.exports = router;

@@ -339,6 +339,93 @@ module.exports = (io) => {
       }
     });
 
+    // WebRTC Call Signaling Events
+    socket.on('call:initiate', async (data) => {
+      try {
+        const { receiverId, type, callLogId } = data;
+        const callerId = socket.userId;
+        
+        console.log('📞 Call initiate received:', { receiverId, type, callerId });
+        
+        const receiverData = onlineUsers.get(receiverId);
+        if (receiverData) {
+          const caller = await User.findById(callerId).select('fullName username profileImage');
+          console.log('✅ Emitting call:incoming to receiver:', receiverData.socketId);
+          io.to(receiverData.socketId).emit('call:incoming', {
+            callerId,
+            caller,
+            callType: type,
+            callLogId
+          });
+        } else {
+          console.log('❌ Receiver not online:', receiverId);
+        }
+      } catch (error) {
+        console.error('Call initiate error:', error);
+      }
+    });
+
+    socket.on('call:accept', (data) => {
+      const { callerId } = data;
+      const callerData = onlineUsers.get(callerId);
+      if (callerData) {
+        io.to(callerData.socketId).emit('call:accepted', {
+          receiverId: socket.userId
+        });
+      }
+    });
+
+    socket.on('call:reject', (data) => {
+      const { callerId } = data;
+      const callerData = onlineUsers.get(callerId);
+      if (callerData) {
+        io.to(callerData.socketId).emit('call:rejected', {
+          receiverId: socket.userId
+        });
+      }
+    });
+
+    socket.on('call:end', (data) => {
+      const { userId } = data;
+      const userData = onlineUsers.get(userId);
+      if (userData) {
+        io.to(userData.socketId).emit('call:ended');
+      }
+    });
+
+    socket.on('call:offer', (data) => {
+      const { receiverId, offer } = data;
+      const receiverData = onlineUsers.get(receiverId);
+      if (receiverData) {
+        io.to(receiverData.socketId).emit('call:offer', {
+          callerId: socket.userId,
+          offer
+        });
+      }
+    });
+
+    socket.on('call:answer', (data) => {
+      const { callerId, answer } = data;
+      const callerData = onlineUsers.get(callerId);
+      if (callerData) {
+        io.to(callerData.socketId).emit('call:answer', {
+          receiverId: socket.userId,
+          answer
+        });
+      }
+    });
+
+    socket.on('call:ice-candidate', (data) => {
+      const { userId, candidate } = data;
+      const userData = onlineUsers.get(userId);
+      if (userData) {
+        io.to(userData.socketId).emit('call:ice-candidate', {
+          userId: socket.userId,
+          candidate
+        });
+      }
+    });
+
     socket.on('disconnect', async () => {
       if (socket.userId) {
         // Update last seen on disconnect

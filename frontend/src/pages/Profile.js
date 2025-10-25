@@ -50,8 +50,14 @@ const Profile = () => {
   const [showFullScreenStatus, setShowFullScreenStatus] = useState(null);
   const [statusForm, setStatusForm] = useState({ text: '', image: null, imagePreview: null });
   const [statusLoading, setStatusLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState('');
   const [statuses, setStatuses] = useState([]);
   const [editingStatusId, setEditingStatusId] = useState(null);
+  const [styledLetters, setStyledLetters] = useState([]);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const canvasRef = React.useRef(null);
+  const [selectedGradientIndex, setSelectedGradientIndex] = useState(0);
+  const [deletingStatusId, setDeletingStatusId] = useState(null);
 
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -87,18 +93,162 @@ const Profile = () => {
     return `url("${pattern1}"), url("${pattern2}"), url("${pattern3}"), ${baseGradient}`;
   };
 
-  const getRandomTextStyle = () => {
-    const fonts = ['Arial', 'Georgia', 'Courier New', 'Comic Sans MS', 'Impact', 'Verdana', 'Trebuchet MS', 'Times New Roman', 'Brush Script MT', 'Lucida Console'];
-    const sizes = ['text-lg', 'text-xl', 'text-2xl', 'text-3xl', 'text-4xl'];
-    const positions = ['top-4', 'top-8', 'top-12', 'top-16', 'top-20', 'bottom-4', 'bottom-8', 'bottom-12', 'bottom-16', 'bottom-20'];
-    const alignments = ['left-4', 'left-8', 'right-4', 'right-8', 'left-1/2 -translate-x-1/2'];
+  const styleStatusText = (text) => {
+    const fonts = ['Georgia', 'Times New Roman', 'Courier New', 'Arial', 'Verdana'];
+    const colors = ['#FFFFFF', '#FFE66D', '#4ECDC4', '#FF6B6B', '#A8E6CF', '#FF8B94', '#FFD93D', '#6BCF7F'];
     
-    return {
-      fontFamily: fonts[Math.floor(Math.random() * fonts.length)],
-      fontSize: sizes[Math.floor(Math.random() * sizes.length)],
-      position: positions[Math.floor(Math.random() * positions.length)],
-      alignment: alignments[Math.floor(Math.random() * alignments.length)]
-    };
+    return text.split(' ').map(word => 
+      word.split('').map((char, i) => ({
+        char: Math.random() > 0.5 ? char.toUpperCase() : char.toLowerCase(),
+        font: fonts[Math.floor(Math.random() * fonts.length)],
+        color: colors[Math.floor(Math.random() * colors.length)],
+        size: Math.random() > 0.7 ? 6 : (Math.random() > 0.5 ? 4 : 2),
+        offsetY: (Math.random() - 0.5) * 20,
+        rotation: (Math.random() - 0.5) * 12
+      }))
+    );
+  };
+
+  const regenerateTextStyle = () => {
+    if (statusForm.text.trim()) {
+      setStyledLetters(styleStatusText(statusForm.text));
+    }
+  };
+
+  const regenerateBackground = () => {
+    setSelectedGradientIndex(Math.floor(Math.random() * gradients.length));
+  };
+
+  useEffect(() => {
+    if (statusForm.text.trim()) {
+      setStyledLetters(styleStatusText(statusForm.text));
+    } else {
+      setStyledLetters([]);
+    }
+  }, [statusForm.text]);
+
+  const generateCompositeImage = async () => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const width = 1080;
+    const height = 1920;
+    canvas.width = width;
+    canvas.height = height;
+
+    // Draw background
+    if (statusForm.imagePreview) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = statusForm.imagePreview;
+      });
+      ctx.drawImage(img, 0, 0, width, height);
+    } else {
+      // Draw gradient
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      const selectedGradient = gradients[selectedGradientIndex];
+      const colors = selectedGradient.match(/#[0-9a-f]{6}/gi);
+      gradient.addColorStop(0, colors[0]);
+      gradient.addColorStop(1, colors[1]);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw SVG patterns
+      const pattern1 = getSvgPattern(selectedGradientIndex);
+      const pattern2 = getSvgPattern((selectedGradientIndex + 3) % 8);
+      const pattern3 = getSvgPattern((selectedGradientIndex + 5) % 8);
+      
+      for (const patternSvg of [pattern1, pattern2, pattern3]) {
+        const img = new Image();
+        await new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+          img.src = patternSvg;
+        });
+        const pattern = ctx.createPattern(img, 'repeat');
+        if (pattern) {
+          ctx.fillStyle = pattern;
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.fillRect(0, 0, width, height);
+        }
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // Draw styled text
+    if (styledLetters.length > 0) {
+      const centerX = width / 2;
+      const centerY = height / 2;
+      let currentX = 0;
+      let currentY = 0;
+      const lineHeight = 200;
+      const wordSpacing = 80;
+      const letterSpacing = 10;
+
+      const lines = [];
+      let currentLine = [];
+      let lineWidth = 0;
+
+      styledLetters.forEach((word) => {
+        const wordWidth = word.reduce((sum, letter) => sum + (letter.size * 40) + letterSpacing, 0) + wordSpacing;
+        if (lineWidth + wordWidth > width * 0.8 && currentLine.length > 0) {
+          lines.push({ words: currentLine, width: lineWidth });
+          currentLine = [word];
+          lineWidth = wordWidth;
+        } else {
+          currentLine.push(word);
+          lineWidth += wordWidth;
+        }
+      });
+      if (currentLine.length > 0) {
+        lines.push({ words: currentLine, width: lineWidth });
+      }
+
+      const totalHeight = lines.length * lineHeight;
+      let startY = centerY - totalHeight / 2;
+
+      lines.forEach((line, lineIdx) => {
+        let startX = centerX - line.width / 2;
+        currentY = startY + lineIdx * lineHeight;
+
+        line.words.forEach((word) => {
+          word.forEach((letter) => {
+            ctx.save();
+            ctx.font = `bold ${letter.size * 40}px ${letter.font}`;
+            ctx.fillStyle = letter.color;
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 2;
+            
+            const x = startX + currentX;
+            const y = currentY + letter.offsetY;
+            
+            ctx.translate(x, y);
+            ctx.rotate((letter.rotation * Math.PI) / 180);
+            
+            // 3D shadow effect
+            for (let i = 6; i > 0; i--) {
+              ctx.fillStyle = `rgba(0,0,0,${0.8 - i * 0.1})`;
+              ctx.fillText(letter.char, i, i);
+            }
+            
+            ctx.strokeText(letter.char, 0, 0);
+            ctx.fillStyle = letter.color;
+            ctx.fillText(letter.char, 0, 0);
+            
+            ctx.restore();
+            
+            currentX += letter.size * 40 + letterSpacing;
+          });
+          currentX += wordSpacing;
+        });
+        currentX = 0;
+      });
+    }
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+    return new File([blob], 'status-image.jpg', { type: 'image/jpeg' });
   };
 
   const fetchUserBlogs = async () => {
@@ -158,6 +308,12 @@ const Profile = () => {
       console.error('Error fetching statuses:', error);
     }
   };
+
+  useEffect(() => {
+    if (showViewStatusModal && statuses.length === 0) {
+      setShowViewStatusModal(false);
+    }
+  }, [statuses, showViewStatusModal]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -487,17 +643,31 @@ const Profile = () => {
     }
     setStatusLoading(true);
     try {
+      let finalImage = statusForm.image;
+      
+      // Generate composite image if text exists
+      if (statusForm.text.trim()) {
+        setLoadingStep('Generating image...');
+        finalImage = await generateCompositeImage();
+      }
+      
+      setLoadingStep('Uploading...');
       const formData = new FormData();
       if (statusForm.text.trim()) formData.append('text', statusForm.text.trim());
-      if (statusForm.image) formData.append('statusImage', statusForm.image);
+      if (finalImage) formData.append('statusImage', finalImage);
+      if (statusForm.imagePreview && !statusForm.image) formData.append('backgroundImage', statusForm.imagePreview);
+      formData.append('gradientIndex', selectedGradientIndex);
 
+      setLoadingStep('Saving status...');
       if (editingStatusId) {
         const { data } = await api.put(`/users/statuses/${editingStatusId}`, formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         });
         setStatuses(data.statuses);
+        setShowStatusModal(false);
         setStatusForm({ text: '', image: null, imagePreview: null });
         setEditingStatusId(null);
+        setStyledLetters([]);
         showModal('success', 'Success', 'Status updated successfully!');
       } else {
         const { data } = await api.post('/users/statuses', formData, {
@@ -506,27 +676,33 @@ const Profile = () => {
         setStatuses(data.statuses);
         setShowStatusModal(false);
         setStatusForm({ text: '', image: null, imagePreview: null });
+        setStyledLetters([]);
         showModal('success', 'Success', 'Status created successfully! It will expire in 24 hours.');
       }
     } catch (error) {
       showModal('error', 'Error', error.response?.data?.message || 'Failed to save status');
     } finally {
       setStatusLoading(false);
+      setLoadingStep('');
     }
   };
 
   const handleEditStatus = (status) => {
     setEditingStatusId(status._id);
     setStatusForm({ 
-      text: status.text, 
+      text: status.text || '', 
       image: null, 
-      imagePreview: status.image 
+      imagePreview: status.backgroundImage || null
     });
+    if (status.gradientIndex !== undefined) {
+      setSelectedGradientIndex(status.gradientIndex);
+    }
     setShowStatusModal(true);
   };
 
   const handleDeleteStatus = async (statusId) => {
     showModal('confirm', 'Delete Status', 'Are you sure you want to delete this status?', async () => {
+      setDeletingStatusId(statusId);
       try {
         const { data } = await api.delete(`/users/statuses/${statusId}`);
         setStatuses(data.statuses);
@@ -534,6 +710,8 @@ const Profile = () => {
       } catch (error) {
         console.error('Delete error:', error);
         showModal('error', 'Error', error.response?.data?.message || 'Failed to delete status');
+      } finally {
+        setDeletingStatusId(null);
       }
     });
   };
@@ -1315,7 +1493,12 @@ const Profile = () => {
               <div className="flex gap-2 mt-6">
                 <button
                   type="button"
-                  onClick={() => setShowPreviewModal(true)}
+                  onClick={() => {
+                    if (!statusForm.imagePreview) {
+                      setSelectedGradientIndex(Math.floor(Math.random() * gradients.length));
+                    }
+                    setShowPreviewModal(true);
+                  }}
                   className="px-4 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
                   disabled={!statusForm.text.trim() && !statusForm.imagePreview}
                 >
@@ -1326,7 +1509,14 @@ const Profile = () => {
                   className="flex-1 bg-blue-600 text-white px-4 py-2 text-sm rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 transition"
                   disabled={statusLoading}
                 >
-                  {statusLoading ? <PulseLoader color="#fff" size={6} /> : t('Save Status')}
+                  {statusLoading ? (
+                    <>
+                      <PulseLoader color="#fff" size={6} />
+                      <span className="ml-2">{loadingStep || 'Saving...'}</span>
+                    </>
+                  ) : (
+                    t('Save Status')
+                  )}
                 </button>
                 <button
                   type="button"
@@ -1355,28 +1545,86 @@ const Profile = () => {
             >
               <FaTimes size={20} />
             </button>
+            <div className="absolute top-4 left-4 flex flex-col gap-2 z-10">
+              {statusForm.text.trim() && (
+                <button
+                  onClick={regenerateTextStyle}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition shadow-lg flex items-center gap-2"
+                  title="Regenerate text styling"
+                >
+                  🔄 {t('Regenerate Text')}
+                </button>
+              )}
+              {!statusForm.imagePreview && (
+                <button
+                  onClick={regenerateBackground}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition shadow-lg flex items-center gap-2"
+                  title="Regenerate background"
+                >
+                  🎨 {t('Regenerate Background')}
+                </button>
+              )}
+              <button
+                onClick={async (e) => {
+                  setShowPreviewModal(false);
+                  await handleSaveStatus(e);
+                }}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition shadow-lg flex items-center justify-center gap-2"
+                disabled={statusLoading}
+              >
+                {statusLoading ? (
+                  <>
+                    <PulseLoader color="#fff" size={6} />
+                    <span className="ml-2">{loadingStep || 'Saving...'}</span>
+                  </>
+                ) : (
+                  <>{t('Save Status')}</>
+                )}
+              </button>
+            </div>
             <div className="w-full max-h-[85vh] overflow-y-auto scrollbar-hide">
               <div
                 className="w-full aspect-[9/16] rounded-2xl shadow-2xl flex items-center justify-center relative"
                 style={{
-                  backgroundImage: getStatusBackground(statusForm.imagePreview, 0),
+                  backgroundImage: statusForm.imagePreview 
+                    ? `url(${statusForm.imagePreview})` 
+                    : getStatusBackground(null, selectedGradientIndex),
                   backgroundSize: statusForm.imagePreview ? 'cover' : 'auto, 120px, 80px, cover',
                   backgroundPosition: statusForm.imagePreview ? 'center' : 'center, top right, bottom left, center'
                 }}
               >
-                {statusForm.text && (() => {
-                  const style = getRandomTextStyle();
-                  return (
-                    <div className={`absolute ${style.position} ${style.alignment} p-8 max-w-[90%]`}>
-                      <p 
-                        className={`text-white font-bold ${style.fontSize} drop-shadow-2xl bg-black bg-opacity-50 p-6 rounded-2xl leading-relaxed`}
-                        style={{ fontFamily: style.fontFamily }}
-                      >
-                        {statusForm.text}
-                      </p>
+                {statusForm.text && styledLetters.length > 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center p-8">
+                    <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 max-w-[90%]">
+                      {styledLetters.map((word, wordIdx) => (
+                        <div key={wordIdx} className="flex items-center gap-0.5">
+                          {word.map((letter, letterIdx) => (
+                            <span
+                              key={letterIdx}
+                              className="font-bold inline-block"
+                              style={{
+                                fontFamily: letter.font,
+                                color: letter.color,
+                                fontSize: `${letter.size}rem`,
+                                transform: `translateY(${letter.offsetY}px) rotate(${letter.rotation}deg)`,
+                                WebkitTextStroke: '1px rgba(255,255,255,0.3)',
+                                textShadow: `
+                                  1px 1px 0 rgba(0,0,0,0.8),
+                                  2px 2px 0 rgba(0,0,0,0.7),
+                                  3px 3px 0 rgba(0,0,0,0.6),
+                                  4px 4px 0 rgba(0,0,0,0.5),
+                                  5px 5px 10px rgba(0,0,0,0.9)
+                                `
+                              }}
+                            >
+                              {letter.char}
+                            </span>
+                          ))}
+                        </div>
+                      ))}
                     </div>
-                  );
-                })()}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1386,7 +1634,9 @@ const Profile = () => {
       {/* View Statuses Modal */}
       {showViewStatusModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-6xl max-h-[85vh] overflow-hidden shadow-2xl">
+          <div className={`bg-white rounded-xl p-6 w-full max-h-[85vh] overflow-hidden shadow-2xl ${
+            statuses.length === 1 ? 'max-w-sm' : 'max-w-6xl'
+          }`}>
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-2xl font-bold text-gray-800">{t('Your Statuses')}</h3>
               <button
@@ -1397,21 +1647,34 @@ const Profile = () => {
               </button>
             </div>
             
-            {/* Horizontal scroll for large devices, vertical for small */}
-            <div className="overflow-y-auto lg:overflow-y-hidden lg:overflow-x-auto max-h-[70vh] scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
-              <div className="flex flex-col lg:flex-row gap-6 lg:pb-4">
+            <div className={`max-h-[70vh] ${
+              statuses.length === 1 
+                ? 'flex justify-center' 
+                : 'overflow-y-auto lg:overflow-y-hidden lg:overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100'
+            }`}>
+              <div className={`flex gap-6 ${
+                statuses.length === 1 ? '' : 'flex-col lg:flex-row lg:pb-4'
+              }`}>
                 {statuses.map((status) => (
                   <div
                     key={status._id}
-                    className="relative flex-shrink-0 w-full sm:w-64 lg:w-56 aspect-[9/16] rounded-xl cursor-pointer group shadow-lg hover:shadow-xl transition"
-                    style={{
-                      backgroundImage: getStatusBackground(status.image, statuses.indexOf(status)),
-                      backgroundSize: status.image ? 'cover' : 'auto, 120px, 80px, cover',
-                      backgroundPosition: status.image ? 'center' : 'center, top right, bottom left, center'
-                    }}
+                    className="relative flex-shrink-0 w-full sm:w-64 lg:w-56 aspect-[9/16] rounded-xl cursor-pointer group shadow-lg hover:shadow-xl transition overflow-hidden"
                     onClick={() => setShowFullScreenStatus(status)}
                   >
-                    {/* Edit and Delete icons */}
+                    <div
+                      className="absolute inset-0"
+                      style={{
+                        backgroundImage: status.backgroundImage ? `url(${status.backgroundImage})` : getStatusBackground(null, statuses.indexOf(status)),
+                        backgroundSize: status.backgroundImage ? 'cover' : 'auto, 120px, 80px, cover',
+                        backgroundPosition: status.backgroundImage ? 'center' : 'center, top right, bottom left, center'
+                      }}
+                    />
+                    
+                    {deletingStatusId === status._id && (
+                      <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center z-20">
+                        <PulseLoader color="#fff" size={15} />
+                      </div>
+                    )}
                     <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                       <button
                         onClick={(e) => {
@@ -1434,22 +1697,38 @@ const Profile = () => {
                       </button>
                     </div>
                     
-                    {/* Text overlay */}
-                    {status.text && (() => {
-                      const style = getRandomTextStyle();
-                      return (
-                        <div className={`absolute ${style.position} ${style.alignment} p-4 max-w-[90%]`}>
-                          <p 
-                            className={`text-white font-bold ${style.fontSize} drop-shadow-2xl bg-black bg-opacity-50 p-3 rounded-lg`}
-                            style={{ fontFamily: style.fontFamily }}
-                          >
-                            {status.text}
-                          </p>
+                    {status.text && (
+                      <div className="absolute inset-0 flex items-center justify-center p-4">
+                        <div className="flex flex-wrap justify-center items-center gap-x-2 gap-y-1 max-w-[90%]">
+                          {styleStatusText(status.text).map((word, wordIdx) => (
+                            <div key={wordIdx} className="flex items-center gap-0.5">
+                              {word.map((letter, letterIdx) => (
+                                <span
+                                  key={letterIdx}
+                                  className="font-bold inline-block"
+                                  style={{
+                                    fontFamily: letter.font,
+                                    color: letter.color,
+                                    fontSize: `${letter.size * 0.6}rem`,
+                                    transform: `translateY(${letter.offsetY}px) rotate(${letter.rotation}deg)`,
+                                    WebkitTextStroke: '0.5px rgba(255,255,255,0.3)',
+                                    textShadow: `
+                                      1px 1px 0 rgba(0,0,0,0.8),
+                                      2px 2px 0 rgba(0,0,0,0.7),
+                                      3px 3px 0 rgba(0,0,0,0.6),
+                                      4px 4px 10px rgba(0,0,0,0.9)
+                                    `
+                                  }}
+                                >
+                                  {letter.char}
+                                </span>
+                              ))}
+                            </div>
+                          ))}
                         </div>
-                      );
-                    })()}
+                      </div>
+                    )}
                     
-                    {/* Expiry time */}
                     <div className="absolute bottom-2 left-2 right-2">
                       <p className="text-xs text-white drop-shadow-lg bg-black bg-opacity-50 px-2 py-1 rounded text-center">
                         {new Date(status.expiresAt).toLocaleTimeString()}
@@ -1476,32 +1755,15 @@ const Profile = () => {
             >
               <FaTimes size={20} />
             </button>
-            <div
-              className="w-full aspect-[9/16] rounded-lg flex items-center justify-center relative overflow-hidden"
-              style={{
-                backgroundImage: getStatusBackground(showFullScreenStatus.image, statuses.indexOf(showFullScreenStatus)),
-                backgroundSize: showFullScreenStatus.image ? 'cover' : 'auto, 120px, 80px, cover',
-                backgroundPosition: showFullScreenStatus.image ? 'center' : 'center, top right, bottom left, center'
-              }}
-            >
-              {showFullScreenStatus.text && (() => {
-                const style = getRandomTextStyle();
-                return (
-                  <div className={`absolute ${style.position} ${style.alignment} p-6 max-w-[90%]`}>
-                    <p 
-                      className={`text-white font-bold ${style.fontSize} drop-shadow-2xl bg-black bg-opacity-50 p-4 rounded-lg`}
-                      style={{ fontFamily: style.fontFamily }}
-                    >
-                      {showFullScreenStatus.text}
-                    </p>
-                  </div>
-                );
-              })()}
-              <div className="absolute bottom-4 left-4 right-4">
-                <p className="text-sm text-white drop-shadow-lg bg-black bg-opacity-50 px-3 py-2 rounded text-center">
-                  {t('Expires')}: {new Date(showFullScreenStatus.expiresAt).toLocaleString()}
-                </p>
-              </div>
+            <img
+              src={showFullScreenStatus.image}
+              alt="Status"
+              className="w-full aspect-[9/16] rounded-lg object-cover"
+            />
+            <div className="absolute bottom-4 left-4 right-4">
+              <p className="text-sm text-white drop-shadow-lg bg-black bg-opacity-50 px-3 py-2 rounded text-center">
+                {t('Expires')}: {new Date(showFullScreenStatus.expiresAt).toLocaleString()}
+              </p>
             </div>
           </div>
         </div>

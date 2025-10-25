@@ -26,11 +26,15 @@ exports.getProfile = async (req, res) => {
     }
 
     const blogCount = await Blog.countDocuments({ author: user._id, isDraft: false });
+    
+    // Filter active statuses
+    const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
 
     res.json({
       success: true,
       user: {
         ...user.toObject(),
+        statuses: activeStatuses,
         blogCount,
         followerCount: user.followers.length,
         followingCount: user.following.length

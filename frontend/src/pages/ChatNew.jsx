@@ -4,9 +4,13 @@ import { AuthContext } from '../context/AuthContext';
 import { ChatSkeleton } from '../components/SkeletonLoader';
 import api from '../services/api';
 import socketService from '../services/socket';
-import { FiSend, FiSearch, FiMoreVertical, FiX, FiTrash2, FiBell, FiBellOff, FiUserX, FiArchive, FiAlertCircle, FiSmile, FiCornerUpLeft, FiShare2, FiUser, FiChevronDown, FiBookmark, FiZap, FiEdit3 } from 'react-icons/fi';
+import { FiSend, FiSearch, FiMoreVertical, FiX, FiTrash2, FiBell, FiBellOff, FiUserX, FiArchive, FiAlertCircle, FiSmile, FiCornerUpLeft, FiShare2, FiUser, FiChevronDown, FiBookmark, FiZap, FiEdit3, FiPhone, FiVideo, FiPhoneCall } from 'react-icons/fi';
 import { BsCheck, BsCheckAll, BsPinAngleFill, BsPinAngle } from 'react-icons/bs';
 import soundNotification from '../utils/soundNotifications';
+import IncomingCallModal from '../components/IncomingCallModal';
+import ActiveCallScreen from '../components/ActiveCallScreen';
+import CallHistoryModal from '../components/CallHistoryModal';
+import webrtcService from '../services/webrtc';
 // Translation support - Import useTranslation hook from react-i18next
 // This enables multi-language support for the chat interface
 import { useTranslation } from 'react-i18next';
@@ -51,6 +55,23 @@ const ChatNew = () => {
   const [aiLoading, setAiLoading] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [userStatuses, setUserStatuses] = useState({});
+  const [selectedUserStatuses, setSelectedUserStatuses] = useState([]);
+  const [currentStatusIndex, setCurrentStatusIndex] = useState(0);
+  const [statusProgress, setStatusProgress] = useState(0);
+  const [viewedStatuses, setViewedStatuses] = useState(new Set());
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [modalStatusIndex, setModalStatusIndex] = useState(0);
+  const [modalProgress, setModalProgress] = useState(0);
+  const [showCallHistory, setShowCallHistory] = useState(false);
+  const [callLogs, setCallLogs] = useState([]);
+  const [incomingCall, setIncomingCall] = useState(null);
+  const [activeCall, setActiveCall] = useState(null);
+  const [isCallMinimized, setIsCallMinimized] = useState(false);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const reactionPickerRef = useRef(null);
@@ -65,6 +86,7 @@ const ChatNew = () => {
   useEffect(() => {
     if (user) {
       socket.current = socketService.connect(user._id);
+      webrtcService.setSocket(socket.current);
 
       // Notify backend that user is on /chat route
       socketService.updateRoute('/chat');
@@ -155,6 +177,47 @@ const ChatNew = () => {
         }
       });
 
+      // WebRTC call listeners
+      socket.current.on('call:incoming', ({ callerId, caller, callType, callLogId }) => {
+        console.log('📞 Incoming call received:', { callerId, caller, callType, callLogId });
+        setIncomingCall({ callerId, caller, callType, callLogId });
+      });
+
+      socket.current.on('call:accepted', async ({ receiverId }) => {
+        console.log('✅ Call accepted by receiver');
+        // Receiver accepted - start timer
+        setActiveCall(prev => {
+          if (prev) {
+            return { ...prev, startTime: Date.now(), callAccepted: true };
+          }
+          return prev;
+        });
+      });
+
+      socket.current.on('call:rejected', () => {
+        webrtcService.endCall();
+        setActiveCall(null);
+        showAlertModal('Call Rejected', 'The user rejected your call');
+      });
+
+      socket.current.on('call:ended', () => {
+        webrtcService.endCall();
+        setActiveCall(null);
+        setIncomingCall(null);
+      });
+
+      socket.current.on('call:offer', async ({ offer }) => {
+        await webrtcService.handleOffer(offer);
+      });
+
+      socket.current.on('call:answer', async ({ answer }) => {
+        await webrtcService.handleAnswer(answer);
+      });
+
+      socket.current.on('call:ice-candidate', async ({ candidate }) => {
+        await webrtcService.handleIceCandidate(candidate);
+      });
+
       loadConversations();
       loadBlockedUsers();
       loadMutedUsers();
@@ -204,9 +267,6 @@ const ChatNew = () => {
       }
       if (messageMenuRef.current && !messageMenuRef.current.contains(event.target)) {
         setShowMessageMenu(null);
-      }
-      if (userPanelRef.current && !userPanelRef.current.contains(event.target)) {
-        setShowUserPanel(false);
       }
       if (pinDropdownRef.current && !pinDropdownRef.current.contains(event.target)) {
         setShowPinDropdown(false);
@@ -266,6 +326,74 @@ const ChatNew = () => {
     }, 3000);
     return () => clearInterval(interval);
   }, []);
+  
+  // Status slideshow with progress bar (header preview)
+  useEffect(() => {
+    if (!selectedUserStatuses.length || showStatusModal) return;
+    
+    const progressInterval = setInterval(() => {
+      setStatusProgress(prev => {
+        if (prev >= 100) return 0;
+        return prev + (100 / 30);
+      });
+    }, 100);
+    
+    const slideInterval = setInterval(() => {
+      setCurrentStatusIndex(prev => (prev + 1) % selectedUserStatuses.length);
+      setStatusProgress(0);
+    }, 3000);
+    
+    return () => {
+      clearInterval(progressInterval);
+      clearInterval(slideInterval);
+    };
+  }, [selectedUserStatuses.length, showStatusModal]);
+  
+  // Status modal auto-advance
+  useEffect(() => {
+    if (!showStatusModal || !selectedUserStatuses.length) return;
+    
+    const progressInterval = setInterval(() => {
+      setModalProgress(prev => {
+        if (prev >= 100) return 0;
+        return prev + (100 / 30);
+      });
+    }, 100);
+    
+    const slideInterval = setInterval(() => {
+      setModalStatusIndex(prev => {
+        const nextIndex = prev + 1;
+        if (nextIndex >= selectedUserStatuses.length) {
+          setShowStatusModal(false);
+          setViewedStatuses(s => new Set([...s, selectedChat._id]));
+          return 0;
+        }
+        setModalProgress(0);
+        return nextIndex;
+      });
+    }, 3000);
+    
+    return () => {
+      clearInterval(progressInterval);
+      clearInterval(slideInterval);
+    };
+  }, [showStatusModal, selectedUserStatuses.length, selectedChat]);
+  
+  // Fetch statuses for all users in conversations
+  useEffect(() => {
+    if (conversations.length > 0) {
+      const fetchStatuses = async () => {
+        try {
+          const userIds = conversations.map(c => c.user._id);
+          const { data } = await api.post('/users/statuses/check', { userIds });
+          setUserStatuses(data.statusMap || {});
+        } catch (error) {
+          console.error('Failed to fetch user statuses:', error);
+        }
+      };
+      fetchStatuses();
+    }
+  }, [conversations]);
 
   const loadConversations = async () => {
     try {
@@ -700,12 +828,263 @@ const ChatNew = () => {
     }
   };
 
+  // Call handlers
+  const initiateCall = async (callType) => {
+    if (!selectedChat) return;
+    try {
+      // Create call log first
+      const { data } = await api.post('/calls/log', {
+        receiverId: selectedChat._id,
+        type: callType
+      });
+      
+      const stream = await webrtcService.startCall(callType === 'video');
+      
+      console.log('📞 Emitting call:initiate to:', selectedChat._id);
+      socket.current.emit('call:initiate', {
+        receiverId: selectedChat._id,
+        type: callType,
+        callLogId: data.callLog._id
+      });
+      console.log('✅ Call initiated');
+      
+      setActiveCall({
+        userId: selectedChat._id,
+        userName: getUserDisplayName(selectedChat),
+        userAvatar: getUserAvatar(selectedChat),
+        callType,
+        stream,
+        callLogId: data.callLog._id,
+        callAccepted: false,
+        startTime: null
+      });
+      setIsVideoEnabled(callType === 'video');
+    } catch (error) {
+      console.error('❌ Failed to initiate call:', error);
+      let errorMsg = 'Failed to start call.';
+      if (error.name === 'NotReadableError') {
+        errorMsg = 'Camera/microphone is already in use by another application or browser tab. Please close other apps using the camera/mic and try again.';
+      } else if (error.name === 'NotAllowedError') {
+        errorMsg = 'Camera/microphone access denied. Please allow permissions in your browser settings.';
+      } else if (error.name === 'NotFoundError') {
+        errorMsg = 'No camera/microphone found. Please connect a device and try again.';
+      }
+      showAlertModal('Cannot Start Call', errorMsg);
+    }
+  };
+
+  const acceptCall = async () => {
+    if (!incomingCall) return;
+    try {
+      console.log('📞 Accepting call...');
+      
+      // End any existing call first to free up camera/mic
+      if (activeCall) {
+        console.log('⚠️ Ending existing call before accepting new one');
+        webrtcService.endCall();
+        setActiveCall(null);
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait for cleanup
+      }
+      
+      const stream = await webrtcService.startCall(incomingCall.callType === 'video');
+      console.log('✅ Media stream obtained');
+      
+      socket.current.emit('call:accept', {
+        callerId: incomingCall.callerId
+      });
+      console.log('✅ Emitted call:accept to caller');
+      
+      const startTime = Date.now();
+      setActiveCall({
+        userId: incomingCall.callerId,
+        userName: getUserDisplayName(incomingCall.caller),
+        userAvatar: getUserAvatar(incomingCall.caller),
+        callType: incomingCall.callType,
+        stream,
+        callLogId: incomingCall.callLogId,
+        callAccepted: true,
+        startTime
+      });
+      setIsVideoEnabled(incomingCall.callType === 'video');
+      setIncomingCall(null);
+      console.log('✅ Call accepted, timer started at:', startTime);
+    } catch (error) {
+      console.error('❌ Failed to accept call:', error);
+      let errorMsg = 'Failed to accept call.';
+      if (error.name === 'NotReadableError') {
+        errorMsg = 'Camera/microphone is already in use by another application or browser tab. Please close other apps using the camera/mic and try again.';
+      } else if (error.name === 'NotAllowedError') {
+        errorMsg = 'Camera/microphone access denied. Please allow permissions and try again.';
+      } else if (error.name === 'NotFoundError') {
+        errorMsg = 'No camera/microphone found. Please connect a device and try again.';
+      }
+      showAlertModal('Cannot Accept Call', errorMsg);
+      // Reject the call
+      socket.current.emit('call:reject', { callerId: incomingCall.callerId });
+      setIncomingCall(null);
+    }
+  };
+
+  const rejectCall = () => {
+    if (!incomingCall) return;
+    socket.current.emit('call:reject', { callerId: incomingCall.callerId });
+    setIncomingCall(null);
+  };
+
+  const endCall = async () => {
+    if (!activeCall) return;
+    
+    socket.current.emit('call:end', { userId: activeCall.userId });
+    webrtcService.endCall();
+    
+    // Update call log only if call was accepted
+    if (activeCall.callLogId && activeCall.callAccepted && activeCall.startTime) {
+      await api.put(`/calls/log/${activeCall.callLogId}`, {
+        status: 'completed',
+        duration: Math.floor((Date.now() - activeCall.startTime) / 1000)
+      });
+    } else if (activeCall.callLogId) {
+      // Call was not accepted - mark as missed
+      await api.put(`/calls/log/${activeCall.callLogId}`, {
+        status: 'missed',
+        duration: 0
+      });
+    }
+    
+    setActiveCall(null);
+    setIsCallMinimized(false);
+  };
+
+  const toggleAudio = () => {
+    webrtcService.toggleAudio();
+    setIsAudioEnabled(prev => !prev);
+  };
+
+  const toggleVideo = async () => {
+    try {
+      await webrtcService.toggleVideo();
+      setIsVideoEnabled(prev => !prev);
+    } catch (error) {
+      console.error('Failed to toggle video:', error);
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    try {
+      if (isScreenSharing) {
+        await webrtcService.stopScreenShare();
+      } else {
+        await webrtcService.startScreenShare();
+      }
+      setIsScreenSharing(prev => !prev);
+    } catch (error) {
+      console.error('Failed to toggle screen share:', error);
+    }
+  };
+
+  const toggleRecording = async () => {
+    try {
+      if (isRecording) {
+        await webrtcService.stopRecording();
+      } else {
+        await webrtcService.startRecording();
+      }
+      setIsRecording(prev => !prev);
+    } catch (error) {
+      console.error('Failed to toggle recording:', error);
+    }
+  };
+
+  const loadCallHistory = async () => {
+    if (!selectedChat) return;
+    try {
+      const { data } = await api.get(`/calls/history/${selectedChat._id}`);
+      setCallLogs(data.callLogs || []);
+      setShowCallHistory(true);
+    } catch (error) {
+      console.error('Failed to load call history:', error);
+    }
+  };
+
+  const handleCallBack = (log) => {
+    initiateCall(log.type);
+    setShowCallHistory(false);
+  };
+
   if (loading) {
     return <ChatSkeleton />;
   }
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">
+      {/* Status Modal */}
+      {showStatusModal && selectedUserStatuses.length > 0 && (
+        <div className="fixed inset-0 bg-black z-[70] flex items-center justify-center">
+          <div className="relative w-full max-w-md h-full flex flex-col">
+            {/* Progress bars */}
+            <div className="absolute top-4 left-4 right-4 z-20 flex gap-1">
+              {selectedUserStatuses.map((_, idx) => (
+                <div key={idx} className="flex-1 h-1 bg-gray-600 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-white transition-all duration-100"
+                    style={{
+                      width: idx === modalStatusIndex ? `${modalProgress}%` : idx < modalStatusIndex ? '100%' : '0%'
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            
+            {/* Close button */}
+            <button
+              onClick={() => {
+                setShowStatusModal(false);
+                setViewedStatuses(s => new Set([...s, selectedChat._id]));
+              }}
+              className="absolute top-4 right-4 z-20 text-white hover:text-gray-300 bg-black bg-opacity-50 rounded-full p-2"
+            >
+              <FiX className="w-6 h-6" />
+            </button>
+            
+            {/* Status image */}
+            <div className="flex-1 flex items-center justify-center">
+              <img
+                src={selectedUserStatuses[modalStatusIndex]?.image}
+                alt="Status"
+                className="max-w-full max-h-full object-contain"
+              />
+            </div>
+            
+            {/* Navigation */}
+            <div className="absolute inset-0 flex">
+              <button
+                onClick={() => {
+                  if (modalStatusIndex > 0) {
+                    setModalStatusIndex(modalStatusIndex - 1);
+                    setModalProgress(0);
+                  }
+                }}
+                className="flex-1 cursor-pointer"
+                style={{ background: 'transparent' }}
+              />
+              <button
+                onClick={() => {
+                  if (modalStatusIndex < selectedUserStatuses.length - 1) {
+                    setModalStatusIndex(modalStatusIndex + 1);
+                    setModalProgress(0);
+                  } else {
+                    setShowStatusModal(false);
+                    setViewedStatuses(s => new Set([...s, selectedChat._id]));
+                  }
+                }}
+                className="flex-1 cursor-pointer"
+                style={{ background: 'transparent' }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Profile Image Modal */}
       {showImageModal && selectedChat && (
         <div
@@ -1156,15 +1535,39 @@ const ChatNew = () => {
                   ));
                   console.log('Conversation user selected:', conv.user);
                   setSelectedChat(conv.user);
+                  
+                  // Fetch user's statuses
+                  (async () => {
+                    try {
+                      const { data } = await api.get(`/users/profile/${conv.user._id}`);
+                      console.log('Fetched user profile:', data);
+                      const activeStatuses = data.user.statuses?.filter(s => new Date() < new Date(s.expiresAt)) || [];
+                      console.log('Active statuses:', activeStatuses);
+                      setSelectedUserStatuses(activeStatuses);
+                      setCurrentStatusIndex(0);
+                      setStatusProgress(0);
+                    } catch (error) {
+                      console.error('Failed to fetch user statuses:', error);
+                      setSelectedUserStatuses([]);
+                    }
+                  })();
                 }}
               >
                 <div className="flex items-center flex-1 min-w-0">
                   <div className="relative">
-                    <img
-                      src={getUserAvatar(conv.user)}
-                      alt={getUserDisplayName(conv.user)}
-                      className="w-12 h-12 rounded-full object-cover"
-                    />
+                    <div
+                      className="rounded-full"
+                      style={{
+                        padding: userStatuses[conv.user._id] && !viewedStatuses.has(conv.user._id) ? '3px' : '0',
+                        background: userStatuses[conv.user._id] && !viewedStatuses.has(conv.user._id) ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent'
+                      }}
+                    >
+                      <img
+                        src={getUserAvatar(conv.user)}
+                        alt={getUserDisplayName(conv.user)}
+                        className="w-12 h-12 rounded-full object-cover"
+                      />
+                    </div>
                     {isOnline(conv.user._id) && (
                       <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
                     )}
@@ -1269,44 +1672,106 @@ const ChatNew = () => {
           <>
             {/* Chat Header */}
             <div className="relative">
-              <div
-                className="p-4 border-b border-gray-200 bg-white cursor-pointer hover:bg-gray-50 transition-colors"
-                onClick={() => setShowUserPanel(!showUserPanel)}
-              >
-                <div className="flex items-center gap-3">
+              {/* Glowing border for active chat header */}
+              {userStatuses[selectedChat._id] && !viewedStatuses.has(selectedChat._id) && (
+                <div className="absolute -inset-1 z-0 pointer-events-none rounded-lg">
+                  <div className="absolute inset-0 bg-gradient-to-r from-green-400 via-green-500 to-green-400 animate-pulse rounded-lg" style={{ animationDuration: '2s' }} />
+                </div>
+              )}
+              <div className="p-4 border-b border-gray-200 bg-white relative z-10">
+                <div className="flex items-center gap-3 relative z-10">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedChat(null);
+                      setSelectedUserStatuses([]);
                     }}
                     className="p-2 hover:bg-gray-100 rounded-full md:hidden flex-shrink-0"
                   >
                     <FiX className="w-5 h-5 text-gray-600" />
                   </button>
-                  <div className="relative flex-shrink-0">
-                    <img
-                      src={getUserAvatar(selectedChat)}
-                      alt={getUserDisplayName(selectedChat)}
-                      className="w-10 h-10 rounded-full object-cover"
-                    />
+                  <div 
+                    className="relative flex-shrink-0 cursor-pointer"
+                    onClick={() => setShowUserPanel(!showUserPanel)}
+                  >
+                    <div
+                      className="rounded-full"
+                      style={{
+                        padding: userStatuses[selectedChat._id] && !viewedStatuses.has(selectedChat._id) ? '3px' : '0',
+                        background: userStatuses[selectedChat._id] && !viewedStatuses.has(selectedChat._id) ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent'
+                      }}
+                    >
+                      <img
+                        src={getUserAvatar(selectedChat)}
+                        alt={getUserDisplayName(selectedChat)}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    </div>
                     {isOnline(selectedChat._id) && (
                       <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div 
+                    className="flex-1 min-w-0 cursor-pointer"
+                    onClick={() => setShowUserPanel(!showUserPanel)}
+                  >
                     <h2 className="font-semibold text-gray-900">{getUserDisplayName(selectedChat)}</h2>
                     <p className="text-xs text-gray-500">
                       {isOnline(selectedChat._id) ? t('Active now') : getLastSeenText(selectedChat.lastSeen)}
                     </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => initiateCall('audio')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                      <FiPhone className="w-5 h-5 text-gray-600" />
+                    </button>
+                    <button onClick={() => initiateCall('video')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                      <FiVideo className="w-5 h-5 text-gray-600" />
+                    </button>
                   </div>
                 </div>
               </div>
 
               {/* User Details Panel - Popup Overlay */}
               {showUserPanel && (
-                <div ref={userPanelRef} className="absolute top-full left-0 w-full md:w-1/2 bg-white border border-gray-200 rounded-b-lg shadow-2xl z-50 animate-slideDown">
+                <div 
+                  ref={userPanelRef}
+                  className="absolute top-full left-0 w-full md:w-1/2 border border-gray-200 rounded-b-lg shadow-2xl z-50 animate-slideDown overflow-hidden"
+                  style={{
+                    backgroundImage: selectedUserStatuses.length > 0 && selectedUserStatuses[currentStatusIndex]?.image
+                      ? `url(${selectedUserStatuses[currentStatusIndex].image})`
+                      : 'none',
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
+                  }}
+                >
+                  <div 
+                    className="absolute inset-0 bg-white bg-opacity-70 backdrop-blur-sm cursor-pointer" 
+                    onClick={() => {
+                      if (selectedUserStatuses.length > 0) {
+                        setModalStatusIndex(0);
+                        setModalProgress(0);
+                        setShowStatusModal(true);
+                        setShowUserPanel(false);
+                      }
+                    }}
+                  />
+                  {/* Progress bars for status slideshow in user panel */}
+                  {selectedUserStatuses.length > 0 && (
+                    <div className="absolute top-2 left-2 right-2 z-20 flex gap-1 pointer-events-none">
+                      {selectedUserStatuses.map((_, idx) => (
+                        <div key={idx} className="flex-1 h-1 bg-gray-300 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-green-500 transition-all duration-100"
+                            style={{
+                              width: idx === currentStatusIndex ? `${statusProgress}%` : idx < currentStatusIndex ? '100%' : '0%'
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {/* Profile Section */}
-                  <div className="p-5">
+                  <div className="p-5 relative z-10" onClick={(e) => e.stopPropagation()}>
                     <div className="flex flex-col items-center text-center">
                       <div className="relative mb-3 cursor-pointer" onClick={() => setShowImageModal(true)}>
                         <img
@@ -1319,22 +1784,38 @@ const ChatNew = () => {
                         )}
                       </div>
                       <h3 className="text-lg font-semibold text-gray-900">{getUserDisplayName(selectedChat)}</h3>
-                      <p className="text-sm text-gray-500 mt-1">
-                        {isOnline(selectedChat._id) ? t('Active now') : getLastSeenText(selectedChat.lastSeen)}
-                      </p>
-                      {selectedChat.description && (
-                        <div className="mt-3">
-                          <p className="text-xs text-gray-400 mb-1">{t('Description')}</p>
-                          <p className="text-sm text-gray-600 italic">{selectedChat.description}</p>
-                        </div>
+                      {selectedUserStatuses.length > 0 && (
+                        <button
+                          onClick={() => {
+                            setModalStatusIndex(0);
+                            setModalProgress(0);
+                            setShowStatusModal(true);
+                            setShowUserPanel(false);
+                          }}
+                          className={`text-sm mt-1 font-medium ${
+                            !viewedStatuses.has(selectedChat._id)
+                              ? 'bg-gradient-to-r from-green-400 via-blue-500 to-purple-600 bg-clip-text text-transparent animate-shimmer'
+                              : 'text-gray-600'
+                          }`}
+                          style={{
+                            backgroundSize: !viewedStatuses.has(selectedChat._id) ? '200% auto' : 'auto'
+                          }}
+                        >
+                          {t('View Status')}
+                        </button>
                       )}
+                      <div className="mt-3 w-full">
+                        <p className="text-xs text-gray-400 mb-1">{t('About')}</p>
+                        <p className="text-sm text-gray-600">
+                          {selectedChat.bio || selectedChat.description || 'Connect, chat, and share moments with friends using our secure messaging platform.'}
+                        </p>
+                      </div>
                     </div>
 
                     {/* Actions */}
                     <div className="grid grid-cols-2 gap-2 mt-5">
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onClick={() => {
                           navigate(`/user/${selectedChat._id}`);
                           setShowUserPanel(false);
                         }}
@@ -1343,8 +1824,16 @@ const ChatNew = () => {
                         <FiUser className="w-4 h-4" /> <span>{t('View Profile')}</span>
                       </button>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onClick={() => {
+                          loadCallHistory();
+                          setShowUserPanel(false);
+                        }}
+                        className="col-span-2 px-4 py-2.5 text-sm hover:bg-green-50 rounded-lg flex items-center justify-center gap-2 transition-colors border border-green-200 text-green-600"
+                      >
+                        <FiPhoneCall className="w-4 h-4" /> <span>{t('Call History')}</span>
+                      </button>
+                      <button
+                        onClick={() => {
                           handleMuteUser(selectedChat._id);
                           setShowUserPanel(false);
                         }}
@@ -1357,8 +1846,7 @@ const ChatNew = () => {
                         )}
                       </button>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onClick={() => {
                           handleClearChat();
                           setShowUserPanel(false);
                         }}
@@ -1367,8 +1855,7 @@ const ChatNew = () => {
                         <FiArchive className="w-4 h-4 text-gray-600" /> <span>{t('Clear')}</span>
                       </button>
                       <button
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onClick={() => {
                           handleDeleteConversation(selectedChat._id);
                           setShowUserPanel(false);
                         }}
@@ -1378,8 +1865,7 @@ const ChatNew = () => {
                       </button>
                       {blockedUsers.has(selectedChat._id) ? (
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
+                          onClick={() => {
                             handleUnblockUser(selectedChat._id);
                             setShowUserPanel(false);
                           }}
@@ -1389,8 +1875,7 @@ const ChatNew = () => {
                         </button>
                       ) : (
                         <button
-                          onClick={(e) => {
-                            e.stopPropagation();
+                          onClick={() => {
                             handleBlockUser(selectedChat._id);
                             setShowUserPanel(false);
                           }}
@@ -1795,6 +2280,52 @@ const ChatNew = () => {
           </div>
         )}
       </div>
+
+      {/* Call Modals */}
+      {incomingCall && (
+        <IncomingCallModal
+          caller={incomingCall.caller}
+          callType={incomingCall.callType}
+          onAccept={acceptCall}
+          onReject={rejectCall}
+        />
+      )}
+
+      {activeCall && (
+        <ActiveCallScreen
+          remoteUser={{ 
+            fullName: activeCall.userName,
+            profileImage: activeCall.userAvatar
+          }}
+          callType={activeCall.callType}
+          isMinimized={isCallMinimized}
+          isAudioEnabled={isAudioEnabled}
+          isVideoEnabled={isVideoEnabled}
+          isScreenSharing={isScreenSharing}
+          isRecording={isRecording}
+          startTime={activeCall.startTime}
+          callAccepted={activeCall.callAccepted}
+          onToggleMinimize={() => setIsCallMinimized(!isCallMinimized)}
+          onToggleAudio={toggleAudio}
+          onToggleVideo={toggleVideo}
+          onToggleScreenShare={toggleScreenShare}
+          onStartRecording={toggleRecording}
+          onStopRecording={toggleRecording}
+          onEndCall={endCall}
+          localStream={activeCall.stream}
+          remoteStream={webrtcService.remoteStream}
+        />
+      )}
+
+      {showCallHistory && (
+        <CallHistoryModal
+          callLogs={callLogs}
+          onClose={() => setShowCallHistory(false)}
+          onCallBack={handleCallBack}
+          getUserDisplayName={getUserDisplayName}
+          getUserAvatar={getUserAvatar}
+        />
+      )}
     </div>
   );
 };
