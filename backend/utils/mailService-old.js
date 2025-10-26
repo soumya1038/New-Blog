@@ -1,28 +1,26 @@
-const { MailerSend, EmailParams, Sender, Recipient } = require("mailersend");
-
-const mailerSend = new MailerSend({
-  apiKey: process.env.MAILERSEND_API_KEY || "",
-});
+const nodemailer = require('nodemailer');
 
 const sendEmail = async ({ to, subject, html }) => {
   try {
-    const sentFrom = new Sender(process.env.EMAIL_USER || "noreply@trial-3vz9dle7xo0lkj50.mlsender.net", "New Blog");
-    const recipients = [new Recipient(to, to.split('@')[0])];
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
+    });
 
-    const emailParams = new EmailParams()
-      .setFrom(sentFrom)
-      .setTo(recipients)
-      .setSubject(subject)
-      .setHtml(html);
+    await transporter.sendMail({
+      from: `"New Blog" <${process.env.EMAIL_USER}>`,
+      to,
+      subject,
+      html
+    });
 
-    await mailerSend.email.send(emailParams);
     console.log(`✅ Email sent to ${to}`);
     return { success: true };
   } catch (error) {
     console.error('❌ Email send failed:', error.message);
-    if (error.body) {
-      console.error('MailerSend error:', error.body);
-    }
     throw new Error('Failed to send email');
   }
 };

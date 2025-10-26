@@ -1,27 +1,46 @@
-const { MailerSend, EmailParams, Sender, Recipient } = require("mailersend");
+const sgMail = require('@sendgrid/mail');
 
-const mailerSend = new MailerSend({
-  apiKey: process.env.MAILERSEND_API_KEY || "",
-});
+// Initialize SendGrid
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
 
 const sendEmail = async ({ to, subject, html }) => {
   try {
-    const sentFrom = new Sender(process.env.EMAIL_USER || "noreply@trial-3vz9dle7xo0lkj50.mlsender.net", "New Blog");
-    const recipients = [new Recipient(to, to.split('@')[0])];
+    // Fallback to nodemailer if SendGrid not configured
+    if (!process.env.SENDGRID_API_KEY) {
+      console.warn('⚠️ SendGrid not configured, falling back to nodemailer');
+      const nodemailer = require('nodemailer');
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASS
+        }
+      });
 
-    const emailParams = new EmailParams()
-      .setFrom(sentFrom)
-      .setTo(recipients)
-      .setSubject(subject)
-      .setHtml(html);
+      await transporter.sendMail({
+        from: `"New Blog" <${process.env.EMAIL_USER}>`,
+        to,
+        subject,
+        html
+      });
+    } else {
+      // Use SendGrid
+      await sgMail.send({
+        from: process.env.EMAIL_USER || 'noreply@newblog.com',
+        to,
+        subject,
+        html
+      });
+    }
 
-    await mailerSend.email.send(emailParams);
     console.log(`✅ Email sent to ${to}`);
     return { success: true };
   } catch (error) {
     console.error('❌ Email send failed:', error.message);
-    if (error.body) {
-      console.error('MailerSend error:', error.body);
+    if (error.response) {
+      console.error('SendGrid error:', error.response.body);
     }
     throw new Error('Failed to send email');
   }
