@@ -54,3 +54,9 @@ Thumbs.db
 node_modules/
 frontend/node_modules/.cache/
 
+
+# Environment variables with secrets
+backend/.env
+frontend/.env
+.env
+*.env.local
