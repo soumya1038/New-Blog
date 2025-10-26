@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { FaCheckCircle, FaTimesCircle, FaRedo } from 'react-icons/fa';
+import { PacmanLoader } from 'react-spinners';
 import { VscEye, VscEyeClosed } from 'react-icons/vsc';
 
 const Register = () => {
@@ -21,6 +22,7 @@ const Register = () => {
   const [emailValidationMsg, setEmailValidationMsg] = useState('');
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
   
   // Math CAPTCHA states
   const [mathQuestion, setMathQuestion] = useState({ num1: 0, num2: 0, operator: '+', answer: 0 });
@@ -176,12 +178,15 @@ const Register = () => {
       return;
     }
 
+    setIsRegistering(true);
     try {
       await register(username, email, password, rememberMe, mathAnswer, mathQuestion);
       setSuccess('Registration successful! Redirecting to login...');
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
       setError(err.response?.data?.message || 'Registration failed');
+    } finally {
+      setIsRegistering(false);
     }
   };
 
@@ -404,10 +409,17 @@ const Register = () => {
           
           <button
             type="submit"
-            disabled={!isMathVerified || !isEmailVerified}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!isMathVerified || !isEmailVerified || isRegistering}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {t('Sign Up')}
+            {isRegistering ? (
+              <>
+                <PacmanLoader color="#ffffff" size={10} />
+                <span>Creating account...</span>
+              </>
+            ) : (
+              t('Sign Up')
+            )}
           </button>
         </form>
         

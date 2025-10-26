@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import { VscEye, VscEyeClosed } from 'react-icons/vsc';
 import { FaCheckCircle, FaRedo } from 'react-icons/fa';
-import { SyncLoader } from 'react-spinners';
+import { SyncLoader, PacmanLoader } from 'react-spinners';
 import axios from 'axios';
 
 const Login = () => {
@@ -37,6 +37,7 @@ const Login = () => {
   const [finalCode, setFinalCode] = useState('');
   const [finalError, setFinalError] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   // Math CAPTCHA states
   const [mathQuestion, setMathQuestion] = useState({ num1: 0, num2: 0, operator: '+', answer: 0 });
@@ -149,6 +150,7 @@ const Login = () => {
       return;
     }
     
+    setIsLoggingIn(true);
     try {
       const data = await login(username, password, rememberMe);
       // Reset failed attempts on success
@@ -173,6 +175,8 @@ const Login = () => {
       } else {
         setError(`${err.response?.data?.message || 'Login failed'}. Attempt ${newAttempts}/5`);
       }
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -371,10 +375,19 @@ const Login = () => {
           
           <button
             type="submit"
-            disabled={isLocked}
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={isLocked || isLoggingIn}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            {isLocked ? `Locked (${Math.floor(lockoutTime / 60)}:${(lockoutTime % 60).toString().padStart(2, '0')})` : t('Login')}
+            {isLoggingIn ? (
+              <>
+                <PacmanLoader color="#ffffff" size={10} />
+                <span>Logging in...</span>
+              </>
+            ) : isLocked ? (
+              `Locked (${Math.floor(lockoutTime / 60)}:${(lockoutTime % 60).toString().padStart(2, '0')})`
+            ) : (
+              t('Login')
+            )}
           </button>
         </form>
         
