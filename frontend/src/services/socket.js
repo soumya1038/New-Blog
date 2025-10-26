@@ -46,4 +46,13 @@ class SocketService {
   }
 }
 
-export default new SocketService();
+const socketServiceInstance = new SocketService();
+
+// Ensure getSocket is available
+if (!socketServiceInstance.getSocket) {
+  socketServiceInstance.getSocket = function() {
+    return this.socket;
+  };
+}
+
+export default socketServiceInstance;

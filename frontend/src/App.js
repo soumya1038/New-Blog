@@ -1,5 +1,5 @@
-import React, { useEffect, useContext } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
+import React, { useEffect, useContext, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
@@ -17,7 +17,9 @@ import VerifyEmail from './pages/VerifyEmail';
 import ChatNew from './pages/ChatNew';
 import NotFound from './pages/NotFound';
 import ErrorFallback from './components/ErrorFallback';
+import IncomingCallModal from './components/IncomingCallModal';
 import socketService from './services/socket';
+import webrtcService from './services/webrtc';
 import soundNotification from './utils/soundNotifications';
 import api from './services/api';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -26,6 +28,8 @@ import { useRouteTracker } from './hooks/useRouteTracker';
 function AppContent() {
   const { user } = useContext(AuthContext);
   const location = useLocation();
+  const navigate = useNavigate();
+  const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   
   // Track route changes and emit to backend
   useRouteTracker();
@@ -68,12 +72,38 @@ function AppContent() {
       window.dispatchEvent(new CustomEvent('newNotification'));
     };
 
+    // Global call listeners
+    const handleIncomingCall = ({ callerId, caller, callType, callLogId }) => {
+      console.log('📞 App.js: Global incoming call:', { callerId, caller, callType });
+      // Only show global modal if NOT on chat page
+      if (location.pathname !== '/chat') {
+        setGlobalIncomingCall({ callerId, caller, callType, callLogId });
+      }
+    };
+
+    const handleCallRejected = () => {
+      console.log('📞 App.js: Call rejected');
+      setGlobalIncomingCall(null);
+    };
+
+    const handleCallEnded = () => {
+      console.log('📞 App.js: Call ended');
+      setGlobalIncomingCall(null);
+      // Dispatch event to notify ChatNew if it's open
+      window.dispatchEvent(new CustomEvent('callEnded'));
+    };
+
     socket.on('message:receive', handleMessageReceive);
     socket.on('notification:like', handleNotificationLike);
     socket.on('notification:comment', handleNotificationComment);
     socket.on('notification:follow', handleNotificationFollow);
     socket.on('notification:message', handleNotificationMessage);
     socket.on('notifications:updated', handleNotificationsUpdated);
+    socket.on('call:incoming', handleIncomingCall);
+    socket.on('call:rejected', handleCallRejected);
+    socket.on('call:ended', handleCallEnded);
+    
+    webrtcService.setSocket(socket);
 
     return () => {
       socket.off('message:receive', handleMessageReceive);
@@ -82,13 +112,37 @@ function AppContent() {
       socket.off('notification:follow', handleNotificationFollow);
       socket.off('notification:message', handleNotificationMessage);
       socket.off('notifications:updated', handleNotificationsUpdated);
+      socket.off('call:incoming', handleIncomingCall);
+      socket.off('call:rejected', handleCallRejected);
+      socket.off('call:ended', handleCallEnded);
     };
   }, [user, location.pathname]);
+
+  const handleAcceptGlobalCall = () => {
+    navigate('/chat', { state: { incomingCall: globalIncomingCall } });
+    setGlobalIncomingCall(null);
+  };
+
+  const handleRejectGlobalCall = () => {
+    const socket = socketService.getSocket();
+    if (socket && globalIncomingCall) {
+      socket.emit('call:reject', { callerId: globalIncomingCall.callerId });
+    }
+    setGlobalIncomingCall(null);
+  };
 
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       <div className="min-h-screen">
         <Navbar />
+        {globalIncomingCall && (
+          <IncomingCallModal
+            caller={globalIncomingCall.caller}
+            callType={globalIncomingCall.callType}
+            onAccept={handleAcceptGlobalCall}
+            onReject={handleRejectGlobalCall}
+          />
+        )}
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />

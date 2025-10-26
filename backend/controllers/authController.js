@@ -13,7 +13,19 @@ exports.register = async (req, res) => {
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { username, email, password, rememberMe } = req.body;
+    const { username, email, password, rememberMe, mathAnswer, mathQuestion } = req.body;
+
+    // Verify math CAPTCHA
+    if (!mathAnswer || !mathQuestion) {
+      return res.status(400).json({ success: false, message: 'Please complete the verification' });
+    }
+
+    const { num1, num2, operator } = mathQuestion;
+    const expectedAnswer = operator === '+' ? num1 + num2 : num1 - num2;
+    
+    if (parseInt(mathAnswer) !== expectedAnswer) {
+      return res.status(400).json({ success: false, message: 'Incorrect verification answer' });
+    }
 
     const existingUser = await User.findOne({ username });
     if (existingUser) {

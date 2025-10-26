@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import { VscEye, VscEyeClosed } from 'react-icons/vsc';
+import { FaCheckCircle, FaRedo } from 'react-icons/fa';
 import { SyncLoader } from 'react-spinners';
 import axios from 'axios';
 
@@ -37,6 +38,91 @@ const Login = () => {
   const [finalError, setFinalError] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
+  // Math CAPTCHA states
+  const [mathQuestion, setMathQuestion] = useState({ num1: 0, num2: 0, operator: '+', answer: 0 });
+  const [mathAnswer, setMathAnswer] = useState('');
+  const [isMathVerified, setIsMathVerified] = useState(false);
+  const [mathTimer, setMathTimer] = useState(60);
+  
+  // Failed login attempts
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [isLocked, setIsLocked] = useState(false);
+  const [lockoutTime, setLockoutTime] = useState(0);
+
+  // Generate math question
+  const generateMathQuestion = () => {
+    const num1 = Math.floor(Math.random() * 15) + 1;
+    const num2 = Math.floor(Math.random() * 15) + 1;
+    const operators = ['+', '-'];
+    const operator = operators[Math.floor(Math.random() * operators.length)];
+    const answer = operator === '+' ? num1 + num2 : num1 - num2;
+    setMathQuestion({ num1, num2, operator, answer });
+    setMathAnswer('');
+    setIsMathVerified(false);
+    setMathTimer(60);
+  };
+
+  // Verify math answer
+  const handleMathVerify = () => {
+    if (parseInt(mathAnswer) === mathQuestion.answer) {
+      setIsMathVerified(true);
+      setError('');
+    } else {
+      setError('Incorrect answer. Please try again.');
+      setIsMathVerified(false);
+    }
+  };
+
+  useEffect(() => {
+    generateMathQuestion();
+    
+    // Check if there's an existing lockout
+    const lockoutEnd = localStorage.getItem('loginLockoutEnd');
+    if (lockoutEnd) {
+      const remaining = parseInt(lockoutEnd) - Date.now();
+      if (remaining > 0) {
+        setIsLocked(true);
+        setLockoutTime(Math.ceil(remaining / 1000));
+      } else {
+        localStorage.removeItem('loginLockoutEnd');
+      }
+    }
+  }, []);
+  
+  // Math timer countdown
+  useEffect(() => {
+    if (mathTimer > 0 && !isMathVerified) {
+      const timer = setInterval(() => {
+        setMathTimer(prev => {
+          if (prev <= 1) {
+            generateMathQuestion();
+            return 60;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [mathTimer, isMathVerified]);
+  
+  // Lockout countdown timer
+  useEffect(() => {
+    if (isLocked && lockoutTime > 0) {
+      const timer = setInterval(() => {
+        setLockoutTime(prev => {
+          if (prev <= 1) {
+            setIsLocked(false);
+            setFailedAttempts(0);
+            localStorage.removeItem('loginLockoutEnd');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [isLocked, lockoutTime]);
+
   useEffect(() => {
     if (user) navigate('/');
     
@@ -52,15 +138,41 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    
+    if (isLocked) {
+      setError(`Too many failed attempts. Please wait ${Math.floor(lockoutTime / 60)}:${(lockoutTime % 60).toString().padStart(2, '0')}`);
+      return;
+    }
+    
+    if (!isMathVerified) {
+      setError('Please verify you are human first');
+      return;
+    }
+    
     try {
       const data = await login(username, password, rememberMe);
+      // Reset failed attempts on success
+      setFailedAttempts(0);
+      localStorage.removeItem('loginLockoutEnd');
+      
       if (data.user.role === 'admin') {
         navigate('/admin');
       } else {
         navigate('/');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed');
+      const newAttempts = failedAttempts + 1;
+      setFailedAttempts(newAttempts);
+      
+      if (newAttempts >= 5) {
+        setIsLocked(true);
+        setLockoutTime(120); // 2 minutes
+        const lockoutEnd = Date.now() + (120 * 1000);
+        localStorage.setItem('loginLockoutEnd', lockoutEnd.toString());
+        setError('Too many failed attempts. Account locked for 2 minutes.');
+      } else {
+        setError(`${err.response?.data?.message || 'Login failed'}. Attempt ${newAttempts}/5`);
+      }
     }
   };
 
@@ -180,6 +292,56 @@ const Login = () => {
               )}
             </div>
           </div>
+
+          {/* Math CAPTCHA */}
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 sm:p-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-gray-700 font-semibold text-xs sm:text-sm">Verify you're human</label>
+              <span className={`text-xs font-mono font-bold px-2 py-1 rounded ${
+                mathTimer <= 10 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
+              }`}>
+                0:{mathTimer.toString().padStart(2, '0')}
+              </span>
+            </div>
+            <div className="space-y-2">
+              <div className="bg-white px-3 py-2 rounded-lg border-2 border-blue-300 font-mono text-base sm:text-lg font-bold text-gray-800 text-center">
+                {mathQuestion.num1} {mathQuestion.operator} {mathQuestion.num2} = ?
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={mathAnswer}
+                  onChange={(e) => setMathAnswer(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !isMathVerified && handleMathVerify()}
+                  className="flex-1 px-3 py-2 border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold text-sm sm:text-base"
+                  placeholder="?"
+                  disabled={isMathVerified}
+                />
+                {!isMathVerified ? (
+                  <button
+                    type="button"
+                    onClick={handleMathVerify}
+                    className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold text-xs sm:text-sm whitespace-nowrap"
+                  >
+                    Check
+                  </button>
+                ) : (
+                  <FaCheckCircle className="text-green-500 flex-shrink-0" size={20} />
+                )}
+                <button
+                  type="button"
+                  onClick={generateMathQuestion}
+                  className="text-blue-600 hover:text-blue-800 p-2 flex-shrink-0"
+                  title="Refresh question"
+                >
+                  <FaRedo size={16} />
+                </button>
+              </div>
+            </div>
+            {isMathVerified && (
+              <p className="text-xs text-green-600 mt-2 font-semibold">✓ Verified!</p>
+            )}
+          </div>
           
           <div className="flex items-center justify-between">
             <div className="flex items-center">
@@ -200,11 +362,19 @@ const Login = () => {
             </button>
           </div>
           
+          {isLocked && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-center">
+              <p className="font-semibold">Account Locked</p>
+              <p className="text-sm">Please wait {Math.floor(lockoutTime / 60)}:{(lockoutTime % 60).toString().padStart(2, '0')}</p>
+            </div>
+          )}
+          
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition"
+            disabled={isLocked}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {t('Login')}
+            {isLocked ? `Locked (${Math.floor(lockoutTime / 60)}:${(lockoutTime % 60).toString().padStart(2, '0')})` : t('Login')}
           </button>
         </form>
         

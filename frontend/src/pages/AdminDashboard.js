@@ -6,7 +6,7 @@ import api from '../services/api';
 import { FaUsers, FaFileAlt, FaComments, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes } from 'react-icons/fa';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { StatsCardSkeleton, TableRowSkeleton } from '../components/SkeletonLoader';
-import { BarLoader } from 'react-spinners';
+import { BarLoader, PropagateLoader } from 'react-spinners';
 
 const AdminDashboard = () => {
   const { t } = useTranslation();
@@ -25,8 +25,10 @@ const AdminDashboard = () => {
   const [showModal, setShowModal] = useState(false);
   const [modalConfig, setModalConfig] = useState({});
   const [suspendDays, setSuspendDays] = useState('');
+  const [suspendUnit, setSuspendUnit] = useState('days');
   const [modalError, setModalError] = useState('');
   const [loadingStats, setLoadingStats] = useState(false);
+  const [suspendLoading, setSuspendLoading] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -64,7 +66,7 @@ const AdminDashboard = () => {
   const openModal = (config) => {
     setModalConfig(config);
     setModalError('');
-    setSuspendDays('');
+    setSuspendDays(config.needsInput ? '1' : '');
     setShowModal(true);
   };
 
@@ -72,7 +74,9 @@ const AdminDashboard = () => {
     setShowModal(false);
     setModalConfig({});
     setModalError('');
-    setSuspendDays('');
+    setSuspendDays('1');
+    setSuspendUnit('days');
+    setSuspendLoading(false);
   };
 
   const handleDeleteUser = (userId, username) => {
@@ -101,22 +105,55 @@ const AdminDashboard = () => {
       message: isActive ? `Enter suspension duration for ${username}:` : `Unsuspend ${username}?`,
       confirmText: isActive ? 'Suspend' : 'Unsuspend',
       needsInput: isActive,
-      onConfirm: async () => {
-        try {
-          const days = isActive ? parseInt(suspendDays) : 0;
-          if (isActive && (!days || days <= 0)) {
-            setModalError('Please enter a valid number of days');
-            return;
-          }
-          await api.put(`/admin/users/${userId}/suspend`, { days });
-          await fetchData();
-          closeModal();
-          openModal({ type: 'success', title: 'Success', message: days > 0 ? `User suspended for ${days} days` : 'User unsuspended successfully' });
-        } catch (error) {
-          setModalError(error.response?.data?.message || 'Error updating user status');
+      userId,
+      isActive
+    });
+  };
+
+  const handleModalConfirm = async () => {
+    const { userId, isActive } = modalConfig;
+    
+    try {
+      if (isActive && (!suspendDays || suspendDays.toString().trim() === '')) {
+        setModalError('Please enter a duration');
+        return;
+      }
+      
+      const value = parseFloat(suspendDays);
+      
+      if (isActive && (isNaN(value) || value <= 0)) {
+        setModalError('Please enter a valid number');
+        return;
+      }
+      
+      setSuspendLoading(true);
+      
+      // Convert to days based on unit
+      let days = 0;
+      if (isActive) {
+        if (suspendUnit === 'hours') {
+          days = value / 24;
+        } else if (suspendUnit === 'days') {
+          days = value;
+        } else if (suspendUnit === 'months') {
+          days = value * 30;
         }
       }
-    });
+      
+      console.log('Sending to backend:', { value, suspendUnit, days });
+      const response = await api.put(`/admin/users/${userId}/suspend`, { days });
+      console.log('Backend response:', response.data);
+      await fetchData();
+      setSuspendLoading(false);
+      closeModal();
+      
+      const durationText = response.data.message || 'User status updated successfully';
+      
+      openModal({ type: 'success', title: 'Success', message: durationText });
+    } catch (error) {
+      setSuspendLoading(false);
+      setModalError(error.response?.data?.message || 'Error updating user status');
+    }
   };
 
   const handleMakeAdmin = (userId, username) => {
@@ -441,7 +478,14 @@ const AdminDashboard = () => {
                         {u.isActive ? (
                           <span className="text-green-600 flex items-center gap-1"><FaCheckCircle /> {t('Active')}</span>
                         ) : (
-                          <span className="text-red-600 flex items-center gap-1"><FaBan /> {t('Suspended')}</span>
+                          <div className="text-red-600">
+                            <div className="flex items-center gap-1 font-semibold"><FaBan /> {t('Suspended')}</div>
+                            {u.suspendedUntil && (
+                              <div className="text-xs text-gray-600 mt-1">
+                                Until: {new Date(u.suspendedUntil).toLocaleString()}
+                              </div>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{new Date(u.createdAt).toLocaleDateString()}</td>
@@ -595,15 +639,34 @@ const AdminDashboard = () => {
               
               {modalError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{modalError}</div>}
               
+              {suspendLoading && (
+                <div className="flex justify-center mb-4">
+                  <PropagateLoader color="#f97316" size={15} />
+                </div>
+              )}
+              
               {modalConfig.needsInput && (
-                <input
-                  type="number"
-                  value={suspendDays}
-                  onChange={(e) => setSuspendDays(e.target.value)}
-                  placeholder="Enter days"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 mb-4"
-                  min="1"
-                />
+                <div className="mb-4">
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      value={suspendDays}
+                      onChange={(e) => setSuspendDays(e.target.value)}
+                      placeholder="Enter duration"
+                      className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      min="1"
+                    />
+                    <select
+                      value={suspendUnit}
+                      onChange={(e) => setSuspendUnit(e.target.value)}
+                      className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                    >
+                      <option value="hours">Hours</option>
+                      <option value="days">Days</option>
+                      <option value="months">Months</option>
+                    </select>
+                  </div>
+                </div>
               )}
               
               <div className="flex gap-3">
@@ -617,7 +680,7 @@ const AdminDashboard = () => {
                 ) : (
                   <>
                     <button
-                      onClick={modalConfig.onConfirm}
+                      onClick={modalConfig.type === 'suspend-user' ? handleModalConfirm : modalConfig.onConfirm}
                       className={`flex-1 px-6 py-2 rounded-lg hover:opacity-90 font-semibold text-white ${
                         modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'remove-coadmin' ? 'bg-red-600' :
                         modalConfig.type === 'make-admin' ? 'bg-purple-600' :

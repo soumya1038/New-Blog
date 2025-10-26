@@ -59,7 +59,10 @@ const ChatNew = () => {
   const [selectedUserStatuses, setSelectedUserStatuses] = useState([]);
   const [currentStatusIndex, setCurrentStatusIndex] = useState(0);
   const [statusProgress, setStatusProgress] = useState(0);
-  const [viewedStatuses, setViewedStatuses] = useState(new Set());
+  const [viewedStatuses, setViewedStatuses] = useState(() => {
+    const saved = localStorage.getItem('viewedStatuses');
+    return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [modalStatusIndex, setModalStatusIndex] = useState(0);
   const [modalProgress, setModalProgress] = useState(0);
@@ -179,8 +182,11 @@ const ChatNew = () => {
 
       // WebRTC call listeners
       socket.current.on('call:incoming', ({ callerId, caller, callType, callLogId }) => {
-        console.log('📞 Incoming call received:', { callerId, caller, callType, callLogId });
-        setIncomingCall({ callerId, caller, callType, callLogId });
+        console.log('📞 ChatNew: Incoming call received:', { callerId, caller, callType, callLogId });
+        // Only handle if on chat page (App.js handles other routes)
+        if (window.location.pathname === '/chat') {
+          setIncomingCall({ callerId, caller, callType, callLogId });
+        }
       });
 
       socket.current.on('call:accepted', async ({ receiverId }) => {
@@ -201,17 +207,29 @@ const ChatNew = () => {
       });
 
       socket.current.on('call:ended', () => {
+        console.log('📞 Call ended by remote user');
         webrtcService.endCall();
         setActiveCall(null);
         setIncomingCall(null);
+        setIsCallMinimized(false);
+        setIsAudioEnabled(true);
+        setIsVideoEnabled(true);
+        setIsScreenSharing(false);
+        setIsRecording(false);
       });
 
-      socket.current.on('call:offer', async ({ offer }) => {
+      socket.current.on('call:offer', async ({ callerId, offer }) => {
+        console.log('📞 Received call:offer from:', callerId);
         await webrtcService.handleOffer(offer);
+        // Send answer back
+        const answer = await webrtcService.createAnswer(callerId);
+        console.log('✅ Sent answer back to caller');
       });
 
       socket.current.on('call:answer', async ({ answer }) => {
+        console.log('📞 Received call:answer');
         await webrtcService.handleAnswer(answer);
+        console.log('✅ Answer processed');
       });
 
       socket.current.on('call:ice-candidate', async ({ candidate }) => {
@@ -230,6 +248,12 @@ const ChatNew = () => {
     }
 
     return () => {
+      // End any active call when leaving chat
+      if (activeCall) {
+        socket.current?.emit('call:end', { userId: activeCall.userId });
+        webrtcService.endCall();
+      }
+      
       // Notify backend that user left /chat route
       socketService.updateRoute(null);
 
@@ -243,7 +267,31 @@ const ChatNew = () => {
     if (!loading && location.state?.selectedUser) {
       setSelectedChat(location.state.selectedUser);
     }
+    // Handle incoming call from global modal
+    if (!loading && location.state?.incomingCall) {
+      setIncomingCall(location.state.incomingCall);
+      // Clear the state
+      window.history.replaceState({}, document.title);
+    }
   }, [loading, location.state]);
+  
+  // Listen for global call end events
+  useEffect(() => {
+    const handleGlobalCallEnd = () => {
+      console.log('📞 ChatNew: Received global call end event');
+      webrtcService.endCall();
+      setActiveCall(null);
+      setIncomingCall(null);
+      setIsCallMinimized(false);
+      setIsAudioEnabled(true);
+      setIsVideoEnabled(true);
+      setIsScreenSharing(false);
+      setIsRecording(false);
+    };
+    
+    window.addEventListener('callEnded', handleGlobalCallEnd);
+    return () => window.removeEventListener('callEnded', handleGlobalCallEnd);
+  }, []);
 
   // Scroll position tracker
   const handleScroll = () => {
@@ -326,6 +374,11 @@ const ChatNew = () => {
     }, 3000);
     return () => clearInterval(interval);
   }, []);
+  
+  // Persist viewed statuses
+  useEffect(() => {
+    localStorage.setItem('viewedStatuses', JSON.stringify([...viewedStatuses]));
+  }, [viewedStatuses]);
   
   // Status slideshow with progress bar (header preview)
   useEffect(() => {
@@ -846,7 +899,10 @@ const ChatNew = () => {
         type: callType,
         callLogId: data.callLog._id
       });
-      console.log('✅ Call initiated');
+      
+      // Create and send offer
+      await webrtcService.createOffer(selectedChat._id);
+      console.log('✅ Call initiated with offer sent');
       
       setActiveCall({
         userId: selectedChat._id,
@@ -927,13 +983,23 @@ const ChatNew = () => {
 
   const rejectCall = () => {
     if (!incomingCall) return;
+    console.log('📞 Rejecting call from:', incomingCall.callerId);
     socket.current.emit('call:reject', { callerId: incomingCall.callerId });
     setIncomingCall(null);
+    
+    // Update call log as rejected
+    if (incomingCall.callLogId) {
+      api.put(`/calls/log/${incomingCall.callLogId}`, {
+        status: 'rejected',
+        duration: 0
+      }).catch(err => console.error('Failed to update call log:', err));
+    }
   };
 
   const endCall = async () => {
     if (!activeCall) return;
     
+    console.log('📞 Ending call, notifying remote user:', activeCall.userId);
     socket.current.emit('call:end', { userId: activeCall.userId });
     webrtcService.endCall();
     
@@ -951,8 +1017,14 @@ const ChatNew = () => {
       });
     }
     
+    // Clear all call states
     setActiveCall(null);
+    setIncomingCall(null);
     setIsCallMinimized(false);
+    setIsAudioEnabled(true);
+    setIsVideoEnabled(true);
+    setIsScreenSharing(false);
+    setIsRecording(false);
   };
 
   const toggleAudio = () => {

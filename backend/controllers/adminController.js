@@ -78,6 +78,13 @@ exports.getUsers = async (req, res) => {
       .sort({ createdAt: -1 });
     
     const usersWithStats = await Promise.all(users.map(async (user) => {
+      // Auto-reactivate if suspension expired
+      if (user.suspendedUntil && new Date() >= user.suspendedUntil) {
+        user.suspendedUntil = null;
+        user.isActive = true;
+        await user.save();
+      }
+      
       const blogCount = await Blog.countDocuments({ author: user._id });
       return {
         ...user.toObject(),
@@ -149,7 +156,9 @@ exports.suspendUser = async (req, res) => {
     if (days && days > 0) {
       // Suspend user
       const suspendUntil = new Date();
-      suspendUntil.setDate(suspendUntil.getDate() + parseInt(days));
+      // Use parseFloat to handle decimal days (e.g., 0.5 for 12 hours)
+      const daysToAdd = parseFloat(days);
+      suspendUntil.setTime(suspendUntil.getTime() + (daysToAdd * 24 * 60 * 60 * 1000));
       user.suspendedUntil = suspendUntil;
       user.isActive = false;
     } else {
@@ -160,9 +169,25 @@ exports.suspendUser = async (req, res) => {
 
     await user.save();
 
+    let message = 'User unsuspended';
+    if (days > 0) {
+      const daysNum = parseFloat(days);
+      if (daysNum < 1) {
+        const hours = Math.round(daysNum * 24);
+        message = `User suspended for ${hours} hour${hours !== 1 ? 's' : ''}`;
+      } else if (daysNum === 1) {
+        message = 'User suspended for 1 day';
+      } else if (daysNum >= 30 && daysNum % 30 === 0) {
+        const months = daysNum / 30;
+        message = `User suspended for ${months} month${months !== 1 ? 's' : ''}`;
+      } else {
+        message = `User suspended for ${daysNum} days`;
+      }
+    }
+
     res.json({ 
       success: true, 
-      message: days > 0 ? `User suspended for ${days} days` : 'User unsuspended',
+      message,
       user: {
         id: user._id,
         isActive: user.isActive,

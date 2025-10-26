@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
+import { FaCheckCircle, FaTimesCircle, FaRedo } from 'react-icons/fa';
 import { VscEye, VscEyeClosed } from 'react-icons/vsc';
 
 const Register = () => {
@@ -21,6 +21,13 @@ const Register = () => {
   const [emailValidationMsg, setEmailValidationMsg] = useState('');
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+  
+  // Math CAPTCHA states
+  const [mathQuestion, setMathQuestion] = useState({ num1: 0, num2: 0, operator: '+', answer: 0 });
+  const [mathAnswer, setMathAnswer] = useState('');
+  const [isMathVerified, setIsMathVerified] = useState(false);
+  const [mathTimer, setMathTimer] = useState(60);
+  
   const { register, user } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -73,9 +80,53 @@ const Register = () => {
 
   const passwordStrength = getPasswordStrength(password);
 
+  // Generate math question
+  const generateMathQuestion = () => {
+    const num1 = Math.floor(Math.random() * 15) + 1;
+    const num2 = Math.floor(Math.random() * 15) + 1;
+    const operators = ['+', '-'];
+    const operator = operators[Math.floor(Math.random() * operators.length)];
+    const answer = operator === '+' ? num1 + num2 : num1 - num2;
+    setMathQuestion({ num1, num2, operator, answer });
+    setMathAnswer('');
+    setIsMathVerified(false);
+    setMathTimer(60);
+  };
+
+  useEffect(() => {
+    generateMathQuestion();
+  }, []);
+  
+  // Math timer countdown
+  useEffect(() => {
+    if (mathTimer > 0 && !isMathVerified) {
+      const timer = setInterval(() => {
+        setMathTimer(prev => {
+          if (prev <= 1) {
+            generateMathQuestion();
+            return 60;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [mathTimer, isMathVerified]);
+
   useEffect(() => {
     if (user) navigate('/');
   }, [user, navigate]);
+
+  // Verify math answer
+  const handleMathVerify = () => {
+    if (parseInt(mathAnswer) === mathQuestion.answer) {
+      setIsMathVerified(true);
+      setError('');
+    } else {
+      setError('Incorrect answer. Please try again.');
+      setIsMathVerified(false);
+    }
+  };
 
   const handleSendCode = async () => {
     if (emailValidationMsg !== 'valid') {
@@ -126,7 +177,7 @@ const Register = () => {
     }
 
     try {
-      await register(username, email, password, rememberMe);
+      await register(username, email, password, rememberMe, mathAnswer, mathQuestion);
       setSuccess('Registration successful! Redirecting to login...');
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {
@@ -156,6 +207,56 @@ const Register = () => {
             <p className="text-sm text-gray-500 mt-1">{t('Minimum 3 characters')}</p>
           </div>
 
+          {/* Math CAPTCHA */}
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 sm:p-4">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-gray-700 font-semibold text-xs sm:text-sm">Verify you're human</label>
+              <span className={`text-xs font-mono font-bold px-2 py-1 rounded ${
+                mathTimer <= 10 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
+              }`}>
+                0:{mathTimer.toString().padStart(2, '0')}
+              </span>
+            </div>
+            <div className="space-y-2">
+              <div className="bg-white px-3 py-2 rounded-lg border-2 border-blue-300 font-mono text-base sm:text-lg font-bold text-gray-800 text-center">
+                {mathQuestion.num1} {mathQuestion.operator} {mathQuestion.num2} = ?
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={mathAnswer}
+                  onChange={(e) => setMathAnswer(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !isMathVerified && handleMathVerify()}
+                  className="flex-1 px-3 py-2 border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold text-sm sm:text-base"
+                  placeholder="?"
+                  disabled={isMathVerified}
+                />
+                {!isMathVerified ? (
+                  <button
+                    type="button"
+                    onClick={handleMathVerify}
+                    className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold text-xs sm:text-sm whitespace-nowrap"
+                  >
+                    Check
+                  </button>
+                ) : (
+                  <FaCheckCircle className="text-green-500 flex-shrink-0" size={20} />
+                )}
+                <button
+                  type="button"
+                  onClick={generateMathQuestion}
+                  className="text-blue-600 hover:text-blue-800 p-2 flex-shrink-0"
+                  title="Refresh question"
+                >
+                  <FaRedo size={16} />
+                </button>
+              </div>
+            </div>
+            {isMathVerified && (
+              <p className="text-xs text-green-600 mt-2 font-semibold">✓ Verified! You can now continue.</p>
+            )}
+          </div>
+
           <div>
             <label className="block text-gray-700 mb-2">{t('Email Address')}</label>
             <input
@@ -166,9 +267,9 @@ const Register = () => {
                 setIsCodeSent(false);
                 setIsEmailVerified(false);
               }}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
               required
-              disabled={isEmailVerified}
+              disabled={!isMathVerified || isEmailVerified}
             />
             {email && emailValidationMsg && (
               <div className="mt-1">
@@ -257,9 +358,10 @@ const Register = () => {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 disabled:bg-gray-100 disabled:cursor-not-allowed"
                 required
                 minLength={6}
+                disabled={!isMathVerified || !isEmailVerified}
               />
               {password && (
                 <button
@@ -302,7 +404,8 @@ const Register = () => {
           
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition"
+            disabled={!isMathVerified || !isEmailVerified}
+            className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {t('Sign Up')}
           </button>

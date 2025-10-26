@@ -65,17 +65,29 @@ class WebRTCService {
     }
   }
 
-  async createOffer() {
+  async createOffer(receiverId) {
     if (!this.peerConnection) throw new Error('Peer connection not initialized');
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
+    
+    // Send offer to receiver
+    if (this.socket && receiverId) {
+      this.socket.emit('call:offer', { receiverId, offer });
+    }
+    
     return offer;
   }
 
-  async createAnswer() {
+  async createAnswer(callerId) {
     if (!this.peerConnection) throw new Error('Peer connection not initialized');
     const answer = await this.peerConnection.createAnswer();
     await this.peerConnection.setLocalDescription(answer);
+    
+    // Send answer to caller
+    if (this.socket && callerId) {
+      this.socket.emit('call:answer', { callerId, answer });
+    }
+    
     return answer;
   }
 
