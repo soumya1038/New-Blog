@@ -81,13 +81,21 @@ exports.uploadProfileImage = async (req, res) => {
       }
     }
 
-    // Upload to Cloudinary
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      folder: 'blog-profiles',
-      transformation: [
-        { width: 400, height: 400, crop: 'fill' },
-        { quality: 'auto' }
-      ]
+    // Upload to Cloudinary from memory buffer
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        {
+          folder: 'blog-profiles',
+          transformation: [
+            { width: 400, height: 400, crop: 'fill' },
+            { quality: 'auto' }
+          ]
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      ).end(req.file.buffer);
     });
 
     user.profileImage = result.secure_url;
@@ -95,6 +103,7 @@ exports.uploadProfileImage = async (req, res) => {
 
     res.json({ success: true, profileImage: user.profileImage });
   } catch (error) {
+    console.error('Upload error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -392,12 +401,20 @@ exports.createStatus = async (req, res) => {
 
     // Upload image if provided
     if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: 'blog-status',
-        transformation: [
-          { width: 600, height: 1067, crop: 'limit' },
-          { quality: 'auto' }
-        ]
+      const result = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            folder: 'blog-status',
+            transformation: [
+              { width: 600, height: 1067, crop: 'limit' },
+              { quality: 'auto' }
+            ]
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(req.file.buffer);
       });
       imageUrl = result.secure_url;
     }
@@ -481,12 +498,20 @@ exports.updateStatus = async (req, res) => {
       }
 
       // Upload new image
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: 'blog-status',
-        transformation: [
-          { width: 600, height: 1067, crop: 'limit' },
-          { quality: 'auto' }
-        ]
+      const result = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            folder: 'blog-status',
+            transformation: [
+              { width: 600, height: 1067, crop: 'limit' },
+              { quality: 'auto' }
+            ]
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(req.file.buffer);
       });
       status.image = result.secure_url;
     }
