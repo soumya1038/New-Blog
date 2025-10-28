@@ -1,38 +1,16 @@
-const { MailerSend, EmailParams, Sender, Recipient } = require("mailersend");
 const nodemailer = require('nodemailer');
 
-const mailerSend = new MailerSend({
-  apiKey: process.env.MAILERSEND_API_KEY || "",
-});
-
 const sendEmail = async ({ to, subject, html }) => {
-  // Try MailerSend first
-  if (process.env.MAILERSEND_API_KEY) {
-    try {
-      // Use MailerSend trial domain (already verified)
-      const sentFrom = new Sender("noreply@trial-3vz9dle7xo0lkj50.mlsender.net", "New Blog");
-      const recipients = [new Recipient(to, to.split('@')[0])];
-
-      const emailParams = new EmailParams()
-        .setFrom(sentFrom)
-        .setTo(recipients)
-        .setSubject(subject)
-        .setHtml(html);
-
-      await mailerSend.email.send(emailParams);
-      console.log(`✅ Email sent via MailerSend to ${to}`);
-      return { success: true };
-    } catch (error) {
-      console.error('⚠️ MailerSend failed, trying nodemailer...', error.message);
-      if (error.body) {
-        console.error('MailerSend error:', error.body);
-      }
-    }
-  }
-
-  // Fallback to nodemailer (Gmail)
+  console.log('📧 [EMAIL] Starting email send process...');
+  console.log('📧 [EMAIL] To:', to);
+  console.log('📧 [EMAIL] Subject:', subject);
+  console.log('📧 [EMAIL] Using Gmail SMTP');
+  
   try {
-    console.log('📧 Using nodemailer fallback...');
+    console.log('📧 [EMAIL] Creating Gmail transporter...');
+    console.log('📧 [EMAIL] Email User:', process.env.EMAIL_USER);
+    console.log('📧 [EMAIL] Email Pass exists:', !!process.env.EMAIL_PASS);
+    
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -41,22 +19,32 @@ const sendEmail = async ({ to, subject, html }) => {
       }
     });
 
-    await transporter.sendMail({
+    console.log('📧 [EMAIL] Transporter created, sending email...');
+    
+    const info = await transporter.sendMail({
       from: `"New Blog" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       html
     });
 
-    console.log(`✅ Email sent via Gmail to ${to}`);
+    console.log('✅ [EMAIL] Email sent successfully!');
+    console.log('✅ [EMAIL] Message ID:', info.messageId);
+    console.log('✅ [EMAIL] Response:', info.response);
+    
     return { success: true };
   } catch (error) {
-    console.error('❌ Email send failed (both MailerSend and Gmail):', error.message);
-    throw new Error('Failed to send email');
+    console.error('❌ [EMAIL] Email send failed!');
+    console.error('❌ [EMAIL] Error name:', error.name);
+    console.error('❌ [EMAIL] Error message:', error.message);
+    console.error('❌ [EMAIL] Error code:', error.code);
+    console.error('❌ [EMAIL] Full error:', error);
+    throw new Error('Failed to send email: ' + error.message);
   }
 };
 
 const sendVerificationEmail = async (email, username, verificationCode) => {
+  console.log('📧 [EMAIL] Sending verification email to:', email);
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
       <div style="background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -82,6 +70,7 @@ const sendVerificationEmail = async (email, username, verificationCode) => {
 };
 
 const sendPasswordResetEmail = async (email, username, resetCode) => {
+  console.log('📧 [EMAIL] Sending password reset email to:', email);
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
       <div style="background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -107,6 +96,7 @@ const sendPasswordResetEmail = async (email, username, resetCode) => {
 };
 
 const sendWelcomeEmail = async (email, username) => {
+  console.log('📧 [EMAIL] Sending welcome email to:', email);
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
       <div style="background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -126,6 +116,7 @@ const sendWelcomeEmail = async (email, username) => {
 };
 
 const sendPasswordChangeConfirmation = async (email, username, confirmationCode) => {
+  console.log('📧 [EMAIL] Sending password change confirmation to:', email);
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
       <div style="background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -151,6 +142,7 @@ const sendPasswordChangeConfirmation = async (email, username, confirmationCode)
 };
 
 const sendAccountDeletionConfirmation = async (email, username, confirmationCode) => {
+  console.log('📧 [EMAIL] Sending account deletion confirmation to:', email);
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
       <div style="background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -177,6 +169,7 @@ const sendAccountDeletionConfirmation = async (email, username, confirmationCode
 };
 
 const sendPasswordChangedSuccess = async (email, username) => {
+  console.log('📧 [EMAIL] Sending password changed success to:', email);
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
       <div style="background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -196,6 +189,7 @@ const sendPasswordChangedSuccess = async (email, username) => {
 };
 
 const sendAccountDeletedSuccess = async (email, username) => {
+  console.log('📧 [EMAIL] Sending account deleted success to:', email);
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
       <div style="background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
