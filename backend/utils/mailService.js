@@ -1,57 +1,44 @@
-const nodemailer = require('nodemailer');
+const axios = require('axios');
 
 const sendEmail = async ({ to, subject, html }) => {
   console.log('📧 [EMAIL] Starting email send process...');
   console.log('📧 [EMAIL] To:', to);
   console.log('📧 [EMAIL] Subject:', subject);
-  console.log('📧 [EMAIL] Using MailerSend SMTP');
+  console.log('📧 [EMAIL] Using MailerSend REST API');
   
-  // Validate environment variables
-  if (!process.env.MAILERSEND_USERNAME || !process.env.MAILERSEND_PASSWORD) {
-    console.error('❌ [EMAIL] Missing MailerSend credentials!');
-    console.error('❌ [EMAIL] MAILERSEND_USERNAME:', process.env.MAILERSEND_USERNAME ? 'SET' : 'MISSING');
-    console.error('❌ [EMAIL] MAILERSEND_PASSWORD:', process.env.MAILERSEND_PASSWORD ? 'SET' : 'MISSING');
-    throw new Error('Email service not configured. Please set MAILERSEND_USERNAME and MAILERSEND_PASSWORD environment variables.');
+  if (!process.env.MAILERSEND_API_KEY) {
+    console.error('❌ [EMAIL] Missing MailerSend API key!');
+    throw new Error('Email service not configured. Please set MAILERSEND_API_KEY environment variable.');
   }
   
   try {
-    console.log('📧 [EMAIL] Creating MailerSend transporter...');
-    console.log('📧 [EMAIL] SMTP Host: smtp.mailersend.net');
-    console.log('📧 [EMAIL] SMTP Port: 587');
-    console.log('📧 [EMAIL] Username:', process.env.MAILERSEND_USERNAME);
-    console.log('📧 [EMAIL] Password exists:', !!process.env.MAILERSEND_PASSWORD);
+    const payload = {
+      from: {
+        email: 'noreply@test-65qngkd7x9olwr12.mlsender.net',
+        name: process.env.MAILERSEND_FROM_NAME || 'New Blog'
+      },
+      to: [{ email: to }],
+      subject,
+      html
+    };
+
+    console.log('📧 [EMAIL] Sending via MailerSend API...');
     
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.mailersend.net',
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.MAILERSEND_USERNAME,
-        pass: process.env.MAILERSEND_PASSWORD
+    const response = await axios.post('https://api.mailersend.com/v1/email', payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.MAILERSEND_API_KEY}`
       }
     });
 
-    console.log('📧 [EMAIL] Transporter created, sending email...');
-    
-    const info = await transporter.sendMail({
-      from: `"${process.env.MAILERSEND_FROM_NAME || 'New Blog'}" <noreply@test-65qngkd7x9olwr12.mlsender.net>`,
-      to,
-      subject,
-      html
-    });
-
     console.log('✅ [EMAIL] Email sent successfully!');
-    console.log('✅ [EMAIL] Message ID:', info.messageId);
-    console.log('✅ [EMAIL] Response:', info.response);
+    console.log('✅ [EMAIL] Response status:', response.status);
     
     return { success: true };
   } catch (error) {
     console.error('❌ [EMAIL] Email send failed!');
-    console.error('❌ [EMAIL] Error name:', error.name);
-    console.error('❌ [EMAIL] Error message:', error.message);
-    console.error('❌ [EMAIL] Error code:', error.code);
-    console.error('❌ [EMAIL] Full error:', error);
-    throw new Error('Failed to send email: ' + error.message);
+    console.error('❌ [EMAIL] Error:', error.response?.data || error.message);
+    throw new Error('Failed to send email: ' + (error.response?.data?.message || error.message));
   }
 };
 
