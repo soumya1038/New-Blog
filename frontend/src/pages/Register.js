@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { FaCheckCircle, FaTimesCircle, FaRedo } from 'react-icons/fa';
-import { PacmanLoader } from 'react-spinners';
+import { ScaleLoader } from 'react-spinners';
 import { VscEye, VscEyeClosed } from 'react-icons/vsc';
 
 const Register = () => {
@@ -99,7 +99,7 @@ const Register = () => {
     generateMathQuestion();
   }, []);
   
-  // Math timer countdown
+  // Math timer countdown - only run if not verified
   useEffect(() => {
     if (mathTimer > 0 && !isMathVerified) {
       const timer = setInterval(() => {
@@ -124,9 +124,13 @@ const Register = () => {
     if (parseInt(mathAnswer) === mathQuestion.answer) {
       setIsMathVerified(true);
       setError('');
+      // Stop timer when verified
+      setMathTimer(0);
     } else {
       setError('Incorrect answer. Please try again.');
       setIsMathVerified(false);
+      // Generate new question on wrong answer
+      generateMathQuestion();
     }
   };
 
@@ -414,7 +418,7 @@ const Register = () => {
           >
             {isRegistering ? (
               <>
-                <PacmanLoader color="#ffffff" size={10} />
+                <ScaleLoader color="#ffffff" height={20} />
                 <span>Creating account...</span>
               </>
             ) : (

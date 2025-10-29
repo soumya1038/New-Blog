@@ -4,8 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import { VscEye, VscEyeClosed } from 'react-icons/vsc';
 import { FaCheckCircle, FaRedo } from 'react-icons/fa';
-import { SyncLoader, PacmanLoader } from 'react-spinners';
+import { SyncLoader, ScaleLoader } from 'react-spinners';
 import axios from 'axios';
+import IntroVideoModal from '../components/IntroVideoModal';
 
 const Login = () => {
   const { t } = useTranslation();
@@ -38,6 +39,7 @@ const Login = () => {
   const [finalError, setFinalError] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showIntroVideo, setShowIntroVideo] = useState(false);
 
   // Math CAPTCHA states
   const [mathQuestion, setMathQuestion] = useState({ num1: 0, num2: 0, operator: '+', answer: 0 });
@@ -68,9 +70,13 @@ const Login = () => {
     if (parseInt(mathAnswer) === mathQuestion.answer) {
       setIsMathVerified(true);
       setError('');
+      // Stop timer when verified
+      setMathTimer(0);
     } else {
       setError('Incorrect answer. Please try again.');
       setIsMathVerified(false);
+      // Generate new question on wrong answer
+      generateMathQuestion();
     }
   };
 
@@ -90,7 +96,7 @@ const Login = () => {
     }
   }, []);
   
-  // Math timer countdown
+  // Math timer countdown - only run if not verified
   useEffect(() => {
     if (mathTimer > 0 && !isMathVerified) {
       const timer = setInterval(() => {
@@ -125,8 +131,7 @@ const Login = () => {
   }, [isLocked, lockoutTime]);
 
   useEffect(() => {
-    if (user) navigate('/');
-    
+    // Load saved credentials
     const saved = localStorage.getItem('credentials');
     if (saved) {
       const { username: u, password: p } = JSON.parse(saved);
@@ -134,7 +139,7 @@ const Login = () => {
       setPassword(p);
       setRememberMe(true);
     }
-  }, [user, navigate]);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -157,14 +162,20 @@ const Login = () => {
       setFailedAttempts(0);
       localStorage.removeItem('loginLockoutEnd');
       
-      if (data.user.role === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/');
-      }
+      // Stop loading first
+      setIsLoggingIn(false);
+      
+      // Small delay before showing video to ensure state is settled
+      setTimeout(() => {
+        setShowIntroVideo(true);
+      }, 100);
     } catch (err) {
       const newAttempts = failedAttempts + 1;
       setFailedAttempts(newAttempts);
+      
+      // Generate new math question on login fail
+      generateMathQuestion();
+      setIsMathVerified(false);
       
       if (newAttempts >= 5) {
         setIsLocked(true);
@@ -175,7 +186,6 @@ const Login = () => {
       } else {
         setError(`${err.response?.data?.message || 'Login failed'}. Attempt ${newAttempts}/5`);
       }
-    } finally {
       setIsLoggingIn(false);
     }
   };
@@ -255,7 +265,19 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
+    <>
+      {/* Intro Video Modal */}
+      {showIntroVideo && (
+        <IntroVideoModal
+          onClose={() => {
+            setShowIntroVideo(false);
+            // Navigate to home after video
+            navigate('/');
+          }}
+        />
+      )}
+
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
         <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">{t('Welcome Back')}</h2>
         
@@ -380,7 +402,7 @@ const Login = () => {
           >
             {isLoggingIn ? (
               <>
-                <PacmanLoader color="#ffffff" size={10} />
+                <ScaleLoader color="#ffffff" height={20} />
                 <span>Logging in...</span>
               </>
             ) : isLocked ? (
@@ -589,6 +611,7 @@ const Login = () => {
         </div>
       )}
     </div>
+    </>
   );
 };
 

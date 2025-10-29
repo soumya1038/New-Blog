@@ -73,7 +73,10 @@ const Navbar = () => {
     <nav className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
       <div className="container mx-auto px-4 py-4">
         <div className="flex justify-between items-center">
-          <Link to="/" className="text-2xl font-bold">{t('Modern Blog')}</Link>
+          <Link to="/" className="flex items-center gap-3">
+            <img src="/logo.png" alt="New Blog Logo" className="h-10 w-10 rounded-full object-cover border-2 border-white shadow-lg" />
+            <span className="text-2xl font-bold">{t('New Blog')}</span>
+          </Link>
           
           {/* Desktop Menu */}
           <div className="hidden lg:flex items-center gap-6">
