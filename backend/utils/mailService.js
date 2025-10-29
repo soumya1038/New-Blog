@@ -4,25 +4,29 @@ const sendEmail = async ({ to, subject, html }) => {
   console.log('📧 [EMAIL] Starting email send process...');
   console.log('📧 [EMAIL] To:', to);
   console.log('📧 [EMAIL] Subject:', subject);
-  console.log('📧 [EMAIL] Using Gmail SMTP');
+  console.log('📧 [EMAIL] Using MailerSend SMTP');
   
   try {
-    console.log('📧 [EMAIL] Creating Gmail transporter...');
-    console.log('📧 [EMAIL] Email User:', process.env.EMAIL_USER);
-    console.log('📧 [EMAIL] Email Pass exists:', !!process.env.EMAIL_PASS);
+    console.log('📧 [EMAIL] Creating MailerSend transporter...');
+    console.log('📧 [EMAIL] SMTP Host: smtp.mailersend.net');
+    console.log('📧 [EMAIL] SMTP Port: 587');
+    console.log('📧 [EMAIL] Username:', process.env.MAILERSEND_USERNAME);
+    console.log('📧 [EMAIL] Password exists:', !!process.env.MAILERSEND_PASSWORD);
     
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.mailersend.net',
+      port: 587,
+      secure: false,
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
+        user: process.env.MAILERSEND_USERNAME,
+        pass: process.env.MAILERSEND_PASSWORD
       }
     });
 
     console.log('📧 [EMAIL] Transporter created, sending email...');
     
     const info = await transporter.sendMail({
-      from: `"New Blog" <${process.env.EMAIL_USER}>`,
+      from: `"${process.env.MAILERSEND_FROM_NAME || 'New Blog'}" <noreply@test-65qngkd7x9olwr12.mlsender.net>`,
       to,
       subject,
       html
