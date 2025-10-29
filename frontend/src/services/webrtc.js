@@ -21,10 +21,11 @@ class WebRTCService {
 
   async startCall(isVideo = false) {
     try {
-      // Stop existing stream if any
-      if (this.localStream) {
-        this.localStream.getTracks().forEach(track => track.stop());
-      }
+      // Cleanup existing resources first
+      await this.cleanup();
+      
+      // Wait for browser to fully release devices
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       const constraints = {
         audio: true,
@@ -139,8 +140,8 @@ class WebRTCService {
     }
   }
 
-  endCall() {
-    this.cleanup();
+  async endCall() {
+    await this.cleanup();
   }
 
   async toggleVideo() {
@@ -243,14 +244,21 @@ class WebRTCService {
     });
   }
 
-  cleanup() {
+  async cleanup() {
+    // Stop all tracks immediately
     if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream.getTracks().forEach(track => {
+        track.stop();
+        track.enabled = false;
+      });
       this.localStream = null;
     }
     
     if (this.remoteStream) {
-      this.remoteStream.getTracks().forEach(track => track.stop());
+      this.remoteStream.getTracks().forEach(track => {
+        track.stop();
+        track.enabled = false;
+      });
       this.remoteStream = null;
     }
     
@@ -262,6 +270,9 @@ class WebRTCService {
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
       this.mediaRecorder.stop();
     }
+    
+    // Wait for browser to release resources
+    await new Promise(resolve => setTimeout(resolve, 500));
   }
 }
 

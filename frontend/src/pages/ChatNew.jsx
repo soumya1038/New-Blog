@@ -200,15 +200,15 @@ const ChatNew = () => {
         });
       });
 
-      socket.current.on('call:rejected', () => {
-        webrtcService.endCall();
+      socket.current.on('call:rejected', async () => {
+        await webrtcService.endCall();
         setActiveCall(null);
         showAlertModal('Call Rejected', 'The user rejected your call');
       });
 
-      socket.current.on('call:ended', () => {
+      socket.current.on('call:ended', async () => {
         console.log('📞 Call ended by remote user');
-        webrtcService.endCall();
+        await webrtcService.endCall();
         setActiveCall(null);
         setIncomingCall(null);
         setIsCallMinimized(false);
@@ -251,7 +251,7 @@ const ChatNew = () => {
       // End any active call when leaving chat
       if (activeCall) {
         socket.current?.emit('call:end', { userId: activeCall.userId });
-        webrtcService.endCall();
+        webrtcService.endCall(); // Fire and forget on unmount
       }
       
       // Notify backend that user left /chat route
@@ -277,9 +277,9 @@ const ChatNew = () => {
   
   // Listen for global call end events
   useEffect(() => {
-    const handleGlobalCallEnd = () => {
+    const handleGlobalCallEnd = async () => {
       console.log('📞 ChatNew: Received global call end event');
-      webrtcService.endCall();
+      await webrtcService.endCall();
       setActiveCall(null);
       setIncomingCall(null);
       setIsCallMinimized(false);
@@ -937,11 +937,12 @@ const ChatNew = () => {
       // End any existing call first to free up camera/mic
       if (activeCall) {
         console.log('⚠️ Ending existing call before accepting new one');
-        webrtcService.endCall();
+        await webrtcService.endCall();
         setActiveCall(null);
-        await new Promise(resolve => setTimeout(resolve, 500)); // Wait for cleanup
+        console.log('✅ Existing call cleaned up');
       }
       
+      console.log('📞 Requesting media devices...');
       const stream = await webrtcService.startCall(incomingCall.callType === 'video');
       console.log('✅ Media stream obtained');
       
@@ -1001,7 +1002,7 @@ const ChatNew = () => {
     
     console.log('📞 Ending call, notifying remote user:', activeCall.userId);
     socket.current.emit('call:end', { userId: activeCall.userId });
-    webrtcService.endCall();
+    await webrtcService.endCall();
     
     // Update call log only if call was accepted
     if (activeCall.callLogId && activeCall.callAccepted && activeCall.startTime) {
