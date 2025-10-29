@@ -116,8 +116,11 @@ const Register = () => {
   }, [mathTimer, isMathVerified]);
 
   useEffect(() => {
-    if (user) navigate('/');
-  }, [user, navigate]);
+    // Redirect if already logged in
+    if (user && !isRegistering) {
+      navigate('/');
+    }
+  }, [user, isRegistering, navigate]);
 
   // Verify math answer
   const handleMathVerify = () => {

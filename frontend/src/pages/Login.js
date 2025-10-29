@@ -131,6 +131,11 @@ const Login = () => {
   }, [isLocked, lockoutTime]);
 
   useEffect(() => {
+    // Redirect if already logged in (but not during login process)
+    if (user && !isLoggingIn && !showIntroVideo) {
+      navigate('/');
+      return;
+    }
     // Load saved credentials
     const saved = localStorage.getItem('credentials');
     if (saved) {
@@ -139,7 +144,7 @@ const Login = () => {
       setPassword(p);
       setRememberMe(true);
     }
-  }, []);
+  }, [user, isLoggingIn, showIntroVideo, navigate]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

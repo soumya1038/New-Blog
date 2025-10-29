@@ -473,3 +473,89 @@ exports.confirmForgotPasswordChange = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Authenticated Forgot Password - Step 1: Request password change (send code)
+exports.requestAuthenticatedPasswordChange = async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    const userId = req.user._id;
+
+    if (!newPassword) {
+      return res.status(400).json({ success: false, message: 'New password is required' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const confirmCode = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    global.authenticatedPasswordChangeCodes = global.authenticatedPasswordChangeCodes || {};
+    global.authenticatedPasswordChangeCodes[userId.toString()] = {
+      code: confirmCode,
+      newPassword,
+      expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
+    };
+
+    const { sendPasswordChangeConfirmation } = require('../utils/mailService');
+    await sendPasswordChangeConfirmation(user.email, user.username, confirmCode);
+
+    res.json({ success: true, message: 'Confirmation code sent to your email' });
+  } catch (error) {
+    console.error('Authenticated password change request error:', error);
+    res.status(500).json({ success: false, message: 'Failed to send confirmation code' });
+  }
+};
+
+// Authenticated Forgot Password - Step 2: Confirm and change password
+exports.confirmAuthenticatedPasswordChange = async (req, res) => {
+  try {
+    const { code } = req.body;
+    const userId = req.user._id;
+
+    if (!code) {
+      return res.status(400).json({ success: false, message: 'Confirmation code is required' });
+    }
+
+    const storedData = global.authenticatedPasswordChangeCodes?.[userId.toString()];
+    
+    if (!storedData) {
+      return res.status(400).json({ success: false, message: 'No password change request found' });
+    }
+
+    if (Date.now() > storedData.expiresAt) {
+      delete global.authenticatedPasswordChangeCodes[userId.toString()];
+      return res.status(400).json({ success: false, message: 'Confirmation code expired' });
+    }
+
+    if (storedData.code !== code) {
+      return res.status(400).json({ success: false, message: 'Invalid confirmation code' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.password = storedData.newPassword;
+    await user.save();
+
+    delete global.authenticatedPasswordChangeCodes[userId.toString()];
+
+    // Send success email
+    try {
+      await sendPasswordChangedSuccess(user.email, user.username);
+    } catch (error) {
+      console.error('Failed to send success email:', error);
+    }
+
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

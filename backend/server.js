@@ -16,6 +16,7 @@ const aiRoutes = require('./routes/aiRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const messageRoutes = require('./routes/messageRoutes');
 const callRoutes = require('./routes/callRoutes');
+const zohoAuthRoutes = require('./routes/zohoAuth');
 const { errorHandler } = require('./middleware/errorHandler');
 const chatSocket = require('./socket/chatSocket');
 const { cleanupOldNotifications } = require('./controllers/socialController');
@@ -68,6 +69,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/calls', callRoutes);
+app.use('/api/auth/zoho', zohoAuthRoutes);
 
 // Error handler
 app.use(errorHandler);

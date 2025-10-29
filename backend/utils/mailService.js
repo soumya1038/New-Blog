@@ -1,44 +1,40 @@
-const axios = require('axios');
+const nodemailer = require('nodemailer');
 
 const sendEmail = async ({ to, subject, html }) => {
   console.log('📧 [EMAIL] Starting email send process...');
   console.log('📧 [EMAIL] To:', to);
   console.log('📧 [EMAIL] Subject:', subject);
-  console.log('📧 [EMAIL] Using MailerSend REST API');
+  console.log('📧 [EMAIL] Using Zoho SMTP');
   
-  if (!process.env.MAILERSEND_API_KEY) {
-    console.error('❌ [EMAIL] Missing MailerSend API key!');
-    throw new Error('Email service not configured. Please set MAILERSEND_API_KEY environment variable.');
+  if (!process.env.ZOHO_EMAIL || !process.env.ZOHO_PASSWORD) {
+    console.error('❌ [EMAIL] Missing Zoho credentials!');
+    throw new Error('Email service not configured. Please set ZOHO_EMAIL and ZOHO_PASSWORD.');
   }
   
   try {
-    const payload = {
-      from: {
-        email: 'noreply@test-65qngkd7x9olwr12.mlsender.net',
-        name: process.env.MAILERSEND_FROM_NAME || 'New Blog'
-      },
-      to: [{ email: to }],
-      subject,
-      html
-    };
-
-    console.log('📧 [EMAIL] Sending via MailerSend API...');
-    
-    const response = await axios.post('https://api.mailersend.com/v1/email', payload, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.MAILERSEND_API_KEY}`
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.zoho.in',
+      port: 465,
+      secure: true,
+      auth: {
+        user: process.env.ZOHO_EMAIL,
+        pass: process.env.ZOHO_PASSWORD
       }
     });
 
+    await transporter.sendMail({
+      from: `"${process.env.ZOHO_FROM_NAME || 'New Blog'}" <${process.env.ZOHO_EMAIL}>`,
+      to,
+      subject,
+      html
+    });
+
     console.log('✅ [EMAIL] Email sent successfully!');
-    console.log('✅ [EMAIL] Response status:', response.status);
-    
     return { success: true };
   } catch (error) {
     console.error('❌ [EMAIL] Email send failed!');
-    console.error('❌ [EMAIL] Error:', error.response?.data || error.message);
-    throw new Error('Failed to send email: ' + (error.response?.data?.message || error.message));
+    console.error('❌ [EMAIL] Error:', error.message);
+    throw new Error('Failed to send email: ' + error.message);
   }
 };
 

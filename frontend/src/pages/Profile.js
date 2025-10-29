@@ -58,6 +58,16 @@ const Profile = () => {
   const canvasRef = React.useRef(null);
   const [selectedGradientIndex, setSelectedGradientIndex] = useState(0);
   const [deletingStatusId, setDeletingStatusId] = useState(null);
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
+  const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false);
+  const [forgotPasswordError, setForgotPasswordError] = useState('');
+  const [sendingForgotCode, setSendingForgotCode] = useState(false);
+  const [showForgotCodeModal, setShowForgotCodeModal] = useState(false);
+  const [forgotCode, setForgotCode] = useState('');
+  const [forgotCodeError, setForgotCodeError] = useState('');
 
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -1098,7 +1108,7 @@ const Profile = () => {
               </button>
               <span className="text-gray-400">|</span>
               <button
-                onClick={() => navigate('/login', { state: { openForgotPassword: true } })}
+                onClick={() => setShowForgotPasswordModal(true)}
                 className="flex items-center gap-2 text-purple-600 hover:text-purple-800"
               >
                 <FaKey /> {t('Forgot Password')}
@@ -1774,6 +1784,144 @@ const Profile = () => {
                 {t('Expires')}: {new Date(showFullScreenStatus.expiresAt).toLocaleString()}
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Forgot Password Modal - Step 1: Enter New Password */}
+      {showForgotPasswordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-purple-600 mb-4">{t('Reset Password')}</h3>
+            <p className="text-gray-700 mb-4">{t('Enter your new password')}</p>
+            {forgotPasswordError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{forgotPasswordError}</div>}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setForgotPasswordError('');
+              if (forgotNewPassword !== forgotConfirmPassword) {
+                setForgotPasswordError('Passwords do not match');
+                return;
+              }
+              if (forgotNewPassword.length < 6) {
+                setForgotPasswordError('Password must be at least 6 characters');
+                return;
+              }
+              setSendingForgotCode(true);
+              try {
+                await api.post('/auth/forgot-password/change-authenticated', { newPassword: forgotNewPassword });
+                setShowForgotPasswordModal(false);
+                setShowForgotCodeModal(true);
+              } catch (error) {
+                setForgotPasswordError(error.response?.data?.message || 'Failed to send confirmation code');
+              } finally {
+                setSendingForgotCode(false);
+              }
+            }}>
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">{t('New Password')}</label>
+                <div className="relative">
+                  <input
+                    type={showForgotNewPassword ? 'text' : 'password'}
+                    value={forgotNewPassword}
+                    onChange={(e) => setForgotNewPassword(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 pr-10"
+                    required
+                    minLength={6}
+                  />
+                  {forgotNewPassword && (
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotNewPassword(!showForgotNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showForgotNewPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-700 mb-2">{t('Confirm Password')}</label>
+                <div className="relative">
+                  <input
+                    type={showForgotConfirmPassword ? 'text' : 'password'}
+                    value={forgotConfirmPassword}
+                    onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 pr-10"
+                    required
+                    minLength={6}
+                  />
+                  {forgotConfirmPassword && (
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotConfirmPassword(!showForgotConfirmPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    >
+                      {showForgotConfirmPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  className="flex-1 bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2"
+                  disabled={sendingForgotCode}
+                >
+                  {sendingForgotCode ? <SyncLoader color="#fff" size={8} /> : t('Reset Password')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgotPasswordModal(false);
+                    setForgotNewPassword('');
+                    setForgotConfirmPassword('');
+                    setForgotPasswordError('');
+                  }}
+                  className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300"
+                >
+                  {t('Cancel')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Forgot Password Code Modal - Step 2 */}
+      {showForgotCodeModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-purple-600 mb-4">{t('Enter Confirmation Code')}</h3>
+            <p className="text-gray-700 mb-4">{t('A 6-digit code has been sent to your email.')}</p>
+            {forgotCodeError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{forgotCodeError}</div>}
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setForgotCodeError('');
+              try {
+                await api.post('/auth/forgot-password/confirm-authenticated', { code: forgotCode });
+                setShowForgotCodeModal(false);
+                setForgotCode('');
+                setForgotNewPassword('');
+                setForgotConfirmPassword('');
+                showModal('success', 'Success', 'Password reset successfully!');
+              } catch (error) {
+                setForgotCodeError(error.response?.data?.message || 'Invalid or expired code');
+              }
+            }}>
+              <input
+                type="text"
+                value={forgotCode}
+                onChange={(e) => setForgotCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 mb-4 text-center text-2xl tracking-widest"
+                maxLength={6}
+                required
+              />
+              <div className="flex gap-3">
+                <button type="submit" className="flex-1 bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700">{t('Confirm')}</button>
+                <button type="button" onClick={() => { setShowForgotCodeModal(false); setForgotCode(''); setForgotCodeError(''); }} className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300">{t('Cancel')}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
