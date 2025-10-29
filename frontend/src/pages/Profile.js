@@ -1089,12 +1089,21 @@ const Profile = () => {
           </div>
           
           <div className="border-t pt-6 mb-6">
-            <button
-              onClick={() => setShowPasswordForm(!showPasswordForm)}
-              className="flex items-center gap-2 text-blue-600 hover:text-blue-800 mb-4"
-            >
-              <FaKey /> {t('Change Password')}
-            </button>
+            <div className="flex items-center gap-4 mb-4">
+              <button
+                onClick={() => setShowPasswordForm(!showPasswordForm)}
+                className="flex items-center gap-2 text-blue-600 hover:text-blue-800"
+              >
+                <FaKey /> {t('Change Password')}
+              </button>
+              <span className="text-gray-400">|</span>
+              <button
+                onClick={() => navigate('/login', { state: { openForgotPassword: true } })}
+                className="flex items-center gap-2 text-purple-600 hover:text-purple-800"
+              >
+                <FaKey /> {t('Forgot Password')}
+              </button>
+            </div>
             
             {showPasswordForm && (
               <form onSubmit={handleChangePassword} className="space-y-4">

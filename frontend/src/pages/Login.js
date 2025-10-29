@@ -70,8 +70,8 @@ const Login = () => {
     if (parseInt(mathAnswer) === mathQuestion.answer) {
       setIsMathVerified(true);
       setError('');
-      // Stop timer when verified
-      setMathTimer(0);
+      // Restart timer from 60 seconds to prevent indefinite window open
+      setMathTimer(60);
     } else {
       setError('Incorrect answer. Please try again.');
       setIsMathVerified(false);
