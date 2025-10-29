@@ -75,6 +75,7 @@ const ChatNew = () => {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const pendingOfferRef = useRef(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
   const reactionPickerRef = useRef(null);
@@ -220,10 +221,9 @@ const ChatNew = () => {
 
       socket.current.on('call:offer', async ({ callerId, offer }) => {
         console.log('📞 Received call:offer from:', callerId);
-        await webrtcService.handleOffer(offer);
-        // Send answer back
-        const answer = await webrtcService.createAnswer(callerId);
-        console.log('✅ Sent answer back to caller');
+        // Store offer - don't process until user accepts
+        pendingOfferRef.current = { callerId, offer };
+        console.log('✅ Offer stored, waiting for user to accept');
       });
 
       socket.current.on('call:answer', async ({ answer }) => {
@@ -946,6 +946,15 @@ const ChatNew = () => {
       const stream = await webrtcService.startCall(incomingCall.callType === 'video');
       console.log('✅ Media stream obtained');
       
+      // NOW process the pending offer after we have media
+      if (pendingOfferRef.current) {
+        console.log('📞 Processing pending offer...');
+        await webrtcService.handleOffer(pendingOfferRef.current.offer);
+        const answer = await webrtcService.createAnswer(pendingOfferRef.current.callerId);
+        console.log('✅ Answer sent to caller');
+        pendingOfferRef.current = null;
+      }
+      
       socket.current.emit('call:accept', {
         callerId: incomingCall.callerId
       });
@@ -986,6 +995,7 @@ const ChatNew = () => {
     if (!incomingCall) return;
     console.log('📞 Rejecting call from:', incomingCall.callerId);
     socket.current.emit('call:reject', { callerId: incomingCall.callerId });
+    pendingOfferRef.current = null; // Clear pending offer
     setIncomingCall(null);
     
     // Update call log as rejected
