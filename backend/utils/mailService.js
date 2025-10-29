@@ -6,6 +6,14 @@ const sendEmail = async ({ to, subject, html }) => {
   console.log('📧 [EMAIL] Subject:', subject);
   console.log('📧 [EMAIL] Using MailerSend SMTP');
   
+  // Validate environment variables
+  if (!process.env.MAILERSEND_USERNAME || !process.env.MAILERSEND_PASSWORD) {
+    console.error('❌ [EMAIL] Missing MailerSend credentials!');
+    console.error('❌ [EMAIL] MAILERSEND_USERNAME:', process.env.MAILERSEND_USERNAME ? 'SET' : 'MISSING');
+    console.error('❌ [EMAIL] MAILERSEND_PASSWORD:', process.env.MAILERSEND_PASSWORD ? 'SET' : 'MISSING');
+    throw new Error('Email service not configured. Please set MAILERSEND_USERNAME and MAILERSEND_PASSWORD environment variables.');
+  }
+  
   try {
     console.log('📧 [EMAIL] Creating MailerSend transporter...');
     console.log('📧 [EMAIL] SMTP Host: smtp.mailersend.net');
