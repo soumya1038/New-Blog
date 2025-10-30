@@ -12,10 +12,10 @@ exports.getStats = async (req, res) => {
     const totalBlogs = await Blog.countDocuments();
     const totalComments = await Comment.countDocuments();
     
-    // Active users today
+    // Active users today (based on lastActive field)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const activeUsersToday = await Blog.distinct('author', { createdAt: { $gte: today } });
+    const activeUsersToday = await User.countDocuments({ lastActive: { $gte: today } });
     
     // Generate data for selected time range
     const blogsPerDay = [];
@@ -39,9 +39,9 @@ exports.getStats = async (req, res) => {
         createdAt: { $gte: date, $lt: nextDate }
       });
       
-      // Active users count (users who posted on this day)
-      const activeUsers = await Blog.distinct('author', {
-        createdAt: { $gte: date, $lt: nextDate }
+      // Active users count (based on lastActive)
+      const activeUsers = await User.countDocuments({
+        lastActive: { $gte: date, $lt: nextDate }
       });
       
       const dateLabel = numDays <= 31 
@@ -50,7 +50,7 @@ exports.getStats = async (req, res) => {
       
       blogsPerDay.push({ date: dateLabel, count: blogCount });
       userRegistrations.push({ date: dateLabel, count: userCount });
-      activeUsersPerDay.push({ date: dateLabel, count: activeUsers.length });
+      activeUsersPerDay.push({ date: dateLabel, count: activeUsers });
     }
 
     res.json({
@@ -59,7 +59,7 @@ exports.getStats = async (req, res) => {
         totalUsers,
         totalBlogs,
         totalComments,
-        activeUsersToday: activeUsersToday.length,
+        activeUsersToday,
         blogsPerDay,
         userRegistrations,
         activeUsersPerDay

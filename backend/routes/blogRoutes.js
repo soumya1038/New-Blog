@@ -10,6 +10,7 @@ const {
   toggleLike
 } = require('../controllers/blogController');
 const { protect, optionalAuth } = require('../middleware/auth');
+const trackActivity = require('../middleware/trackActivity');
 
 const router = express.Router();
 
@@ -62,11 +63,11 @@ router.delete('/delete-image/:publicId', protect, async (req, res) => {
   }
 });
 
-router.post('/', protect, createBlog);
+router.post('/', protect, trackActivity, createBlog);
 router.get('/', optionalAuth, getBlogs);
 router.get('/:id', getBlog);
-router.put('/:id', protect, updateBlog);
-router.delete('/:id', protect, deleteBlog);
-router.post('/:id/like', protect, toggleLike);
+router.put('/:id', protect, trackActivity, updateBlog);
+router.delete('/:id', protect, trackActivity, deleteBlog);
+router.post('/:id/like', protect, trackActivity, toggleLike);
 
 module.exports = router;

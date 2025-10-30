@@ -23,6 +23,7 @@ const userSchema = new mongoose.Schema({
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   mutedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   lastSeen: { type: Date, default: Date.now },
+  lastActive: { type: Date, default: Date.now },
   statuses: [{
     text: { type: String, default: '' },
     image: { type: String, default: '' },

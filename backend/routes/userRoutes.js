@@ -19,6 +19,7 @@ const {
 } = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
 const upload = require('../utils/fileUpload');
+const trackActivity = require('../middleware/trackActivity');
 
 const router = express.Router();
 
@@ -34,10 +35,10 @@ router.post('/api-keys', protect, generateApiKey);
 router.get('/api-keys', protect, getApiKeys);
 router.delete('/api-keys/:keyId', protect, revokeApiKey);
 router.put('/username', protect, updateUsername);
-router.post('/statuses', protect, upload.single('statusImage'), createStatus);
+router.post('/statuses', protect, trackActivity, upload.single('statusImage'), createStatus);
 router.get('/statuses', protect, getStatuses);
-router.put('/statuses/:statusId', protect, upload.single('statusImage'), updateStatus);
-router.delete('/statuses/:statusId', protect, deleteStatus);
+router.put('/statuses/:statusId', protect, trackActivity, upload.single('statusImage'), updateStatus);
+router.delete('/statuses/:statusId', protect, trackActivity, deleteStatus);
 router.post('/statuses/check', protect, async (req, res) => {
   try {
     const { userIds } = req.body;

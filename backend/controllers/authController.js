@@ -121,6 +121,10 @@ exports.login = async (req, res) => {
       return res.status(403).json({ success: false, message: suspendedMessage });
     }
 
+    // Update lastActive on login
+    user.lastActive = new Date();
+    await user.save();
+
     const token = generateToken(user._id);
 
     res.json({

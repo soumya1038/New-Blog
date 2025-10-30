@@ -2,6 +2,7 @@ const express = require('express');
 const { body } = require('express-validator');
 const { register, login, getMe, verifyEmail, sendVerificationCode, verifyCode, sendPasswordResetCode, resetPasswordWithCode, requestForgotPassword, verifyForgotPasswordCode, requestForgotPasswordChange, confirmForgotPasswordChange, requestAuthenticatedPasswordChange, confirmAuthenticatedPasswordChange } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
+const trackActivity = require('../middleware/trackActivity');
 
 const router = express.Router();
 
@@ -11,6 +12,7 @@ router.post('/register', [
 ], register);
 
 router.post('/login', login);
+router.get('/me', protect, trackActivity, getMe);
 router.get('/me', protect, getMe);
 router.post('/send-verification-code', sendVerificationCode);
 router.post('/verify-code', verifyCode);
