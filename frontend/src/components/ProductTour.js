@@ -1,75 +1,61 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { FaTimes, FaArrowRight, FaArrowLeft, FaCheck } from 'react-icons/fa';
+import { FaTimes, FaArrowRight, FaCheck, FaLightbulb } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
 
 const ProductTour = ({ onComplete }) => {
   const [currentStep, setCurrentStep] = useState(0);
-  const navigate = useNavigate();
   const { user } = useContext(AuthContext);
 
   const steps = [
     {
-      route: '/',
-      title: '🚀 Welcome to New Blog',
-      content: 'Your modern platform to write, share, and connect with readers around the world! Let\'s take a quick tour to help you get started.',
-      showOverlay: true
+      target: '.navbar',
+      title: '🚀 Welcome to New Blog!',
+      content: 'Let\'s explore the key features. Click Next to continue.',
+      position: 'bottom',
+      action: null
     },
     {
-      route: '/',
-      title: '🧩 Dashboard Overview',
-      content: 'This is your Dashboard — the central hub where you can discover blogs, track trends, and explore content from writers worldwide.',
-      showOverlay: false
+      target: '.create-blog-btn',
+      title: '✍️ Write Your First Blog',
+      content: 'Click here to create a new blog post with our Markdown editor.',
+      position: 'bottom',
+      action: 'Try clicking "Create Blog" to see the editor'
     },
     {
-      route: '/create',
-      title: '✍️ Create a Blog',
-      content: 'Click "Create Blog" to start writing your post. Our editor supports Markdown, live preview, and image uploads — so your creativity flows naturally.',
-      showOverlay: false
+      target: '.search-bar',
+      title: '🔍 Discover Content',
+      content: 'Search for blogs, topics, and writers you\'re interested in.',
+      position: 'bottom',
+      action: null
     },
     {
-      route: '/drafts',
-      title: '📝 Manage Drafts',
-      content: 'You can save unfinished blogs as Drafts. Revisit them anytime to edit and publish when ready.',
-      showOverlay: false
+      target: '.notifications-btn',
+      title: '🔔 Stay Updated',
+      content: 'Get notified about likes, comments, and new followers.',
+      position: 'bottom',
+      action: null
     },
     {
-      route: '/notifications',
-      title: '🔔 Notifications',
-      content: 'Stay updated with real-time notifications about likes, comments, and followers. Never miss what\'s happening!',
-      showOverlay: false
-    },
-    {
-      route: '/profile',
-      title: '👤 My Profile',
-      content: 'Visit your Profile to update your bio, manage settings, and showcase your work to readers.',
-      showOverlay: false
-    },
-    ...(user?.role === 'admin' || user?.role === 'coAdmin' ? [{
-      route: '/admin',
-      title: '⚙️ Admin Panel',
-      content: 'As an admin, you can manage users, approve content, and maintain the platform — all from the Admin Panel.',
-      showOverlay: false
-    }] : []),
-    {
-      route: '/chat',
-      title: '💬 Chat & Community',
-      content: 'Connect instantly with other bloggers through Chat — share thoughts, collaborate, and grow together!',
-      showOverlay: false
-    },
-    {
-      route: '/',
-      title: '🎉 You\'re All Set!',
-      content: 'That\'s it! You\'re ready to explore New Blog. Start writing your first story and join our community of passionate writers!',
-      showOverlay: true
+      target: '.profile-menu',
+      title: '👤 Your Profile',
+      content: 'Manage your account, settings, and view your published blogs.',
+      position: 'bottom',
+      action: null
     }
   ];
 
   useEffect(() => {
-    const step = steps[currentStep];
-    if (step.route !== window.location.pathname) {
-      navigate(step.route);
+    const target = document.querySelector(steps[currentStep]?.target);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.classList.add('tour-highlight');
     }
+
+    return () => {
+      if (target) {
+        target.classList.remove('tour-highlight');
+      }
+    };
   }, [currentStep]);
 
   const handleNext = () => {
@@ -80,126 +66,133 @@ const ProductTour = ({ onComplete }) => {
     }
   };
 
-  const handlePrev = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
   const handleComplete = () => {
     localStorage.setItem('tourCompleted', 'true');
-    navigate('/');
     onComplete();
   };
 
   const handleSkip = () => {
     localStorage.setItem('tourCompleted', 'true');
-    navigate('/');
     onComplete();
   };
 
   const step = steps[currentStep];
+  const target = document.querySelector(step?.target);
+  const rect = target?.getBoundingClientRect();
+
+  if (!rect) return null;
+
+  const tooltipStyle = {
+    position: 'fixed',
+    top: rect.bottom + 20,
+    left: Math.max(20, Math.min(rect.left, window.innerWidth - 420)),
+    zIndex: 10001
+  };
 
   return (
     <>
-      {/* Overlay */}
-      {step.showOverlay && (
-        <div className="fixed inset-0 bg-black bg-opacity-70 z-[9999]" />
-      )}
+      {/* Subtle Overlay */}
+      <div className="fixed inset-0 bg-black bg-opacity-30 z-[9999]" onClick={handleSkip} />
 
-      {/* Tour Modal */}
-      <div className="fixed inset-0 flex items-center justify-center z-[10000] p-4 pointer-events-none">
-        <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full pointer-events-auto animate-slideUp">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-t-2xl">
-            <div className="flex justify-between items-start">
-              <div className="flex-1">
-                <h2 className="text-3xl font-bold mb-2">{step.title}</h2>
-                <p className="text-blue-100 text-sm">Step {currentStep + 1} of {steps.length}</p>
-              </div>
-              <button
-                onClick={handleSkip}
-                className="text-white hover:text-gray-200 transition p-2"
-                title="Skip Tour"
-              >
-                <FaTimes size={24} />
-              </button>
+      {/* Spotlight */}
+      <div
+        className="fixed z-[10000] pointer-events-none"
+        style={{
+          top: rect.top - 8,
+          left: rect.left - 8,
+          width: rect.width + 16,
+          height: rect.height + 16,
+          boxShadow: '0 0 0 4px rgba(59, 130, 246, 0.5), 0 0 0 9999px rgba(0, 0, 0, 0.3)',
+          borderRadius: '12px',
+          transition: 'all 0.3s ease',
+          animation: 'pulse 2s infinite'
+        }}
+      />
+
+      {/* Tooltip */}
+      <div
+        className="bg-white rounded-xl shadow-2xl max-w-sm z-[10001] animate-fadeIn"
+        style={tooltipStyle}
+      >
+        <div className="p-5">
+          <div className="flex items-start justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <FaLightbulb className="text-yellow-500" size={20} />
+              <h3 className="text-lg font-bold text-gray-800">{step.title}</h3>
             </div>
+            <button
+              onClick={handleSkip}
+              className="text-gray-400 hover:text-gray-600 transition"
+            >
+              <FaTimes size={18} />
+            </button>
           </div>
 
-          {/* Content */}
-          <div className="p-8">
-            <p className="text-gray-700 text-lg leading-relaxed mb-8">{step.content}</p>
+          <p className="text-gray-600 text-sm mb-4 leading-relaxed">{step.content}</p>
 
-            {/* Progress Bar */}
-            <div className="mb-6">
-              <div className="flex gap-2 mb-2">
-                {steps.map((_, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex-1 h-2 rounded-full transition-all ${
-                      idx <= currentStep ? 'bg-blue-600' : 'bg-gray-200'
-                    }`}
-                  />
-                ))}
-              </div>
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Progress</span>
-                <span>{Math.round(((currentStep + 1) / steps.length) * 100)}%</span>
-              </div>
+          {step.action && (
+            <div className="bg-blue-50 border-l-4 border-blue-500 p-3 mb-4 rounded">
+              <p className="text-blue-700 text-xs font-medium">👉 {step.action}</p>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            <div className="flex gap-1">
+              {steps.map((_, idx) => (
+                <div
+                  key={idx}
+                  className={`h-1.5 rounded-full transition-all ${
+                    idx === currentStep ? 'w-6 bg-blue-600' : 'w-1.5 bg-gray-300'
+                  }`}
+                />
+              ))}
             </div>
 
-            {/* Navigation */}
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex gap-2">
               <button
                 onClick={handleSkip}
-                className="text-gray-500 hover:text-gray-700 transition font-medium"
+                className="text-xs text-gray-500 hover:text-gray-700 transition px-3 py-1.5"
               >
-                Skip Tour
+                Skip
               </button>
-
-              <div className="flex gap-3">
-                {currentStep > 0 && (
-                  <button
-                    onClick={handlePrev}
-                    className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold flex items-center gap-2"
-                  >
-                    <FaArrowLeft size={16} /> Previous
-                  </button>
+              <button
+                onClick={handleNext}
+                className="px-4 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-1.5"
+              >
+                {currentStep === steps.length - 1 ? (
+                  <>
+                    <FaCheck size={12} /> Got it!
+                  </>
+                ) : (
+                  <>
+                    Next <FaArrowRight size={12} />
+                  </>
                 )}
-                <button
-                  onClick={handleNext}
-                  className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition font-semibold flex items-center gap-2"
-                >
-                  {currentStep === steps.length - 1 ? (
-                    <>
-                      <FaCheck size={16} /> Start Exploring
-                    </>
-                  ) : (
-                    <>
-                      Next <FaArrowRight size={16} />
-                    </>
-                  )}
-                </button>
-              </div>
+              </button>
             </div>
           </div>
+
+          <p className="text-xs text-gray-400 mt-3 text-center">
+            {currentStep + 1} of {steps.length}
+          </p>
         </div>
       </div>
 
       <style jsx>{`
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(30px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-        .animate-slideUp {
-          animation: slideUp 0.4s ease-out;
+        @keyframes pulse {
+          0%, 100% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5), 0 0 0 9999px rgba(0, 0, 0, 0.3); }
+          50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.3), 0 0 0 9999px rgba(0, 0, 0, 0.3); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease;
+        }
+        .tour-highlight {
+          position: relative;
+          z-index: 10000 !important;
         }
       `}</style>
     </>
