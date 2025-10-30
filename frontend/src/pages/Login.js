@@ -131,11 +131,15 @@ const Login = () => {
   }, [isLocked, lockoutTime]);
 
   useEffect(() => {
-    // Redirect if already logged in (but not during login process)
-    if (user && !isLoggingIn && !showIntroVideo) {
-      navigate('/');
-      return;
+    // Only redirect if user exists and we're not in login flow
+    if (user && !showIntroVideo) {
+      const isInLoginFlow = isLoggingIn || sessionStorage.getItem('loginInProgress');
+      if (!isInLoginFlow) {
+        navigate('/');
+        return;
+      }
     }
+    
     // Load saved credentials
     const saved = localStorage.getItem('credentials');
     if (saved) {
@@ -144,7 +148,21 @@ const Login = () => {
       setPassword(p);
       setRememberMe(true);
     }
-  }, [user, isLoggingIn, showIntroVideo, navigate]);
+  }, [user, showIntroVideo, isLoggingIn, navigate]);
+  
+  useEffect(() => {
+    // Mark login flow start
+    if (isLoggingIn) {
+      sessionStorage.setItem('loginInProgress', 'true');
+    }
+  }, [isLoggingIn]);
+  
+  useEffect(() => {
+    // Clear login flow when video is shown or closed
+    if (showIntroVideo) {
+      sessionStorage.removeItem('loginInProgress');
+    }
+  }, [showIntroVideo]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -162,29 +180,23 @@ const Login = () => {
     
     setIsLoggingIn(true);
     try {
-      const data = await login(username, password, rememberMe);
-      // Reset failed attempts on success
+      await login(username, password, rememberMe);
       setFailedAttempts(0);
       localStorage.removeItem('loginLockoutEnd');
-      
-      // Stop loading first
       setIsLoggingIn(false);
       
-      // Small delay before showing video to ensure state is settled
-      setTimeout(() => {
-        setShowIntroVideo(true);
-      }, 100);
+      // Show intro video immediately
+      setShowIntroVideo(true);
     } catch (err) {
       const newAttempts = failedAttempts + 1;
       setFailedAttempts(newAttempts);
       
-      // Generate new math question on login fail
       generateMathQuestion();
       setIsMathVerified(false);
       
       if (newAttempts >= 5) {
         setIsLocked(true);
-        setLockoutTime(120); // 2 minutes
+        setLockoutTime(120);
         const lockoutEnd = Date.now() + (120 * 1000);
         localStorage.setItem('loginLockoutEnd', lockoutEnd.toString());
         setError('Too many failed attempts. Account locked for 2 minutes.');
@@ -276,6 +288,8 @@ const Login = () => {
         <IntroVideoModal
           onClose={() => {
             setShowIntroVideo(false);
+            // Set flag to show tour on home page
+            sessionStorage.setItem('showTourAfterLogin', 'true');
             // Navigate to home after video
             navigate('/');
           }}

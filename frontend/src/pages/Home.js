@@ -7,6 +7,7 @@ import { AuthContext } from '../context/AuthContext';
 import { BlogCardSkeleton } from '../components/SkeletonLoader';
 import soundNotification from '../utils/soundNotifications';
 import Avatar from '../components/Avatar';
+import ProductTour from '../components/ProductTour';
 
 const Home = () => {
   const { t } = useTranslation();
@@ -22,6 +23,18 @@ const Home = () => {
   const [error, setError] = useState(false);
   const searchBarRef = useRef(null);
   const tagContainerRef = useRef(null);
+  const [showTour, setShowTour] = useState(false);
+  
+  useEffect(() => {
+    // Show tour for new users after they've seen the intro video
+    const tourCompleted = localStorage.getItem('tourCompleted');
+    const justLoggedIn = sessionStorage.getItem('showTourAfterLogin');
+    
+    if (!tourCompleted && justLoggedIn && user) {
+      sessionStorage.removeItem('showTourAfterLogin');
+      setTimeout(() => setShowTour(true), 500);
+    }
+  }, [user]);
 
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -249,13 +262,16 @@ const Home = () => {
   }
 
   return (
+    <>
+      {showTour && <ProductTour onComplete={() => setShowTour(false)} />}
+      
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
       <div className="container mx-auto px-4">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between mb-8 gap-4">
           <h1 className="text-4xl font-bold text-gray-800">{t('Welcome to Modern Blog')}</h1>
           
           <div className="w-full md:w-96">
-            <div className="relative" ref={searchBarRef}>
+            <div className="search-bar relative" ref={searchBarRef}>
               <input
                 type="text"
                 placeholder={t('Search blogs...')}
@@ -395,6 +411,7 @@ const Home = () => {
         )}
       </div>
     </div>
+    </>
   );
 };
 

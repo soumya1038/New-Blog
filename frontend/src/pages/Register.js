@@ -116,11 +116,23 @@ const Register = () => {
   }, [mathTimer, isMathVerified]);
 
   useEffect(() => {
-    // Redirect if already logged in
-    if (user && !isRegistering) {
-      navigate('/');
+    // Redirect if already logged in (not during registration)
+    if (user) {
+      const isInRegisterFlow = isRegistering || sessionStorage.getItem('registerInProgress');
+      if (!isInRegisterFlow) {
+        navigate('/');
+      }
     }
   }, [user, isRegistering, navigate]);
+  
+  useEffect(() => {
+    // Mark registration flow
+    if (isRegistering) {
+      sessionStorage.setItem('registerInProgress', 'true');
+    } else {
+      sessionStorage.removeItem('registerInProgress');
+    }
+  }, [isRegistering]);
 
   // Verify math answer
   const handleMathVerify = () => {

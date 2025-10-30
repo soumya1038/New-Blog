@@ -70,7 +70,7 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
+    <nav className="navbar bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
       <div className="container mx-auto px-4 py-4">
         <div className="flex justify-between items-center">
           <Link to="/" className="flex items-center gap-3">
@@ -85,10 +85,10 @@ const Navbar = () => {
                 {(user.role === 'admin' || user.role === 'coAdmin') && (
                   <Link to="/admin" className="hover:text-gray-200 font-semibold">{t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}</Link>
                 )}
-                <Link to="/create" className="hover:text-gray-200">{t('Create Blog')}</Link>
+                <Link to="/create" className="create-blog-btn hover:text-gray-200">{t('Create Blog')}</Link>
                 <Link to="/drafts" className="hover:text-gray-200">{t('My Drafts')}</Link>
                 <LanguageSelector />
-                <Link to="/notifications" className="hover:text-gray-200 relative">
+                <Link to="/notifications" className="notifications-btn hover:text-gray-200 relative">
                   <FaBell size={20} />
                   {unreadCount > 0 && (
                     <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
@@ -98,7 +98,7 @@ const Navbar = () => {
                 </Link>
                 
                 {/* User Profile Dropdown */}
-                <div className="relative" ref={dropdownRef}>
+                <div className="profile-menu relative" ref={dropdownRef}>
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
                     className="flex items-center gap-2 hover:bg-white/10 px-3 py-2 rounded-lg transition"
