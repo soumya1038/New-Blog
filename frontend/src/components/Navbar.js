@@ -75,7 +75,7 @@ const Navbar = () => {
         <div className="flex justify-between items-center">
           <Link to="/" className="flex items-center gap-3">
             <img src="/logo.png" alt="New Blog Logo" className="h-10 w-10 rounded-full object-cover border-2 border-white shadow-lg" />
-            <span className="text-2xl font-bold">{t('New Blog')}</span>
+            <span className="text-2xl font-bold">{t('Modern Blog')}</span>
           </Link>
           
           {/* Desktop Menu */}

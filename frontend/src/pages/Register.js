@@ -234,7 +234,7 @@ const Register = () => {
           {/* Math CAPTCHA */}
           <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 sm:p-4">
             <div className="flex justify-between items-center mb-2">
-              <label className="text-gray-700 font-semibold text-xs sm:text-sm">Verify you're human</label>
+              <label className="text-gray-700 font-semibold text-xs sm:text-sm">{t("Verify you're human")}</label>
               <span className={`text-xs font-mono font-bold px-2 py-1 rounded ${
                 mathTimer <= 10 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
               }`}>
@@ -261,7 +261,7 @@ const Register = () => {
                     onClick={handleMathVerify}
                     className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold text-xs sm:text-sm whitespace-nowrap"
                   >
-                    Check
+                    {t('Check')}
                   </button>
                 ) : (
                   <FaCheckCircle className="text-green-500 flex-shrink-0" size={20} />
@@ -277,7 +277,7 @@ const Register = () => {
               </div>
             </div>
             {isMathVerified && (
-              <p className="text-xs text-green-600 mt-2 font-semibold">✓ Verified! You can now continue.</p>
+              <p className="text-xs text-green-600 mt-2 font-semibold">✓ {t('Verified!')} {t('You can now continue.')}</p>
             )}
           </div>
 
@@ -434,7 +434,7 @@ const Register = () => {
             {isRegistering ? (
               <>
                 <ScaleLoader color="#ffffff" height={20} />
-                <span>Creating account...</span>
+                <span>{t('Creating account...')}</span>
               </>
             ) : (
               t('Sign Up')

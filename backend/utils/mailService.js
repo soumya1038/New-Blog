@@ -1,40 +1,38 @@
-const nodemailer = require('nodemailer');
+const axios = require('axios');
 
 const sendEmail = async ({ to, subject, html }) => {
   console.log('📧 [EMAIL] Starting email send process...');
   console.log('📧 [EMAIL] To:', to);
   console.log('📧 [EMAIL] Subject:', subject);
-  console.log('📧 [EMAIL] Using Zoho SMTP');
+  console.log('📧 [EMAIL] Using Brevo API');
   
-  if (!process.env.ZOHO_EMAIL || !process.env.ZOHO_PASSWORD) {
-    console.error('❌ [EMAIL] Missing Zoho credentials!');
-    throw new Error('Email service not configured. Please set ZOHO_EMAIL and ZOHO_PASSWORD.');
+  if (!process.env.BREVO_API_KEY || !process.env.BREVO_FROM_EMAIL) {
+    console.error('❌ [EMAIL] Missing Brevo credentials!');
+    throw new Error('Email service not configured. Please set BREVO_API_KEY and BREVO_FROM_EMAIL.');
   }
   
   try {
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.zoho.in',
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.ZOHO_EMAIL,
-        pass: process.env.ZOHO_PASSWORD
+    const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+      sender: { name: 'New Blog', email: process.env.BREVO_FROM_EMAIL },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html
+    }, {
+      headers: {
+        'api-key': process.env.BREVO_API_KEY,
+        'Content-Type': 'application/json'
       }
     });
 
-    await transporter.sendMail({
-      from: `"${process.env.ZOHO_FROM_NAME || 'New Blog'}" <${process.env.ZOHO_EMAIL}>`,
-      to,
-      subject,
-      html
-    });
-
     console.log('✅ [EMAIL] Email sent successfully!');
+    console.log('📧 [EMAIL] Brevo Response:', JSON.stringify(response.data));
+    console.log('⚠️ [EMAIL] Check: 1) Sender email verified at https://app.brevo.com/senders 2) Check spam folder');
     return { success: true };
   } catch (error) {
     console.error('❌ [EMAIL] Email send failed!');
-    console.error('❌ [EMAIL] Error:', error.message);
-    throw new Error('Failed to send email: ' + error.message);
+    console.error('❌ [EMAIL] Error:', error.response?.data || error.message);
+    console.error('⚠️ [EMAIL] Verify sender email at: https://app.brevo.com/senders');
+    throw new Error('Failed to send email: ' + (error.response?.data?.message || error.message));
   }
 };
 

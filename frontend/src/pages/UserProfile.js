@@ -277,7 +277,7 @@ const UserProfile = () => {
   if (!profile) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
-        <p className="text-xl text-gray-600">User not found</p>
+        <p className="text-xl text-gray-600">{t('User not found')}</p>
       </div>
     );
   }
@@ -324,7 +324,7 @@ const UserProfile = () => {
                 </div>
                 <div className="text-center">
                   <p className="text-sm text-gray-600 flex items-center gap-1">
-                    <FaCalendar /> {t('Joined')} {new Date(profile.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                    <FaCalendar /> {t('Member since')} {new Date(profile.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
                   </p>
                 </div>
               </div>
@@ -461,14 +461,14 @@ const UserProfile = () => {
               </div>
               <p className="text-[10px] text-gray-500 mt-2 md:hidden">← Scroll horizontally to see full year →</p>
               <div className="flex items-center gap-2 mt-3 text-[10px] text-gray-600">
-                <span>Less</span>
+                <span>{t('Less')}</span>
                 <div className="flex gap-0.5">
                   <div className="w-2.5 h-2.5 bg-gray-100 rounded-sm"></div>
                   <div className="w-2.5 h-2.5 bg-green-200 rounded-sm"></div>
                   <div className="w-2.5 h-2.5 bg-green-400 rounded-sm"></div>
                   <div className="w-2.5 h-2.5 bg-green-600 rounded-sm"></div>
                 </div>
-                <span>More</span>
+                <span>{t('More')}</span>
               </div>
             </div>
           )}
@@ -484,14 +484,14 @@ const UserProfile = () => {
                   onClick={handleBackClick}
                   className="text-blue-600 hover:text-blue-800 text-sm font-semibold"
                 >
-                  ← Back to {graphView === 'weeks' ? 'Months' : 'Weeks'}
+                  ← {t('Back')} to {graphView === 'weeks' ? t('Months') : t('Weeks')}
                 </button>
               )}
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              {graphView === 'months' && 'Click on a month to see weekly activity'}
-              {graphView === 'weeks' && 'Click on a week to see daily activity'}
-              {graphView === 'days' && 'Click on a day to filter blog posts below'}
+              {graphView === 'months' && t('Click on a month to see weekly activity')}
+              {graphView === 'weeks' && t('Click on a week to see daily activity')}
+              {graphView === 'days' && t('Click on a day to filter blog posts below')}
             </p>
             <div className="flex items-end justify-between gap-2 sm:gap-4 h-48">
               {getGraphData().data.map((item, index) => {
@@ -512,7 +512,7 @@ const UserProfile = () => {
                         style={{ height: `${height}%`, minHeight: item.count > 0 ? '8px' : '0' }}
                       >
                         <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition whitespace-nowrap z-10">
-                          {item.count} post{item.count !== 1 ? 's' : ''}
+                          {item.count} {t('Posts').toLowerCase()}
                         </div>
                       </div>
                     </div>
@@ -539,7 +539,7 @@ const UserProfile = () => {
           </div>
           {selectedDay && (
             <p className="text-sm text-gray-600 mb-4 bg-blue-50 p-3 rounded-lg">
-              Showing posts from {selectedDay.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              {t('Showing posts from')} {selectedDay.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           )}
           

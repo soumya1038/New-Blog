@@ -82,15 +82,15 @@ const AdminDashboard = () => {
   const handleDeleteUser = (userId, username) => {
     openModal({
       type: 'delete-user',
-      title: 'Delete User',
-      message: `Are you sure you want to delete ${username}? All their blogs and comments will be permanently deleted.`,
-      confirmText: 'Delete',
+      title: t('Delete User'),
+      message: `${t('Are you sure you want to delete')} ${username}? ${t('All their blogs and comments will be permanently deleted.')}`,
+      confirmText: t('Delete'),
       onConfirm: async () => {
         try {
           await api.delete(`/admin/users/${userId}`);
           setUsers(users.filter(u => u._id !== userId));
           closeModal();
-          openModal({ type: 'success', title: 'Success', message: 'User deleted successfully' });
+          openModal({ type: 'success', title: t('Success!'), message: t('User deleted successfully') });
         } catch (error) {
           setModalError(error.response?.data?.message || 'Error deleting user');
         }
@@ -101,9 +101,9 @@ const AdminDashboard = () => {
   const handleSuspendUser = (userId, username, isActive) => {
     openModal({
       type: 'suspend-user',
-      title: isActive ? 'Suspend User' : 'Unsuspend User',
-      message: isActive ? `Enter suspension duration for ${username}:` : `Unsuspend ${username}?`,
-      confirmText: isActive ? 'Suspend' : 'Unsuspend',
+      title: isActive ? t('Suspend User') : t('Unsuspend User'),
+      message: isActive ? `${t('Enter suspension duration for')} ${username}:` : `${t('Unsuspend')} ${username}?`,
+      confirmText: isActive ? t('Suspend') : t('Unsuspend'),
       needsInput: isActive,
       userId,
       isActive
@@ -149,7 +149,7 @@ const AdminDashboard = () => {
       
       const durationText = response.data.message || 'User status updated successfully';
       
-      openModal({ type: 'success', title: 'Success', message: durationText });
+      openModal({ type: 'success', title: t('Success!'), message: durationText });
     } catch (error) {
       setSuspendLoading(false);
       setModalError(error.response?.data?.message || 'Error updating user status');
@@ -159,15 +159,15 @@ const AdminDashboard = () => {
   const handleMakeAdmin = (userId, username) => {
     openModal({
       type: 'make-admin',
-      title: 'Make Admin',
-      message: `Are you sure you want to promote ${username} to admin? They will have full administrative privileges.`,
-      confirmText: 'Make Admin',
+      title: t('Make Admin'),
+      message: `${t('Are you sure you want to delete')} ${username} ${t('to admin')}? ${t('They will have full administrative privileges')}.`,
+      confirmText: t('Make Admin'),
       onConfirm: async () => {
         try {
           await api.put(`/admin/users/${userId}/make-admin`);
           await fetchData();
           closeModal();
-          openModal({ type: 'success', title: 'Success', message: `${username} is now an admin` });
+          openModal({ type: 'success', title: t('Success!'), message: `${username} ${t('is now an admin')}` });
         } catch (error) {
           setModalError(error.response?.data?.message || 'Error promoting user');
         }
@@ -178,15 +178,15 @@ const AdminDashboard = () => {
   const handleMakeCoAdmin = (userId, username) => {
     openModal({
       type: 'make-coadmin',
-      title: 'Make Co-Admin',
-      message: `Promote ${username} to co-admin? They will have read-only access to the admin panel.`,
-      confirmText: 'Make Co-Admin',
+      title: t('Make Co-Admin'),
+      message: `${t('Promote')} ${username} ${t('to co-admin')}? ${t('They will have read-only access to the admin panel')}.`,
+      confirmText: t('Make Co-Admin'),
       onConfirm: async () => {
         try {
           await api.put(`/admin/users/${userId}/make-coadmin`);
           await fetchData();
           closeModal();
-          openModal({ type: 'success', title: 'Success', message: `${username} is now a co-admin` });
+          openModal({ type: 'success', title: t('Success!'), message: `${username} ${t('is now a co-admin')}` });
         } catch (error) {
           setModalError(error.response?.data?.message || 'Error promoting user');
         }
@@ -197,15 +197,15 @@ const AdminDashboard = () => {
   const handleRemoveCoAdmin = (userId, username) => {
     openModal({
       type: 'remove-coadmin',
-      title: 'Remove Co-Admin',
-      message: `Remove co-admin privileges from ${username}? They will become a regular user.`,
-      confirmText: 'Remove',
+      title: t('Remove Co-Admin'),
+      message: `${t('Remove')} ${t('co-admin privileges from')} ${username}? ${t('They will become a regular user')}.`,
+      confirmText: t('Remove'),
       onConfirm: async () => {
         try {
           await api.put(`/admin/users/${userId}/remove-coadmin`);
           await fetchData();
           closeModal();
-          openModal({ type: 'success', title: 'Success', message: `${username} is now a regular user` });
+          openModal({ type: 'success', title: t('Success!'), message: `${username} ${t('is now a regular user')}` });
         } catch (error) {
           setModalError(error.response?.data?.message || 'Error removing co-admin');
         }
@@ -216,15 +216,15 @@ const AdminDashboard = () => {
   const handleDeleteBlog = (blogId, title) => {
     openModal({
       type: 'delete-blog',
-      title: 'Delete Blog',
-      message: `Are you sure you want to delete "${title}"? This action cannot be undone.`,
-      confirmText: 'Delete',
+      title: t('Delete Blog'),
+      message: `${t('Are you sure you want to delete')} "${title}"? ${t('This action cannot be undone.')}.`,
+      confirmText: t('Delete'),
       onConfirm: async () => {
         try {
           await api.delete(`/admin/blogs/${blogId}`);
           setBlogs(blogs.filter(b => b._id !== blogId));
           closeModal();
-          openModal({ type: 'success', title: 'Success', message: 'Blog deleted successfully' });
+          openModal({ type: 'success', title: t('Success!'), message: t('Blog deleted successfully!') });
         } catch (error) {
           setModalError(error.response?.data?.message || 'Error deleting blog');
         }
@@ -270,7 +270,7 @@ const AdminDashboard = () => {
           </h1>
           {isCoAdmin && (
             <span className="bg-blue-100 text-blue-700 px-4 py-2 rounded-lg font-semibold">
-              Read-Only Access
+              {t('Read-Only Access')}
             </span>
           )}
         </div>
@@ -494,7 +494,7 @@ const AdminDashboard = () => {
                           <Link
                             to={`/user/${u._id}`}
                             className="text-blue-600 hover:text-blue-800"
-                            title="View Profile"
+                            title={t('View Profile')}
                           >
                             <FaEye size={18} />
                           </Link>
@@ -503,28 +503,28 @@ const AdminDashboard = () => {
                               <button
                                 onClick={() => handleMakeAdmin(u._id, u.username)}
                                 className="text-purple-600 hover:text-purple-800"
-                                title="Make Admin"
+                                title={t('Make Admin')}
                               >
                                 <FaUserShield size={18} />
                               </button>
                               <button
                                 onClick={() => handleMakeCoAdmin(u._id, u.username)}
                                 className="text-blue-600 hover:text-blue-800"
-                                title="Make Co-Admin"
+                                title={t('Make Co-Admin')}
                               >
                                 <FaUserTie size={18} />
                               </button>
                               <button
                                 onClick={() => handleSuspendUser(u._id, u.username, u.isActive)}
                                 className="text-orange-600 hover:text-orange-800"
-                                title="Suspend/Unsuspend"
+                                title={t('Suspend') + '/' + t('Unsuspend')}
                               >
                                 <FaBan size={18} />
                               </button>
                               <button
                                 onClick={() => handleDeleteUser(u._id, u.username)}
                                 className="text-red-600 hover:text-red-800"
-                                title="Delete"
+                                title={t('Delete')}
                               >
                                 <FaTrash size={18} />
                               </button>
@@ -534,7 +534,7 @@ const AdminDashboard = () => {
                             <button
                               onClick={() => handleRemoveCoAdmin(u._id, u.username)}
                               className="text-red-600 hover:text-red-800"
-                              title="Remove Co-Admin"
+                              title={t('Remove Co-Admin')}
                             >
                               <FaTimes size={18} />
                             </button>
@@ -601,7 +601,7 @@ const AdminDashboard = () => {
                           <Link
                             to={`/blog/${blog._id}`}
                             className="text-blue-600 hover:text-blue-800"
-                            title="View Blog"
+                            title={t('View Blog')}
                           >
                             <FaEye size={18} />
                           </Link>
@@ -661,9 +661,9 @@ const AdminDashboard = () => {
                       onChange={(e) => setSuspendUnit(e.target.value)}
                       className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
                     >
-                      <option value="hours">Hours</option>
-                      <option value="days">Days</option>
-                      <option value="months">Months</option>
+                      <option value="hours">{t('Hours')}</option>
+                      <option value="days">{t('Days')}</option>
+                      <option value="months">{t('Months')}</option>
                     </select>
                   </div>
                 </div>
@@ -675,7 +675,7 @@ const AdminDashboard = () => {
                     onClick={closeModal}
                     className="w-full bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-semibold"
                   >
-                    OK
+                    {t('OK')}
                   </button>
                 ) : (
                   <>
@@ -694,7 +694,7 @@ const AdminDashboard = () => {
                       onClick={closeModal}
                       className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300 font-semibold"
                     >
-                      Cancel
+                      {t('Cancel')}
                     </button>
                   </>
                 )}

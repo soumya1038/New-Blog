@@ -341,7 +341,7 @@ const Login = () => {
           {/* Math CAPTCHA */}
           <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 sm:p-4">
             <div className="flex justify-between items-center mb-2">
-              <label className="text-gray-700 font-semibold text-xs sm:text-sm">Verify you're human</label>
+              <label className="text-gray-700 font-semibold text-xs sm:text-sm">{t("Verify you're human")}</label>
               <span className={`text-xs font-mono font-bold px-2 py-1 rounded ${
                 mathTimer <= 10 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
               }`}>
@@ -368,7 +368,7 @@ const Login = () => {
                     onClick={handleMathVerify}
                     className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold text-xs sm:text-sm whitespace-nowrap"
                   >
-                    Check
+                    {t('Check')}
                   </button>
                 ) : (
                   <FaCheckCircle className="text-green-500 flex-shrink-0" size={20} />
@@ -384,7 +384,7 @@ const Login = () => {
               </div>
             </div>
             {isMathVerified && (
-              <p className="text-xs text-green-600 mt-2 font-semibold">✓ Verified!</p>
+              <p className="text-xs text-green-600 mt-2 font-semibold">✓ {t('Verified!')}</p>
             )}
           </div>
           
@@ -409,8 +409,8 @@ const Login = () => {
           
           {isLocked && (
             <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-center">
-              <p className="font-semibold">Account Locked</p>
-              <p className="text-sm">Please wait {Math.floor(lockoutTime / 60)}:{(lockoutTime % 60).toString().padStart(2, '0')}</p>
+              <p className="font-semibold">{t('Account Locked')}</p>
+              <p className="text-sm">{t('Please wait')} {Math.floor(lockoutTime / 60)}:{(lockoutTime % 60).toString().padStart(2, '0')}</p>
             </div>
           )}
           
@@ -422,10 +422,10 @@ const Login = () => {
             {isLoggingIn ? (
               <>
                 <ScaleLoader color="#ffffff" height={20} />
-                <span>Logging in...</span>
+                <span>{t('Logging in...')}</span>
               </>
             ) : isLocked ? (
-              `Locked (${Math.floor(lockoutTime / 60)}:${(lockoutTime % 60).toString().padStart(2, '0')})`
+              `${t('Locked')} (${Math.floor(lockoutTime / 60)}:${(lockoutTime % 60).toString().padStart(2, '0')})`
             ) : (
               t('Login')
             )}
@@ -458,7 +458,7 @@ const Login = () => {
                 type="email"
                 value={forgotEmail}
                 onChange={(e) => setForgotEmail(e.target.value)}
-                placeholder="your@email.com"
+                placeholder={t('Email Address')}
                 className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
                 required
               />

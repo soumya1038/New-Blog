@@ -233,15 +233,15 @@ const BlogDetail = () => {
             alt="Blog Not Found" 
             className="w-64 h-64 mx-auto mb-6 object-contain"
           />
-          <h1 className="text-4xl font-bold text-gray-800 mb-4">Blog Not Found</h1>
+          <h1 className="text-4xl font-bold text-gray-800 mb-4">{t('Blog Not Found')}</h1>
           <p className="text-gray-600 mb-8 text-lg">
-            The blog you are looking for does not exist or has been removed.
+            {t('The blog you are looking for does not exist or has been removed.')}
           </p>
           <button
             onClick={() => navigate('/')}
             className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
           >
-            Go to Home
+            {t('Go to Home')}
           </button>
         </div>
       </div>
@@ -290,11 +290,11 @@ const BlogDetail = () => {
                         '...'
                       ) : isFollowing ? (
                         <>
-                          <FaUserCheck /> Following
+                          <FaUserCheck /> {t('Following')}
                         </>
                       ) : (
                         <>
-                          <FaUserPlus /> Follow
+                          <FaUserPlus /> {t('Follow')}
                         </>
                       )}
                     </button>
@@ -312,7 +312,7 @@ const BlogDetail = () => {
                     className="w-full sm:w-32 h-48 sm:h-32 object-cover rounded-lg shadow-md group-hover:shadow-xl transition-all"
                   />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all rounded-lg flex items-center justify-center">
-                    <span className="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-semibold">🔍 View</span>
+                    <span className="text-white opacity-0 group-hover:opacity-100 transition-opacity text-sm font-semibold">🔍 {t('View')}</span>
                   </div>
                 </div>
               )}
@@ -461,9 +461,9 @@ const BlogDetail = () => {
         {showDeleteModal && (
           <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold text-gray-800 mb-4">🗑️ Delete Blog</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-4">🗑️ {t('Delete Blog')}</h3>
               <p className="text-gray-600 mb-6">
-                Are you sure you want to delete this blog? This action cannot be undone.
+                {t('Are you sure you want to delete this blog? This action cannot be undone.')}
               </p>
               <div className="flex gap-3">
                 <button
@@ -471,14 +471,14 @@ const BlogDetail = () => {
                   disabled={deleting}
                   className="flex-1 bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {deleting ? <ScaleLoader color="#fff" height={20} width={3} /> : 'Yes, Delete'}
+                  {deleting ? <ScaleLoader color="#fff" height={20} width={3} /> : t('Yes, Delete')}
                 </button>
                 <button
                   onClick={() => setShowDeleteModal(false)}
                   disabled={deleting}
                   className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition disabled:opacity-50"
                 >
-                  Cancel
+                  {t('Cancel')}
                 </button>
               </div>
             </div>

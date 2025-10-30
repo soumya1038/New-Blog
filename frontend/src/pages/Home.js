@@ -313,7 +313,7 @@ const Home = () => {
                       onClick={() => setShowAllTags(false)}
                       className="bg-gray-300 text-gray-700 px-3 py-1 rounded-full text-sm font-medium hover:bg-gray-400 transition"
                     >
-                      Show less
+                      {t('Show less')}
                     </button>
                   )}
                 </div>

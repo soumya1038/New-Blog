@@ -368,30 +368,30 @@ const CreateBlog = () => {
                 placeholder={t('Enter blog title...')}
                 maxLength={100}
               />
-              <p className="text-xs text-gray-500 mt-1">{title.length}/100 characters</p>
+              <p className="text-xs text-gray-500 mt-1">{title.length}/100 {t('characters')}</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-gray-700 mb-2 font-semibold">Category</label>
+                <label className="block text-gray-700 mb-2 font-semibold">{t('Category')}</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
                   className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="General">General</option>
-                  <option value="Technology">Technology</option>
-                  <option value="Lifestyle">Lifestyle</option>
-                  <option value="Travel">Travel</option>
-                  <option value="Food">Food</option>
-                  <option value="Health">Health</option>
-                  <option value="Business">Business</option>
-                  <option value="Education">Education</option>
+                  <option value="General">{t('General')}</option>
+                  <option value="Technology">{t('Technology')}</option>
+                  <option value="Lifestyle">{t('Lifestyle')}</option>
+                  <option value="Travel">{t('Travel')}</option>
+                  <option value="Food">{t('Food')}</option>
+                  <option value="Health">{t('Health')}</option>
+                  <option value="Business">{t('Business')}</option>
+                  <option value="Education">{t('Education')}</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-gray-700 mb-2 font-semibold">Cover Image</label>
+                <label className="block text-gray-700 mb-2 font-semibold">{t('Cover Image')}</label>
                 <input
                   type="file"
                   accept="image/*"
@@ -399,7 +399,7 @@ const CreateBlog = () => {
                   disabled={uploadingImage}
                   className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                {uploadingImage && <p className="text-xs text-blue-600 mt-1">Uploading...</p>}
+                {uploadingImage && <p className="text-xs text-blue-600 mt-1">{t('Uploading...')}</p>}
                 {coverImage && (
                   <div className="mt-2 relative">
                     <img src={coverImage} alt="Cover" className="w-full h-32 object-cover rounded-lg" />
@@ -416,16 +416,16 @@ const CreateBlog = () => {
             </div>
 
             <div>
-              <label className="block text-gray-700 mb-2 font-semibold">SEO Meta Description</label>
+              <label className="block text-gray-700 mb-2 font-semibold">{t('SEO Meta Description')}</label>
               <textarea
                 value={metaDescription}
                 onChange={(e) => setMetaDescription(e.target.value)}
                 className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Brief description for search engines (max 160 characters)"
+                placeholder={t('Brief description for search engines (max 160 characters)')}
                 maxLength={160}
                 rows={2}
               />
-              <p className="text-xs text-gray-500 mt-1">{metaDescription.length}/160 characters</p>
+              <p className="text-xs text-gray-500 mt-1">{metaDescription.length}/160 {t('characters')}</p>
             </div>
             
             <div>
@@ -437,7 +437,7 @@ const CreateBlog = () => {
                     onClick={() => setPreviewMode(!previewMode)}
                     className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition"
                   >
-                    {previewMode ? 'Write' : 'Preview'}
+                    {previewMode ? t('Write') : t('Preview')}
                   </button>
                   <AIBlogGenerator 
                     title={title} 
@@ -452,7 +452,7 @@ const CreateBlog = () => {
               
               {previewMode ? (
                 <div className="border rounded-lg p-4 min-h-[300px] prose max-w-none">
-                  <ReactMarkdown>{content || '*No content to preview*'}</ReactMarkdown>
+                  <ReactMarkdown>{content || `*${t('No content to preview')}*`}</ReactMarkdown>
                 </div>
               ) : (
                 <SimpleMDE
@@ -465,7 +465,7 @@ const CreateBlog = () => {
               
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-2 gap-2">
                 <p className="text-xs sm:text-sm text-gray-500">
-                  Word Count: {wordCount} | Reading Time: {readingTime} min
+                  {t('Word Count')}: {wordCount} | {t('Reading Time')}: {readingTime} {t('min read')}
                 </p>
                 <AIContentTools
                   content={content}
@@ -501,9 +501,9 @@ const CreateBlog = () => {
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={addTag}
                 className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Type tag and press Enter or comma"
+                placeholder={t('Type tag and press Enter or comma')}
               />
-              <p className="text-xs text-gray-500 mt-1">Press Enter or comma to add tags</p>
+              <p className="text-xs text-gray-500 mt-1">{t('Press Enter or comma to add tags')}</p>
             </div>
             
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
@@ -513,7 +513,7 @@ const CreateBlog = () => {
                   disabled={loading}
                   className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Publishing...' : t('Publish')}
+                  {loading ? t('Publishing...') : t('Publish')}
                 </button>
                 
                 <button
@@ -522,7 +522,7 @@ const CreateBlog = () => {
                   disabled={loading}
                   className="bg-gray-200 text-gray-700 px-8 py-3 rounded-lg font-semibold hover:bg-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Saving...' : t('Save Draft')}
+                  {loading ? t('Saving...') : t('Save Draft')}
                 </button>
 
                 <button
@@ -531,7 +531,7 @@ const CreateBlog = () => {
                   disabled={loading}
                   className="bg-red-100 text-red-600 px-8 py-3 rounded-lg font-semibold hover:bg-red-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Cancel
+                  {t('Cancel')}
                 </button>
               </div>
 
@@ -544,7 +544,7 @@ const CreateBlog = () => {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      <span className="text-xs text-gray-600">Saving...</span>
+                      <span className="text-xs text-gray-600">{t('Saving...')}</span>
                     </>
                   ) : (
                     <IoIosCheckmarkCircle className="text-green-500 text-xl" />
@@ -562,10 +562,10 @@ const CreateBlog = () => {
           <div className="text-center">
             <GridLoader color="#3B82F6" size={20} />
             <p className="mt-6 text-white text-lg font-semibold">
-              {isDraft ? 'Saving Draft...' : 'Publishing Blog...'}
+              {isDraft ? t('Saving draft...') : t('Publishing...')}
             </p>
             {coverImageFile && (
-              <p className="mt-2 text-gray-300 text-sm">Uploading image...</p>
+              <p className="mt-2 text-gray-300 text-sm">{t('Uploading...')}</p>
             )}
           </div>
         </div>
@@ -575,22 +575,22 @@ const CreateBlog = () => {
       {showCancelModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">⚠️ Unsaved Changes</h3>
+            <h3 className="text-xl font-bold text-gray-800 mb-4">⚠️ {t('Unsaved Changes')}</h3>
             <p className="text-gray-600 mb-6">
-              You have unsaved changes. Are you sure you want to leave? All your progress will be lost.
+              {t('You have unsaved changes. Are you sure you want to leave? All your progress will be lost.')}
             </p>
             <div className="flex gap-3">
               <button
                 onClick={confirmCancel}
                 className="flex-1 bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition"
               >
-                Yes, Leave
+                {t('Yes, Leave')}
               </button>
               <button
                 onClick={() => setShowCancelModal(false)}
                 className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition"
               >
-                Stay
+                {t('Stay')}
               </button>
             </div>
           </div>
