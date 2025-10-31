@@ -101,13 +101,13 @@ const Notifications = () => {
     <>
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-fadeIn">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('Clear All Notifications?')}</h3>
-            <p className="text-gray-600 mb-6">{t('This action cannot be undone. All notifications will be permanently deleted.')}</p>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-sm w-full p-6 animate-fadeIn">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{t('Clear All Notifications?')}</h3>
+            <p className="text-gray-600 dark:text-gray-300 mb-6">{t('This action cannot be undone. All notifications will be permanently deleted.')}</p>
             <div className="flex gap-3">
               <button
                 onClick={() => setShowModal(false)}
-                className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors font-medium"
+                className="flex-1 px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors font-medium"
               >
                 {t('Cancel')}
               </button>
@@ -121,22 +121,22 @@ const Notifications = () => {
           </div>
         </div>
       )}
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
       <div className="container mx-auto px-4 max-w-3xl">
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-blue-600 hover:text-blue-800 mb-4 font-semibold"
+          className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 mb-4 font-semibold"
         >
           <FaArrowLeft /> {t('Back')}
         </button>
-        <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sm:p-8">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">{t('Notifications')}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-white">{t('Notifications')}</h1>
             <div className="flex gap-2 w-full sm:w-auto">
-              <button onClick={markAllAsRead} className="flex-1 sm:flex-none text-blue-600 hover:text-blue-800 text-sm px-3 py-2 bg-blue-50 rounded-lg">
+              <button onClick={markAllAsRead} className="flex-1 sm:flex-none text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm px-3 py-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
                 {t('Mark all read')}
               </button>
-              <button onClick={() => setShowModal(true)} className="flex-1 sm:flex-none text-red-600 hover:text-red-800 text-sm px-3 py-2 bg-red-50 rounded-lg">
+              <button onClick={() => setShowModal(true)} className="flex-1 sm:flex-none text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 text-sm px-3 py-2 bg-red-50 dark:bg-red-900/30 rounded-lg">
                 {t('Clear all')}
               </button>
             </div>
@@ -148,8 +148,8 @@ const Notifications = () => {
                 key={notification._id}
                 className={`p-3 rounded-lg border transition-all cursor-pointer relative ${
                   notification.isRead 
-                    ? 'border-gray-200 bg-white hover:bg-gray-50' 
-                    : 'border-blue-300 bg-blue-50 hover:bg-blue-100'
+                    ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600' 
+                    : 'border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/50'
                 }`}
                 onClick={(e) => handleNotificationClick(notification, e)}
               >
@@ -164,7 +164,7 @@ const Notifications = () => {
                     className="w-8 h-8 rounded-full flex-shrink-0"
                   />
                   <div className="flex-1 min-w-0 pr-4">
-                    <p className="text-sm text-gray-800">
+                    <p className="text-sm text-gray-800 dark:text-gray-200">
                       <span className="font-semibold">{notification.sender?.username}</span>
                       {' '}{(() => {
                         const msg = notification.message.replace(`${notification.sender?.username} `, '');
@@ -175,7 +175,7 @@ const Notifications = () => {
                         return msg;
                       })()}
                     </p>
-                    <p className="text-xs text-gray-500 mt-0.5">{new Date(notification.createdAt).toLocaleString()}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{new Date(notification.createdAt).toLocaleString()}</p>
                   </div>
                 </div>
               </div>
@@ -183,7 +183,7 @@ const Notifications = () => {
           </div>
           
           {notifications.length === 0 && (
-            <div className="text-center text-gray-600 py-12">
+            <div className="text-center text-gray-600 dark:text-gray-400 py-12">
               <p className="text-xl">{t('No notifications yet')}</p>
             </div>
           )}

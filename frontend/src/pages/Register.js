@@ -210,39 +210,39 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-        <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">{t('Create Account')}</h2>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center px-4">
+      <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl w-full max-w-md">
+        <h2 className="text-3xl font-bold text-center mb-6 text-gray-800 dark:text-white">{t('Create Account')}</h2>
         
-        {error && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4">{error}</div>}
-        {success && <div className="bg-green-100 text-green-700 p-3 rounded-lg mb-4">{success}</div>}
+        {error && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-lg mb-4">{error}</div>}
+        {success && <div className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 p-3 rounded-lg mb-4">{success}</div>}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-gray-700 mb-2">{t('Username')}</label>
+            <label className="block text-gray-700 dark:text-gray-300 mb-2">{t('Username')}</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               required
               minLength={3}
             />
-            <p className="text-sm text-gray-500 mt-1">{t('Minimum 3 characters')}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{t('Minimum 3 characters')}</p>
           </div>
 
           {/* Math CAPTCHA */}
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 sm:p-4">
+          <div className="bg-blue-50 dark:bg-gray-700 border-2 border-blue-200 dark:border-gray-600 rounded-lg p-3 sm:p-4">
             <div className="flex justify-between items-center mb-2">
-              <label className="text-gray-700 font-semibold text-xs sm:text-sm">{t("Verify you're human")}</label>
+              <label className="text-gray-700 dark:text-gray-300 font-semibold text-xs sm:text-sm">{t("Verify you're human")}</label>
               <span className={`text-xs font-mono font-bold px-2 py-1 rounded ${
-                mathTimer <= 10 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
+                mathTimer <= 10 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
               }`}>
                 0:{mathTimer.toString().padStart(2, '0')}
               </span>
             </div>
             <div className="space-y-2">
-              <div className="bg-white px-3 py-2 rounded-lg border-2 border-blue-300 font-mono text-base sm:text-lg font-bold text-gray-800 text-center">
+              <div className="bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border-2 border-blue-300 dark:border-gray-600 font-mono text-base sm:text-lg font-bold text-gray-800 dark:text-white text-center">
                 {mathQuestion.num1} {mathQuestion.operator} {mathQuestion.num2} = ?
               </div>
               <div className="flex items-center gap-2">
@@ -251,7 +251,7 @@ const Register = () => {
                   value={mathAnswer}
                   onChange={(e) => setMathAnswer(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !isMathVerified && handleMathVerify()}
-                  className="flex-1 px-3 py-2 border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold text-sm sm:text-base"
+                  className="flex-1 px-3 py-2 border-2 border-blue-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   placeholder="?"
                   disabled={isMathVerified}
                 />
@@ -269,7 +269,7 @@ const Register = () => {
                 <button
                   type="button"
                   onClick={generateMathQuestion}
-                  className="text-blue-600 hover:text-blue-800 p-2 flex-shrink-0"
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 p-2 flex-shrink-0"
                   title="Refresh question"
                 >
                   <FaRedo size={16} />
@@ -277,12 +277,12 @@ const Register = () => {
               </div>
             </div>
             {isMathVerified && (
-              <p className="text-xs text-green-600 mt-2 font-semibold">✓ {t('Verified!')} {t('You can now continue.')}</p>
+              <p className="text-xs text-green-600 dark:text-green-400 mt-2 font-semibold">✓ {t('Verified!')} {t('You can now continue.')}</p>
             )}
           </div>
 
           <div>
-            <label className="block text-gray-700 mb-2">{t('Email Address')}</label>
+            <label className="block text-gray-700 dark:text-gray-300 mb-2">{t('Email Address')}</label>
             <input
               type="email"
               value={email}
@@ -291,7 +291,7 @@ const Register = () => {
                 setIsCodeSent(false);
                 setIsEmailVerified(false);
               }}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:cursor-not-allowed bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               required
               disabled={!isMathVerified || isEmailVerified}
             />
@@ -301,13 +301,13 @@ const Register = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1">
                       <FaCheckCircle className="text-green-500" />
-                      <span className="text-sm text-green-600">Valid email</span>
+                      <span className="text-sm text-green-600 dark:text-green-400">Valid email</span>
                     </div>
                     <button
                       type="button"
                       onClick={handleSendCode}
                       disabled={isSendingCode}
-                      className="text-sm text-blue-600 hover:underline font-semibold disabled:opacity-50 flex items-center gap-1"
+                      className="text-sm text-blue-600 dark:text-blue-400 hover:underline font-semibold disabled:opacity-50 flex items-center gap-1"
                     >
                       {isSendingCode ? (
                         <>
@@ -326,13 +326,13 @@ const Register = () => {
                 ) : emailValidationMsg !== 'valid' ? (
                   <div className="flex items-center gap-1">
                     <FaTimesCircle className="text-red-500" />
-                    <span className="text-sm text-red-600">{emailValidationMsg}</span>
+                    <span className="text-sm text-red-600 dark:text-red-400">{emailValidationMsg}</span>
                   </div>
                 ) : null}
                 {isEmailVerified && (
                   <div className="flex items-center gap-1">
                     <FaCheckCircle className="text-green-500" />
-                    <span className="text-sm text-green-600 font-semibold">✓ Verified</span>
+                    <span className="text-sm text-green-600 dark:text-green-400 font-semibold">✓ Verified</span>
                   </div>
                 )}
               </div>
@@ -341,13 +341,13 @@ const Register = () => {
 
           {isCodeSent && !isEmailVerified && (
             <div>
-              <label className="block text-gray-700 mb-2">Verification Code</label>
+              <label className="block text-gray-700 dark:text-gray-300 mb-2">Verification Code</label>
               <div className="flex gap-2">
                 <input
                   type="text"
                   value={verificationCode}
                   onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-lg tracking-widest"
+                  className="flex-1 px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center text-lg tracking-widest bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   placeholder="000000"
                   maxLength={6}
                 />
@@ -371,18 +371,18 @@ const Register = () => {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-gray-500 mt-1">Enter the 6-digit code sent to your email</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Enter the 6-digit code sent to your email</p>
             </div>
           )}
           
           <div>
-            <label className="block text-gray-700 mb-2">{t('Password')}</label>
+            <label className="block text-gray-700 dark:text-gray-300 mb-2">{t('Password')}</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 disabled:bg-gray-100 dark:disabled:bg-gray-600 disabled:cursor-not-allowed bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 required
                 minLength={6}
                 disabled={!isMathVerified || !isEmailVerified}
@@ -391,7 +391,7 @@ const Register = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                 >
                   {showPassword ? <VscEyeClosed size={20} /> : <VscEye size={20} />}
                 </button>
@@ -400,7 +400,7 @@ const Register = () => {
             {password && (
               <div className="mt-2">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-sm text-gray-600">Password Strength:</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Password Strength:</span>
                   <span className={`text-sm font-semibold ${passwordStrength.color.replace('bg-', 'text-')}`}>
                     {passwordStrength.label}
                   </span>
@@ -411,7 +411,7 @@ const Register = () => {
                     style={{ width: `${passwordStrength.strength}%` }}
                   ></div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Use uppercase, lowercase, numbers & symbols for a strong password</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Use uppercase, lowercase, numbers & symbols for a strong password</p>
               </div>
             )}
           </div>
@@ -423,7 +423,7 @@ const Register = () => {
               onChange={(e) => setRememberMe(e.target.checked)}
               className="mr-2"
             />
-            <label className="text-gray-700">{t('Remember Me')}</label>
+            <label className="text-gray-700 dark:text-gray-300">{t('Remember Me')}</label>
           </div>
           
           <button
@@ -442,8 +442,8 @@ const Register = () => {
           </button>
         </form>
         
-        <p className="text-center mt-4 text-gray-600">
-          {t('Already have an account?')} <Link to="/login" className="text-blue-600 hover:underline">{t('Login')}</Link>
+        <p className="text-center mt-4 text-gray-600 dark:text-gray-400">
+          {t('Already have an account?')} <Link to="/login" className="text-blue-600 dark:text-blue-400 hover:underline">{t('Login')}</Link>
         </p>
       </div>
     </div>

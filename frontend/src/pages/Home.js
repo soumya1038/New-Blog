@@ -223,9 +223,9 @@ const Home = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
         <div className="container mx-auto px-4">
-          <h1 className="text-4xl font-bold text-center mb-8 text-gray-800">{t('Latest Blog Posts')}</h1>
+          <h1 className="text-4xl font-bold text-center mb-8 text-gray-800 dark:text-gray-100">{t('Latest Blog Posts')}</h1>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[...Array(6)].map((_, i) => <BlogCardSkeleton key={i} />)}
           </div>
@@ -265,10 +265,10 @@ const Home = () => {
     <>
       {showTour && <ProductTour onComplete={() => setShowTour(false)} />}
       
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
       <div className="container mx-auto px-4">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between mb-8 gap-4">
-          <h1 className="text-4xl font-bold text-gray-800">{t('Welcome to Modern Blog')}</h1>
+          <h1 className="text-4xl font-bold text-gray-800 dark:text-gray-100">{t('Welcome to Modern Blog')}</h1>
           
           <div className="w-full md:w-96">
             <div className="search-bar relative" ref={searchBarRef}>
@@ -277,7 +277,7 @@ const Home = () => {
                 placeholder={t('Search blogs...')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 pl-10 pr-4 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm"
+                className="w-full px-4 py-2 pl-10 pr-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
               />
               <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             </div>
@@ -399,13 +399,13 @@ const Home = () => {
         </div>
         
         {filteredBlogs.length === 0 && blogs.length > 0 && (
-          <div className="text-center text-gray-600 py-20">
+          <div className="text-center text-gray-600 dark:text-gray-400 py-20">
             <p className="text-xl">{t('No blogs found matching your search.')}</p>
           </div>
         )}
         
         {blogs.length === 0 && (
-          <div className="text-center text-gray-600 py-20">
+          <div className="text-center text-gray-600 dark:text-gray-400 py-20">
             <p className="text-xl">{t('No blogs yet. Be the first to create one!')}</p>
           </div>
         )}

@@ -946,20 +946,7 @@ const ChatNew = () => {
       const stream = await webrtcService.startCall(incomingCall.callType === 'video');
       console.log('✅ Media stream obtained');
       
-      // NOW process the pending offer after we have media
-      if (pendingOfferRef.current) {
-        console.log('📞 Processing pending offer...');
-        await webrtcService.handleOffer(pendingOfferRef.current.offer);
-        const answer = await webrtcService.createAnswer(pendingOfferRef.current.callerId);
-        console.log('✅ Answer sent to caller');
-        pendingOfferRef.current = null;
-      }
-      
-      socket.current.emit('call:accept', {
-        callerId: incomingCall.callerId
-      });
-      console.log('✅ Emitted call:accept to caller');
-      
+      // Set active call BEFORE processing offer so UI shows immediately
       const startTime = Date.now();
       setActiveCall({
         userId: incomingCall.callerId,
@@ -973,6 +960,20 @@ const ChatNew = () => {
       });
       setIsVideoEnabled(incomingCall.callType === 'video');
       setIncomingCall(null);
+      
+      // NOW process the pending offer after we have media
+      if (pendingOfferRef.current) {
+        console.log('📞 Processing pending offer...');
+        await webrtcService.handleOffer(pendingOfferRef.current.offer);
+        const answer = await webrtcService.createAnswer(pendingOfferRef.current.callerId);
+        console.log('✅ Answer sent to caller');
+        pendingOfferRef.current = null;
+      }
+      
+      socket.current.emit('call:accept', {
+        callerId: incomingCall.callerId
+      });
+      console.log('✅ Emitted call:accept to caller');
       console.log('✅ Call accepted, timer started at:', startTime);
     } catch (error) {
       console.error('❌ Failed to accept call:', error);
@@ -1099,7 +1100,7 @@ const ChatNew = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">
       {/* Status Modal */}
       {showStatusModal && selectedUserStatuses.length > 0 && (
         <div className="fixed inset-0 bg-black z-[70] flex items-center justify-center">
@@ -1544,14 +1545,14 @@ const ChatNew = () => {
       )}
 
       {/* Sidebar */}
-      <div className={`w-full md:w-80 bg-white border-r border-gray-200 flex flex-col ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`w-full md:w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
         {/* Header */}
-        <div className="p-4 border-b border-gray-200">
-          <h1 className="text-xl font-semibold text-gray-900">{t('Messaging')}</h1>
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('Messaging')}</h1>
         </div>
 
         {/* Search */}
-        <div className="p-3 border-b border-gray-200">
+        <div className="p-3 border-b border-gray-200 dark:border-gray-700">
           <div className="relative">
             <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input
@@ -1559,7 +1560,7 @@ const ChatNew = () => {
               placeholder={t('Search messages')}
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-100 border-none rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-none rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {searchQuery && (
               <button
@@ -1609,7 +1610,7 @@ const ChatNew = () => {
             conversations.map(conv => (
               <div
                 key={conv.user._id}
-                className={`flex items-center p-3 hover:bg-gray-50 border-b border-gray-100 relative group cursor-pointer ${selectedChat?._id === conv.user._id ? 'bg-blue-50' : ''
+                className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === conv.user._id ? 'bg-blue-50 dark:bg-gray-700' : ''
                   }`}
                 onClick={async () => {
                   // Clear unread count immediately for better UX
@@ -1658,18 +1659,18 @@ const ChatNew = () => {
                   <div className="ml-3 flex-1 min-w-0">
                     <div className="flex justify-between items-baseline">
                       <div className="flex items-center gap-2">
-                        <p className="font-medium text-gray-900 truncate">{getUserDisplayName(conv.user)}</p>
+                        <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{getUserDisplayName(conv.user)}</p>
                         {blockedUsers.has(conv.user._id) && (
                           <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{t('Blocked')}</span>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500 ml-2">{formatDate(conv.lastMessage.createdAt)}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{formatDate(conv.lastMessage.createdAt)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {mutedUsers.has(conv.user._id) && (
                         <FiBellOff className="text-gray-400 text-xs" />
                       )}
-                      <p className="text-sm text-gray-600 truncate flex-1">{conv.lastMessage.content}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1">{conv.lastMessage.content}</p>
                     </div>
                   </div>
                   {conv.unreadCount > 0 && (
@@ -1731,11 +1732,11 @@ const ChatNew = () => {
       </div>
 
       {/* Chat Area */}
-      <div className={`flex-1 flex flex-col bg-white relative ${selectedChat ? 'flex' : 'hidden md:flex'}`}>
+      <div className={`flex-1 flex flex-col bg-white dark:bg-gray-800 relative ${selectedChat ? 'flex' : 'hidden md:flex'}`}>
         {/* Dismissible Warning Banner */}
         {showWarningBanner && (
-          <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-yellow-800">
+          <div className="bg-yellow-50 dark:bg-yellow-900/30 border-b border-yellow-200 dark:border-yellow-700 px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-300">
               <FiAlertCircle className="text-lg flex-shrink-0" />
               <p className="text-sm">
                 <strong>{t('Important')}:</strong> {t('All messages are automatically deleted after 30 days for privacy and storage management')}
@@ -1743,7 +1744,7 @@ const ChatNew = () => {
             </div>
             <button
               onClick={dismissWarningBanner}
-              className="text-yellow-600 hover:text-yellow-800 ml-4"
+              className="text-yellow-600 dark:text-yellow-400 hover:text-yellow-800 dark:hover:text-yellow-200 ml-4"
               title="Dismiss"
             >
               <FiX className="text-lg" />
@@ -1761,7 +1762,7 @@ const ChatNew = () => {
                   <div className="absolute inset-0 bg-gradient-to-r from-green-400 via-green-500 to-green-400 animate-pulse rounded-lg" style={{ animationDuration: '2s' }} />
                 </div>
               )}
-              <div className="p-4 border-b border-gray-200 bg-white relative z-10">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative z-10">
                 <div className="flex items-center gap-3 relative z-10">
                   <button
                     onClick={(e) => {
@@ -1798,8 +1799,8 @@ const ChatNew = () => {
                     className="flex-1 min-w-0 cursor-pointer"
                     onClick={() => setShowUserPanel(!showUserPanel)}
                   >
-                    <h2 className="font-semibold text-gray-900">{getUserDisplayName(selectedChat)}</h2>
-                    <p className="text-xs text-gray-500">
+                    <h2 className="font-semibold text-gray-900 dark:text-gray-100">{getUserDisplayName(selectedChat)}</h2>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
                       {isOnline(selectedChat._id) ? t('Active now') : getLastSeenText(selectedChat.lastSeen)}
                     </p>
                   </div>
@@ -1828,7 +1829,7 @@ const ChatNew = () => {
                   }}
                 >
                   <div 
-                    className="absolute inset-0 bg-white bg-opacity-70 backdrop-blur-sm cursor-pointer" 
+                    className="absolute inset-0 bg-white dark:bg-gray-900 bg-opacity-70 dark:bg-opacity-70 backdrop-blur-sm cursor-pointer" 
                     onClick={() => {
                       if (selectedUserStatuses.length > 0) {
                         setModalStatusIndex(0);
@@ -1860,7 +1861,7 @@ const ChatNew = () => {
                         <img
                           src={getUserAvatar(selectedChat)}
                           alt={getUserDisplayName(selectedChat)}
-                          className="w-16 h-16 rounded-full object-cover hover:opacity-80 transition-opacity"
+                          className="w-16 h-16 rounded-full object-cover border-2 border-white dark:border-gray-700 hover:opacity-80 transition-opacity"
                         />
                         {isOnline(selectedChat._id) && (
                           <span className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></span>
@@ -1920,12 +1921,12 @@ const ChatNew = () => {
                           handleMuteUser(selectedChat._id);
                           setShowUserPanel(false);
                         }}
-                        className="px-4 py-2.5 text-sm hover:bg-gray-50 rounded-lg flex items-center justify-center gap-2 transition-colors border border-gray-200"
+                        className="px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-600 rounded-lg flex items-center justify-center gap-2 transition-colors border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200"
                       >
                         {mutedUsers.has(selectedChat._id) ? (
-                          <><FiBell className="w-4 h-4 text-gray-600" /> <span>{t('Unmute')}</span></>
+                          <><FiBell className="w-4 h-4" /> <span>{t('Unmute')}</span></>
                         ) : (
-                          <><FiBellOff className="w-4 h-4 text-gray-600" /> <span>{t('Mute')}</span></>
+                          <><FiBellOff className="w-4 h-4" /> <span>{t('Mute')}</span></>
                         )}
                       </button>
                       <button
@@ -1933,9 +1934,9 @@ const ChatNew = () => {
                           handleClearChat();
                           setShowUserPanel(false);
                         }}
-                        className="px-4 py-2.5 text-sm hover:bg-gray-50 rounded-lg flex items-center justify-center gap-2 transition-colors border border-gray-200"
+                        className="px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-600 rounded-lg flex items-center justify-center gap-2 transition-colors border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200"
                       >
-                        <FiArchive className="w-4 h-4 text-gray-600" /> <span>{t('Clear')}</span>
+                        <FiArchive className="w-4 h-4" /> <span>{t('Clear')}</span>
                       </button>
                       <button
                         onClick={() => {
@@ -2047,15 +2048,15 @@ const ChatNew = () => {
             )}
 
             {/* Messages */}
-            <div ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 bg-gray-50">
+            <div ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
               {/* System Message - Auto-delete Warning */}
               <div className="flex justify-center my-6">
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 max-w-md shadow-sm">
+                <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg px-4 py-3 max-w-md shadow-sm">
                   <div className="flex items-start gap-2">
-                    <FiAlertCircle className="text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <FiAlertCircle className="text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-xs font-medium text-yellow-800 mb-1">{t('System Message')}</p>
-                      <p className="text-xs text-yellow-700">
+                      <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300 mb-1">{t('System Message')}</p>
+                      <p className="text-xs text-yellow-700 dark:text-yellow-400">
                         {t('Messages in this conversation are automatically deleted after 30 days for privacy and storage management')}
                       </p>
                     </div>
@@ -2107,7 +2108,7 @@ const ChatNew = () => {
                   <div key={msg._id} id={`msg-${msg._id}`} className="transition-colors duration-500">
                     {showDate && (
                       <div className="flex justify-center my-4">
-                        <span className="px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-full">
+                        <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full">
                           {formatDate(msg.createdAt)}
                         </span>
                       </div>
@@ -2278,7 +2279,7 @@ const ChatNew = () => {
             )}
 
             {/* Message Input - Fixed to bottom */}
-            <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 bg-white">
+            <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
               {/* Quick Chat & Enhance Text Links */}
               <div className="flex gap-3 mb-0.5">
                 <button
@@ -2337,7 +2338,7 @@ const ChatNew = () => {
                   }}
                   placeholder={t('Write a message')}
                   rows="1"
-                  className="flex-1 w-0 px-2 py-1.5 sm:px-4 sm:py-2 border border-gray-300 rounded-full resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm overflow-hidden"
+                  className="flex-1 w-0 px-2 py-1.5 sm:px-4 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-full resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm overflow-hidden bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   style={{ height: 'auto', maxHeight: '72px' }}
                 />
                 <button

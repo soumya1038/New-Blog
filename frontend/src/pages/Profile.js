@@ -6,7 +6,7 @@ import api from '../services/api';
 import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaArrowRight, FaTimes } from 'react-icons/fa';
 import AIBioGenerator from '../components/AIBioGenerator';
 import Avatar from '../components/Avatar';
-import { ScaleLoader, SyncLoader, BeatLoader, PulseLoader } from 'react-spinners';
+import { ScaleLoader, SyncLoader, BeatLoader, PulseLoader, HashLoader } from 'react-spinners';
 
 const Profile = () => {
   const { t } = useTranslation();
@@ -68,6 +68,11 @@ const Profile = () => {
   const [showForgotCodeModal, setShowForgotCodeModal] = useState(false);
   const [forgotCode, setForgotCode] = useState('');
   const [forgotCodeError, setForgotCodeError] = useState('');
+  const [showContactSection, setShowContactSection] = useState(false);
+  const [contactForm, setContactForm] = useState({ issue: '', advice: '' });
+  const [contactLoading, setContactLoading] = useState(false);
+  const [showForgotSection, setShowForgotSection] = useState(false);
+  const [showSocialSection, setShowSocialSection] = useState(false);
 
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -776,7 +781,7 @@ const Profile = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
       <div className="container mx-auto px-4 max-w-4xl">
         <button
           onClick={() => navigate(-1)}
@@ -784,8 +789,8 @@ const Profile = () => {
         >
           <FaArrowLeft /> {t('Back')}
         </button>
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          <h1 className="text-3xl font-bold mb-6 text-gray-800">{t('My Profile')}</h1>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+          <h1 className="text-3xl font-bold mb-6 text-gray-800 dark:text-gray-100">{t('My Profile')}</h1>
           
           <div className="flex items-center gap-4 mb-8">
             <div className="relative">
@@ -811,7 +816,7 @@ const Profile = () => {
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-2xl font-bold">{user?.username}</h2>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{user?.username}</h2>
                 <button
                   onClick={() => {
                     setNewUsername(user?.username || '');
@@ -823,7 +828,7 @@ const Profile = () => {
                   <FaEdit size={18} />
                 </button>
               </div>
-              <p className="text-gray-600 mb-2">{t('Member since')} {new Date(user?.createdAt).toLocaleDateString()}</p>
+              <p className="text-gray-600 dark:text-gray-400 mb-2">{t('Member since')} {new Date(user?.createdAt).toLocaleDateString()}</p>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => {
@@ -1064,13 +1069,59 @@ const Profile = () => {
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-xl font-bold">{t('Social Media Links')}</h3>
               <button
-                onClick={() => openSocialModal()}
+                onClick={() => setShowSocialSection(!showSocialSection)}
                 className="bg-blue-600 text-white p-2 rounded-full hover:bg-blue-700"
-                title={t('Add social media')}
+                title={showSocialSection ? t('Close') : t('Add social media')}
               >
-                <FaPlus />
+                {showSocialSection ? <FaTimes /> : <FaPlus />}
               </button>
             </div>
+            
+            {showSocialSection && (
+              <div className="bg-blue-50 dark:bg-gray-700 p-4 rounded-lg mb-4">
+                <h4 className="font-semibold text-gray-800 dark:text-gray-100 mb-3">{socialForm.editIndex >= 0 ? t('Edit Social Media Link') : t('Add Social Media Link')}</h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{t('Name (Optional)')}</label>
+                    <input
+                      type="text"
+                      value={socialForm.name}
+                      onChange={(e) => setSocialForm({ ...socialForm, name: e.target.value })}
+                      placeholder="e.g., Facebook, Twitter"
+                      className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">{t('URL (Required)')}</label>
+                    <input
+                      type="url"
+                      value={socialForm.url}
+                      onChange={(e) => setSocialForm({ ...socialForm, url: e.target.value })}
+                      placeholder="https://example.com"
+                      className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                      required
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveSocialMedia}
+                      className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                    >
+                      {t('Save')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowSocialSection(false);
+                        setSocialForm({ name: '', url: '', editIndex: -1 });
+                      }}
+                      className="flex-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500"
+                    >
+                      {t('Cancel')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
               {profile.socialMedia?.map((social, index) => (
@@ -1083,7 +1134,7 @@ const Profile = () => {
                     </a>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => openSocialModal(index)} className="text-blue-600 hover:text-blue-800">
+                    <button onClick={() => { setSocialForm({ ...profile.socialMedia[index], editIndex: index }); setShowSocialSection(true); }} className="text-blue-600 hover:text-blue-800">
                       <FaEdit size={14} />
                     </button>
                     <button onClick={() => deleteSocialMedia(index)} className="text-red-600 hover:text-red-800">
@@ -1102,18 +1153,116 @@ const Profile = () => {
             <div className="flex items-center gap-4 mb-4">
               <button
                 onClick={() => setShowPasswordForm(!showPasswordForm)}
-                className="flex items-center gap-2 text-blue-600 hover:text-blue-800"
+                className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
               >
                 <FaKey /> {t('Change Password')}
               </button>
-              <span className="text-gray-400">|</span>
+              <span className="text-gray-400 dark:text-gray-600">|</span>
               <button
-                onClick={() => setShowForgotPasswordModal(true)}
-                className="flex items-center gap-2 text-purple-600 hover:text-purple-800"
+                onClick={() => setShowForgotSection(!showForgotSection)}
+                className="flex items-center gap-2 text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300"
               >
                 <FaKey /> {t('Forgot Password')}
               </button>
             </div>
+            
+            {showForgotSection && (
+              <div className="bg-purple-50 dark:bg-gray-700 p-4 rounded-lg mb-4">
+                <h4 className="font-semibold text-gray-800 dark:text-gray-100 mb-3">{t('Reset Password')}</h4>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{t('Enter your new password')}</p>
+                {forgotPasswordError && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-2 rounded-lg mb-3 text-sm">{forgotPasswordError}</div>}
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  setForgotPasswordError('');
+                  if (forgotNewPassword !== forgotConfirmPassword) {
+                    setForgotPasswordError('Passwords do not match');
+                    return;
+                  }
+                  if (forgotNewPassword.length < 6) {
+                    setForgotPasswordError('Password must be at least 6 characters');
+                    return;
+                  }
+                  setSendingForgotCode(true);
+                  try {
+                    await api.post('/auth/forgot-password/change-authenticated', { newPassword: forgotNewPassword });
+                    setShowForgotSection(false);
+                    setShowForgotCodeModal(true);
+                  } catch (error) {
+                    setForgotPasswordError(error.response?.data?.message || 'Failed to send confirmation code');
+                  } finally {
+                    setSendingForgotCode(false);
+                  }
+                }}>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-gray-700 dark:text-gray-300 mb-1 text-sm font-semibold">{t('New Password')}</label>
+                      <div className="relative">
+                        <input
+                          type={showForgotNewPassword ? 'text' : 'password'}
+                          value={forgotNewPassword}
+                          onChange={(e) => setForgotNewPassword(e.target.value)}
+                          className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 pr-10 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                          required
+                          minLength={6}
+                        />
+                        {forgotNewPassword && (
+                          <button
+                            type="button"
+                            onClick={() => setShowForgotNewPassword(!showForgotNewPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                          >
+                            {showForgotNewPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-gray-700 dark:text-gray-300 mb-1 text-sm font-semibold">{t('Confirm Password')}</label>
+                      <div className="relative">
+                        <input
+                          type={showForgotConfirmPassword ? 'text' : 'password'}
+                          value={forgotConfirmPassword}
+                          onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                          className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 pr-10 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                          required
+                          minLength={6}
+                        />
+                        {forgotConfirmPassword && (
+                          <button
+                            type="button"
+                            onClick={() => setShowForgotConfirmPassword(!showForgotConfirmPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                          >
+                            {showForgotConfirmPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2"
+                        disabled={sendingForgotCode}
+                      >
+                        {sendingForgotCode ? <SyncLoader color="#fff" size={8} /> : t('Reset Password')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowForgotSection(false);
+                          setForgotNewPassword('');
+                          setForgotConfirmPassword('');
+                          setForgotPasswordError('');
+                        }}
+                        className="flex-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500"
+                      >
+                        {t('Cancel')}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            )}
             
             {showPasswordForm && (
               <form onSubmit={handleChangePassword} className="space-y-4">
@@ -1159,9 +1308,9 @@ const Profile = () => {
             )}
           </div>
           
-          <div className="border-t pt-6">
-            <h3 className="text-xl font-bold mb-4">{t('API Keys')}</h3>
-            <p className="text-sm text-gray-600 mb-4">{t('Generate API keys to access your blog data programmatically')}</p>
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+            <h3 className="text-xl font-bold mb-4 text-gray-800 dark:text-gray-100">{t('Developer Section')}</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{t('Generate API keys to access your blog data programmatically')}</p>
             
             <button 
               onClick={() => setShowApiKeyForm(!showApiKeyForm)} 
@@ -1233,8 +1382,93 @@ const Profile = () => {
             </div>
           </div>
           
-          <div className="border-t pt-6 mt-6">
-            <h3 className="text-xl font-bold text-red-600 mb-2">{t('Danger Zone')}</h3>
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100">{t('Contact Us')}</h3>
+              <button
+                onClick={() => setShowContactSection(!showContactSection)}
+                className="bg-green-600 dark:bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-700 dark:hover:bg-green-600"
+              >
+                {showContactSection ? t('Close') : t('Contact Support')}
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{t('Need help or have suggestions? Send us a message!')}</p>
+            
+            {showContactSection && (
+              <div className="bg-green-50 dark:bg-gray-700 p-4 rounded-lg">
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!contactForm.issue.trim()) {
+                    showModal('error', 'Error', 'Please describe your issue');
+                    return;
+                  }
+                  setContactLoading(true);
+                  try {
+                    await api.post('/users/contact', {
+                      issue: contactForm.issue,
+                      advice: contactForm.advice,
+                      userEmail: user.email,
+                      username: user.username
+                    });
+                    setShowContactSection(false);
+                    setContactForm({ issue: '', advice: '' });
+                    showModal('success', 'Success', 'Message sent successfully! We\'ll get back to you soon.');
+                  } catch (error) {
+                    showModal('error', 'Error', error.response?.data?.message || 'Failed to send message');
+                  } finally {
+                    setContactLoading(false);
+                  }
+                }}>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-gray-700 dark:text-gray-300 mb-1 font-semibold text-sm">{t('Your Issue / Problem')} *</label>
+                      <textarea
+                        value={contactForm.issue}
+                        onChange={(e) => setContactForm({ ...contactForm, issue: e.target.value })}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                        rows="3"
+                        placeholder="Describe the problem you're facing..."
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-gray-700 dark:text-gray-300 mb-1 font-semibold text-sm">{t('Advice / Suggestions')}</label>
+                      <textarea
+                        value={contactForm.advice}
+                        onChange={(e) => setContactForm({ ...contactForm, advice: e.target.value })}
+                        className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                        rows="2"
+                        placeholder="Any suggestions or advice for us..."
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={contactLoading}
+                        className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 font-semibold flex items-center justify-center gap-2"
+                      >
+                        {contactLoading ? <HashLoader color="#fff" size={20} /> : t('Send')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowContactSection(false);
+                          setContactForm({ issue: '', advice: '' });
+                        }}
+                        disabled={contactLoading}
+                        className="flex-1 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 font-semibold"
+                      >
+                        {t('Cancel')}
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
+            <h3 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">{t('Danger Zone')}</h3>
             <p className="text-sm text-gray-600 mb-4">{t('Once you delete your account, there is no going back. All your data will be permanently deleted.')}</p>
             <button
               onClick={() => setShowDeleteModal(true)}
@@ -1308,56 +1542,7 @@ const Profile = () => {
         </div>
       )}
       
-      {showSocialModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold mb-4">{socialForm.editIndex >= 0 ? t('Edit Social Media Link') : t('Add Social Media Link')}</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">{t('Name (Optional)')}</label>
-                <input
-                  type="text"
-                  value={socialForm.name}
-                  onChange={(e) => setSocialForm({ ...socialForm, name: e.target.value })}
-                  placeholder="e.g., Facebook, Twitter, Personal Website"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">{t('URL (Required)')}</label>
-                <input
-                  type="url"
-                  value={socialForm.url}
-                  onChange={(e) => setSocialForm({ ...socialForm, url: e.target.value })}
-                  placeholder="https://example.com"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-            </div>
-            
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={saveSocialMedia}
-                className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-              >
-                {t('Save')}
-              </button>
-              <button
-                onClick={() => {
-                  setShowSocialModal(false);
-                  setSocialForm({ name: '', url: '', editIndex: -1 });
-                }}
-                className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300"
-              >
-                {t('Cancel')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
       
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1788,104 +1973,7 @@ const Profile = () => {
         </div>
       )}
 
-      {/* Forgot Password Modal - Step 1: Enter New Password */}
-      {showForgotPasswordModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-purple-600 mb-4">{t('Reset Password')}</h3>
-            <p className="text-gray-700 mb-4">{t('Enter your new password')}</p>
-            {forgotPasswordError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{forgotPasswordError}</div>}
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              setForgotPasswordError('');
-              if (forgotNewPassword !== forgotConfirmPassword) {
-                setForgotPasswordError('Passwords do not match');
-                return;
-              }
-              if (forgotNewPassword.length < 6) {
-                setForgotPasswordError('Password must be at least 6 characters');
-                return;
-              }
-              setSendingForgotCode(true);
-              try {
-                await api.post('/auth/forgot-password/change-authenticated', { newPassword: forgotNewPassword });
-                setShowForgotPasswordModal(false);
-                setShowForgotCodeModal(true);
-              } catch (error) {
-                setForgotPasswordError(error.response?.data?.message || 'Failed to send confirmation code');
-              } finally {
-                setSendingForgotCode(false);
-              }
-            }}>
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2">{t('New Password')}</label>
-                <div className="relative">
-                  <input
-                    type={showForgotNewPassword ? 'text' : 'password'}
-                    value={forgotNewPassword}
-                    onChange={(e) => setForgotNewPassword(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 pr-10"
-                    required
-                    minLength={6}
-                  />
-                  {forgotNewPassword && (
-                    <button
-                      type="button"
-                      onClick={() => setShowForgotNewPassword(!showForgotNewPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                    >
-                      {showForgotNewPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="mb-4">
-                <label className="block text-gray-700 mb-2">{t('Confirm Password')}</label>
-                <div className="relative">
-                  <input
-                    type={showForgotConfirmPassword ? 'text' : 'password'}
-                    value={forgotConfirmPassword}
-                    onChange={(e) => setForgotConfirmPassword(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 pr-10"
-                    required
-                    minLength={6}
-                  />
-                  {forgotConfirmPassword && (
-                    <button
-                      type="button"
-                      onClick={() => setShowForgotConfirmPassword(!showForgotConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                    >
-                      {showForgotConfirmPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  type="submit"
-                  className="flex-1 bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2"
-                  disabled={sendingForgotCode}
-                >
-                  {sendingForgotCode ? <SyncLoader color="#fff" size={8} /> : t('Reset Password')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowForgotPasswordModal(false);
-                    setForgotNewPassword('');
-                    setForgotConfirmPassword('');
-                    setForgotPasswordError('');
-                  }}
-                  className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300"
-                >
-                  {t('Cancel')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+
 
       {/* Forgot Password Code Modal - Step 2 */}
       {showForgotCodeModal && (
@@ -1925,6 +2013,8 @@ const Profile = () => {
           </div>
         </div>
       )}
+
+
 
       {showDeleteCodeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

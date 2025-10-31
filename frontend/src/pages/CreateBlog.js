@@ -335,7 +335,7 @@ const CreateBlog = () => {
   }), [t]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
       <Toaster />
       <div className="container mx-auto px-4 max-w-4xl">
         <button
@@ -344,9 +344,9 @@ const CreateBlog = () => {
         >
           <FaArrowLeft /> {t('Back')}
         </button>
-        <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sm:p-8">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">{t('Create New Blog Post')}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100">{t('Create New Blog Post')}</h1>
             {lastSaved && (
               <span className="text-xs text-gray-500">
                 Last saved: {lastSaved.toLocaleTimeString()}
@@ -358,26 +358,26 @@ const CreateBlog = () => {
           
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-gray-700 mb-2 font-semibold">{t('Title')}</label>
+              <label className="block text-gray-700 dark:text-gray-300 mb-2 font-semibold">{t('Title')}</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 required
                 placeholder={t('Enter blog title...')}
                 maxLength={100}
               />
-              <p className="text-xs text-gray-500 mt-1">{title.length}/100 {t('characters')}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{title.length}/100 {t('characters')}</p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-gray-700 mb-2 font-semibold">{t('Category')}</label>
+                <label className="block text-gray-700 dark:text-gray-300 mb-2 font-semibold">{t('Category')}</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="General">{t('General')}</option>
                   <option value="Technology">{t('Technology')}</option>
@@ -387,17 +387,29 @@ const CreateBlog = () => {
                   <option value="Health">{t('Health')}</option>
                   <option value="Business">{t('Business')}</option>
                   <option value="Education">{t('Education')}</option>
+                  <option value="Entertainment">{t('Entertainment')}</option>
+                  <option value="Sports">{t('Sports')}</option>
+                  <option value="Science">{t('Science')}</option>
+                  <option value="Fashion">{t('Fashion')}</option>
+                  <option value="Finance">{t('Finance')}</option>
+                  <option value="Gaming">{t('Gaming')}</option>
+                  <option value="Music">{t('Music')}</option>
+                  <option value="Art">{t('Art')}</option>
+                  <option value="Photography">{t('Photography')}</option>
+                  <option value="DIY">{t('DIY')}</option>
+                  <option value="Parenting">{t('Parenting')}</option>
+                  <option value="Pets">{t('Pets')}</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-gray-700 mb-2 font-semibold">{t('Cover Image')}</label>
+                <label className="block text-gray-700 dark:text-gray-300 mb-2 font-semibold">{t('Cover Image')}</label>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleImageUpload}
                   disabled={uploadingImage}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 />
                 {uploadingImage && <p className="text-xs text-blue-600 mt-1">{t('Uploading...')}</p>}
                 {coverImage && (
@@ -416,26 +428,26 @@ const CreateBlog = () => {
             </div>
 
             <div>
-              <label className="block text-gray-700 mb-2 font-semibold">{t('SEO Meta Description')}</label>
+              <label className="block text-gray-700 dark:text-gray-300 mb-2 font-semibold">{t('SEO Meta Description')}</label>
               <textarea
                 value={metaDescription}
                 onChange={(e) => setMetaDescription(e.target.value)}
-                className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 placeholder={t('Brief description for search engines (max 160 characters)')}
                 maxLength={160}
                 rows={2}
               />
-              <p className="text-xs text-gray-500 mt-1">{metaDescription.length}/160 {t('characters')}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{metaDescription.length}/160 {t('characters')}</p>
             </div>
             
             <div>
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-2">
-                <label className="block text-gray-700 font-semibold">{t('Content')}</label>
+                <label className="block text-gray-700 dark:text-gray-300 font-semibold">{t('Content')}</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => setPreviewMode(!previewMode)}
-                    className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition"
+                    className="px-3 py-1 text-sm bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition"
                   >
                     {previewMode ? t('Write') : t('Preview')}
                   </button>
@@ -451,7 +463,7 @@ const CreateBlog = () => {
               </div>
               
               {previewMode ? (
-                <div className="border rounded-lg p-4 min-h-[300px] prose max-w-none">
+                <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 min-h-[300px] prose dark:prose-invert max-w-none bg-white dark:bg-gray-700">
                   <ReactMarkdown>{content || `*${t('No content to preview')}*`}</ReactMarkdown>
                 </div>
               ) : (
@@ -477,7 +489,7 @@ const CreateBlog = () => {
             </div>
             
             <div>
-              <label className="block text-gray-700 mb-2 font-semibold">{t('Tags')}</label>
+              <label className="block text-gray-700 dark:text-gray-300 mb-2 font-semibold">{t('Tags')}</label>
               <div className="flex flex-wrap gap-2 mb-2">
                 {tags.map((tag, index) => (
                   <span
@@ -500,10 +512,10 @@ const CreateBlog = () => {
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={addTag}
-                className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 placeholder={t('Type tag and press Enter or comma')}
               />
-              <p className="text-xs text-gray-500 mt-1">{t('Press Enter or comma to add tags')}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('Press Enter or comma to add tags')}</p>
             </div>
             
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
@@ -520,7 +532,7 @@ const CreateBlog = () => {
                   type="button"
                   onClick={saveDraft}
                   disabled={loading}
-                  className="bg-gray-200 text-gray-700 px-8 py-3 rounded-lg font-semibold hover:bg-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-8 py-3 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? t('Saving...') : t('Save Draft')}
                 </button>
@@ -562,7 +574,7 @@ const CreateBlog = () => {
           <div className="text-center">
             <GridLoader color="#3B82F6" size={20} />
             <p className="mt-6 text-white text-lg font-semibold">
-              {isDraft ? t('Saving draft...') : t('Publishing...')}
+              {t('Saving...')}
             </p>
             {coverImageFile && (
               <p className="mt-2 text-gray-300 text-sm">{t('Uploading...')}</p>
@@ -574,9 +586,9 @@ const CreateBlog = () => {
       {/* Cancel Confirmation Modal */}
       {showCancelModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">⚠️ {t('Unsaved Changes')}</h3>
-            <p className="text-gray-600 mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">⚠️ {t('Unsaved Changes')}</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
               {t('You have unsaved changes. Are you sure you want to leave? All your progress will be lost.')}
             </p>
             <div className="flex gap-3">
@@ -588,7 +600,7 @@ const CreateBlog = () => {
               </button>
               <button
                 onClick={() => setShowCancelModal(false)}
-                className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition"
+                className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 py-3 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition"
               >
                 {t('Stay')}
               </button>

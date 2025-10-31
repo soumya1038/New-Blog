@@ -2,7 +2,7 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
-import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments } from 'react-icons/fa';
+import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun } from 'react-icons/fa';
 import LanguageSelector from './LanguageSelector';
 import Avatar from './Avatar';
 
@@ -14,6 +14,10 @@ const Navbar = () => {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  });
   const dropdownRef = useRef(null);
   const tabletDropdownRef = useRef(null);
 
@@ -69,6 +73,17 @@ const Navbar = () => {
     setShowLogoutModal(false);
   };
 
+  const toggleTheme = () => {
+    const newTheme = !isDarkMode;
+    setIsDarkMode(newTheme);
+    localStorage.setItem('theme', newTheme ? 'dark' : 'light');
+    document.documentElement.classList.toggle('dark', newTheme);
+  };
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', isDarkMode);
+  }, []);
+
   return (
     <nav className="navbar bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg">
       <div className="container mx-auto px-4 py-4">
@@ -87,6 +102,15 @@ const Navbar = () => {
                 )}
                 <Link to="/create" className="create-blog-btn hover:text-gray-200">{t('Create Blog')}</Link>
                 <Link to="/drafts" className="hover:text-gray-200">{t('My Drafts')}</Link>
+                <button
+                  onClick={toggleTheme}
+                  className="hover:text-gray-200 p-2 rounded-lg hover:bg-white/10 transition-all duration-300 transform hover:scale-110"
+                  title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                >
+                  <div className="transition-transform duration-500 ease-in-out" style={{ transform: isDarkMode ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                    {isDarkMode ? <FaSun size={20} /> : <FaMoon size={20} />}
+                  </div>
+                </button>
                 <LanguageSelector />
                 <Link to="/notifications" className="notifications-btn hover:text-gray-200 relative">
                   <FaBell size={20} />
@@ -111,13 +135,13 @@ const Navbar = () => {
                   </button>
 
                   {showDropdown && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-2 z-50">
+                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-50">
                       {(user.role === 'admin' || user.role === 'coAdmin') && (
                         <Link
                           to="/admin"
                           onClick={() => setShowDropdown(false)}
-                          className={`block px-4 py-2 hover:bg-gray-100 font-semibold ${
-                            user.role === 'coAdmin' ? 'text-blue-600' : 'text-purple-600'
+                          className={`block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold ${
+                            user.role === 'coAdmin' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'
                           }`}
                         >
                           {t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}
@@ -126,28 +150,28 @@ const Navbar = () => {
                       <Link
                         to="/profile"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 hover:bg-gray-100"
+                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                       >
                         {t('My Profile')}
                       </Link>
                       <Link
                         to="/drafts"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 hover:bg-gray-100"
+                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                       >
                         {t('My Drafts')}
                       </Link>
                       <Link
                         to="/chat"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 hover:bg-gray-100 flex items-center gap-2"
+                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      <hr className="my-2" />
+                      <hr className="my-2 border-gray-200 dark:border-gray-700" />
                       <button
                         onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-red-600 hover:bg-gray-100 flex items-center gap-2"
+                        className="w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
                       >
                         <FaSignOutAlt /> {t('Logout')}
                       </button>
@@ -157,6 +181,15 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                <button
+                  onClick={toggleTheme}
+                  className="hover:text-gray-200 p-2 rounded-lg hover:bg-white/10 transition-all duration-300 transform hover:scale-110"
+                  title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                >
+                  <div className="transition-transform duration-500 ease-in-out" style={{ transform: isDarkMode ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                    {isDarkMode ? <FaSun size={20} /> : <FaMoon size={20} />}
+                  </div>
+                </button>
                 <LanguageSelector />
                 <Link to="/login" className="hover:text-gray-200">{t('Login')}</Link>
                 <Link to="/register" className="bg-white text-blue-600 px-4 py-2 rounded-lg font-semibold hover:bg-gray-100">{t('Sign Up')}</Link>
@@ -169,6 +202,15 @@ const Navbar = () => {
             {user ? (
               <>
                 <Link to="/create" className="hover:text-gray-200 text-sm">{t('Create')}</Link>
+                <button
+                  onClick={toggleTheme}
+                  className="hover:text-gray-200 p-2 rounded-lg hover:bg-white/10 transition-all duration-300 transform hover:scale-110"
+                  title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                >
+                  <div className="transition-transform duration-500 ease-in-out" style={{ transform: isDarkMode ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                    {isDarkMode ? <FaSun size={18} /> : <FaMoon size={18} />}
+                  </div>
+                </button>
                 <LanguageSelector />
                 <Link to="/notifications" className="hover:text-gray-200 relative">
                   <FaBell size={20} />
@@ -189,13 +231,13 @@ const Navbar = () => {
                     <FaChevronDown size={12} />
                   </button>
                   {showDropdown && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-2 z-50">
+                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-50">
                       {(user.role === 'admin' || user.role === 'coAdmin') && (
                         <Link
                           to="/admin"
                           onClick={() => setShowDropdown(false)}
-                          className={`block px-4 py-2 hover:bg-gray-100 font-semibold ${
-                            user.role === 'coAdmin' ? 'text-blue-600' : 'text-purple-600'
+                          className={`block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold ${
+                            user.role === 'coAdmin' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'
                           }`}
                         >
                           {t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}
@@ -204,28 +246,28 @@ const Navbar = () => {
                       <Link
                         to="/profile"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 hover:bg-gray-100"
+                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                       >
                         {t('My Profile')}
                       </Link>
                       <Link
                         to="/drafts"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 hover:bg-gray-100"
+                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                       >
                         {t('My Drafts')}
                       </Link>
                       <Link
                         to="/chat"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 hover:bg-gray-100 flex items-center gap-2"
+                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      <hr className="my-2" />
+                      <hr className="my-2 border-gray-200 dark:border-gray-700" />
                       <button
                         onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-red-600 hover:bg-gray-100 flex items-center gap-2"
+                        className="w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
                       >
                         <FaSignOutAlt /> {t('Logout')}
                       </button>
@@ -235,6 +277,15 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                <button
+                  onClick={toggleTheme}
+                  className="hover:text-gray-200 p-2 rounded-lg hover:bg-white/10 transition-all duration-300 transform hover:scale-110"
+                  title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                >
+                  <div className="transition-transform duration-500 ease-in-out" style={{ transform: isDarkMode ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                    {isDarkMode ? <FaSun size={18} /> : <FaMoon size={18} />}
+                  </div>
+                </button>
                 <LanguageSelector />
                 <Link to="/login" className="hover:text-gray-200 text-sm">{t('Login')}</Link>
                 <Link to="/register" className="bg-white text-blue-600 px-3 py-1.5 rounded-lg font-semibold hover:bg-gray-100 text-sm">{t('Sign Up')}</Link>
@@ -243,7 +294,16 @@ const Navbar = () => {
           </div>
 
           {/* Mobile Menu Button & Notification */}
-          <div className="md:hidden flex items-center gap-4">
+          <div className="md:hidden flex items-center gap-3">
+            <button
+              onClick={toggleTheme}
+              className="hover:text-gray-200 p-2 rounded-lg hover:bg-white/10 transition-all duration-300 transform hover:scale-110"
+              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              <div className="transition-transform duration-500 ease-in-out" style={{ transform: isDarkMode ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                {isDarkMode ? <FaSun size={18} /> : <FaMoon size={18} />}
+              </div>
+            </button>
             {user && (
               <Link to="/notifications" className="hover:text-gray-200 relative">
                 <FaBell size={20} />
@@ -266,9 +326,9 @@ const Navbar = () => {
         {/* Logout Modal */}
         {showLogoutModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold text-gray-800 mb-4">{t('Confirm Logout')}</h3>
-              <p className="text-gray-700 mb-6">{t('Are you sure you want to logout?')}</p>
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">{t('Confirm Logout')}</h3>
+              <p className="text-gray-700 dark:text-gray-300 mb-6">{t('Are you sure you want to logout?')}</p>
               <div className="flex gap-3">
                 <button
                   onClick={confirmLogout}
@@ -278,7 +338,7 @@ const Navbar = () => {
                 </button>
                 <button
                   onClick={() => setShowLogoutModal(false)}
-                  className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300 font-semibold"
+                  className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-6 py-2 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 font-semibold"
                 >
                   {t('Cancel')}
                 </button>
@@ -335,7 +395,16 @@ const Navbar = () => {
                 >
                   <FaComments /> {t('Chat')}
                 </Link>
-                <div className="py-2 px-3">
+                <div className="py-2 px-3 flex items-center gap-3">
+                  <button
+                    onClick={toggleTheme}
+                    className="hover:bg-white/10 p-2 rounded-lg transition-all duration-300 transform hover:scale-110"
+                    title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                  >
+                    <div className="transition-transform duration-500 ease-in-out" style={{ transform: isDarkMode ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                      {isDarkMode ? <FaSun size={20} /> : <FaMoon size={20} />}
+                    </div>
+                  </button>
                   <LanguageSelector />
                 </div>
                 <button
@@ -350,7 +419,16 @@ const Navbar = () => {
               </>
             ) : (
               <>
-                <div className="py-2 px-3">
+                <div className="py-2 px-3 flex items-center gap-3">
+                  <button
+                    onClick={toggleTheme}
+                    className="hover:bg-white/10 p-2 rounded-lg transition-all duration-300 transform hover:scale-110"
+                    title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                  >
+                    <div className="transition-transform duration-500 ease-in-out" style={{ transform: isDarkMode ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                      {isDarkMode ? <FaSun size={20} /> : <FaMoon size={20} />}
+                    </div>
+                  </button>
                   <LanguageSelector />
                 </div>
                 <Link

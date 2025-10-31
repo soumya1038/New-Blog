@@ -51,13 +51,13 @@ const LanguageSelector = () => {
             className="fixed inset-0 z-40" 
             onClick={() => setShowDropdown(false)}
           ></div>
-          <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl py-2 z-50 max-h-96 overflow-y-auto">
+          <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-50 max-h-96 overflow-y-auto">
             {languages.map((lang) => (
               <button
                 key={lang.code}
                 onClick={() => changeLanguage(lang.code)}
-                className={`w-full text-left px-4 py-2 hover:bg-gray-100 flex items-center gap-2 ${
-                  i18n.language === lang.code ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-800'
+                className={`w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 ${
+                  i18n.language === lang.code ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold' : 'text-gray-800 dark:text-gray-200'
                 }`}
               >
                 <span className="text-xl">{lang.flag}</span>

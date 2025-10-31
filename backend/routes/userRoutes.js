@@ -39,6 +39,24 @@ router.post('/statuses', protect, trackActivity, upload.single('statusImage'), c
 router.get('/statuses', protect, getStatuses);
 router.put('/statuses/:statusId', protect, trackActivity, upload.single('statusImage'), updateStatus);
 router.delete('/statuses/:statusId', protect, trackActivity, deleteStatus);
+router.post('/contact', protect, async (req, res) => {
+  try {
+    const { issue, advice, userEmail, username } = req.body;
+    const { sendContactEmail } = require('../utils/mailService');
+    
+    await sendContactEmail({
+      userEmail,
+      username,
+      issue,
+      advice
+    });
+    
+    res.json({ success: true, message: 'Contact message sent successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 router.post('/statuses/check', protect, async (req, res) => {
   try {
     const { userIds } = req.body;

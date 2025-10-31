@@ -401,12 +401,20 @@ exports.createStatus = async (req, res) => {
 
     // Upload image if provided
     if (req.file) {
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: 'blog-status',
-        transformation: [
-          { width: 600, height: 1067, crop: 'limit' },
-          { quality: 'auto' }
-        ]
+      const result = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            folder: 'blog-status',
+            transformation: [
+              { width: 1080, height: 1920, crop: 'limit' },
+              { quality: 'auto' }
+            ]
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(req.file.buffer);
       });
       imageUrl = result.secure_url;
     }
@@ -490,12 +498,20 @@ exports.updateStatus = async (req, res) => {
       }
 
       // Upload new image
-      const result = await cloudinary.uploader.upload(req.file.path, {
-        folder: 'blog-status',
-        transformation: [
-          { width: 600, height: 1067, crop: 'limit' },
-          { quality: 'auto' }
-        ]
+      const result = await new Promise((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          {
+            folder: 'blog-status',
+            transformation: [
+              { width: 1080, height: 1920, crop: 'limit' },
+              { quality: 'auto' }
+            ]
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        ).end(req.file.buffer);
       });
       status.image = result.secure_url;
     }

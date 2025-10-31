@@ -296,33 +296,33 @@ const Login = () => {
         />
       )}
 
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-        <h2 className="text-3xl font-bold text-center mb-6 text-gray-800">{t('Welcome Back')}</h2>
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center px-4">
+      <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-xl w-full max-w-md">
+        <h2 className="text-3xl font-bold text-center mb-6 text-gray-800 dark:text-white">{t('Welcome Back')}</h2>
         
-        {error && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4">{error}</div>}
+        {error && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-lg mb-4">{error}</div>}
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-gray-700 mb-2">{t('Username')}</label>
+            <label className="block text-gray-700 dark:text-gray-300 mb-2">{t('Username')}</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               required
               minLength={3}
             />
           </div>
           
           <div>
-            <label className="block text-gray-700 mb-2">{t('Password')}</label>
+            <label className="block text-gray-700 dark:text-gray-300 mb-2">{t('Password')}</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 required
                 minLength={6}
               />
@@ -330,7 +330,7 @@ const Login = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                 >
                   {showPassword ? <VscEyeClosed size={20} /> : <VscEye size={20} />}
                 </button>
@@ -339,17 +339,17 @@ const Login = () => {
           </div>
 
           {/* Math CAPTCHA */}
-          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-3 sm:p-4">
+          <div className="bg-blue-50 dark:bg-gray-700 border-2 border-blue-200 dark:border-gray-600 rounded-lg p-3 sm:p-4">
             <div className="flex justify-between items-center mb-2">
-              <label className="text-gray-700 font-semibold text-xs sm:text-sm">{t("Verify you're human")}</label>
+              <label className="text-gray-700 dark:text-gray-300 font-semibold text-xs sm:text-sm">{t("Verify you're human")}</label>
               <span className={`text-xs font-mono font-bold px-2 py-1 rounded ${
-                mathTimer <= 10 ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-600'
+                mathTimer <= 10 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
               }`}>
                 0:{mathTimer.toString().padStart(2, '0')}
               </span>
             </div>
             <div className="space-y-2">
-              <div className="bg-white px-3 py-2 rounded-lg border-2 border-blue-300 font-mono text-base sm:text-lg font-bold text-gray-800 text-center">
+              <div className="bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border-2 border-blue-300 dark:border-gray-600 font-mono text-base sm:text-lg font-bold text-gray-800 dark:text-white text-center">
                 {mathQuestion.num1} {mathQuestion.operator} {mathQuestion.num2} = ?
               </div>
               <div className="flex items-center gap-2">
@@ -358,7 +358,7 @@ const Login = () => {
                   value={mathAnswer}
                   onChange={(e) => setMathAnswer(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !isMathVerified && handleMathVerify()}
-                  className="flex-1 px-3 py-2 border-2 border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold text-sm sm:text-base"
+                  className="flex-1 px-3 py-2 border-2 border-blue-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   placeholder="?"
                   disabled={isMathVerified}
                 />
@@ -376,7 +376,7 @@ const Login = () => {
                 <button
                   type="button"
                   onClick={generateMathQuestion}
-                  className="text-blue-600 hover:text-blue-800 p-2 flex-shrink-0"
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 p-2 flex-shrink-0"
                   title="Refresh question"
                 >
                   <FaRedo size={16} />
@@ -384,7 +384,7 @@ const Login = () => {
               </div>
             </div>
             {isMathVerified && (
-              <p className="text-xs text-green-600 mt-2 font-semibold">✓ {t('Verified!')}</p>
+              <p className="text-xs text-green-600 dark:text-green-400 mt-2 font-semibold">✓ {t('Verified!')}</p>
             )}
           </div>
           
@@ -396,19 +396,19 @@ const Login = () => {
                 onChange={(e) => setRememberMe(e.target.checked)}
                 className="mr-2"
               />
-              <label className="text-gray-700">{t('Remember Me')}</label>
+              <label className="text-gray-700 dark:text-gray-300">{t('Remember Me')}</label>
             </div>
             <button
               type="button"
               onClick={() => setShowForgotModal(true)}
-              className="text-blue-600 hover:underline text-sm"
+              className="text-blue-600 dark:text-blue-400 hover:underline text-sm"
             >
               {t('Forgot Password?')}
             </button>
           </div>
           
           {isLocked && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg text-center">
+            <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg text-center">
               <p className="font-semibold">{t('Account Locked')}</p>
               <p className="text-sm">{t('Please wait')} {Math.floor(lockoutTime / 60)}:{(lockoutTime % 60).toString().padStart(2, '0')}</p>
             </div>
@@ -432,25 +432,25 @@ const Login = () => {
           </button>
         </form>
         
-        <p className="text-center mt-4 text-gray-600">
-          {t("Don't have an account?")} <Link to="/register" className="text-blue-600 hover:underline">{t('Sign Up')}</Link>
+        <p className="text-center mt-4 text-gray-600 dark:text-gray-400">
+          {t("Don't have an account?")} <Link to="/register" className="text-blue-600 dark:text-blue-400 hover:underline">{t('Sign Up')}</Link>
         </p>
       </div>
 
       {/* Forgot Password Modal - Step 1: Enter Username and Email */}
       {showForgotModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-blue-600 mb-4">{t('Forgot Password')}</h3>
-            <p className="text-gray-700 mb-4">{t('Enter your account details to verify your identity')}</p>
-            {forgotError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{forgotError}</div>}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">{t('Forgot Password')}</h3>
+            <p className="text-gray-700 dark:text-gray-300 mb-4">{t('Enter your account details to verify your identity')}</p>
+            {forgotError && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-lg mb-4 text-sm">{forgotError}</div>}
             <form onSubmit={handleForgotPassword}>
               <input
                 type="text"
                 value={forgotUsername}
                 onChange={(e) => setForgotUsername(e.target.value)}
                 placeholder={t('Username')}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
+                className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 required
                 minLength={3}
               />
@@ -459,7 +459,7 @@ const Login = () => {
                 value={forgotEmail}
                 onChange={(e) => setForgotEmail(e.target.value)}
                 placeholder={t('Email Address')}
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+                className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 required
               />
               <div className="flex gap-3">
@@ -486,17 +486,17 @@ const Login = () => {
       {/* Verify Code Modal - Step 2 */}
       {showVerifyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-blue-600 mb-4">{t('Enter Verification Code')}</h3>
-            <p className="text-gray-700 mb-4">{t('A 6-digit code has been sent to your email.')}</p>
-            {verifyError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{verifyError}</div>}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">{t('Enter Verification Code')}</h3>
+            <p className="text-gray-700 dark:text-gray-300 mb-4">{t('A 6-digit code has been sent to your email.')}</p>
+            {verifyError && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-lg mb-4 text-sm">{verifyError}</div>}
             <form onSubmit={handleVerifyCode}>
               <input
                 type="text"
                 value={verifyCode}
                 onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="000000"
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-center text-2xl tracking-widest"
+                className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-center text-2xl tracking-widest bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 maxLength={6}
                 required
               />
@@ -512,18 +512,18 @@ const Login = () => {
       {/* New Password Modal - Step 3 */}
       {showNewPasswordModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-blue-600 mb-4">{t('Create New Password')}</h3>
-            {passwordError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{passwordError}</div>}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">{t('Create New Password')}</h3>
+            {passwordError && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-lg mb-4 text-sm">{passwordError}</div>}
             <form onSubmit={handleRequestPasswordChange}>
               <div className="mb-4">
-                <label className="block text-gray-700 mb-2">{t('New Password')}</label>
+                <label className="block text-gray-700 dark:text-gray-300 mb-2">{t('New Password')}</label>
                 <div className="relative">
                   <input
                     type={showNewPassword ? 'text' : 'password'}
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                    className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     required
                     minLength={6}
                   />
@@ -531,7 +531,7 @@ const Login = () => {
                     <button
                       type="button"
                       onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                     >
                       {showNewPassword ? <VscEyeClosed size={20} /> : <VscEye size={20} />}
                     </button>
@@ -539,13 +539,13 @@ const Login = () => {
                 </div>
               </div>
               <div className="mb-4">
-                <label className="block text-gray-700 mb-2">{t('Confirm Password')}</label>
+                <label className="block text-gray-700 dark:text-gray-300 mb-2">{t('Confirm Password')}</label>
                 <div className="relative">
                   <input
                     type={showConfirmPassword ? 'text' : 'password'}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+                    className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                     required
                     minLength={6}
                   />
@@ -553,7 +553,7 @@ const Login = () => {
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
                     >
                       {showConfirmPassword ? <VscEyeClosed size={20} /> : <VscEye size={20} />}
                     </button>
@@ -584,17 +584,17 @@ const Login = () => {
       {/* Final Confirmation Code Modal - Step 4 */}
       {showFinalCodeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-blue-600 mb-4">{t('Enter Confirmation Code')}</h3>
-            <p className="text-gray-700 mb-4">{t('A final confirmation code has been sent to your email.')}</p>
-            {finalError && <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{finalError}</div>}
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">{t('Enter Confirmation Code')}</h3>
+            <p className="text-gray-700 dark:text-gray-300 mb-4">{t('A final confirmation code has been sent to your email.')}</p>
+            {finalError && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-lg mb-4 text-sm">{finalError}</div>}
             <form onSubmit={handleConfirmPasswordChange}>
               <input
                 type="text"
                 value={finalCode}
                 onChange={(e) => setFinalCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="000000"
-                className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-center text-2xl tracking-widest"
+                className="w-full px-4 py-2 border dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-center text-2xl tracking-widest bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 maxLength={6}
                 required
               />
@@ -610,16 +610,16 @@ const Login = () => {
       {/* Success Modal */}
       {showSuccessModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full text-center">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full text-center">
             <div className="mb-4">
-              <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="mx-auto w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               </div>
             </div>
-            <h3 className="text-2xl font-bold text-green-600 mb-4">{t('Success!')}</h3>
-            <p className="text-gray-700 mb-6">{t('Password changed successfully! Please login with your new password.')}</p>
+            <h3 className="text-2xl font-bold text-green-600 dark:text-green-400 mb-4">{t('Success!')}</h3>
+            <p className="text-gray-700 dark:text-gray-300 mb-6">{t('Password changed successfully! Please login with your new password.')}</p>
             <button
               onClick={handleSuccessClose}
               className="w-full bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-semibold"

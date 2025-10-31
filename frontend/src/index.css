@@ -2,6 +2,137 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html {
+    @apply transition-colors duration-300;
+  }
+  
+  html.dark {
+    @apply bg-gray-900;
+  }
+  
+  body {
+    @apply bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300;
+  }
+}
+
+@layer utilities {
+  .bg-page {
+    @apply bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800;
+  }
+  
+  .bg-card {
+    @apply bg-white dark:bg-gray-800;
+  }
+  
+  .text-primary {
+    @apply text-gray-900 dark:text-gray-100;
+  }
+  
+  .text-secondary {
+    @apply text-gray-600 dark:text-gray-400;
+  }
+  
+  .border-default {
+    @apply border-gray-200 dark:border-gray-700;
+  }
+  
+  .hover-card {
+    @apply hover:shadow-lg dark:hover:shadow-gray-900/50;
+  }
+}
+
+/* Global dark mode styles */
+.dark {
+  color-scheme: dark;
+}
+
+.dark .bg-gradient-to-br {
+  @apply from-gray-900 to-gray-800;
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+  @apply bg-gray-700 text-gray-100 border-gray-600;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  @apply text-gray-400;
+}
+
+.dark .shadow-lg,
+.dark .shadow-xl,
+.dark .shadow-2xl {
+  @apply shadow-gray-900/50;
+}
+
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4,
+.dark h5,
+.dark h6 {
+  @apply text-gray-100;
+}
+
+.dark p {
+  @apply text-gray-300;
+}
+
+.dark .bg-white {
+  @apply bg-gray-800;
+}
+
+.dark .bg-gray-50 {
+  @apply bg-gray-800;
+}
+
+.dark .bg-gray-100 {
+  @apply bg-gray-700;
+}
+
+.dark .text-gray-800 {
+  @apply text-gray-100;
+}
+
+.dark .text-gray-700 {
+  @apply text-gray-200;
+}
+
+.dark .text-gray-600 {
+  @apply text-gray-400;
+}
+
+.dark .text-gray-500 {
+  @apply text-gray-400;
+}
+
+.dark .border-gray-200 {
+  @apply border-gray-700;
+}
+
+.dark .border-gray-300 {
+  @apply border-gray-600;
+}
+
+/* Fix all cancel/secondary buttons in dark mode */
+.dark button.bg-gray-200,
+.dark .bg-gray-200 {
+  @apply bg-gray-700 text-gray-200;
+}
+
+.dark button.bg-gray-200:hover,
+.dark .bg-gray-200:hover {
+  @apply bg-gray-600;
+}
+
+/* Fix modals in dark mode */
+.dark .fixed .bg-white {
+  @apply bg-gray-800;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

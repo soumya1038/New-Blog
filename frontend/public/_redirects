@@ -1,16 +1,1 @@
-# Specific routes - serve index.html for all React Router paths
-/login              /index.html   200
-/register           /index.html   200
-/create             /index.html   200
-/edit/*             /index.html   200
-/blog/*             /index.html   200
-/profile            /index.html   200
-/user/*             /index.html   200
-/notifications      /index.html   200
-/drafts             /index.html   200
-/admin              /index.html   200
-/verify-email/*     /index.html   200
-/chat               /index.html   200
-
-# Fallback - catch all other routes
-/*                  /index.html   200
+/*    /index.html   200

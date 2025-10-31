@@ -113,7 +113,7 @@ const Drafts = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
       <Toaster />
       {editLoading && (
         <div className="fixed top-0 left-0 right-0 z-50">
@@ -127,19 +127,19 @@ const Drafts = () => {
         >
           <FaArrowLeft /> {t('Back')}
         </button>
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold text-gray-800">{t('My Drafts')}</h1>
+            <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">{t('My Drafts')}</h1>
             <button
               onClick={fetchDrafts}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 text-sm"
+              className="bg-blue-600 dark:bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 text-sm"
             >
               {t('Refresh')}
             </button>
           </div>
 
           {showWarning && (
-            <div className="bg-yellow-50 border border-yellow-300 text-yellow-800 px-4 py-3 rounded mb-4 flex justify-between items-center">
+            <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 px-4 py-3 rounded mb-4 flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <FaClock className="text-yellow-600" />
                 <span className="text-sm">
@@ -156,14 +156,14 @@ const Drafts = () => {
           )}
 
           {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+            <div className="bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-200 px-4 py-3 rounded mb-4">
               {error}
             </div>
           )}
 
           {drafts.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-600 text-lg mb-4">{t('No drafts yet')}</p>
+              <p className="text-gray-600 dark:text-gray-400 text-lg mb-4">{t('No drafts yet')}</p>
               <Link to="/create" className="text-blue-600 hover:underline">
                 Create your first blog post
               </Link>
@@ -171,14 +171,14 @@ const Drafts = () => {
           ) : (
             <div className="space-y-4">
               {drafts.map(draft => (
-                <div key={draft._id} className="border rounded-lg p-4 hover:shadow-md transition">
-                  <div className="flex justify-between items-start">
+                <div key={draft._id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md dark:hover:shadow-gray-900/50 transition bg-white dark:bg-gray-700/50">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
                     <div className="flex-1">
-                      <h3 className="text-xl font-bold text-gray-800 mb-2">{draft.title}</h3>
-                      <p className="text-gray-600 mb-3 line-clamp-2">
+                      <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">{draft.title}</h3>
+                      <p className="text-gray-600 dark:text-gray-400 mb-3 line-clamp-2">
                         {draft.content.substring(0, 150)}...
                       </p>
-                      <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-sm text-gray-500 dark:text-gray-400">
                         <span className="flex items-center gap-1">
                           <FaClock /> {new Date(draft.updatedAt).toLocaleDateString()}
                         </span>
@@ -191,28 +191,28 @@ const Drafts = () => {
                       </div>
                     </div>
 
-                    <div className="flex gap-2 ml-4">
+                    <div className="flex flex-wrap sm:flex-nowrap gap-2">
                       <button
                         onClick={() => openPublishModal(draft)}
-                        className="flex items-center gap-1 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700"
+                        className="flex items-center gap-1 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 text-sm"
                         title="Publish draft"
                       >
-                        <FaCheckCircle /> {t('Publish')}
+                        <FaCheckCircle /> <span className="hidden sm:inline">{t('Publish')}</span>
                       </button>
                       <button
                         onClick={() => {
                           setEditLoading(true);
                           navigate(`/edit/${draft._id}`);
                         }}
-                        className="flex items-center gap-1 bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700"
+                        className="flex items-center gap-1 bg-blue-600 text-white px-3 py-2 rounded-lg hover:bg-blue-700 text-sm"
                       >
-                        <FaEdit /> {t('Edit')}
+                        <FaEdit /> <span className="hidden sm:inline">{t('Edit')}</span>
                       </button>
                       <button
                         onClick={() => openDeleteModal(draft)}
-                        className="flex items-center gap-1 bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700"
+                        className="flex items-center gap-1 bg-red-600 text-white px-3 py-2 rounded-lg hover:bg-red-700 text-sm"
                       >
-                        <FaTrash /> {t('Delete')}
+                        <FaTrash /> <span className="hidden sm:inline">{t('Delete')}</span>
                       </button>
                     </div>
                   </div>
@@ -226,9 +226,9 @@ const Drafts = () => {
       {/* Publish Confirmation Modal */}
       {showPublishModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">📢 Publish Draft</h3>
-            <p className="text-gray-600 mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">📢 Publish Draft</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
               Are you sure you want to publish this draft? It will be visible to everyone.
             </p>
             <div className="flex gap-3">
@@ -254,9 +254,9 @@ const Drafts = () => {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">🗑️ Delete Draft</h3>
-            <p className="text-gray-600 mb-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">🗑️ Delete Draft</h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
               Are you sure you want to delete this draft? This action cannot be undone.
             </p>
             <div className="flex gap-3">

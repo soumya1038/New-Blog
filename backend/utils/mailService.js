@@ -202,6 +202,35 @@ const sendAccountDeletedSuccess = async (email, username) => {
   });
 };
 
+const sendContactEmail = async ({ userEmail, username, issue, advice }) => {
+  console.log('📧 [EMAIL] Sending contact message to admin');
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9fafb;">
+      <div style="background-color: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <h1 style="color: #1f2937; margin-bottom: 20px;">📧 New Contact Message</h1>
+        <p style="color: #4b5563; font-size: 16px; line-height: 1.6;"><strong>From:</strong> ${username} (${userEmail})</p>
+        <hr style="border: 1px solid #e5e7eb; margin: 20px 0;" />
+        <h3 style="color: #1f2937; margin-bottom: 10px;">Issue / Problem:</h3>
+        <p style="color: #4b5563; font-size: 16px; line-height: 1.6; background-color: #fef3c7; padding: 15px; border-radius: 8px;">
+          ${issue}
+        </p>
+        ${advice ? `
+        <h3 style="color: #1f2937; margin-bottom: 10px; margin-top: 20px;">Advice / Suggestions:</h3>
+        <p style="color: #4b5563; font-size: 16px; line-height: 1.6; background-color: #dbeafe; padding: 15px; border-radius: 8px;">
+          ${advice}
+        </p>
+        ` : ''}
+      </div>
+    </div>
+  `;
+
+  return sendEmail({
+    to: process.env.My_email || 'soumyamaiti20@gmail.com',
+    subject: `Contact Message from ${username} - New Blog`,
+    html,
+  });
+};
+
 module.exports = {
   sendEmail,
   sendVerificationEmail,
@@ -211,4 +240,5 @@ module.exports = {
   sendAccountDeletionConfirmation,
   sendPasswordChangedSuccess,
   sendAccountDeletedSuccess,
+  sendContactEmail,
 };
