@@ -91,6 +91,12 @@ const ChatNew = () => {
     if (user) {
       socket.current = socketService.connect(user._id);
       webrtcService.setSocket(socket.current);
+      
+      // Set callback for remote stream
+      webrtcService.setOnRemoteStream((stream) => {
+        console.log('📹 Remote stream received in ChatNew');
+        setActiveCall(prev => prev ? { ...prev, remoteStream: stream } : prev);
+      });
 
       // Notify backend that user is on /chat route
       socketService.updateRoute('/chat');
@@ -910,6 +916,7 @@ const ChatNew = () => {
         userAvatar: getUserAvatar(selectedChat),
         callType,
         stream,
+        remoteStream: null,
         callLogId: data.callLog._id,
         callAccepted: false,
         startTime: null
@@ -954,6 +961,7 @@ const ChatNew = () => {
         userAvatar: getUserAvatar(incomingCall.caller),
         callType: incomingCall.callType,
         stream,
+        remoteStream: null,
         callLogId: incomingCall.callLogId,
         callAccepted: true,
         startTime
@@ -2397,7 +2405,7 @@ const ChatNew = () => {
           onStopRecording={toggleRecording}
           onEndCall={endCall}
           localStream={activeCall.stream}
-          remoteStream={webrtcService.remoteStream}
+          remoteStream={activeCall.remoteStream}
         />
       )}
 

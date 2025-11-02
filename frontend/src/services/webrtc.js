@@ -6,6 +6,7 @@ class WebRTCService {
     this.mediaRecorder = null;
     this.recordedChunks = [];
     this.socket = null;
+    this.onRemoteStreamCallback = null;
     
     this.config = {
       iceServers: [
@@ -13,6 +14,10 @@ class WebRTCService {
         { urls: 'stun:stun1.l.google.com:19302' }
       ]
     };
+  }
+
+  setOnRemoteStream(callback) {
+    this.onRemoteStreamCallback = callback;
   }
 
   setSocket(socket) {
@@ -42,12 +47,16 @@ class WebRTCService {
       
       // Handle remote stream
       this.peerConnection.ontrack = (event) => {
+        console.log('📹 Received remote track:', event.track.kind);
         if (!this.remoteStream) {
           this.remoteStream = new MediaStream();
         }
         event.streams[0].getTracks().forEach(track => {
           this.remoteStream.addTrack(track);
         });
+        if (this.onRemoteStreamCallback) {
+          this.onRemoteStreamCallback(this.remoteStream);
+        }
       };
       
       // Handle ICE candidates
@@ -105,12 +114,16 @@ class WebRTCService {
       
       // Handle remote stream
       this.peerConnection.ontrack = (event) => {
+        console.log('📹 Received remote track:', event.track.kind);
         if (!this.remoteStream) {
           this.remoteStream = new MediaStream();
         }
         event.streams[0].getTracks().forEach(track => {
           this.remoteStream.addTrack(track);
         });
+        if (this.onRemoteStreamCallback) {
+          this.onRemoteStreamCallback(this.remoteStream);
+        }
       };
       
       // Handle ICE candidates
