@@ -19,6 +19,10 @@ class SocketService {
       this.socket.on('connect', () => {
         console.log('Socket connected');
         this.socket.emit('user:online', userId);
+        // Send current route after connection
+        if (this.currentRoute) {
+          this.socket.emit('route:change', this.currentRoute);
+        }
       });
 
       this.socket.on('disconnect', () => {
@@ -29,6 +33,7 @@ class SocketService {
   }
 
   updateRoute(route) {
+    this.currentRoute = route;
     if (this.socket && this.socket.connected) {
       this.socket.emit('route:change', route);
     }

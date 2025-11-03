@@ -1,7 +1,7 @@
 import React from 'react';
 import { FiX, FiPhone, FiVideo, FiPhoneIncoming, FiPhoneOutgoing, FiPhoneMissed } from 'react-icons/fi';
 
-const CallHistoryModal = ({ callLogs, currentUserId, onClose, onCallBack }) => {
+const CallHistoryModal = ({ callLogs, onClose, onCallBack, getUserDisplayName, getUserAvatar }) => {
   const formatDuration = (seconds) => {
     if (!seconds) return '0:00';
     const mins = Math.floor(seconds / 60);

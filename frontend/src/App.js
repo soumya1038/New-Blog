@@ -21,6 +21,7 @@ import IncomingCallModal from './components/IncomingCallModal';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
 import soundNotification from './utils/soundNotifications';
+import soundManager from './utils/soundManager';
 import api from './services/api';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useRouteTracker } from './hooks/useRouteTracker';
@@ -38,28 +39,33 @@ function AppContent() {
     if (!user) return;
 
     const socket = socketService.connect(user._id);
+    
+    // Send initial route after a brief delay to ensure socket is connected
+    setTimeout(() => {
+      socketService.updateRoute(location.pathname);
+    }, 100);
 
     const handleMessageReceive = async (message) => {
       const isInChat = location.pathname === '/chat';
       
       if (!isInChat) {
-        soundNotification.playMessageNotificationSound();
+        soundManager.play('notification');
         window.dispatchEvent(new CustomEvent('newNotification'));
       }
     };
 
     const handleNotificationLike = () => {
-      soundNotification.playNotificationReceivedSound();
+      soundManager.play('notification');
       window.dispatchEvent(new CustomEvent('newNotification'));
     };
 
     const handleNotificationComment = () => {
-      soundNotification.playNotificationReceivedSound();
+      soundManager.play('notification');
       window.dispatchEvent(new CustomEvent('newNotification'));
     };
 
     const handleNotificationFollow = () => {
-      soundNotification.playNotificationReceivedSound();
+      soundManager.play('notification');
       window.dispatchEvent(new CustomEvent('newNotification'));
     };
 
@@ -68,28 +74,32 @@ function AppContent() {
     };
 
     const handleNotificationMessage = () => {
-      soundNotification.playMessageNotificationSound();
+      soundManager.play('notification');
       window.dispatchEvent(new CustomEvent('newNotification'));
     };
 
     // Global call listeners
     const handleIncomingCall = ({ callerId, caller, callType, callLogId }) => {
       console.log('📞 App.js: Global incoming call:', { callerId, caller, callType });
-      // Only show global modal if NOT on chat page
       if (location.pathname !== '/chat') {
+        soundManager.play('incomingCall');
         setGlobalIncomingCall({ callerId, caller, callType, callLogId });
       }
     };
 
     const handleCallRejected = () => {
       console.log('📞 App.js: Call rejected');
+      soundManager.stop('callRing');
+      soundManager.play('endCall');
       setGlobalIncomingCall(null);
     };
 
     const handleCallEnded = () => {
       console.log('📞 App.js: Call ended');
+      soundManager.stop('callRing');
+      soundManager.stop('incomingCall');
+      soundManager.play('endCall');
       setGlobalIncomingCall(null);
-      // Dispatch event to notify ChatNew if it's open
       window.dispatchEvent(new CustomEvent('callEnded'));
     };
 
@@ -116,14 +126,17 @@ function AppContent() {
       socket.off('call:rejected', handleCallRejected);
       socket.off('call:ended', handleCallEnded);
     };
-  }, [user, location.pathname]);
+  }, [user]);
 
   const handleAcceptGlobalCall = () => {
+    soundManager.stop('incomingCall');
     navigate('/chat', { state: { incomingCall: globalIncomingCall } });
     setGlobalIncomingCall(null);
   };
 
   const handleRejectGlobalCall = () => {
+    soundManager.stop('incomingCall');
+    soundManager.play('endCall');
     const socket = socketService.getSocket();
     if (socket && globalIncomingCall) {
       socket.emit('call:reject', { callerId: globalIncomingCall.callerId });

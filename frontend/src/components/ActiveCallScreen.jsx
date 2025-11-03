@@ -1,243 +1,151 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiMonitor, FiPhoneOff, FiMinimize2, FiMaximize2 } from 'react-icons/fi';
-import { BsRecordCircle, BsStopCircle } from 'react-icons/bs';
+import React, { useEffect, useRef, useState } from 'react';
+import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiMinimize2, FiMaximize2 } from 'react-icons/fi';
 
-const ActiveCallScreen = ({ 
-  localStream, 
-  remoteStream, 
+const ActiveCallScreen = ({
+  remoteUser,
   callType,
   isMinimized,
-  onToggleMinimize,
-  onEndCall,
-  onToggleAudio,
-  onToggleVideo,
-  onToggleScreenShare,
-  onStartRecording,
-  onStopRecording,
   isAudioEnabled,
   isVideoEnabled,
-  isScreenSharing,
-  isRecording,
-  remoteUser,
   startTime,
-  callAccepted
+  callAccepted,
+  onToggleMinimize,
+  onToggleAudio,
+  onToggleVideo,
+  onEndCall,
+  localStream,
+  remoteStream
 }) => {
-  const [callDuration, setCallDuration] = useState(0);
-  const [audioLevels, setAudioLevels] = useState([0, 0, 0, 0, 0]);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
+  const [callDuration, setCallDuration] = useState(0);
 
   useEffect(() => {
-    // Only start timer if call is accepted
-    if (!callAccepted || !startTime) return;
-    
-    const interval = setInterval(() => {
-      setCallDuration(Math.floor((Date.now() - startTime) / 1000));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [callAccepted, startTime]);
-
-  useEffect(() => {
-    if (localVideoRef.current && localStream) {
+    if (localStream && localVideoRef.current) {
       localVideoRef.current.srcObject = localStream;
     }
   }, [localStream]);
 
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
+    if (remoteStream && remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = remoteStream;
     }
   }, [remoteStream]);
 
-  // Audio visualization
   useEffect(() => {
-    if (!remoteStream) return;
-
-    try {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const analyser = audioContext.createAnalyser();
-      const source = audioContext.createMediaStreamSource(remoteStream);
-      
-      analyser.fftSize = 32;
-      source.connect(analyser);
-      
-      audioContextRef.current = audioContext;
-      analyserRef.current = analyser;
-      
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      
-      const updateLevels = () => {
-        if (!analyserRef.current) return;
-        
-        analyser.getByteFrequencyData(dataArray);
-        
-        // Get 5 frequency bands for visualization
-        const levels = [
-          dataArray[1] / 255,
-          dataArray[2] / 255,
-          dataArray[3] / 255,
-          dataArray[2] / 255,
-          dataArray[1] / 255
-        ];
-        
-        setAudioLevels(levels);
-        requestAnimationFrame(updateLevels);
-      };
-      
-      updateLevels();
-    } catch (error) {
-      console.error('Audio visualization error:', error);
-    }
-
-    return () => {
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-    };
-  }, [remoteStream]);
+    if (!callAccepted || !startTime) return;
+    
+    const interval = setInterval(() => {
+      setCallDuration(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [callAccepted, startTime]);
 
   const formatDuration = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getUserDisplayName = (user) => {
-    return user?.fullName || user?.name || user?.username || 'Unknown User';
-  };
-
-  const getUserAvatar = (user) => {
-    const displayName = getUserDisplayName(user);
-    return user?.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0D8ABC&color=fff`;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (isMinimized) {
     return (
-      <div className="fixed bottom-4 right-4 z-[70] w-64 bg-gray-900 rounded-lg shadow-2xl overflow-hidden">
-        <div className="relative h-36">
-          <div 
-            className="absolute inset-0 bg-cover bg-center"
-            style={{ 
-              backgroundImage: `url(${getUserAvatar(remoteUser)})`,
-              filter: 'blur(10px) brightness(0.5)'
-            }}
-          />
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="w-full h-36 object-cover relative z-10"
-            style={{ display: callAccepted && remoteStream ? 'block' : 'none' }}
-          />
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute bottom-2 right-2 w-16 h-16 object-cover rounded-lg border-2 border-white"
-          />
-          
-          {/* Controls overlay */}
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent p-2">
-            <div className="flex items-center justify-between">
-              <span className="text-white text-xs">{formatDuration(callDuration)}</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={onToggleMinimize}
-                  className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded-full transition-colors"
-                >
-                  <FiMaximize2 className="w-3 h-3 text-white" />
-                </button>
-                <button
-                  onClick={onEndCall}
-                  className="p-1.5 bg-red-500 hover:bg-red-600 rounded-full transition-colors"
-                >
-                  <FiPhoneOff className="w-3 h-3 text-white" />
-                </button>
-              </div>
+      <div className="fixed bottom-4 right-4 bg-gray-900 rounded-lg shadow-2xl p-3 z-[60] w-64">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <img
+              src={remoteUser.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUser.fullName)}&background=0D8ABC&color=fff`}
+              alt={remoteUser.fullName}
+              className="w-8 h-8 rounded-full"
+            />
+            <div>
+              <p className="text-white text-sm font-medium">{remoteUser.fullName}</p>
+              <p className="text-gray-400 text-xs">
+                {callAccepted ? formatDuration(callDuration) : 'Calling...'}
+              </p>
             </div>
           </div>
+          <button onClick={onToggleMinimize} className="text-white hover:text-gray-300">
+            <FiMaximize2 className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={onToggleAudio}
+            className={`flex-1 py-2 rounded ${isAudioEnabled ? 'bg-gray-700' : 'bg-red-500'} text-white`}
+          >
+            {isAudioEnabled ? <FiMic className="w-4 h-4 mx-auto" /> : <FiMicOff className="w-4 h-4 mx-auto" />}
+          </button>
+          <button
+            onClick={onEndCall}
+            className="flex-1 py-2 rounded bg-red-500 text-white"
+          >
+            <FiPhoneOff className="w-4 h-4 mx-auto" />
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black z-[70] flex flex-col">
-      {/* Remote Video (Full Screen) */}
-      <div className="flex-1 relative">
-        {/* User Avatar Background */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center blur-sm"
-          style={{ 
-            backgroundImage: `url(${getUserAvatar(remoteUser)})`,
-            filter: 'blur(20px) brightness(0.4)'
-          }}
-        />
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-6">
-          <img
-            src={getUserAvatar(remoteUser)}
-            alt={getUserDisplayName(remoteUser)}
-            className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-2xl"
-          />
-          
-          {/* Sound Wave Visualization */}
-          <div className="flex items-end gap-2 h-16">
-            {audioLevels.map((level, index) => (
-              <div
-                key={index}
-                className="w-2 bg-gradient-to-t from-blue-500 to-blue-300 rounded-full transition-all duration-100"
-                style={{
-                  height: `${Math.max(level * 100, 8)}%`,
-                  opacity: level > 0.1 ? 1 : 0.3
-                }}
-              />
-            ))}
+    <div className="fixed inset-0 bg-black z-[60] flex flex-col">
+      {/* Header */}
+      <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/50 to-transparent z-10">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-white text-lg font-semibold">{remoteUser.fullName}</h3>
+            <p className="text-gray-300 text-sm">
+              {callAccepted ? formatDuration(callDuration) : 'Calling...'}
+            </p>
           </div>
+          <button onClick={onToggleMinimize} className="text-white hover:text-gray-300">
+            <FiMinimize2 className="w-6 h-6" />
+          </button>
         </div>
+      </div>
+
+      {/* Video Container */}
+      <div className="flex-1 relative">
+        {/* Remote Video */}
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
-          className="w-full h-full object-cover relative z-10"
-          style={{ display: callAccepted && remoteStream ? 'block' : 'none' }}
+          className="w-full h-full object-cover"
         />
         
-        {/* Local Video (Picture-in-Picture) */}
+        {/* Local Video */}
         {callType === 'video' && (
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute top-4 right-4 w-32 h-32 md:w-48 md:h-48 object-cover rounded-lg border-2 border-white shadow-lg"
-          />
+          <div className="absolute top-20 right-4 w-32 h-40 bg-gray-800 rounded-lg overflow-hidden shadow-lg">
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="w-full h-full object-cover"
+            />
+          </div>
         )}
 
-        {/* Call Info Overlay */}
-        <div className="absolute top-4 left-4 bg-black bg-opacity-50 px-4 py-2 rounded-lg">
-          <p className="text-white font-medium">{getUserDisplayName(remoteUser)}</p>
-          <p className="text-gray-300 text-sm">
-            {callAccepted ? formatDuration(callDuration) : 'Calling...'}
-          </p>
-        </div>
-
-        {/* Recording Indicator */}
-        {isRecording && (
-          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-red-500 px-4 py-2 rounded-full flex items-center gap-2">
-            <BsRecordCircle className="w-4 h-4 text-white animate-pulse" />
-            <span className="text-white text-sm font-medium">Recording</span>
+        {/* No Video Placeholder */}
+        {(!remoteStream || callType === 'audio') && (
+          <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+            <div className="text-center">
+              <img
+                src={remoteUser.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUser.fullName)}&background=0D8ABC&color=fff`}
+                alt={remoteUser.fullName}
+                className="w-32 h-32 rounded-full mx-auto mb-4"
+              />
+              <p className="text-white text-xl">{remoteUser.fullName}</p>
+              <p className="text-gray-400">{callAccepted ? 'Connected' : 'Connecting...'}</p>
+            </div>
           </div>
         )}
       </div>
 
       {/* Controls */}
-      <div className="bg-gray-900 p-6">
-        <div className="flex items-center justify-center gap-4">
-          {/* Audio Toggle */}
+      <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/50 to-transparent">
+        <div className="flex justify-center gap-4">
           <button
             onClick={onToggleAudio}
             className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
@@ -250,57 +158,25 @@ const ActiveCallScreen = ({
               <FiMicOff className="w-6 h-6 text-white" />
             )}
           </button>
-
-          {/* Video Toggle */}
-          <button
-            onClick={onToggleVideo}
-            className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
-              isVideoEnabled ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-500 hover:bg-red-600'
-            }`}
-          >
-            {isVideoEnabled ? (
-              <FiVideo className="w-6 h-6 text-white" />
-            ) : (
-              <FiVideoOff className="w-6 h-6 text-white" />
-            )}
-          </button>
-
-          {/* Screen Share */}
-          <button
-            onClick={onToggleScreenShare}
-            className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
-              isScreenSharing ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
-            }`}
-          >
-            <FiMonitor className="w-6 h-6 text-white" />
-          </button>
-
-          {/* Recording */}
-          <button
-            onClick={isRecording ? onStopRecording : onStartRecording}
-            className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
-              isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-gray-700 hover:bg-gray-600'
-            }`}
-          >
-            {isRecording ? (
-              <BsStopCircle className="w-6 h-6 text-white" />
-            ) : (
-              <BsRecordCircle className="w-6 h-6 text-white" />
-            )}
-          </button>
-
-          {/* Minimize */}
-          <button
-            onClick={onToggleMinimize}
-            className="w-14 h-14 bg-gray-700 hover:bg-gray-600 rounded-full flex items-center justify-center transition-colors"
-          >
-            <FiMinimize2 className="w-6 h-6 text-white" />
-          </button>
-
-          {/* End Call */}
+          
+          {callType === 'video' && (
+            <button
+              onClick={onToggleVideo}
+              className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
+                isVideoEnabled ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-500 hover:bg-red-600'
+              }`}
+            >
+              {isVideoEnabled ? (
+                <FiVideo className="w-6 h-6 text-white" />
+              ) : (
+                <FiVideoOff className="w-6 h-6 text-white" />
+              )}
+            </button>
+          )}
+          
           <button
             onClick={onEndCall}
-            className="w-14 h-14 bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center transition-colors"
+            className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors"
           >
             <FiPhoneOff className="w-6 h-6 text-white" />
           </button>

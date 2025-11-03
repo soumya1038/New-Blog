@@ -7,6 +7,7 @@ import socketService from '../services/socket';
 import { FiSend, FiSearch, FiMoreVertical, FiX, FiTrash2, FiBell, FiBellOff, FiUserX, FiArchive, FiAlertCircle, FiSmile, FiCornerUpLeft, FiShare2, FiUser, FiChevronDown, FiBookmark, FiZap, FiEdit3, FiPhone, FiVideo, FiPhoneCall } from 'react-icons/fi';
 import { BsCheck, BsCheckAll, BsPinAngleFill, BsPinAngle } from 'react-icons/bs';
 import soundNotification from '../utils/soundNotifications';
+import soundManager from '../utils/soundManager';
 import IncomingCallModal from '../components/IncomingCallModal';
 import ActiveCallScreen from '../components/ActiveCallScreen';
 import CallHistoryModal from '../components/CallHistoryModal';
@@ -86,11 +87,23 @@ const ChatNew = () => {
   const convMenuRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const socket = useRef(null);
+  const selectedChatRef = useRef(null);
+  const mutedUsersRef = useRef(new Set());
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    selectedChatRef.current = selectedChat;
+  }, [selectedChat]);
 
   useEffect(() => {
-    if (user) {
-      socket.current = socketService.connect(user._id);
-      webrtcService.setSocket(socket.current);
+    mutedUsersRef.current = mutedUsers;
+  }, [mutedUsers]);
+
+  useEffect(() => {
+    if (!user) return;
+    
+    socket.current = socketService.connect(user._id);
+    webrtcService.setSocket(socket.current);
       
       // Set callback for remote stream
       webrtcService.setOnRemoteStream((stream) => {
@@ -99,6 +112,7 @@ const ChatNew = () => {
       });
 
       // Notify backend that user is on /chat route
+      console.log('🔔 Sending route:change to /chat');
       socketService.updateRoute('/chat');
 
       socket.current.on('users:online', (userIds) => {
@@ -114,40 +128,72 @@ const ChatNew = () => {
         });
       });
 
-      socket.current.on('message:receive', (message) => {
-        // Check if chat is open with the sender
-        const isChatOpen = selectedChat && message.sender._id === selectedChat._id;
+      const messageReceiveHandler = (message) => {
+        console.log('📨 Message received from:', message.sender._id);
+        
+        // Use ref to get current value
+        const currentChat = selectedChatRef.current;
+        const currentMuted = mutedUsersRef.current;
+        
+        console.log('Current selectedChat (from ref):', currentChat?._id);
+        
+        const isChatOpen = currentChat && message.sender._id === currentChat._id;
+        console.log('Is chat open?', isChatOpen);
 
         if (isChatOpen) {
-          // Chat is OPEN - add message with SOFT sound
-          setMessages(prev => [...prev, message]);
-          // Play sound only if not muted - use callback to get latest state
-          setMutedUsers(currentMuted => {
-            if (!currentMuted.has(message.sender._id)) {
-              soundNotification.playReceiveSoundActive(); // Soft sound for active chat
+          console.log('✅ ADDING MESSAGE TO ACTIVE CHAT');
+          
+          // Add message to chat
+          setMessages(prev => {
+            if (prev.some(m => m._id === message._id)) {
+              console.log('⚠️ Duplicate message, skipping');
+              return prev;
             }
-            return currentMuted;
+            console.log('✅ Message added to state');
+            return [...prev, message];
           });
-          // Mark as read immediately and notify sender
+          
+          // Auto-scroll
+          setTimeout(() => {
+            if (messagesContainerRef.current) {
+              const container = messagesContainerRef.current;
+              const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+              if (isAtBottom) {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }
+            }
+          }, 100);
+          
+          // Play sound if not muted
+          if (!currentMuted.has(message.sender._id)) {
+            console.log('🔊 PLAYING SOUND: receive-msg.mp3');
+            soundManager.play('receiveMsg');
+          } else {
+            console.log('🔇 User is muted, no sound');
+          }
+          
+          // Mark as read
           socket.current.emit('messages:mark-read', { senderId: message.sender._id });
           api.put(`/messages/mark-read/${message.sender._id}`).catch(err => console.error(err));
         } else {
-          // Chat is CLOSED - play ALERT sound only if not muted - use callback to get latest state
-          setMutedUsers(currentMuted => {
-            if (!currentMuted.has(message.sender._id)) {
-              soundNotification.playReceiveSound(); // Louder alert sound
-            }
-            return currentMuted;
-          });
+          console.log('❌ Chat not open, not adding message');
         }
 
-        // Always refresh conversations to update unread counts
+        // Always refresh conversation list
         loadConversations();
-      });
+      };
+      
+      socket.current.on('message:receive', messageReceiveHandler);
 
       socket.current.on('message:sent', (message) => {
         setMessages(prev => [...prev, message]);
-        soundNotification.playSendSound();
+        soundManager.play('sendMsg');
+        
+        // Auto-scroll to bottom
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+        
         loadConversations();
       });
 
@@ -165,18 +211,39 @@ const ChatNew = () => {
       });
 
       socket.current.on('typing:status', ({ userId, typing }) => {
-        setTypingUsers(prev => {
-          const newSet = new Set(prev);
-          if (typing) newSet.add(userId);
-          else newSet.delete(userId);
-          return newSet;
-        });
+        console.log('⌨️ Typing status received:', { userId, typing });
+        
+        // Use ref to get current value
+        const currentChat = selectedChatRef.current;
+        console.log('Current selectedChat (from ref):', currentChat?._id);
+        
+        // Only update if it's from the current chat
+        if (currentChat && userId === currentChat._id) {
+          setTypingUsers(prev => {
+            const newSet = new Set(prev);
+            if (typing) {
+              console.log('✅ Adding user to typing set:', userId);
+              newSet.add(userId);
+            } else {
+              console.log('✅ Removing user from typing set:', userId);
+              newSet.delete(userId);
+            }
+            console.log('Typing users set:', Array.from(newSet));
+            return newSet;
+          });
+        } else {
+          console.log('⚠️ Typing status from different chat, ignoring');
+        }
       });
 
       socket.current.on('message:reaction', ({ messageId, reactions }) => {
-        setMessages(prev => prev.map(msg =>
-          msg._id === messageId ? { ...msg, reactions } : msg
-        ));
+        setMessages(prev => {
+          const updated = prev.map(msg =>
+            msg._id === messageId ? { ...msg, reactions } : msg
+          );
+          return [...updated]; // Force new array reference for immediate re-render
+        });
+        setShowReactionPicker(null);
       });
 
       socket.current.on('message:pinned', ({ messageId, pinned }) => {
@@ -190,14 +257,15 @@ const ChatNew = () => {
       // WebRTC call listeners
       socket.current.on('call:incoming', ({ callerId, caller, callType, callLogId }) => {
         console.log('📞 ChatNew: Incoming call received:', { callerId, caller, callType, callLogId });
-        // Only handle if on chat page (App.js handles other routes)
         if (window.location.pathname === '/chat') {
           setIncomingCall({ callerId, caller, callType, callLogId });
+          soundManager.play('incomingCall');
         }
       });
 
       socket.current.on('call:accepted', async ({ receiverId }) => {
         console.log('✅ Call accepted by receiver');
+        soundManager.stop('callRing');
         // Receiver accepted - start timer
         setActiveCall(prev => {
           if (prev) {
@@ -208,6 +276,8 @@ const ChatNew = () => {
       });
 
       socket.current.on('call:rejected', async () => {
+        soundManager.stop('callRing');
+        soundManager.play('endCall');
         await webrtcService.endCall();
         setActiveCall(null);
         showAlertModal('Call Rejected', 'The user rejected your call');
@@ -215,6 +285,8 @@ const ChatNew = () => {
 
       socket.current.on('call:ended', async () => {
         console.log('📞 Call ended by remote user');
+        soundManager.stop('callRing');
+        soundManager.play('endCall');
         await webrtcService.endCall();
         setActiveCall(null);
         setIncomingCall(null);
@@ -251,21 +323,15 @@ const ChatNew = () => {
       if (!warningDismissed) {
         setShowWarningBanner(true);
       }
-    }
-
-    return () => {
-      // End any active call when leaving chat
+    
+      return () => {
       if (activeCall) {
         socket.current?.emit('call:end', { userId: activeCall.userId });
-        webrtcService.endCall(); // Fire and forget on unmount
+        webrtcService.endCall();
       }
       
-      // Notify backend that user left /chat route
+      console.log('Leaving /chat');
       socketService.updateRoute(null);
-
-      if (socket.current) {
-        socketService.disconnect();
-      }
     };
   }, [user]);
 
@@ -342,42 +408,11 @@ const ChatNew = () => {
     }
   }, [selectedChat]);
 
-  // Auto-refresh messages every 2 seconds when chat is open
-  useEffect(() => {
-    if (!selectedChat?._id) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const { data } = await api.get(`/messages/${selectedChat._id}`);
-
-        // Only update if messages changed
-        setMessages(prev => {
-          if (data.messages.length !== prev.length ||
-            data.messages[data.messages.length - 1]?._id !== prev[prev.length - 1]?._id) {
-
-            if (!isAtBottom) {
-              setNewMessageCount(c => c + (data.messages.length - prev.length));
-            }
-            return data.messages;
-          }
-          return prev;
-        });
-
-        // Mark messages as read
-        await api.put(`/messages/mark-read/${selectedChat._id}`);
-      } catch (error) {
-        console.error('Auto-refresh error:', error);
-      }
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [selectedChat?._id, isAtBottom]);
-
-  // Auto-refresh conversations every 3 seconds
+  // Auto-refresh conversations list only (not messages)
   useEffect(() => {
     const interval = setInterval(() => {
       loadConversations();
-    }, 3000);
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
   
@@ -910,6 +945,9 @@ const ChatNew = () => {
       await webrtcService.createOffer(selectedChat._id);
       console.log('✅ Call initiated with offer sent');
       
+      // Start call ring sound
+      soundManager.play('callRing');
+      
       setActiveCall({
         userId: selectedChat._id,
         userName: getUserDisplayName(selectedChat),
@@ -940,6 +978,9 @@ const ChatNew = () => {
     if (!incomingCall) return;
     try {
       console.log('📞 Accepting call...');
+      
+      // Stop incoming call sound
+      soundManager.stop('incomingCall');
       
       // End any existing call first to free up camera/mic
       if (activeCall) {
@@ -1003,11 +1044,12 @@ const ChatNew = () => {
   const rejectCall = () => {
     if (!incomingCall) return;
     console.log('📞 Rejecting call from:', incomingCall.callerId);
+    soundManager.stop('incomingCall');
+    soundManager.play('endCall');
     socket.current.emit('call:reject', { callerId: incomingCall.callerId });
-    pendingOfferRef.current = null; // Clear pending offer
+    pendingOfferRef.current = null;
     setIncomingCall(null);
     
-    // Update call log as rejected
     if (incomingCall.callLogId) {
       api.put(`/calls/log/${incomingCall.callLogId}`, {
         status: 'rejected',
@@ -1020,24 +1062,24 @@ const ChatNew = () => {
     if (!activeCall) return;
     
     console.log('📞 Ending call, notifying remote user:', activeCall.userId);
+    soundManager.stop('callRing');
+    soundManager.stop('incomingCall');
+    soundManager.play('endCall');
     socket.current.emit('call:end', { userId: activeCall.userId });
     await webrtcService.endCall();
     
-    // Update call log only if call was accepted
     if (activeCall.callLogId && activeCall.callAccepted && activeCall.startTime) {
       await api.put(`/calls/log/${activeCall.callLogId}`, {
         status: 'completed',
         duration: Math.floor((Date.now() - activeCall.startTime) / 1000)
       });
     } else if (activeCall.callLogId) {
-      // Call was not accepted - mark as missed
       await api.put(`/calls/log/${activeCall.callLogId}`, {
         status: 'missed',
         duration: 0
       });
     }
     
-    // Clear all call states
     setActiveCall(null);
     setIncomingCall(null);
     setIsCallMinimized(false);
@@ -2133,7 +2175,8 @@ const ChatNew = () => {
                         ) : (
                           <div className="w-8 h-8" />
                         )}
-                        <div className="mx-2 relative flex items-end gap-2">
+                        <div className="mx-2 flex flex-col items-end gap-1">
+                          <div className="flex flex-col">
                           <div className={`${isOwn ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white' : 'bg-gray-200 text-gray-900'} ${borderRadiusClass} px-4 py-2 shadow-sm`}>
                             {/* Reply Quote */}
                             {msg.replyTo && (
@@ -2151,6 +2194,29 @@ const ChatNew = () => {
                             )}
                             <p className="text-sm break-words leading-relaxed">{msg.content}</p>
                           </div>
+                          
+                          {/* Reactions - UNDER the message bubble */}
+                          {msg.reactions && msg.reactions.length > 0 && (
+                            <div className="flex items-center gap-1 mt-1">
+                              {userReaction && (
+                                <button
+                                  onClick={() => handleRemoveReaction(msg._id)}
+                                  className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs hover:bg-gray-100 shadow-sm"
+                                  title="Remove"
+                                >
+                                  {userReaction.emoji}
+                                </button>
+                              )}
+                              {otherReactions.length > 0 && (
+                                <div className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs shadow-sm">
+                                  {otherReactions.map((r, i) => (
+                                    <span key={i}>{r.emoji}</span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          </div>
 
                           {/* Timestamp outside bubble */}
                           <div className={`flex items-center gap-1 text-xs text-gray-500 mb-1 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -2166,27 +2232,7 @@ const ChatNew = () => {
                             )}
                           </div>
 
-                          {/* Reactions */}
-                          {msg.reactions && msg.reactions.length > 0 && (
-                            <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
-                              {userReaction && (
-                                <button
-                                  onClick={() => handleRemoveReaction(msg._id)}
-                                  className="bg-white border border-gray-200 rounded-full px-2 py-0.5 text-sm hover:bg-gray-50 shadow-sm"
-                                  title="Remove your reaction"
-                                >
-                                  {userReaction.emoji}
-                                </button>
-                              )}
-                              {otherReactions.length > 0 && (
-                                <div className="bg-white border border-gray-200 rounded-full px-2 py-0.5 text-sm shadow-sm">
-                                  {otherReactions.map((r, i) => (
-                                    <span key={i}>{r.emoji}</span>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          )}
+
 
                         </div>
 

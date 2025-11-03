@@ -116,12 +116,13 @@ module.exports = (io) => {
           }
         }
 
-        const receiverSocketId = onlineUsers.get(receiverId);
-        
-        // Only create notification if receiver is NOT on /chat route
+        // Get receiver data
         const receiverData = onlineUsers.get(receiverId);
         const isReceiverOnChat = receiverData && receiverData.currentRoute === '/chat';
         
+        console.log(`📨 Sending message to ${receiverId}, on /chat: ${isReceiverOnChat}`);
+        
+        // Only create notification if receiver is NOT on /chat route
         if (!isReceiverOnChat) {
           await Notification.create({
             recipient: receiverId,
@@ -137,10 +138,14 @@ module.exports = (io) => {
           });
         }
         
-        if (receiverSocketId) {
-          io.to(receiverSocketId).emit('message:receive', messageData);
+        // Send message to receiver if online
+        if (receiverData) {
+          console.log(`✅ Emitting message:receive to ${receiverData.socketId}`);
+          io.to(receiverData.socketId).emit('message:receive', messageData);
           message.delivered = true;
           await message.save();
+        } else {
+          console.log(`❌ Receiver ${receiverId} not online`);
         }
 
         socket.emit('message:sent', messageData);
@@ -206,9 +211,10 @@ module.exports = (io) => {
     });
 
     socket.on('typing:start', (receiverId) => {
-      const receiverSocketId = onlineUsers.get(receiverId);
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit('typing:status', {
+      const receiverData = onlineUsers.get(receiverId);
+      if (receiverData) {
+        console.log(`⌨️ Emitting typing:start from ${socket.userId} to ${receiverId}`);
+        io.to(receiverData.socketId).emit('typing:status', {
           userId: socket.userId,
           typing: true
         });
@@ -216,9 +222,10 @@ module.exports = (io) => {
     });
 
     socket.on('typing:stop', (receiverId) => {
-      const receiverSocketId = onlineUsers.get(receiverId);
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit('typing:status', {
+      const receiverData = onlineUsers.get(receiverId);
+      if (receiverData) {
+        console.log(`⌨️ Emitting typing:stop from ${socket.userId} to ${receiverId}`);
+        io.to(receiverData.socketId).emit('typing:status', {
           userId: socket.userId,
           typing: false
         });
@@ -320,6 +327,7 @@ module.exports = (io) => {
         if (userData) {
           userData.currentRoute = route;
           onlineUsers.set(socket.userId, userData);
+          console.log(`📍 User ${socket.userId} route changed to: ${route}`);
         }
         
         // Delete all message notifications when user opens /chat
@@ -416,11 +424,10 @@ module.exports = (io) => {
     });
 
     socket.on('call:ice-candidate', (data) => {
-      const { userId, candidate } = data;
-      const userData = onlineUsers.get(userId);
+      const { receiverId, candidate } = data;
+      const userData = onlineUsers.get(receiverId);
       if (userData) {
         io.to(userData.socketId).emit('call:ice-candidate', {
-          userId: socket.userId,
           candidate
         });
       }

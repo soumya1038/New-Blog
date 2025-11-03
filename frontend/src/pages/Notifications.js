@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { FaHeart, FaComment, FaUserPlus, FaArrowLeft } from 'react-icons/fa';
 import { FiMessageCircle } from 'react-icons/fi';
+import soundManager from '../utils/soundManager';
 
 const Notifications = () => {
   const { t } = useTranslation();
@@ -28,7 +29,13 @@ const Notifications = () => {
   const fetchNotifications = async () => {
     try {
       const { data } = await api.get('/social/notifications');
+      const prevCount = notifications.length;
       setNotifications(data.notifications);
+      
+      // Play sound if new notification received
+      if (data.notifications.length > prevCount) {
+        soundManager.play('notification');
+      }
     } catch (error) {
       console.error('Error fetching notifications:', error);
     }
