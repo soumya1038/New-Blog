@@ -22,7 +22,9 @@ const {
   updateLastSeen,
   pinMessage,
   unpinMessage,
-  getPinnedMessages
+  getPinnedMessages,
+  getGroupMessages,
+  sendGroupMessage
 } = require('../controllers/messageController');
 
 router.post('/', protect, sendMessage);
@@ -46,5 +48,7 @@ router.put('/last-seen', protect, updateLastSeen);
 router.post('/pin/:messageId', protect, pinMessage);
 router.post('/unpin/:messageId', protect, unpinMessage);
 router.get('/pinned/:userId', protect, getPinnedMessages);
+router.get('/group/:groupId', protect, getGroupMessages);
+router.post('/group', protect, sendGroupMessage);
 
 module.exports = router;

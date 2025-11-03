@@ -45,6 +45,75 @@ module.exports = (io, onlineUsers = new Map()) => {
       }
     });
 
+    socket.on('message:send:group', async (data) => {
+      try {
+        const { groupId, content, type = 'text' } = data;
+        const senderId = socket.userId;
+
+        if (!senderId || !groupId) {
+          socket.emit('message:error', { error: 'Invalid sender or group' });
+          return;
+        }
+
+        const Group = require('../models/Group');
+        const group = await Group.findById(groupId);
+        
+        if (!group) {
+          socket.emit('message:error', { error: 'Group not found' });
+          return;
+        }
+        
+        if (!group.members.includes(senderId)) {
+          socket.emit('message:error', { error: 'Not a member of this group' });
+          return;
+        }
+
+        if (group.settings.onlyAdminsCanSend && !group.admins.includes(senderId)) {
+          socket.emit('message:error', { error: 'Only admins can send messages' });
+          return;
+        }
+
+        const message = await Message.create({
+          sender: senderId,
+          group: groupId,
+          content,
+          type,
+          encrypted: false
+        });
+
+        await message.populate('sender', 'username name fullName profileImage');
+        
+        const messageData = {
+          _id: message._id,
+          sender: message.sender,
+          group: message.group,
+          content: message.content,
+          type: message.type,
+          reactions: message.reactions,
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt
+        };
+
+        // Broadcast to all group members
+        group.members.forEach(memberId => {
+          const memberIdStr = memberId.toString();
+          if (memberIdStr !== senderId) {
+            const memberData = onlineUsers.get(memberIdStr);
+            if (memberData) {
+              io.to(memberData.socketId).emit('message:receive:group', messageData);
+            }
+          }
+        });
+
+        // Confirm to sender
+        socket.emit('message:sent:group', messageData);
+
+      } catch (error) {
+        console.error('Group message send error:', error);
+        socket.emit('message:error', { error: 'Failed to send group message' });
+      }
+    });
+
     socket.on('message:send', async (data) => {
       try {
         const { receiverId, content, replyTo } = data;

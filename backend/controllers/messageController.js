@@ -1,5 +1,6 @@
 const Message = require('../models/Message');
 const User = require('../models/User');
+const Group = require('../models/Group');
 const Notification = require('../models/Notification');
 const { encrypt, decrypt } = require('../utils/encryption');
 
@@ -163,6 +164,10 @@ exports.getMessages = async (req, res) => {
       type: msg.type,
       voiceUrl: msg.voiceUrl,
       voiceDuration: msg.voiceDuration,
+      fileUrl: msg.fileUrl,
+      fileName: msg.fileName,
+      fileSize: msg.fileSize,
+      mimeType: msg.mimeType,
       delivered: msg.delivered,
       read: msg.read,
       readAt: msg.readAt,
@@ -270,7 +275,30 @@ exports.searchUsers = async (req, res) => {
 exports.deleteConversation = async (req, res) => {
   try {
     const { userId } = req.params;
+    const cloudinary = require('../utils/cloudinary');
     
+    // Find all messages with Cloudinary files
+    const messages = await Message.find({
+      $or: [
+        { sender: req.user._id, receiver: userId },
+        { sender: userId, receiver: req.user._id }
+      ],
+      cloudinaryPublicId: { $exists: true, $ne: null }
+    });
+
+    // Delete from Cloudinary
+    for (const msg of messages) {
+      if (msg.cloudinaryPublicId) {
+        try {
+          await cloudinary.uploader.destroy(msg.cloudinaryPublicId);
+          console.log(`✅ Deleted Cloudinary file: ${msg.cloudinaryPublicId}`);
+        } catch (error) {
+          console.error('❌ Failed to delete Cloudinary file:', error);
+        }
+      }
+    }
+    
+    // Delete messages from database
     await Message.deleteMany({
       $or: [
         { sender: req.user._id, receiver: userId },
@@ -639,6 +667,88 @@ exports.getPinnedMessages = async (req, res) => {
     }));
 
     res.json({ pinnedMessages: decryptedMessages });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Get group messages
+exports.getGroupMessages = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const limit = parseInt(req.query.limit) || 50;
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
+
+    if (!group.members.includes(req.user._id)) {
+      return res.status(403).json({ message: 'Not a member of this group' });
+    }
+
+    const messages = await Message.find({ group: groupId })
+      .populate('sender', 'name username fullName profileImage')
+      .sort({ createdAt: -1 })
+      .limit(limit);
+
+    const decryptedMessages = messages.reverse().map(msg => ({
+      _id: msg._id,
+      sender: msg.sender,
+      group: msg.group,
+      content: msg.encrypted ? decrypt(msg.content) : msg.content,
+      type: msg.type,
+      voiceUrl: msg.voiceUrl,
+      voiceDuration: msg.voiceDuration,
+      fileUrl: msg.fileUrl,
+      fileName: msg.fileName,
+      fileSize: msg.fileSize,
+      mimeType: msg.mimeType,
+      reactions: msg.reactions,
+      replyTo: msg.replyTo,
+      createdAt: msg.createdAt,
+      updatedAt: msg.updatedAt
+    }));
+
+    res.json({ messages: decryptedMessages });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Send group message
+exports.sendGroupMessage = async (req, res) => {
+  try {
+    const { groupId, content, type = 'text' } = req.body;
+
+    if (!content || !groupId) {
+      return res.status(400).json({ message: 'Content and group are required' });
+    }
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
+
+    if (!group.members.includes(req.user._id)) {
+      return res.status(403).json({ message: 'Not a member of this group' });
+    }
+
+    if (group.settings.onlyAdminsCanSend && !group.admins.includes(req.user._id)) {
+      return res.status(403).json({ message: 'Only admins can send messages in this group' });
+    }
+
+    const message = await Message.create({
+      sender: req.user._id,
+      group: groupId,
+      content,
+      type,
+      encrypted: false
+    });
+
+    await message.populate('sender', 'username fullName profileImage');
+
+    res.status(201).json({ success: true, message: 'Message sent', data: message });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

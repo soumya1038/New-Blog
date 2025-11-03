@@ -4,7 +4,7 @@ import { AuthContext } from '../context/AuthContext';
 import { ChatSkeleton } from '../components/SkeletonLoader';
 import api from '../services/api';
 import socketService from '../services/socket';
-import { FiSend, FiSearch, FiMoreVertical, FiX, FiTrash2, FiBell, FiBellOff, FiUserX, FiArchive, FiAlertCircle, FiSmile, FiCornerUpLeft, FiShare2, FiUser, FiChevronDown, FiBookmark, FiZap, FiEdit3, FiPhone, FiVideo, FiPhoneCall, FiMic } from 'react-icons/fi';
+import { FiSend, FiSearch, FiMoreVertical, FiX, FiTrash2, FiBell, FiBellOff, FiUserX, FiArchive, FiAlertCircle, FiSmile, FiCornerUpLeft, FiShare2, FiUser, FiChevronDown, FiBookmark, FiZap, FiEdit3, FiPhone, FiVideo, FiPhoneCall, FiMic, FiFile, FiPaperclip, FiImage, FiCamera, FiUsers } from 'react-icons/fi';
 import { BsCheck, BsCheckAll, BsPinAngleFill, BsPinAngle } from 'react-icons/bs';
 import soundNotification from '../utils/soundNotifications';
 import soundManager from '../utils/soundManager';
@@ -13,6 +13,9 @@ import ActiveCallScreen from '../components/ActiveCallScreen';
 import CallHistoryModal from '../components/CallHistoryModal';
 import VoiceRecorder from '../components/VoiceRecorder';
 import VoiceMessagePlayer from '../components/VoiceMessagePlayer';
+import FileMessage from '../components/FileMessage';
+import CreateGroupModal from '../components/CreateGroupModal';
+import GroupInfoPanel from '../components/GroupInfoPanel';
 import webrtcService from '../services/webrtc';
 // Translation support - Import useTranslation hook from react-i18next
 // This enables multi-language support for the chat interface
@@ -79,6 +82,21 @@ const ChatNew = () => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [filePreview, setFilePreview] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [groups, setGroups] = useState([]);
+  const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const attachMenuRef = useRef(null);
   const pendingOfferRef = useRef(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -186,6 +204,8 @@ const ChatNew = () => {
         loadConversations();
       };
       
+      // Remove any existing listener before adding new one
+      socket.current.off('message:receive', messageReceiveHandler);
       socket.current.on('message:receive', messageReceiveHandler);
 
       socket.current.on('message:sent', (message) => {
@@ -198,6 +218,49 @@ const ChatNew = () => {
         }, 100);
         
         loadConversations();
+      });
+
+      socket.current.on('message:receive:group', (message) => {
+        console.log('📨 Group message received:', message);
+        
+        const currentChat = selectedChatRef.current;
+        const isChatOpen = currentChat && currentChat.isGroup && message.group === currentChat._id;
+        
+        if (isChatOpen) {
+          setMessages(prev => {
+            if (prev.some(m => m._id === message._id)) {
+              return prev;
+            }
+            return [...prev, message];
+          });
+          
+          setTimeout(() => {
+            if (messagesContainerRef.current) {
+              const container = messagesContainerRef.current;
+              const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+              if (isAtBottom) {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }
+            }
+          }, 100);
+          
+          soundManager.play('receiveMsg');
+        }
+      });
+
+      socket.current.on('message:sent:group', (message) => {
+        console.log('✅ Group message sent:', message);
+        setMessages(prev => {
+          if (prev.some(m => m._id === message._id)) {
+            return prev;
+          }
+          return [...prev, message];
+        });
+        soundManager.play('sendMsg');
+        
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
       });
 
       socket.current.on('message:status', ({ messageId, status, readAt }) => {
@@ -318,6 +381,7 @@ const ChatNew = () => {
       });
 
       loadConversations();
+      loadGroups();
       loadBlockedUsers();
       loadMutedUsers();
 
@@ -331,6 +395,27 @@ const ChatNew = () => {
       if (activeCall) {
         socket.current?.emit('call:end', { userId: activeCall.userId });
         webrtcService.endCall();
+      }
+      
+      // Clean up all socket listeners
+      if (socket.current) {
+        socket.current.off('message:receive');
+        socket.current.off('message:sent');
+        socket.current.off('message:receive:group');
+        socket.current.off('message:sent:group');
+        socket.current.off('message:status');
+        socket.current.off('typing:status');
+        socket.current.off('message:reaction');
+        socket.current.off('message:pinned');
+        socket.current.off('call:incoming');
+        socket.current.off('call:accepted');
+        socket.current.off('call:rejected');
+        socket.current.off('call:ended');
+        socket.current.off('call:offer');
+        socket.current.off('call:answer');
+        socket.current.off('call:ice-candidate');
+        socket.current.off('users:online');
+        socket.current.off('user:status');
       }
       
       console.log('Leaving /chat');
@@ -394,6 +479,9 @@ const ChatNew = () => {
       if (pinDropdownRef.current && !pinDropdownRef.current.contains(event.target)) {
         setShowPinDropdown(false);
       }
+      if (attachMenuRef.current && !attachMenuRef.current.contains(event.target)) {
+        setShowAttachMenu(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -402,11 +490,13 @@ const ChatNew = () => {
 
   useEffect(() => {
     if (selectedChat) {
-      loadMessages(selectedChat._id);
-      loadPinnedMessages();
-      // Load full user details if description is missing
-      if (!selectedChat.description) {
-        loadUserDetails(selectedChat._id);
+      loadMessages(selectedChat._id, selectedChat.isGroup);
+      if (!selectedChat.isGroup) {
+        loadPinnedMessages();
+        // Load full user details if description is missing
+        if (!selectedChat.description) {
+          loadUserDetails(selectedChat._id);
+        }
       }
     }
   }, [selectedChat]);
@@ -503,6 +593,15 @@ const ChatNew = () => {
     }
   };
 
+  const loadGroups = async () => {
+    try {
+      const { data } = await api.get('/groups');
+      setGroups(data.groups || []);
+    } catch (error) {
+      console.error('Failed to load groups:', error);
+    }
+  };
+
   const loadBlockedUsers = async () => {
     try {
       const { data } = await api.get('/messages/blocked-users');
@@ -523,19 +622,21 @@ const ChatNew = () => {
     }
   };
 
-  const loadMessages = async (userId) => {
+  const loadMessages = async (chatId, isGroup = false) => {
     try {
-      const { data } = await api.get(`/messages/${userId}`);
+      const endpoint = isGroup ? `/messages/group/${chatId}` : `/messages/${chatId}`;
+      const { data } = await api.get(endpoint);
       setMessages(data.messages);
 
-      // Mark all messages from this user as read
-      await api.put(`/messages/mark-read/${userId}`);
-
-      // Notify sender via socket for real-time status update
-      socket.current.emit('messages:mark-read', { senderId: userId });
-
-      // Refresh conversation list to update unread count
-      loadConversations();
+      if (!isGroup) {
+        // Mark all messages from this user as read
+        await api.put(`/messages/mark-read/${chatId}`);
+        // Notify sender via socket for real-time status update
+        socket.current.emit('messages:mark-read', { senderId: chatId });
+        // Refresh conversation list to update unread count
+        loadConversations();
+      }
+      
       // Scroll to bottom when opening chat
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'auto', block: 'end' });
@@ -580,21 +681,33 @@ const ChatNew = () => {
     }
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedChat) return;
 
-    socket.current.emit('message:send', {
-      receiverId: selectedChat._id,
-      content: newMessage.trim(),
-      type: 'text',
-      replyTo: replyingTo?._id || null
-    });
+    if (selectedChat.isGroup) {
+      // Send group message via socket
+      socket.current.emit('message:send:group', {
+        groupId: selectedChat._id,
+        content: newMessage.trim(),
+        type: 'text'
+      });
+    } else {
+      // Send individual message via socket
+      socket.current.emit('message:send', {
+        receiverId: selectedChat._id,
+        content: newMessage.trim(),
+        type: 'text',
+        replyTo: replyingTo?._id || null
+      });
+    }
 
     setNewMessage('');
     setReplyingTo(null);
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
-      socket.current.emit('typing:stop', selectedChat._id);
+      if (!selectedChat.isGroup) {
+        socket.current.emit('typing:stop', selectedChat._id);
+      }
     }
 
     // Scroll to bottom when user sends message
@@ -618,9 +731,7 @@ const ChatNew = () => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
-      // Add message to UI immediately
       setMessages(prev => [...prev, data.message]);
-      
       setShowVoiceRecorder(false);
       soundManager.play('sendMsg');
 
@@ -635,6 +746,127 @@ const ChatNew = () => {
       showAlertModal('Error', 'Failed to send voice message');
       setShowVoiceRecorder(false);
     }
+  };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file || !selectedChat) return;
+
+    if (file.size > 50 * 1024 * 1024) {
+      showAlertModal('Error', 'File size must be less than 50MB');
+      return;
+    }
+
+    setSelectedFile(file);
+    setShowAttachMenu(false);
+
+    // Create preview for images
+    if (file.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setFilePreview({ type: 'image', url: e.target.result, name: file.name, size: file.size });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setFilePreview({ type: 'document', name: file.name, size: file.size, mimeType: file.type });
+    }
+  };
+
+  const handleSendFile = async () => {
+    if (!selectedFile || !selectedChat) return;
+
+    setUploadingFile(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('receiverId', selectedChat._id);
+
+      const { data } = await api.post('/files', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      setMessages(prev => [...prev, data.message]);
+      soundManager.play('sendMsg');
+
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        setIsAtBottom(true);
+      }, 100);
+      
+      loadConversations();
+      setFilePreview(null);
+      setSelectedFile(null);
+    } catch (error) {
+      console.error('Failed to send file:', error);
+      showAlertModal('Error', 'Failed to send file');
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (imageInputRef.current) imageInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+    }
+  };
+
+  const handleCancelFile = () => {
+    setFilePreview(null);
+    setSelectedFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (imageInputRef.current) imageInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
+  };
+
+  const openCamera = async () => {
+    setShowAttachMenu(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user' }, 
+        audio: false 
+      });
+      setCameraStream(stream);
+      setShowCameraModal(true);
+      
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Camera access error:', error);
+      showAlertModal('Camera Error', 'Unable to access camera. Please check permissions.');
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    canvas.toBlob((blob) => {
+      const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setSelectedFile(file);
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setFilePreview({ type: 'image', url: e.target.result, name: file.name, size: file.size });
+      };
+      reader.readAsDataURL(file);
+      
+      closeCamera();
+    }, 'image/jpeg', 0.95);
+  };
+
+  const closeCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    setShowCameraModal(false);
   };
 
   const handleReply = (message) => {
@@ -1635,7 +1867,16 @@ const ChatNew = () => {
       <div className={`w-full md:w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
         {/* Header */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('Messaging')}</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('Messaging')}</h1>
+            <button
+              onClick={() => setShowCreateGroup(true)}
+              className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+              title="New Group"
+            >
+              <FiUsers className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -1688,13 +1929,47 @@ const ChatNew = () => {
                 </div>
               </div>
             ))
-          ) : conversations.length === 0 ? (
+          ) : conversations.length === 0 && groups.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <p>{t('No conversations yet')}</p>
               <p className="text-sm mt-2">{t('Search for users to start chatting')}</p>
             </div>
           ) : (
-            conversations.map(conv => (
+            <>
+            {/* Groups */}
+            {groups.map(group => (
+              <div
+                key={`grp-${group._id}`}
+                className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === group._id && selectedChat?.isGroup ? 'bg-blue-50 dark:bg-gray-700' : ''}`}
+                onClick={() => {
+                  setSelectedChat({ ...group, isGroup: true });
+                }}
+              >
+                <div className="flex items-center flex-1 min-w-0">
+                  <div className="relative">
+                    <img
+                      src={group.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(group.name)}&background=0D8ABC&color=fff`}
+                      alt={group.name}
+                      className="w-12 h-12 rounded-full object-cover"
+                    />
+                  </div>
+                  <div className="ml-3 flex-1 min-w-0">
+                    <div className="flex justify-between items-baseline">
+                      <div className="flex items-center gap-2">
+                        <FiUsers className="w-4 h-4 text-gray-500" />
+                        <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{group.name}</p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                      {group.members.length} members
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            
+            {/* Individual Conversations */}
+            {conversations.map(conv => (
               <div
                 key={conv.user._id}
                 className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === conv.user._id ? 'bg-blue-50 dark:bg-gray-700' : ''
@@ -1813,7 +2088,8 @@ const ChatNew = () => {
                   )}
                 </div>
               </div>
-            ))
+            ))}
+            </>
           )}
         </div>
       </div>
@@ -1844,7 +2120,7 @@ const ChatNew = () => {
             {/* Chat Header */}
             <div className="relative">
               {/* Glowing border for active chat header */}
-              {userStatuses[selectedChat._id] && !viewedStatuses.has(selectedChat._id) && (
+              {!selectedChat.isGroup && userStatuses[selectedChat._id] && !viewedStatuses.has(selectedChat._id) && (
                 <div className="absolute -inset-1 z-0 pointer-events-none rounded-lg">
                   <div className="absolute inset-0 bg-gradient-to-r from-green-400 via-green-500 to-green-400 animate-pulse rounded-lg" style={{ animationDuration: '2s' }} />
                 </div>
@@ -1863,34 +2139,63 @@ const ChatNew = () => {
                   </button>
                   <div 
                     className="relative flex-shrink-0 cursor-pointer"
-                    onClick={() => setShowUserPanel(!showUserPanel)}
+                    onClick={() => {
+                      if (selectedChat.isGroup) {
+                        setShowGroupInfo(true);
+                      } else {
+                        setShowUserPanel(!showUserPanel);
+                      }
+                    }}
                   >
                     <div
                       className="rounded-full"
                       style={{
-                        padding: userStatuses[selectedChat._id] && !viewedStatuses.has(selectedChat._id) ? '3px' : '0',
-                        background: userStatuses[selectedChat._id] && !viewedStatuses.has(selectedChat._id) ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent'
+                        padding: !selectedChat.isGroup && userStatuses[selectedChat._id] && !viewedStatuses.has(selectedChat._id) ? '3px' : '0',
+                        background: !selectedChat.isGroup && userStatuses[selectedChat._id] && !viewedStatuses.has(selectedChat._id) ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent'
                       }}
                     >
                       <img
-                        src={getUserAvatar(selectedChat)}
-                        alt={getUserDisplayName(selectedChat)}
+                        src={selectedChat.isGroup ? (selectedChat.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedChat.name)}&background=0D8ABC&color=fff`) : getUserAvatar(selectedChat)}
+                        alt={selectedChat.isGroup ? selectedChat.name : getUserDisplayName(selectedChat)}
                         className="w-10 h-10 rounded-full object-cover"
                       />
                     </div>
-                    {isOnline(selectedChat._id) && (
+                    {!selectedChat.isGroup && isOnline(selectedChat._id) && (
                       <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
                     )}
                   </div>
                   <div 
                     className="flex-1 min-w-0 cursor-pointer"
-                    onClick={() => setShowUserPanel(!showUserPanel)}
+                    onClick={() => {
+                      if (selectedChat.isGroup) {
+                        setShowGroupInfo(true);
+                      } else {
+                        setShowUserPanel(!showUserPanel);
+                      }
+                    }}
                   >
-                    <h2 className="font-semibold text-gray-900 dark:text-gray-100">{getUserDisplayName(selectedChat)}</h2>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {isOnline(selectedChat._id) ? t('Active now') : getLastSeenText(selectedChat.lastSeen)}
+                    <div className="flex items-center gap-2">
+                      {selectedChat.isGroup && <FiUsers className="w-4 h-4 text-gray-500" />}
+                      <h2 className="font-semibold text-gray-900 dark:text-gray-100">
+                        {selectedChat.isGroup ? selectedChat.name : getUserDisplayName(selectedChat)}
+                      </h2>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs">
+                      {selectedChat.isGroup ? (
+                        (() => {
+                          const onlineMembers = selectedChat.members.filter(m => {
+                            const memberId = typeof m === 'string' ? m : m._id;
+                            return memberId !== user._id && isOnline(memberId);
+                          });
+                          if (onlineMembers.length > 0) {
+                            return onlineMembers.map(m => getUserDisplayName(m)).join(', ');
+                          }
+                          return `${selectedChat.members.length} members`;
+                        })()
+                      ) : (isOnline(selectedChat._id) ? t('Active now') : getLastSeenText(selectedChat.lastSeen))}
                     </p>
                   </div>
+                  {!selectedChat.isGroup && (
                   <div className="flex items-center gap-2">
                     <button onClick={() => initiateCall('audio')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                       <FiPhone className="w-5 h-5 text-gray-600" />
@@ -1899,6 +2204,7 @@ const ChatNew = () => {
                       <FiVideo className="w-5 h-5 text-gray-600" />
                     </button>
                   </div>
+                  )}
                 </div>
               </div>
 
@@ -2062,7 +2368,7 @@ const ChatNew = () => {
             </div>
 
             {/* Pinned Messages Banner */}
-            {pinnedMessages.length > 0 && (
+            {!selectedChat.isGroup && pinnedMessages.length > 0 && (
               <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-blue-100 transition-colors"
                 onClick={() => scrollToMessage(pinnedMessages[0]._id)}
               >
@@ -2258,6 +2564,14 @@ const ChatNew = () => {
                                     duration={msg.voiceDuration}
                                     isOwn={isOwn}
                                   />
+                                ) : msg.type === 'image' || msg.type === 'document' ? (
+                                  <FileMessage
+                                    fileUrl={msg.fileUrl}
+                                    fileName={msg.fileName}
+                                    fileSize={msg.fileSize}
+                                    mimeType={msg.mimeType}
+                                    isOwn={isOwn}
+                                  />
                                 ) : (
                                   <p className="text-sm break-words leading-relaxed">{msg.content}</p>
                                 )}
@@ -2404,6 +2718,96 @@ const ChatNew = () => {
               </button>
             )}
 
+            {/* Camera Modal */}
+            {showCameraModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-95 z-[100] flex items-center justify-center p-4">
+                <div className="relative w-full max-w-2xl bg-gray-900 rounded-2xl overflow-hidden shadow-2xl">
+                  {/* Header */}
+                  <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/60 to-transparent p-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-white font-semibold text-lg">Take Photo</h3>
+                      <button
+                        onClick={closeCamera}
+                        className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors backdrop-blur-sm"
+                      >
+                        <FiX className="w-5 h-5 text-white" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Video Preview */}
+                  <div className="relative aspect-video bg-black">
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      className="w-full h-full object-cover"
+                    />
+                    <canvas ref={canvasRef} className="hidden" />
+                  </div>
+                  
+                  {/* Controls */}
+                  <div className="p-6 bg-gray-900 flex items-center justify-center">
+                    <button
+                      onClick={capturePhoto}
+                      className="relative group"
+                    >
+                      <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+                        <div className="w-14 h-14 rounded-full border-4 border-gray-900 flex items-center justify-center">
+                          <FiCamera className="w-6 h-6 text-gray-900" />
+                        </div>
+                      </div>
+                      <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
+                        Capture
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* File Preview Modal */}
+            {filePreview && (
+              <div className="sticky bottom-0 p-4 border-t border-gray-200 bg-white">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleCancelFile}
+                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                  >
+                    <FiX className="w-6 h-6 text-gray-600" />
+                  </button>
+                  
+                  <div className="flex-1 flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                    {filePreview.type === 'image' ? (
+                      <img src={filePreview.url} alt="Preview" className="w-16 h-16 object-cover rounded" />
+                    ) : (
+                      <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-2xl">
+                        📄
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{filePreview.name}</p>
+                      <p className="text-xs text-gray-500">
+                        {(filePreview.size / 1024 / 1024).toFixed(2)} MB
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleSendFile}
+                    disabled={uploadingFile}
+                    className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
+                  >
+                    {uploadingFile ? (
+                      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <FiSend className="w-6 h-6" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Voice Recorder */}
             {showVoiceRecorder && (
               <VoiceRecorder
@@ -2413,7 +2817,7 @@ const ChatNew = () => {
             )}
 
             {/* Message Input - Fixed to bottom */}
-            {!showVoiceRecorder && (
+            {!showVoiceRecorder && !filePreview && (
             <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
               {/* Quick Chat & Enhance Text Links */}
               <div className="flex gap-3 mb-0.5">
@@ -2457,6 +2861,69 @@ const ChatNew = () => {
                 </div>
               )}
               <div className="flex items-center gap-1 sm:gap-2">
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="user"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx,.zip,.rar"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+
+                <div className="relative" ref={attachMenuRef}>
+                  <button
+                    onClick={() => setShowAttachMenu(!showAttachMenu)}
+                    disabled={uploadingFile}
+                    className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors disabled:opacity-50"
+                    title="Attach"
+                  >
+                    {uploadingFile ? (
+                      <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <FiPaperclip className="w-5 h-5" />
+                    )}
+                  </button>
+
+                  {showAttachMenu && (
+                    <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-[160px] animate-slideUp">
+                      <button
+                        onClick={() => imageInputRef.current?.click()}
+                        className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                      >
+                        <FiImage className="w-5 h-5 text-purple-600" />
+                        <span className="text-sm font-medium text-gray-700">Photos</span>
+                      </button>
+                      <button
+                        onClick={openCamera}
+                        className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                      >
+                        <FiCamera className="w-5 h-5 text-blue-600" />
+                        <span className="text-sm font-medium text-gray-700">Camera</span>
+                      </button>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                      >
+                        <FiFile className="w-5 h-5 text-orange-600" />
+                        <span className="text-sm font-medium text-gray-700">Document</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={() => setShowVoiceRecorder(true)}
                   className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
@@ -2551,6 +3018,36 @@ const ChatNew = () => {
           onCallBack={handleCallBack}
           getUserDisplayName={getUserDisplayName}
           getUserAvatar={getUserAvatar}
+        />
+      )}
+
+      {/* Create Group Modal */}
+      {showCreateGroup && (
+        <CreateGroupModal
+          onClose={() => setShowCreateGroup(false)}
+          onGroupCreated={(group) => {
+            console.log('Group created:', group);
+            setGroups(prev => [group, ...prev]);
+          }}
+        />
+      )}
+
+      {/* Group Info Panel */}
+      {showGroupInfo && selectedChat?.isGroup && (
+        <GroupInfoPanel
+          group={selectedChat}
+          currentUserId={user._id}
+          onClose={() => setShowGroupInfo(false)}
+          onUpdate={(updatedGroup) => {
+            setSelectedChat({ ...updatedGroup, isGroup: true });
+            setGroups(prev => prev.map(g => g._id === updatedGroup._id ? updatedGroup : g));
+          }}
+          onLeave={() => {
+            setShowGroupInfo(false);
+            setSelectedChat(null);
+            setGroups(prev => prev.filter(g => g._id !== selectedChat._id));
+            loadGroups();
+          }}
         />
       )}
     </div>

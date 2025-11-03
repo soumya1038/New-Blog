@@ -15,6 +15,7 @@ import Drafts from './pages/Drafts';
 import AdminDashboard from './pages/AdminDashboard';
 import VerifyEmail from './pages/VerifyEmail';
 import ChatNew from './pages/ChatNew';
+import JoinGroup from './pages/JoinGroup';
 import NotFound from './pages/NotFound';
 import ErrorFallback from './components/ErrorFallback';
 import IncomingCallModal from './components/IncomingCallModal';
@@ -170,6 +171,7 @@ function AppContent() {
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/verify-email/:token" element={<VerifyEmail />} />
           <Route path="/chat" element={<ChatNew />} />
+          <Route path="/join-group/:inviteCode" element={<JoinGroup />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>
