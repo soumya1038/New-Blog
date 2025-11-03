@@ -15,6 +15,7 @@ const apiRoutes = require('./routes/apiRoutes');
 const aiRoutes = require('./routes/aiRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const voiceRoutes = require('./routes/voiceRoutes');
 const callRoutes = require('./routes/callRoutes');
 const zohoAuthRoutes = require('./routes/zohoAuth');
 const { errorHandler } = require('./middleware/errorHandler');
@@ -69,6 +70,7 @@ app.use('/api/external', apiRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/voice', voiceRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/auth/zoho', zohoAuthRoutes);
 
@@ -76,7 +78,9 @@ app.use('/api/auth/zoho', zohoAuthRoutes);
 app.use(errorHandler);
 
 // Initialize Socket.io
-chatSocket(io);
+const onlineUsers = new Map();
+app.set('onlineUsers', onlineUsers);
+chatSocket(io, onlineUsers);
 
 // Make io accessible globally for notifications
 app.set('io', io);

@@ -7,7 +7,9 @@ class SoundManager {
       receiveMsg: new Audio('/sounds/receive-msg.mp3'),
       callRing: new Audio('/sounds/call-ring-sound.mp3'),
       endCall: new Audio('/sounds/end-call.mp3'),
-      incomingCall: new Audio('/sounds/NB-ring-notification.mp3')
+      incomingCall: new Audio('/sounds/NB-ring-notification.mp3'),
+      startRecord: new Audio('/sounds/start-record.mp3'),
+      endRecord: new Audio('/sounds/end-record.mp3')
     };
 
     // Configure sounds

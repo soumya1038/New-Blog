@@ -3,9 +3,7 @@ const User = require('../models/User');
 const Notification = require('../models/Notification');
 const { encrypt, decrypt } = require('../utils/encryption');
 
-const onlineUsers = new Map(); // Map<userId, { socketId, currentRoute }>
-
-module.exports = (io) => {
+module.exports = (io, onlineUsers = new Map()) => {
   io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
@@ -254,13 +252,18 @@ module.exports = (io) => {
         await message.populate('reactions.user', 'name username fullName');
 
         // Notify both users
-        const receiverSocketId = onlineUsers.get(message.receiver.toString());
-        const senderSocketId = onlineUsers.get(message.sender.toString());
+        const receiverData = onlineUsers.get(message.receiver.toString());
+        const senderData = onlineUsers.get(message.sender.toString());
         
         const reactionData = { messageId, reactions: message.reactions };
         
-        if (receiverSocketId) io.to(receiverSocketId).emit('message:reaction', reactionData);
-        if (senderSocketId) io.to(senderSocketId).emit('message:reaction', reactionData);
+        console.log(`👍 Reaction added to message ${messageId}`);
+        if (receiverData) {
+          io.to(receiverData.socketId).emit('message:reaction', reactionData);
+        }
+        if (senderData) {
+          io.to(senderData.socketId).emit('message:reaction', reactionData);
+        }
       } catch (error) {
         console.error('Reaction error:', error);
       }
@@ -281,13 +284,17 @@ module.exports = (io) => {
         await message.save();
 
         // Notify both users
-        const receiverSocketId = onlineUsers.get(message.receiver.toString());
-        const senderSocketId = onlineUsers.get(message.sender.toString());
+        const receiverData = onlineUsers.get(message.receiver.toString());
+        const senderData = onlineUsers.get(message.sender.toString());
         
         const reactionData = { messageId, reactions: message.reactions };
         
-        if (receiverSocketId) io.to(receiverSocketId).emit('message:reaction', reactionData);
-        if (senderSocketId) io.to(senderSocketId).emit('message:reaction', reactionData);
+        if (receiverData) {
+          io.to(receiverData.socketId).emit('message:reaction', reactionData);
+        }
+        if (senderData) {
+          io.to(senderData.socketId).emit('message:reaction', reactionData);
+        }
       } catch (error) {
         console.error('Unreact error:', error);
       }

@@ -4,13 +4,15 @@ import { AuthContext } from '../context/AuthContext';
 import { ChatSkeleton } from '../components/SkeletonLoader';
 import api from '../services/api';
 import socketService from '../services/socket';
-import { FiSend, FiSearch, FiMoreVertical, FiX, FiTrash2, FiBell, FiBellOff, FiUserX, FiArchive, FiAlertCircle, FiSmile, FiCornerUpLeft, FiShare2, FiUser, FiChevronDown, FiBookmark, FiZap, FiEdit3, FiPhone, FiVideo, FiPhoneCall } from 'react-icons/fi';
+import { FiSend, FiSearch, FiMoreVertical, FiX, FiTrash2, FiBell, FiBellOff, FiUserX, FiArchive, FiAlertCircle, FiSmile, FiCornerUpLeft, FiShare2, FiUser, FiChevronDown, FiBookmark, FiZap, FiEdit3, FiPhone, FiVideo, FiPhoneCall, FiMic } from 'react-icons/fi';
 import { BsCheck, BsCheckAll, BsPinAngleFill, BsPinAngle } from 'react-icons/bs';
 import soundNotification from '../utils/soundNotifications';
 import soundManager from '../utils/soundManager';
 import IncomingCallModal from '../components/IncomingCallModal';
 import ActiveCallScreen from '../components/ActiveCallScreen';
 import CallHistoryModal from '../components/CallHistoryModal';
+import VoiceRecorder from '../components/VoiceRecorder';
+import VoiceMessagePlayer from '../components/VoiceMessagePlayer';
 import webrtcService from '../services/webrtc';
 // Translation support - Import useTranslation hook from react-i18next
 // This enables multi-language support for the chat interface
@@ -76,6 +78,7 @@ const ChatNew = () => {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const pendingOfferRef = useRef(null);
   const messagesEndRef = useRef(null);
   const messagesContainerRef = useRef(null);
@@ -583,6 +586,7 @@ const ChatNew = () => {
     socket.current.emit('message:send', {
       receiverId: selectedChat._id,
       content: newMessage.trim(),
+      type: 'text',
       replyTo: replyingTo?._id || null
     });
 
@@ -599,6 +603,38 @@ const ChatNew = () => {
       setIsAtBottom(true);
       setNewMessageCount(0);
     }, 100);
+  };
+
+  const handleSendVoiceMessage = async (audioBlob, duration) => {
+    if (!selectedChat) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('voice', audioBlob, 'voice-message.webm');
+      formData.append('receiverId', selectedChat._id);
+      formData.append('duration', duration);
+
+      const { data } = await api.post('/voice', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      // Add message to UI immediately
+      setMessages(prev => [...prev, data.message]);
+      
+      setShowVoiceRecorder(false);
+      soundManager.play('sendMsg');
+
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        setIsAtBottom(true);
+      }, 100);
+      
+      loadConversations();
+    } catch (error) {
+      console.error('Failed to send voice message:', error);
+      showAlertModal('Error', 'Failed to send voice message');
+      setShowVoiceRecorder(false);
+    }
   };
 
   const handleReply = (message) => {
@@ -714,6 +750,7 @@ const ChatNew = () => {
 
   const handleReaction = (messageId, emoji) => {
     socket.current.emit('message:react', { messageId, emoji });
+    soundManager.play('sendMsg');
     setShowReactionPicker(null);
   };
 
@@ -2176,59 +2213,90 @@ const ChatNew = () => {
                           <div className="w-8 h-8" />
                         )}
                         <div className="mx-2 flex flex-col items-end gap-1">
-                          <div className="flex flex-col">
-                          <div className={`${isOwn ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white' : 'bg-gray-200 text-gray-900'} ${borderRadiusClass} px-4 py-2 shadow-sm`}>
-                            {/* Reply Quote */}
-                            {msg.replyTo && (
-                              <div
-                                onClick={() => scrollToMessage(msg.replyTo._id)}
-                                className={`${isOwn ? 'bg-white bg-opacity-20' : 'bg-gray-300'} rounded-2xl p-2 mb-2 cursor-pointer hover:opacity-80 border-l-4 ${isOwn ? 'border-white border-opacity-50' : 'border-gray-500'}`}
-                              >
-                                <p className={`text-xs font-semibold ${isOwn ? 'text-white text-opacity-90' : 'text-gray-700'}`}>
-                                  {getUserDisplayName(msg.replyTo.sender)}
-                                </p>
-                                <p className={`text-xs ${isOwn ? 'text-white text-opacity-80' : 'text-gray-600'} truncate`}>
-                                  {msg.replyTo.content.length > 50 ? msg.replyTo.content.substring(0, 50) + '...' : msg.replyTo.content}
-                                </p>
+                          <div className="flex items-end gap-1">
+                            {/* Reactions on LEFT for own messages */}
+                            {isOwn && msg.reactions && msg.reactions.length > 0 && (
+                              <div className="flex items-center gap-1 mb-1">
+                                {userReaction && (
+                                  <button
+                                    onClick={() => handleRemoveReaction(msg._id)}
+                                    className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs hover:bg-gray-100 shadow-sm"
+                                    title="Remove"
+                                  >
+                                    {userReaction.emoji}
+                                  </button>
+                                )}
+                                {otherReactions.length > 0 && (
+                                  <div className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs shadow-sm">
+                                    {otherReactions.map((r, i) => (
+                                      <span key={i}>{r.emoji}</span>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
                             )}
-                            <p className="text-sm break-words leading-relaxed">{msg.content}</p>
-                          </div>
-                          
-                          {/* Reactions - UNDER the message bubble */}
-                          {msg.reactions && msg.reactions.length > 0 && (
-                            <div className="flex items-center gap-1 mt-1">
-                              {userReaction && (
-                                <button
-                                  onClick={() => handleRemoveReaction(msg._id)}
-                                  className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs hover:bg-gray-100 shadow-sm"
-                                  title="Remove"
-                                >
-                                  {userReaction.emoji}
-                                </button>
-                              )}
-                              {otherReactions.length > 0 && (
-                                <div className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs shadow-sm">
-                                  {otherReactions.map((r, i) => (
-                                    <span key={i}>{r.emoji}</span>
-                                  ))}
-                                </div>
-                              )}
+                            
+                            <div className="flex flex-col">
+                              <div className={`${isOwn ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white' : 'bg-gray-200 text-gray-900'} ${borderRadiusClass} px-4 py-2 shadow-sm`}>
+                                {/* Reply Quote */}
+                                {msg.replyTo && (
+                                  <div
+                                    onClick={() => scrollToMessage(msg.replyTo._id)}
+                                    className={`${isOwn ? 'bg-white bg-opacity-20' : 'bg-gray-300'} rounded-2xl p-2 mb-2 cursor-pointer hover:opacity-80 border-l-4 ${isOwn ? 'border-white border-opacity-50' : 'border-gray-500'}`}
+                                  >
+                                    <p className={`text-xs font-semibold ${isOwn ? 'text-white text-opacity-90' : 'text-gray-700'}`}>
+                                      {getUserDisplayName(msg.replyTo.sender)}
+                                    </p>
+                                    <p className={`text-xs ${isOwn ? 'text-white text-opacity-80' : 'text-gray-600'} truncate`}>
+                                      {msg.replyTo.content.length > 50 ? msg.replyTo.content.substring(0, 50) + '...' : msg.replyTo.content}
+                                    </p>
+                                  </div>
+                                )}
+                                {msg.type === 'voice' ? (
+                                  <VoiceMessagePlayer
+                                    audioUrl={msg.voiceUrl}
+                                    duration={msg.voiceDuration}
+                                    isOwn={isOwn}
+                                  />
+                                ) : (
+                                  <p className="text-sm break-words leading-relaxed">{msg.content}</p>
+                                )}
+                              </div>
+                              {/* Timestamp BELOW message */}
+                              <div className={`flex items-center gap-1 text-[0.65rem] mt-0.5 ${isOwn ? 'justify-end text-gray-500' : 'justify-start text-gray-500'}`}>
+                                <span>{formatTime(msg.createdAt)}</span>
+                                {isOwn && (
+                                  msg.read ? (
+                                    <BsCheckAll className="text-xs text-green-500" title="Read" />
+                                  ) : msg.delivered ? (
+                                    <BsCheckAll className="text-xs" title="Delivered" />
+                                  ) : (
+                                    <BsCheck className="text-xs" title="Sent" />
+                                  )
+                                )}
+                              </div>
                             </div>
-                          )}
-                          </div>
-
-                          {/* Timestamp outside bubble */}
-                          <div className={`flex items-center gap-1 text-xs text-gray-500 mb-1 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
-                            <span>{formatTime(msg.createdAt)}</span>
-                            {isOwn && (
-                              msg.read ? (
-                                <BsCheckAll className="text-sm text-green-500" title="Read" />
-                              ) : msg.delivered ? (
-                                <BsCheckAll className="text-sm" title="Delivered" />
-                              ) : (
-                                <BsCheck className="text-sm" title="Sent" />
-                              )
+                            
+                            {/* Reactions on RIGHT for other's messages */}
+                            {!isOwn && msg.reactions && msg.reactions.length > 0 && (
+                              <div className="flex items-center gap-1 mb-1">
+                                {userReaction && (
+                                  <button
+                                    onClick={() => handleRemoveReaction(msg._id)}
+                                    className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs hover:bg-gray-100 shadow-sm"
+                                    title="Remove"
+                                  >
+                                    {userReaction.emoji}
+                                  </button>
+                                )}
+                                {otherReactions.length > 0 && (
+                                  <div className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs shadow-sm">
+                                    {otherReactions.map((r, i) => (
+                                      <span key={i}>{r.emoji}</span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
 
@@ -2236,44 +2304,48 @@ const ChatNew = () => {
 
                         </div>
 
-                        {/* Message Menu Button */}
+                        {/* Message Menu Button - opposite side of message */}
                         <button
                           onClick={() => setShowMessageMenu(showMessageMenu === msg._id ? null : msg._id)}
-                          className={`absolute ${isOwn ? 'left-0' : 'right-0'} top-1/2 -translate-y-1/2 ${isOwn ? '-translate-x-8' : 'translate-x-8'} opacity-0 group-hover:opacity-100 transition-opacity bg-white border border-gray-200 rounded-full p-1.5 hover:bg-gray-50 shadow-sm`}
+                          className={`absolute ${isOwn ? 'left-0 -translate-x-8' : 'right-0 translate-x-8'} top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-white border border-gray-200 rounded-full p-1.5 hover:bg-gray-50 shadow-sm`}
                           title="More"
                         >
                           <FiMoreVertical className="w-4 h-4 text-gray-600" />
                         </button>
 
-                        {/* Message Menu */}
+                        {/* Message Menu - appears on opposite side, aligned with 3-dot button */}
                         {showMessageMenu === msg._id && (
-                          <div ref={messageMenuRef} className={`absolute ${isOwn ? 'left-0' : 'right-0'} bottom-full mb-2 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-10 w-40`}>
+                          <div ref={messageMenuRef} className={`absolute ${isOwn ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-10 flex gap-1`}>
                             <button
                               onClick={() => {
                                 setShowReactionPicker(msg._id);
                                 setShowMessageMenu(null);
                               }}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title={t('React')}
                             >
-                              <FiSmile className="w-4 h-4" /> {t('React')}
+                              <FiSmile className="w-5 h-5 text-gray-700" />
                             </button>
                             <button
                               onClick={() => handleReply(msg)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title={t('Reply')}
                             >
-                              <FiCornerUpLeft className="w-4 h-4" /> {t('Reply')}
+                              <FiCornerUpLeft className="w-5 h-5 text-gray-700" />
                             </button>
                             <button
                               onClick={() => handleForward(msg)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title={t('Forward')}
                             >
-                              <FiShare2 className="w-4 h-4" /> {t('Forward')}
+                              <FiShare2 className="w-5 h-5 text-gray-700" />
                             </button>
                             <button
                               onClick={() => openPinModal(msg)}
-                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                              title={t('Pin')}
                             >
-                              <BsPinAngleFill className="w-4 h-4" /> {t('Pin')}
+                              <BsPinAngleFill className="w-5 h-5 text-gray-700" />
                             </button>
                           </div>
                         )}
@@ -2332,7 +2404,16 @@ const ChatNew = () => {
               </button>
             )}
 
+            {/* Voice Recorder */}
+            {showVoiceRecorder && (
+              <VoiceRecorder
+                onSend={handleSendVoiceMessage}
+                onCancel={() => setShowVoiceRecorder(false)}
+              />
+            )}
+
             {/* Message Input - Fixed to bottom */}
+            {!showVoiceRecorder && (
             <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
               {/* Quick Chat & Enhance Text Links */}
               <div className="flex gap-3 mb-0.5">
@@ -2376,6 +2457,13 @@ const ChatNew = () => {
                 </div>
               )}
               <div className="flex items-center gap-1 sm:gap-2">
+                <button
+                  onClick={() => setShowVoiceRecorder(true)}
+                  className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                  title="Voice message"
+                >
+                  <FiMic className="w-5 h-5" />
+                </button>
                 <textarea
                   value={newMessage}
                   onChange={(e) => {
@@ -2404,6 +2492,7 @@ const ChatNew = () => {
                 </button>
               </div>
             </div>
+            )}
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-500">
