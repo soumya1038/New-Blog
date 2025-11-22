@@ -345,7 +345,16 @@ const Chat = () => {
               </Box>
 
               {/* Messages */}
-              <Box sx={{ flex: 1, overflow: 'auto', p: 1, bgcolor: '#f5f5f5' }}>
+              <Box sx={{ 
+                flex: 1, 
+                overflow: 'auto', 
+                p: 1, 
+                position: 'relative',
+                backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0.85)), url(/image/chat_background.png)',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundAttachment: 'fixed'
+              }}>
                 {messages.map((msg) => {
                   const isOwnMessage = msg.sender?._id === currentUser?._id;
                   return (
@@ -355,7 +364,9 @@ const Chat = () => {
                         display: 'flex',
                         justifyContent: isOwnMessage ? 'flex-end' : 'flex-start',
                         mb: 1,
-                        px: 1
+                        px: 1,
+                        position: 'relative',
+                        zIndex: 1
                       }}
                     >
                       {!isOwnMessage && (

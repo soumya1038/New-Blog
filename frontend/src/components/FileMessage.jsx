@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { FiDownload, FiFile, FiImage } from 'react-icons/fi';
+import { GoDownload } from 'react-icons/go';
 
-const FileMessage = ({ fileUrl, fileName, fileSize, mimeType, isOwn }) => {
+const FileMessage = ({ fileUrl, fileName, fileSize, mimeType, caption, isOwn }) => {
   const [showImageModal, setShowImageModal] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(isOwn);
   const isImage = mimeType?.startsWith('image/');
 
   const formatFileSize = (bytes) => {
@@ -24,16 +26,38 @@ const FileMessage = ({ fileUrl, fileName, fileSize, mimeType, isOwn }) => {
   if (isImage) {
     return (
       <>
-        <div className="relative group cursor-pointer" onClick={() => setShowImageModal(true)}>
-          <img
-            src={fileUrl}
-            alt={fileName}
-            className="max-w-xs rounded-lg"
-            style={{ maxHeight: '300px' }}
-          />
-          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
-            <FiImage className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+        <div className="space-y-2">
+          <div className="relative group cursor-pointer" onClick={() => imageLoaded && setShowImageModal(true)}>
+            {imageLoaded ? (
+              <>
+                <img
+                  src={fileUrl}
+                  alt={fileName}
+                  className="w-full max-w-[250px] sm:max-w-xs rounded-lg object-contain"
+                  style={{ maxHeight: '300px' }}
+                />
+                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all rounded-lg flex items-center justify-center">
+                  <FiImage className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              </>
+            ) : (
+              <div 
+                className="w-full max-w-[250px] sm:max-w-xs rounded-lg bg-gray-200 flex flex-col items-center justify-center p-8"
+                style={{ minHeight: '200px' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setImageLoaded(true);
+                }}
+              >
+                <GoDownload className="w-12 h-12 text-gray-600 mb-2" />
+                <p className="text-sm text-gray-600 text-center">Click to load image</p>
+                <p className="text-xs text-gray-500 mt-1">{formatFileSize(fileSize)}</p>
+              </div>
+            )}
           </div>
+          {caption && (
+            <p className="text-sm break-words leading-relaxed">{caption}</p>
+          )}
         </div>
 
         {showImageModal && (

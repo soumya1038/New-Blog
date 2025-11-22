@@ -35,6 +35,7 @@ const EditBlog = () => {
   const [autoSaving, setAutoSaving] = useState(false);
   const [autoSaveSuccess, setAutoSaveSuccess] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [isShortMode, setIsShortMode] = useState(false);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const autoSaveTimerRef = useRef(null);
@@ -93,6 +94,7 @@ const EditBlog = () => {
       setOldCloudinaryPublicId(data.blog.cloudinaryPublicId || '');
       setMetaDescription(data.blog.metaDescription || '');
       setIsDraft(data.blog.isDraft);
+      setIsShortMode(data.blog.isShortBlog || false);
     } catch (err) {
       setError('Failed to load blog');
     } finally {
@@ -422,19 +424,29 @@ const EditBlog = () => {
             <div>
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2 gap-2">
                 <label className="block text-gray-700 font-semibold">{t('Content')}</label>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsShortMode(!isShortMode)}
+                    className={`px-3 py-1 text-sm rounded-lg transition ${
+                      isShortMode ? 'bg-purple-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
+                    }`}
+                  >
+                    {isShortMode ? '📝 Short Mode' : '📄 Long Mode'}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setPreviewMode(!previewMode)}
                     className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition"
                   >
-                    {previewMode ? 'Write' : 'Preview'}
+                    {previewMode ? '✍️ Write' : '👁️ Preview'}
                   </button>
                   <AIBlogGenerator 
                     title={title} 
                     tags={tags.join(', ')}
                     category={category}
                     existingContent={content}
+                    isShortMode={isShortMode}
                     onGenerate={handleAIGenerate}
                     onMetaGenerate={setMetaDescription}
                   />
@@ -445,6 +457,15 @@ const EditBlog = () => {
                 <div className="border rounded-lg p-4 min-h-[300px] prose max-w-none">
                   <ReactMarkdown>{content || '*No content to preview*'}</ReactMarkdown>
                 </div>
+              ) : isShortMode ? (
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="Write your short blog (max 100 words)..."
+                  rows={6}
+                  maxLength={600}
+                />
               ) : (
                 <SimpleMDE
                   key="simplemde-editor"
@@ -457,9 +478,13 @@ const EditBlog = () => {
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-2 gap-2">
                 <p className="text-xs sm:text-sm text-gray-500">
                   Word Count: {wordCount} | Reading Time: {readingTime} min
+                  {isShortMode && wordCount > 100 && (
+                    <span className="text-red-500 ml-2">⚠️ Exceeds 100 words</span>
+                  )}
                 </p>
                 <AIContentTools
                   content={content}
+                  isShortMode={isShortMode}
                   onTitlesGenerated={handleTitlesGenerated}
                   onTagsGenerated={handleTagsGenerated}
                   onContentImproved={handleContentImproved}

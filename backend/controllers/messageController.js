@@ -168,6 +168,8 @@ exports.getMessages = async (req, res) => {
       fileName: msg.fileName,
       fileSize: msg.fileSize,
       mimeType: msg.mimeType,
+      caption: msg.caption,
+      deletedForEveryone: msg.deletedForEveryone,
       delivered: msg.delivered,
       read: msg.read,
       readAt: msg.readAt,
@@ -180,7 +182,7 @@ exports.getMessages = async (req, res) => {
     // Populate replyTo messages
     await Message.populate(decryptedMessages, {
       path: 'replyTo',
-      select: 'content sender createdAt',
+      select: 'content sender createdAt type fileUrl caption',
       populate: { path: 'sender', select: 'name username fullName' }
     });
 
@@ -214,14 +216,62 @@ exports.deleteMessage = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized' });
     }
 
-    if (deleteFor === 'everyone' && message.sender.toString() === req.user._id.toString()) {
-      await message.deleteOne();
+    if (deleteFor === 'everyone') {
+      if (message.sender.toString() !== req.user._id.toString()) {
+        return res.status(403).json({ message: 'You can only delete your own messages for everyone' });
+      }
+      
+      // Delete from Cloudinary if exists
+      if (message.cloudinaryPublicId) {
+        try {
+          const cloudinary = require('../utils/cloudinary');
+          await cloudinary.uploader.destroy(message.cloudinaryPublicId);
+          console.log(`✅ Deleted from Cloudinary: ${message.cloudinaryPublicId}`);
+        } catch (error) {
+          console.error('❌ Failed to delete from Cloudinary:', error);
+        }
+      }
+      
+      message.content = 'This message was deleted';
+      message.deletedForEveryone = true;
+      message.type = 'text';
+      message.fileUrl = null;
+      message.fileName = null;
+      message.fileSize = null;
+      message.mimeType = null;
+      message.caption = null;
+      message.voiceUrl = null;
+      message.voiceDuration = null;
+      message.cloudinaryPublicId = null;
+      await message.save();
       return res.json({ message: 'Message deleted for everyone' });
     }
 
+    // Delete for me
     if (!message.deletedBy.includes(req.user._id)) {
       message.deletedBy.push(req.user._id);
       await message.save();
+    }
+
+    // Check if both users have deleted - permanently delete from DB
+    const otherUserId = message.sender.toString() === req.user._id.toString() 
+      ? message.receiver.toString() 
+      : message.sender.toString();
+    
+    if (message.deletedBy.length === 2 && message.deletedBy.includes(otherUserId)) {
+      // Delete from Cloudinary if exists
+      if (message.cloudinaryPublicId) {
+        try {
+          const cloudinary = require('../utils/cloudinary');
+          await cloudinary.uploader.destroy(message.cloudinaryPublicId);
+          console.log(`✅ Both users deleted - Removed from Cloudinary: ${message.cloudinaryPublicId}`);
+        } catch (error) {
+          console.error('❌ Failed to delete from Cloudinary:', error);
+        }
+      }
+      
+      await Message.deleteOne({ _id: message._id });
+      console.log(`✅ Both users deleted - Permanently removed message: ${message._id}`);
     }
 
     res.json({ message: 'Message deleted' });
@@ -316,7 +366,9 @@ exports.deleteConversation = async (req, res) => {
 exports.clearChat = async (req, res) => {
   try {
     const { userId } = req.params;
+    const cloudinary = require('../utils/cloudinary');
     
+    // Mark messages as deleted by current user
     await Message.updateMany(
       {
         $or: [
@@ -327,6 +379,37 @@ exports.clearChat = async (req, res) => {
       },
       { $push: { deletedBy: req.user._id } }
     );
+
+    // Find messages where both users have deleted (deletedBy array has 2 users)
+    const messagesToDelete = await Message.find({
+      $or: [
+        { sender: req.user._id, receiver: userId },
+        { sender: userId, receiver: req.user._id }
+      ],
+      deletedBy: { $all: [req.user._id, userId], $size: 2 }
+    });
+
+    // Permanently delete messages where both users cleared
+    if (messagesToDelete.length > 0) {
+      // Delete from Cloudinary
+      for (const msg of messagesToDelete) {
+        if (msg.cloudinaryPublicId) {
+          try {
+            await cloudinary.uploader.destroy(msg.cloudinaryPublicId);
+            console.log(`✅ Both users cleared - Deleted from Cloudinary: ${msg.cloudinaryPublicId}`);
+          } catch (error) {
+            console.error('❌ Failed to delete from Cloudinary:', error);
+          }
+        }
+      }
+      
+      // Delete from database
+      await Message.deleteMany({
+        _id: { $in: messagesToDelete.map(m => m._id) }
+      });
+      
+      console.log(`✅ Both users cleared - Permanently deleted ${messagesToDelete.length} messages`);
+    }
 
     res.json({ message: 'Chat cleared successfully' });
   } catch (error) {
@@ -704,6 +787,7 @@ exports.getGroupMessages = async (req, res) => {
       fileName: msg.fileName,
       fileSize: msg.fileSize,
       mimeType: msg.mimeType,
+      caption: msg.caption,
       reactions: msg.reactions,
       replyTo: msg.replyTo,
       createdAt: msg.createdAt,

@@ -23,10 +23,13 @@ const UserProfile = () => {
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
+  const [shorts, setShorts] = useState([]);
+  const [contentTab, setContentTab] = useState('posts');
 
   useEffect(() => {
     fetchUserProfile();
     fetchUserBlogs();
+    fetchUserShorts();
   }, [id, currentUser]);
 
   const fetchUserProfile = async () => {
@@ -58,18 +61,28 @@ const UserProfile = () => {
     }
   };
 
+  const fetchUserShorts = async () => {
+    try {
+      const { data } = await api.get(`/blogs/short/all?author=${id}`);
+      setShorts(data.blogs);
+    } catch (error) {
+      console.error('Error fetching user shorts:', error);
+    }
+  };
+
   const getMonthsData = () => {
     const months = [];
     const now = new Date();
+    const allContent = [...blogs, ...shorts];
     
     for (let i = 5; i >= 0; i--) {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthName = date.toLocaleDateString('en-US', { month: 'short' });
       const year = date.getFullYear();
       const month = date.getMonth();
-      const count = blogs.filter(blog => {
-        const blogDate = new Date(blog.createdAt);
-        return blogDate.getMonth() === month && blogDate.getFullYear() === year;
+      const count = allContent.filter(item => {
+        const itemDate = new Date(item.createdAt);
+        return itemDate.getMonth() === month && itemDate.getFullYear() === year;
       }).length;
       months.push({ label: monthName, count, year, month });
     }
@@ -82,6 +95,7 @@ const UserProfile = () => {
     const weeks = [];
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
+    const allContent = [...blogs, ...shorts];
     
     let weekStart = new Date(firstDay);
     let weekNum = 1;
@@ -91,9 +105,9 @@ const UserProfile = () => {
       weekEnd.setDate(weekEnd.getDate() + 6);
       if (weekEnd > lastDay) weekEnd.setTime(lastDay.getTime());
       
-      const count = blogs.filter(blog => {
-        const blogDate = new Date(blog.createdAt);
-        return blogDate >= weekStart && blogDate <= weekEnd;
+      const count = allContent.filter(item => {
+        const itemDate = new Date(item.createdAt);
+        return itemDate >= weekStart && itemDate <= weekEnd;
       }).length;
       
       weeks.push({ 
@@ -114,12 +128,13 @@ const UserProfile = () => {
   const getDaysData = (startDate, endDate) => {
     const days = [];
     const current = new Date(startDate);
+    const allContent = [...blogs, ...shorts];
     
     while (current <= endDate) {
       const dayLabel = current.toLocaleDateString('en-US', { weekday: 'short' });
-      const count = blogs.filter(blog => {
-        const blogDate = new Date(blog.createdAt);
-        return blogDate.toDateString() === current.toDateString();
+      const count = allContent.filter(item => {
+        const itemDate = new Date(item.createdAt);
+        return itemDate.toDateString() === current.toDateString();
       }).length;
       
       days.push({ label: dayLabel, count, date: new Date(current) });
@@ -176,6 +191,7 @@ const UserProfile = () => {
     const months = [];
     const startDate = new Date(heatmapYear, 0, 1);
     const endDate = new Date(heatmapYear, 11, 31);
+    const allContent = [...blogs, ...shorts];
     
     const current = new Date(startDate);
     
@@ -200,8 +216,8 @@ const UserProfile = () => {
       }
       
       const dateStr = current.toDateString();
-      const count = blogs.filter(blog => {
-        return new Date(blog.createdAt).toDateString() === dateStr;
+      const count = allContent.filter(item => {
+        return new Date(item.createdAt).toDateString() === dateStr;
       }).length;
       
       week.push({ date: new Date(current), count, isInYear: true });
@@ -235,10 +251,11 @@ const UserProfile = () => {
   };
 
   const getAvailableYears = () => {
-    if (blogs.length === 0) return [new Date().getFullYear()];
+    const allContent = [...blogs, ...shorts];
+    if (allContent.length === 0) return [new Date().getFullYear()];
     const years = new Set();
-    blogs.forEach(blog => {
-      years.add(new Date(blog.createdAt).getFullYear());
+    allContent.forEach(item => {
+      years.add(new Date(item.createdAt).getFullYear());
     });
     return Array.from(years).sort((a, b) => b - a);
   };
@@ -311,8 +328,8 @@ const UserProfile = () => {
               {/* Stats */}
               <div className="flex flex-wrap justify-center sm:justify-start gap-6 mb-4">
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-blue-600">{profile.blogCount || 0}</p>
-                  <p className="text-sm text-gray-600 flex items-center gap-1"><FaFileAlt /> {t('Posts')}</p>
+                  <p className="text-2xl font-bold text-blue-600">{(blogs.length + shorts.length) || 0}</p>
+                  <p className="text-sm text-gray-600 flex items-center gap-1"><FaFileAlt /> {t('Posts')} ({blogs.length} + {shorts.length} shorts)</p>
                 </div>
                 <div className="text-center">
                   <p className="text-2xl font-bold text-blue-600">{profile.followerCount || 0}</p>
@@ -524,10 +541,27 @@ const UserProfile = () => {
           </div>
         )}
 
-        {/* User's Blog Posts */}
+        {/* User's Blog Posts & Shorts */}
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-800">{t('Blog Posts')}</h2>
+            <div className="flex gap-4">
+              <button
+                onClick={() => setContentTab('posts')}
+                className={`text-xl font-bold transition ${
+                  contentTab === 'posts' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {t('Blog Posts')} ({blogs.length})
+              </button>
+              <button
+                onClick={() => setContentTab('shorts')}
+                className={`text-xl font-bold transition ${
+                  contentTab === 'shorts' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {t('Shorts')} ({shorts.length})
+              </button>
+            </div>
             {selectedDay && (
               <button
                 onClick={() => setSelectedDay(null)}
@@ -543,36 +577,89 @@ const UserProfile = () => {
             </p>
           )}
           
-          {getFilteredBlogs().length === 0 ? (
-            <p className="text-gray-600 text-center py-8">
-              {selectedDay ? t('No blog posts on this day') : t('No blog posts yet')}
-            </p>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {getFilteredBlogs().map(blog => (
-                <Link
-                  key={blog._id}
-                  to={`/blog/${blog._id}`}
-                  className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-5 hover:shadow-lg transition"
-                >
-                  <h3 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2">{blog.title}</h3>
-                  <p className="text-gray-600 text-sm mb-3 line-clamp-3">{blog.content.substring(0, 150)}...</p>
-                  <div className="flex items-center justify-between text-sm text-gray-500">
-                    <span>{new Date(blog.createdAt).toLocaleDateString()}</span>
-                    <span>❤️ {blog.likes?.length || 0}</span>
-                  </div>
-                  {blog.tags && blog.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {blog.tags.slice(0, 3).map((tag, idx) => (
-                        <span key={idx} className="bg-blue-100 text-blue-600 px-2 py-1 rounded text-xs">
-                          {tag}
-                        </span>
-                      ))}
+          {contentTab === 'posts' ? (
+            getFilteredBlogs().length === 0 ? (
+              <p className="text-gray-600 text-center py-8">
+                {selectedDay ? t('No blog posts on this day') : t('No blog posts yet')}
+              </p>
+            ) : (
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {getFilteredBlogs().map(blog => (
+                  <Link
+                    key={blog._id}
+                    to={`/blog/${blog._id}`}
+                    className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-5 hover:shadow-lg transition"
+                  >
+                    <h3 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2">{blog.title}</h3>
+                    <p className="text-gray-600 text-sm mb-3 line-clamp-3">{blog.content.substring(0, 150)}...</p>
+                    <div className="flex items-center justify-between text-sm text-gray-500">
+                      <span>{new Date(blog.createdAt).toLocaleDateString()}</span>
+                      <span>❤️ {blog.likes?.length || 0}</span>
                     </div>
-                  )}
-                </Link>
-              ))}
-            </div>
+                    {blog.tags && blog.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {blog.tags.slice(0, 3).map((tag, idx) => (
+                          <span key={idx} className="bg-blue-100 text-blue-600 px-2 py-1 rounded text-xs">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )
+          ) : (
+            shorts.length === 0 ? (
+              <p className="text-gray-600 text-center py-8">{t('No shorts yet')}</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {shorts.map((short, index) => {
+                  const gradients = [
+                    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                    'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                    'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+                    'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+                    'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
+                    'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+                    'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
+                  ];
+                  const getBackgroundStyle = (blog, idx) => {
+                    if (blog.coverImage) {
+                      return { backgroundImage: `url(${blog.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' };
+                    }
+                    return { backgroundImage: gradients[idx % gradients.length] };
+                  };
+                  return (
+                    <Link
+                      key={short._id}
+                      to={`/short-blogs/${short._id}`}
+                      className="relative rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer aspect-[9/16]"
+                      style={getBackgroundStyle(short, index)}
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/50"></div>
+                      <div className="absolute inset-0 flex flex-col p-3">
+                        <h3 className="text-white text-sm font-bold line-clamp-1 mb-2">{short.title}</h3>
+                        <div className="flex-1 overflow-hidden mb-2">
+                          <p className="text-white text-xs leading-relaxed whitespace-pre-wrap line-clamp-6">{short.content}</p>
+                        </div>
+                        {short.tags?.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-2 overflow-hidden max-h-6">
+                            {short.tags.map((tag, idx) => (
+                              <span key={idx} className="bg-white/10 text-white text-xs px-2 py-0.5 rounded-full">#{tag}</span>
+                            ))}
+                          </div>
+                        )}
+                        {short.metaDescription && (
+                          <p className="text-white/60 text-xs line-clamp-1">{short.metaDescription}</p>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )
           )}
         </div>
 

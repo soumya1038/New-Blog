@@ -10,34 +10,43 @@ exports.generateBlog = async (req, res) => {
     }
 
     const lengthMap = {
+      '10-50': '10-50 words',
+      '50-100': '50-100 words',
+      '100-110': '100-110 words',
       short: '300-500 words',
       medium: '500-800 words',
       long: '800-1200 words'
     };
 
+    const isShortLength = ['10-50', '50-100', '100-110'].includes(length);
     const tagsText = tags ? ` Focus on these topics: ${tags}.` : '';
     const categoryText = category ? ` Category: ${category}.` : '';
     
     let userPrompt;
     if (existingContent && existingContent.trim()) {
       // Improve existing content
-      userPrompt = `Improve and expand this existing blog content about "${title}".${categoryText}${tagsText} Target length: ${lengthMap[length] || lengthMap.medium}.
+      userPrompt = `Improve and ${isShortLength ? 'condense' : 'expand'} this existing blog content about "${title}".${categoryText}${tagsText} Target length: ${lengthMap[length] || lengthMap.medium}.
 
 Existing content:
 ${existingContent}
 
-Rewrite and improve it to be more engaging, detailed, and well-structured. Keep the markdown format.`;
+Rewrite and improve it to be more ${isShortLength ? 'concise and impactful' : 'engaging, detailed, and well-structured'}. ${isShortLength ? 'Keep it brief and to the point.' : 'Keep the markdown format.'}`;
     } else {
       // Generate new content
-      userPrompt = `Write a blog post with the title: "${title}".${categoryText} Length: ${lengthMap[length] || lengthMap.medium}.${tagsText} Write only the content, not the title.`;
+      userPrompt = `Write a ${isShortLength ? 'short' : 'blog'} post with the title: "${title}".${categoryText} Length: ${lengthMap[length] || lengthMap.medium}.${tagsText} Write only the content, not the title. ${isShortLength ? 'Keep it concise and impactful.' : ''}`;
     }
+
+    const maxTokens = isShortLength ? 300 : 2000;
+    const systemContent = isShortLength 
+      ? `You are a professional writer. Write in a ${tone} tone. Generate concise, impactful content. Do not include the title in the output. Keep it brief and within the specified word count.`
+      : `You are a professional blog writer. Write in a ${tone} tone. Generate content in markdown format. Do not include the title in the output.`;
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'system',
-          content: `You are a professional blog writer. Write in a ${tone} tone. Generate content in markdown format. Do not include the title in the output.`
+          content: systemContent
         },
         {
           role: 'user',
@@ -45,14 +54,18 @@ Rewrite and improve it to be more engaging, detailed, and well-structured. Keep 
         }
       ],
       temperature: 0.7,
-      max_tokens: 2000
+      max_tokens: maxTokens
     });
 
     const content = completion.choices[0].message.content.trim();
+    
+    // Generate SEO meta description
+    const metaDescription = content.substring(0, 160).replace(/[#*_\[\]]/g, '').trim();
 
     res.json({
       success: true,
-      content
+      content,
+      metaDescription
     });
   } catch (error) {
     console.error('AI Error:', error);
@@ -101,7 +114,7 @@ exports.generateBio = async (req, res) => {
 // Improve existing content
 exports.improveContent = async (req, res) => {
   try {
-    const { content, improvementType = 'grammar' } = req.body;
+    const { content, improvementType = 'grammar', isShortMode = false } = req.body;
 
     if (!content) {
       return res.status(400).json({ success: false, message: 'Content is required' });
@@ -115,12 +128,16 @@ exports.improveContent = async (req, res) => {
       concise: 'Make the content more concise without losing important information.'
     };
 
+    const lengthConstraint = isShortMode 
+      ? ' Keep it under 100 words for a short blog format.' 
+      : '';
+
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'system',
-          content: `You are a professional editor. ${prompts[improvementType] || prompts.grammar}`
+          content: `You are a professional editor. ${prompts[improvementType] || prompts.grammar}${lengthConstraint}`
         },
         {
           role: 'user',
@@ -128,7 +145,7 @@ exports.improveContent = async (req, res) => {
         }
       ],
       temperature: 0.5,
-      max_tokens: 2000
+      max_tokens: isShortMode ? 300 : 2000
     });
 
     const improvedContent = completion.choices[0].message.content.trim();

@@ -10,6 +10,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import AIBlogGenerator from '../components/AIBlogGenerator';
 import AIContentTools from '../components/AIContentTools';
 import { FaArrowLeft, FaTimes } from 'react-icons/fa';
+import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { IoIosCheckmarkCircle } from 'react-icons/io';
 import { GridLoader } from 'react-spinners';
 
@@ -35,6 +36,7 @@ const CreateBlog = () => {
   const [autoSaving, setAutoSaving] = useState(false);
   const [autoSaveSuccess, setAutoSaveSuccess] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [isShortMode, setIsShortMode] = useState(false);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const autoSaveTimerRef = useRef(null);
@@ -55,6 +57,9 @@ const CreateBlog = () => {
       }
       if (location.state.repostCoverImage) {
         setCoverImage(location.state.repostCoverImage);
+      }
+      if (location.state.isShortMode) {
+        setIsShortMode(true);
       }
       toast.success('Blog content loaded for repost!');
     }
@@ -251,8 +256,11 @@ const CreateBlog = () => {
     }
   };
 
-  const handleAIGenerate = (aiContent) => {
+  const handleAIGenerate = (aiContent, aiMetaDescription) => {
     setContent(aiContent);
+    if (aiMetaDescription) {
+      setMetaDescription(aiMetaDescription);
+    }
     toast.success('AI content generated!');
   };
 
@@ -346,7 +354,23 @@ const CreateBlog = () => {
         </button>
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sm:p-8">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100">{t('Create New Blog Post')}</h1>
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100">
+                {isShortMode ? t('Create Short Blog') : t('Create New Blog Post')}
+              </h1>
+              <button
+                type="button"
+                onClick={() => setIsShortMode(!isShortMode)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
+                  isShortMode 
+                    ? 'bg-purple-600 text-white hover:bg-purple-700' 
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+                }`}
+              >
+                <MdOutlineSwitchAccessShortcutAdd className="w-5 h-5" />
+                {isShortMode ? t('Regular Blog') : t('Create Short')}
+              </button>
+            </div>
             {lastSaved && (
               <span className="text-xs text-gray-500">
                 Last saved: {lastSaved.toLocaleTimeString()}
@@ -365,7 +389,7 @@ const CreateBlog = () => {
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 required
-                placeholder={t('Enter blog title...')}
+                placeholder={isShortMode ? t('Enter short blog title...') : t('Enter blog title...')}
                 maxLength={100}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{title.length}/100 {t('characters')}</p>
@@ -458,6 +482,7 @@ const CreateBlog = () => {
                     existingContent={content}
                     onGenerate={handleAIGenerate}
                     onMetaGenerate={setMetaDescription}
+                    isShortMode={isShortMode}
                   />
                 </div>
               </div>
@@ -466,6 +491,15 @@ const CreateBlog = () => {
                 <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 min-h-[300px] prose dark:prose-invert max-w-none bg-white dark:bg-gray-700">
                   <ReactMarkdown>{content || `*${t('No content to preview')}*`}</ReactMarkdown>
                 </div>
+              ) : isShortMode ? (
+                <textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  placeholder={t('Write your short blog (max 100 words)...')}
+                  rows={6}
+                  maxLength={700}
+                />
               ) : (
                 <SimpleMDE
                   key="simplemde-editor"
@@ -477,7 +511,7 @@ const CreateBlog = () => {
               
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-2 gap-2">
                 <p className="text-xs sm:text-sm text-gray-500">
-                  {t('Word Count')}: {wordCount} | {t('Reading Time')}: {readingTime} {t('min read')}
+                  {t('Word Count')}: {wordCount} {isShortMode && wordCount > 100 && <span className="text-red-500">({t('Max 100 words')})</span>} | {t('Reading Time')}: {readingTime} {t('min read')}
                 </p>
                 <AIContentTools
                   content={content}

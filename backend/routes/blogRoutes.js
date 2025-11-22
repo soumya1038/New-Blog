@@ -7,7 +7,9 @@ const {
   getBlog,
   updateBlog,
   deleteBlog,
-  toggleLike
+  toggleLike,
+  trackView,
+  getShortBlogs
 } = require('../controllers/blogController');
 const { protect, optionalAuth } = require('../middleware/auth');
 const trackActivity = require('../middleware/trackActivity');
@@ -65,7 +67,9 @@ router.delete('/delete-image/:publicId', protect, async (req, res) => {
 
 router.post('/', protect, trackActivity, createBlog);
 router.get('/', optionalAuth, getBlogs);
+router.get('/short/all', getShortBlogs);
 router.get('/:id', getBlog);
+router.post('/:id/view', optionalAuth, trackView);
 router.put('/:id', protect, trackActivity, updateBlog);
 router.delete('/:id', protect, trackActivity, deleteBlog);
 router.post('/:id/like', protect, trackActivity, toggleLike);

@@ -35,6 +35,7 @@ const Profile = () => {
   const [deleteCode, setDeleteCode] = useState('');
   const [sendingDeleteCode, setSendingDeleteCode] = useState(false);
   const [blogs, setBlogs] = useState([]);
+  const [shorts, setShorts] = useState([]);
   const [heatmapYear, setHeatmapYear] = useState(new Date().getFullYear());
   const [generatingDescription, setGeneratingDescription] = useState(false);
   const [modal, setModal] = useState({ show: false, type: '', title: '', message: '', onConfirm: null });
@@ -275,6 +276,15 @@ const Profile = () => {
     }
   };
 
+  const fetchUserShorts = async () => {
+    try {
+      const { data } = await api.get(`/blogs/short/all?author=${user._id}`);
+      setShorts(data.blogs.slice(0, 5));
+    } catch (error) {
+      console.error('Error fetching shorts:', error);
+    }
+  };
+
   const fetchProfile = async () => {
     try {
       const { data } = await api.get('/users/profile');
@@ -333,7 +343,7 @@ const Profile = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchProfile(), fetchApiKeys(), fetchUserBlogs(), fetchStatuses()]);
+      await Promise.all([fetchProfile(), fetchApiKeys(), fetchUserBlogs(), fetchUserShorts(), fetchStatuses()]);
       setLoading(false);
     };
     loadData();
@@ -527,6 +537,7 @@ const Profile = () => {
     const months = [];
     const startDate = new Date(heatmapYear, 0, 1);
     const endDate = new Date(heatmapYear, 11, 31);
+    const allContent = [...blogs, ...shorts];
     
     const current = new Date(startDate);
     let week = [];
@@ -547,8 +558,8 @@ const Profile = () => {
       }
       
       const dateStr = current.toDateString();
-      const count = blogs.filter(blog => {
-        return new Date(blog.createdAt).toDateString() === dateStr;
+      const count = allContent.filter(item => {
+        return new Date(item.createdAt).toDateString() === dateStr;
       }).length;
       
       week.push({ date: new Date(current), count, isInYear: true });
@@ -580,10 +591,11 @@ const Profile = () => {
   };
 
   const getAvailableYears = () => {
-    if (blogs.length === 0) return [new Date().getFullYear()];
+    const allContent = [...blogs, ...shorts];
+    if (allContent.length === 0) return [new Date().getFullYear()];
     const years = new Set();
-    blogs.forEach(blog => {
-      years.add(new Date(blog.createdAt).getFullYear());
+    allContent.forEach(item => {
+      years.add(new Date(item.createdAt).getFullYear());
     });
     return Array.from(years).sort((a, b) => b - a);
   };
@@ -957,7 +969,7 @@ const Profile = () => {
           {/* Posts Section */}
           <div className="border-t pt-6 mb-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">{t('Posts')}</h3>
+              <h3 className="text-xl font-bold">{t('Posts')} ({blogs.length})</h3>
               {blogs.length > 0 && (
                 <button
                   onClick={() => navigate(`/user/${user._id}`)}
@@ -985,6 +997,40 @@ const Profile = () => {
               </div>
             ) : (
               <p className="text-gray-500 text-sm">{t('No posts yet')}</p>
+            )}
+          </div>
+
+          {/* Shorts Section */}
+          <div className="border-t pt-6 mb-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">{t('Shorts')} ({shorts.length})</h3>
+              {shorts.length > 0 && (
+                <button
+                  onClick={() => navigate(`/user/${user._id}`)}
+                  className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-semibold"
+                >
+                  {t('View All')} <FaArrowRight size={12} />
+                </button>
+              )}
+            </div>
+            
+            {shorts.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                {shorts.map(short => (
+                  <div
+                    key={short._id}
+                    onClick={() => navigate(`/short-blogs/${short._id}`)}
+                    className="bg-gray-50 p-3 rounded-lg border hover:border-purple-500 hover:shadow-md transition cursor-pointer"
+                  >
+                    <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={short.title}>
+                      {short.title}
+                    </h4>
+                    <p className="text-xs text-gray-500">{formatPostDate(short.createdAt)}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">{t('No shorts yet')}</p>
             )}
           </div>
           

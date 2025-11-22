@@ -43,6 +43,9 @@ const messageSchema = new mongoose.Schema({
   mimeType: {
     type: String
   },
+  caption: {
+    type: String
+  },
   cloudinaryPublicId: {
     type: String
   },
@@ -84,6 +87,10 @@ const messageSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
+  deletedForEveryone: {
+    type: Boolean,
+    default: false
+  },
   pinnedBy: {
     type: [{
       user: {

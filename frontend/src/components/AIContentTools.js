@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import api from '../services/api';
 import { FaLightbulb, FaTags, FaSpinner } from 'react-icons/fa';
 
-const AIContentTools = ({ content, onTitlesGenerated, onTagsGenerated, onContentImproved }) => {
+const AIContentTools = ({ content, isShortMode = false, onTitlesGenerated, onTagsGenerated, onContentImproved }) => {
   const [loading, setLoading] = useState(false);
 
   const generateTitles = async () => {
@@ -38,7 +38,11 @@ const AIContentTools = ({ content, onTitlesGenerated, onTagsGenerated, onContent
     
     setLoading(true);
     try {
-      const { data } = await api.post('/ai/improve-content', { content, improvementType: type });
+      const { data } = await api.post('/ai/improve-content', { 
+        content, 
+        improvementType: type,
+        isShortMode 
+      });
       onContentImproved(data.improvedContent);
     } catch (error) {
       alert('Content improvement failed');

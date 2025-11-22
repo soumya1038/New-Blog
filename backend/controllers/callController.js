@@ -65,3 +65,29 @@ exports.updateCallLog = async (req, res) => {
     res.status(500).json({ message: 'Failed to update call log' });
   }
 };
+
+// Delete individual call log
+exports.deleteCallLog = async (req, res) => {
+  try {
+    const { callLogId } = req.params;
+
+    const callLog = await CallLog.findById(callLogId);
+    if (!callLog) {
+      return res.status(404).json({ message: 'Call log not found' });
+    }
+
+    // Check if user is participant
+    const isParticipant = callLog.caller.toString() === req.user._id.toString() || 
+                          callLog.receiver.toString() === req.user._id.toString();
+    
+    if (!isParticipant) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    await CallLog.deleteOne({ _id: callLogId });
+    res.json({ message: 'Call log deleted successfully' });
+  } catch (error) {
+    console.error('Delete call log error:', error);
+    res.status(500).json({ message: 'Failed to delete call log' });
+  }
+};

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import api from '../services/api';
 import { FaMagic, FaSpinner } from 'react-icons/fa';
 
-const AIBlogGenerator = ({ title, tags, category, existingContent, onGenerate, onMetaGenerate }) => {
+const AIBlogGenerator = ({ title, tags, category, existingContent, onGenerate, onMetaGenerate, isShortMode }) => {
   const [editableTitle, setEditableTitle] = useState('');
   const [tone, setTone] = useState('professional');
   const [length, setLength] = useState('medium');
@@ -25,12 +25,10 @@ const AIBlogGenerator = ({ title, tags, category, existingContent, onGenerate, o
         tone, 
         length 
       });
-      onGenerate(data.content);
+      onGenerate(data.content, data.metaDescription);
       
-      // Generate SEO meta description
-      const metaDesc = data.content.substring(0, 160).replace(/[#*_\[\]]/g, '').trim();
-      if (onMetaGenerate) {
-        onMetaGenerate(metaDesc);
+      if (onMetaGenerate && data.metaDescription) {
+        onMetaGenerate(data.metaDescription);
       }
       
       setShowModal(false);
@@ -105,9 +103,22 @@ const AIBlogGenerator = ({ title, tags, category, existingContent, onGenerate, o
                   onChange={(e) => setLength(e.target.value)}
                   className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="short">Short (300-500 words)</option>
-                  <option value="medium">Medium (500-800 words)</option>
-                  <option value="long">Long (800-1200 words)</option>
+                  {isShortMode ? (
+                    <>
+                      <option value="10-50">10-50 words</option>
+                      <option value="50-100">50-100 words</option>
+                      <option value="100-110">100-110 words</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="10-50">10-50 words</option>
+                      <option value="50-100">50-100 words</option>
+                      <option value="100-110">100-110 words</option>
+                      <option value="short">Short (300-500 words)</option>
+                      <option value="medium">Medium (500-800 words)</option>
+                      <option value="long">Long (800-1200 words)</option>
+                    </>
+                  )}
                 </select>
               </div>
             </div>

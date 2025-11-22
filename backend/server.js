@@ -24,6 +24,7 @@ const { errorHandler } = require('./middleware/errorHandler');
 const chatSocket = require('./socket/chatSocket');
 const { cleanupOldNotifications } = require('./controllers/socialController');
 const cleanupExpiredStatuses = require('./utils/statusCleanup');
+const cleanupExpiredMessages = require('./jobs/cleanupExpiredMessages');
 
 const app = express();
 const server = http.createServer(app);
@@ -107,6 +108,10 @@ mongoose.connect(process.env.MONGODB_URI)
       setInterval(cleanupExpiredStatuses, 60 * 60 * 1000);
       cleanupExpiredStatuses(); // Run immediately on startup
       console.log('✅ Status auto-cleanup scheduled');
+      
+      // Start Cloudinary cleanup cron job
+      cleanupExpiredMessages();
+      console.log('✅ Message Cloudinary cleanup scheduled');
     });
   })
   .catch(err => {

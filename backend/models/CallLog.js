@@ -39,4 +39,7 @@ const callLogSchema = new mongoose.Schema({
 // Index for faster queries
 callLogSchema.index({ caller: 1, receiver: 1, createdAt: -1 });
 
+// TTL index - auto-delete call logs after 24 hours
+callLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 86400 }); // 24 hours = 86400 seconds
+
 module.exports = mongoose.model('CallLog', callLogSchema);

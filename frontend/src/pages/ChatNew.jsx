@@ -5,6 +5,9 @@ import { ChatSkeleton } from '../components/SkeletonLoader';
 import api from '../services/api';
 import socketService from '../services/socket';
 import { FiSend, FiSearch, FiMoreVertical, FiX, FiTrash2, FiBell, FiBellOff, FiUserX, FiArchive, FiAlertCircle, FiSmile, FiCornerUpLeft, FiShare2, FiUser, FiChevronDown, FiBookmark, FiZap, FiEdit3, FiPhone, FiVideo, FiPhoneCall, FiMic, FiFile, FiPaperclip, FiImage, FiCamera, FiUsers } from 'react-icons/fi';
+import { MdDeleteOutline, MdBlock } from 'react-icons/md';
+import { MdOutlineCamera } from 'react-icons/md';
+import { LuSwitchCamera } from 'react-icons/lu';
 import { BsCheck, BsCheckAll, BsPinAngleFill, BsPinAngle } from 'react-icons/bs';
 import soundNotification from '../utils/soundNotifications';
 import soundManager from '../utils/soundManager';
@@ -20,6 +23,10 @@ import webrtcService from '../services/webrtc';
 // Translation support - Import useTranslation hook from react-i18next
 // This enables multi-language support for the chat interface
 import { useTranslation } from 'react-i18next';
+import '../styles/camera.css';
+import BlogImageEditor from '../components/BlogImageEditor';
+import { ClipLoader } from 'react-spinners';
+import { compressImage } from '../utils/imageCompression';
 
 const ChatNew = () => {
   const location = useLocation();
@@ -55,6 +62,8 @@ const ChatNew = () => {
   const [forwardMessage, setForwardMessage] = useState(null);
   const [selectedRecipients, setSelectedRecipients] = useState(new Set());
   const [showMessageMenu, setShowMessageMenu] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletingMessage, setDeletingMessage] = useState(null);
   const [showImageModal, setShowImageModal] = useState(false);
   const [showQuickChatModal, setShowQuickChatModal] = useState(false);
   const [showEnhanceModal, setShowEnhanceModal] = useState(false);
@@ -88,6 +97,19 @@ const ChatNew = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
+  const [imageCaption, setImageCaption] = useState('');
+  const [facingMode, setFacingMode] = useState('user');
+  const [availableCameras, setAvailableCameras] = useState([]);
+  const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
+  const [flashEnabled, setFlashEnabled] = useState(false);
+  const [hasFlash, setHasFlash] = useState(false);
+  const [supportsZoom, setSupportsZoom] = useState(false);
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [imageToEdit, setImageToEdit] = useState(null);
+  const [editedImageData, setEditedImageData] = useState(null);
+  const [imageEditState, setImageEditState] = useState(null);
+  const imageEditorRef = useRef(null);
+  const [cameraLoading, setCameraLoading] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
@@ -320,6 +342,26 @@ const ChatNew = () => {
         }
       });
 
+      socket.current.on('message:deleted', ({ messageId }) => {
+        setMessages(prev => prev.map(m => 
+          m._id === messageId 
+            ? { 
+                ...m, 
+                content: 'This message was deleted', 
+                deletedForEveryone: true, 
+                type: 'text', 
+                fileUrl: null,
+                fileName: null,
+                fileSize: null,
+                mimeType: null,
+                caption: null,
+                voiceUrl: null,
+                voiceDuration: null
+              }
+            : m
+        ));
+      });
+
       // WebRTC call listeners
       socket.current.on('call:incoming', ({ callerId, caller, callType, callLogId }) => {
         console.log('📞 ChatNew: Incoming call received:', { callerId, caller, callType, callLogId });
@@ -498,6 +540,14 @@ const ChatNew = () => {
           loadUserDetails(selectedChat._id);
         }
       }
+    }
+    // Close image editor when switching chats
+    if (showImageEditor) {
+      setShowImageEditor(false);
+      setImageToEdit(null);
+      setImageCaption('');
+      setEditedImageData(null);
+      setImageEditState(null);
     }
   }, [selectedChat]);
 
@@ -748,7 +798,7 @@ const ChatNew = () => {
     }
   };
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = async (e) => {
     const file = e.target.files[0];
     if (!file || !selectedChat) return;
 
@@ -757,17 +807,25 @@ const ChatNew = () => {
       return;
     }
 
-    setSelectedFile(file);
     setShowAttachMenu(false);
 
-    // Create preview for images
+    // Open image editor for images
     if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setFilePreview({ type: 'image', url: e.target.result, name: file.name, size: file.size });
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedFile = await compressImage(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          setImageToEdit(e.target.result);
+          setSelectedFile(compressedFile);
+          setShowImageEditor(true);
+        };
+        reader.readAsDataURL(compressedFile);
+      } catch (error) {
+        console.error('Image compression failed:', error);
+        showAlertModal('Error', 'Failed to process image');
+      }
     } else {
+      setSelectedFile(file);
       setFilePreview({ type: 'document', name: file.name, size: file.size, mimeType: file.type });
     }
   };
@@ -780,6 +838,9 @@ const ChatNew = () => {
       const formData = new FormData();
       formData.append('file', selectedFile);
       formData.append('receiverId', selectedChat._id);
+      if (imageCaption.trim()) {
+        formData.append('caption', imageCaption.trim());
+      }
 
       const { data } = await api.post('/files', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -796,6 +857,9 @@ const ChatNew = () => {
       loadConversations();
       setFilePreview(null);
       setSelectedFile(null);
+      setImageCaption('');
+      setEditedImageData(null);
+      setImageEditState(null);
     } catch (error) {
       console.error('Failed to send file:', error);
       showAlertModal('Error', 'Failed to send file');
@@ -810,6 +874,9 @@ const ChatNew = () => {
   const handleCancelFile = () => {
     setFilePreview(null);
     setSelectedFile(null);
+    setImageCaption('');
+    setEditedImageData(null);
+    setImageEditState(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (imageInputRef.current) imageInputRef.current.value = '';
     if (cameraInputRef.current) cameraInputRef.current.value = '';
@@ -817,22 +884,77 @@ const ChatNew = () => {
 
   const openCamera = async () => {
     setShowAttachMenu(false);
+    setCameraLoading(true);
+    
+    // Check if running on HTTPS or localhost
+    const isSecureContext = window.isSecureContext;
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (!isSecureContext && !isLocalhost) {
+      setCameraLoading(false);
+      showAlertModal(
+        'Camera Access Denied',
+        'Camera requires HTTPS connection. Please use HTTPS or localhost to access camera features.'
+      );
+      return;
+    }
+    
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user' }, 
-        audio: false 
-      });
+      // Check if mediaDevices is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraLoading(false);
+        showAlertModal(
+          'Camera Not Supported',
+          'Your browser does not support camera access. Please use a modern browser like Chrome, Firefox, or Safari.'
+        );
+        return;
+      }
+      
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter(device => device.kind === 'videoinput');
+      setAvailableCameras(cameras);
+      
+      const constraints = {
+        video: { facingMode: facingMode },
+        audio: false
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const track = stream.getVideoTracks()[0];
+      const capabilities = track.getCapabilities();
+      
+      setHasFlash(capabilities.torch || false);
+      setSupportsZoom(capabilities.zoom || false);
+      
       setCameraStream(stream);
       setShowCameraModal(true);
+      setImageCaption('');
       
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          setCameraLoading(false);
         }
       }, 100);
     } catch (error) {
       console.error('Camera access error:', error);
-      showAlertModal('Camera Error', 'Unable to access camera. Please check permissions.');
+      setCameraLoading(false);
+      
+      let errorMessage = 'Unable to access camera.';
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        errorMessage = 'Camera permission denied. Please allow camera access in your browser settings and try again.';
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        errorMessage = 'No camera found on your device.';
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        errorMessage = 'Camera is already in use by another application. Please close other apps using the camera.';
+      } else if (error.name === 'OverconstrainedError') {
+        errorMessage = 'Camera does not support the requested settings.';
+      } else if (error.name === 'SecurityError') {
+        errorMessage = 'Camera access blocked due to security restrictions. Please use HTTPS or localhost.';
+      }
+      
+      showAlertModal('Camera Error', errorMessage);
     }
   };
 
@@ -847,18 +969,30 @@ const ChatNew = () => {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0);
     
-    canvas.toBlob((blob) => {
-      const file = new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' });
-      setSelectedFile(file);
-      
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setFilePreview({ type: 'image', url: e.target.result, name: file.name, size: file.size });
-      };
-      reader.readAsDataURL(file);
-      
-      closeCamera();
-    }, 'image/jpeg', 0.95);
+    const imageUrl = canvas.toDataURL('image/jpeg', 0.85);
+    
+    // Stop camera stream
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    
+    // Open editor directly
+    setImageToEdit(imageUrl);
+    setShowImageEditor(true);
+    setShowCameraModal(false);
+  };
+  
+
+  
+  const retakePhoto = () => {
+    setShowImageEditor(false);
+    setImageToEdit(null);
+    setImageCaption('');
+    // Reopen camera
+    setTimeout(() => {
+      openCamera();
+    }, 100);
   };
 
   const closeCamera = () => {
@@ -867,6 +1001,58 @@ const ChatNew = () => {
       setCameraStream(null);
     }
     setShowCameraModal(false);
+    setImageCaption('');
+    setFlashEnabled(false);
+  };
+  
+  const cycleCamera = async () => {
+    if (availableCameras.length <= 1) return;
+    
+    const nextIndex = (currentCameraIndex + 1) % availableCameras.length;
+    setCurrentCameraIndex(nextIndex);
+    
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+    
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: availableCameras[nextIndex].deviceId } },
+        audio: false
+      });
+      
+      const track = stream.getVideoTracks()[0];
+      const capabilities = track.getCapabilities();
+      setHasFlash(capabilities.torch || false);
+      setSupportsZoom(capabilities.zoom || false);
+      
+      if (flashEnabled && !capabilities.torch) {
+        setFlashEnabled(false);
+      }
+      
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      console.error('Failed to switch camera:', error);
+    }
+  };
+  
+  const toggleFlash = async () => {
+    if (!cameraStream || !hasFlash) return;
+    
+    const track = cameraStream.getVideoTracks()[0];
+    const newFlashState = !flashEnabled;
+    
+    try {
+      await track.applyConstraints({
+        advanced: [{ torch: newFlashState }]
+      });
+      setFlashEnabled(newFlashState);
+    } catch (error) {
+      console.error('Flash toggle error:', error);
+    }
   };
 
   const handleReply = (message) => {
@@ -878,6 +1064,66 @@ const ChatNew = () => {
     setForwardMessage(message);
     setSelectedRecipients(new Set());
     setShowMessageMenu(null);
+  };
+
+  const handleDeleteMessage = (message) => {
+    setDeletingMessage(message);
+    setShowDeleteModal(true);
+    setShowMessageMenu(null);
+  };
+
+  const canDeleteForEveryone = (message) => {
+    return message.sender._id === user._id;
+  };
+
+  const deleteMessageForMe = async () => {
+    if (!deletingMessage) return;
+    try {
+      await api.delete(`/messages/${deletingMessage._id}`, {
+        data: { deleteFor: 'me' }
+      });
+      setMessages(prev => prev.filter(m => m._id !== deletingMessage._id));
+      setShowDeleteModal(false);
+      setDeletingMessage(null);
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+      showAlertModal('Error', 'Failed to delete message');
+    }
+  };
+
+  const deleteMessageForEveryone = async () => {
+    if (!deletingMessage || !canDeleteForEveryone(deletingMessage)) return;
+    try {
+      await api.delete(`/messages/${deletingMessage._id}`, {
+        data: { deleteFor: 'everyone' }
+      });
+      socket.current.emit('message:deleted', { 
+        messageId: deletingMessage._id, 
+        receiverId: selectedChat._id 
+      });
+      setMessages(prev => prev.map(m => 
+        m._id === deletingMessage._id 
+          ? { 
+              ...m, 
+              content: 'This message was deleted', 
+              deletedForEveryone: true, 
+              type: 'text', 
+              fileUrl: null, 
+              fileName: null,
+              fileSize: null,
+              mimeType: null,
+              caption: null,
+              voiceUrl: null,
+              voiceDuration: null
+            }
+          : m
+      ));
+      setShowDeleteModal(false);
+      setDeletingMessage(null);
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+      showAlertModal('Error', 'Failed to delete message');
+    }
   };
 
   const toggleRecipient = (userId) => {
@@ -1409,6 +1655,10 @@ const ChatNew = () => {
     }
   };
 
+  const handleDeleteCallLog = (logId) => {
+    setCallLogs(prev => prev.filter(log => log._id !== logId));
+  };
+
   const handleCallBack = (log) => {
     initiateCall(log.type);
     setShowCallHistory(false);
@@ -1832,6 +2082,42 @@ const ChatNew = () => {
         </div>
       )}
 
+      {/* Delete Message Modal */}
+      {showDeleteModal && deletingMessage && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-xs w-full">
+            <div className="p-4">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">{t('Delete message?')}</h3>
+              <div className="space-y-2">
+                <button
+                  onClick={deleteMessageForMe}
+                  className="w-full px-4 py-2.5 text-sm text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium"
+                >
+                  {t('Delete for me')}
+                </button>
+                {canDeleteForEveryone(deletingMessage) && (
+                  <button
+                    onClick={deleteMessageForEveryone}
+                    className="w-full px-4 py-2.5 text-sm text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium"
+                  >
+                    {t('Delete for everyone')}
+                  </button>
+                )}
+              </div>
+              <button
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setDeletingMessage(null);
+                }}
+                className="w-full mt-3 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                {t('Cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal */}
       {modal.show && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -2095,7 +2381,7 @@ const ChatNew = () => {
       </div>
 
       {/* Chat Area */}
-      <div className={`flex-1 flex flex-col bg-white dark:bg-gray-800 relative ${selectedChat ? 'flex' : 'hidden md:flex'}`}>
+      <div className={`flex-1 flex flex-col bg-white dark:bg-gray-800 relative max-w-full overflow-hidden ${selectedChat ? 'flex' : 'hidden md:flex'}`}>
         {/* Dismissible Warning Banner */}
         {showWarningBanner && (
           <div className="bg-yellow-50 dark:bg-yellow-900/30 border-b border-yellow-200 dark:border-yellow-700 px-4 py-3 flex items-center justify-between">
@@ -2441,7 +2727,21 @@ const ChatNew = () => {
             )}
 
             {/* Messages */}
-            <div ref={messagesContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 bg-gray-50 dark:bg-gray-900">
+            <div 
+              ref={messagesContainerRef} 
+              onScroll={handleScroll} 
+              className="flex-1 overflow-y-auto overflow-x-hidden p-4 bg-gray-50 dark:bg-gray-900 max-w-full relative"
+              style={{
+                backgroundImage: 'url(/image/chat_background.png)',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundAttachment: 'fixed',
+                backgroundRepeat: 'no-repeat'
+              }}
+            >
+              {/* Overlay for readability */}
+              <div className="absolute inset-0 bg-white/90 dark:bg-gray-900/90 pointer-events-none" style={{ zIndex: 0 }} />
+              <div className="relative" style={{ zIndex: 10 }}>
               {/* System Message - Auto-delete Warning */}
               <div className="flex justify-center my-6">
                 <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg px-4 py-3 max-w-md shadow-sm">
@@ -2506,8 +2806,8 @@ const ChatNew = () => {
                         </span>
                       </div>
                     )}
-                    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group ${isLastInGroup ? 'mb-[2px]' : 'mb-[2px]'}`}>
-                      <div className={`flex items-end max-w-md ${isOwn ? 'flex-row-reverse' : 'flex-row'} relative`}>
+                    <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} group ${isLastInGroup ? 'mb-[2px]' : 'mb-[2px]'} max-w-full`}>
+                      <div className={`flex items-end max-w-[85%] sm:max-w-md ${isOwn ? 'flex-row-reverse' : 'flex-row'} relative`}>
                         {/* Avatar - only show on last message in group */}
                         {isLastInGroup ? (
                           <img
@@ -2548,14 +2848,23 @@ const ChatNew = () => {
                                 {msg.replyTo && (
                                   <div
                                     onClick={() => scrollToMessage(msg.replyTo._id)}
-                                    className={`${isOwn ? 'bg-white bg-opacity-20' : 'bg-gray-300'} rounded-2xl p-2 mb-2 cursor-pointer hover:opacity-80 border-l-4 ${isOwn ? 'border-white border-opacity-50' : 'border-gray-500'}`}
+                                    className={`${isOwn ? 'bg-white bg-opacity-20' : 'bg-gray-300'} rounded-2xl p-2 mb-2 cursor-pointer hover:opacity-80 border-l-4 ${isOwn ? 'border-white border-opacity-50' : 'border-gray-500'} flex items-center gap-2`}
                                   >
-                                    <p className={`text-xs font-semibold ${isOwn ? 'text-white text-opacity-90' : 'text-gray-700'}`}>
-                                      {getUserDisplayName(msg.replyTo.sender)}
-                                    </p>
-                                    <p className={`text-xs ${isOwn ? 'text-white text-opacity-80' : 'text-gray-600'} truncate`}>
-                                      {msg.replyTo.content.length > 50 ? msg.replyTo.content.substring(0, 50) + '...' : msg.replyTo.content}
-                                    </p>
+                                    <div className="flex-1 min-w-0">
+                                      <p className={`text-xs font-semibold ${isOwn ? 'text-white text-opacity-90' : 'text-gray-700'}`}>
+                                        {getUserDisplayName(msg.replyTo.sender)}
+                                      </p>
+                                      <p className={`text-xs ${isOwn ? 'text-white text-opacity-80' : 'text-gray-600'} truncate`}>
+                                        {msg.replyTo.type === 'image' ? '📷 Photo' : msg.replyTo.content.length > 50 ? msg.replyTo.content.substring(0, 50) + '...' : msg.replyTo.content}
+                                      </p>
+                                    </div>
+                                    {msg.replyTo.type === 'image' && msg.replyTo.fileUrl && (
+                                      <img
+                                        src={msg.replyTo.fileUrl}
+                                        alt="Reply"
+                                        className="w-10 h-10 rounded object-cover flex-shrink-0"
+                                      />
+                                    )}
                                   </div>
                                 )}
                                 {msg.type === 'voice' ? (
@@ -2570,8 +2879,14 @@ const ChatNew = () => {
                                     fileName={msg.fileName}
                                     fileSize={msg.fileSize}
                                     mimeType={msg.mimeType}
+                                    caption={msg.caption}
                                     isOwn={isOwn}
                                   />
+                                ) : msg.deletedForEveryone ? (
+                                  <p className={`text-sm italic flex items-center gap-2 ${isOwn ? 'text-white/70' : 'text-gray-500'}`}>
+                                    <MdBlock className="w-4 h-4" />
+                                    This message was deleted
+                                  </p>
                                 ) : (
                                   <p className="text-sm break-words leading-relaxed">{msg.content}</p>
                                 )}
@@ -2628,7 +2943,7 @@ const ChatNew = () => {
                         </button>
 
                         {/* Message Menu - appears on opposite side, aligned with 3-dot button */}
-                        {showMessageMenu === msg._id && (
+                        {showMessageMenu === msg._id && !msg.deletedForEveryone && (
                           <div ref={messageMenuRef} className={`absolute ${isOwn ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-10 flex gap-1`}>
                             <button
                               onClick={() => {
@@ -2660,6 +2975,13 @@ const ChatNew = () => {
                               title={t('Pin')}
                             >
                               <BsPinAngleFill className="w-5 h-5 text-gray-700" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMessage(msg)}
+                              className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                              title={t('Delete')}
+                            >
+                              <MdDeleteOutline className="w-5 h-5 text-red-600" />
                             </button>
                           </div>
                         )}
@@ -2697,6 +3019,7 @@ const ChatNew = () => {
                 </div>
               )}
               <div ref={messagesEndRef} />
+              </div>
             </div>
 
             {/* Scroll to Bottom Button - WhatsApp style */}
@@ -2718,14 +3041,51 @@ const ChatNew = () => {
               </button>
             )}
 
+            {/* Image Editor */}
+            {showImageEditor && (
+              <BlogImageEditor
+                imageUrl={imageToEdit}
+                caption={imageCaption}
+                onCaptionChange={setImageCaption}
+                initialState={imageEditState}
+                onSave={(editedImageData, editState, captionText) => {
+                  setEditedImageData(editedImageData);
+                  setImageEditState(editState);
+                  if (captionText) {
+                    setImageCaption(captionText);
+                  }
+                  fetch(editedImageData)
+                    .then(res => res.blob())
+                    .then(blob => {
+                      const file = new File([blob], `edited-${Date.now()}.jpg`, { type: 'image/jpeg' });
+                      setSelectedFile(file);
+                      setFilePreview({ 
+                        type: 'image', 
+                        url: editedImageData, 
+                        name: file.name, 
+                        size: file.size
+                      });
+                      setShowImageEditor(false);
+                    });
+                }}
+                onCancel={() => {
+                  setShowImageEditor(false);
+                  setImageToEdit(null);
+                  setImageCaption('');
+                  setEditedImageData(null);
+                  setImageEditState(null);
+                }}
+              />
+            )}
+
             {/* Camera Modal */}
             {showCameraModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-95 z-[100] flex items-center justify-center p-4">
-                <div className="relative w-full max-w-2xl bg-gray-900 rounded-2xl overflow-hidden shadow-2xl">
+              <div className="fixed inset-0 bg-black z-[100] flex items-center justify-center">
+                <div className="relative w-full h-full md:w-auto md:h-auto md:max-w-4xl md:max-h-[90vh] bg-gray-900 md:rounded-2xl overflow-hidden shadow-2xl">
                   {/* Header */}
-                  <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/60 to-transparent p-4">
+                  <div className="absolute top-0 left-0 right-0 z-20 bg-gradient-to-b from-black/80 to-transparent p-3 md:p-4">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-white font-semibold text-lg">Take Photo</h3>
+                      <h3 className="text-white font-semibold text-base md:text-lg">Take Photo</h3>
                       <button
                         onClick={closeCamera}
                         className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors backdrop-blur-sm"
@@ -2736,7 +3096,15 @@ const ChatNew = () => {
                   </div>
 
                   {/* Video Preview */}
-                  <div className="relative aspect-video bg-black">
+                  <div className="relative w-full h-[90vh] md:h-[70vh] md:aspect-video bg-black">
+                    {cameraLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+                        <div className="text-center">
+                          <ClipLoader color="#3b82f6" size={50} />
+                          <p className="text-white text-sm mt-4">Initializing camera...</p>
+                        </div>
+                      </div>
+                    )}
                     <video
                       ref={videoRef}
                       autoPlay
@@ -2747,20 +3115,44 @@ const ChatNew = () => {
                   </div>
                   
                   {/* Controls */}
-                  <div className="p-6 bg-gray-900 flex items-center justify-center">
-                    <button
-                      onClick={capturePhoto}
-                      className="relative group"
-                    >
-                      <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                        <div className="w-14 h-14 rounded-full border-4 border-gray-900 flex items-center justify-center">
-                          <FiCamera className="w-6 h-6 text-gray-900" />
+                  <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-black/80 to-transparent">
+                    <div className="flex items-center justify-between max-w-md mx-auto">
+                      {/* Flash Toggle */}
+                      {hasFlash && (
+                        <button
+                          onClick={toggleFlash}
+                          className={`p-3 rounded-full transition-colors ${
+                            flashEnabled ? 'bg-yellow-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'
+                          }`}
+                          title="Flash"
+                        >
+                          <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      )}
+                      
+                      {/* Capture Button */}
+                      <button
+                        onClick={capturePhoto}
+                        className="relative group mx-auto"
+                      >
+                        <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
+                          <MdOutlineCamera className="w-8 h-8 md:w-10 md:h-10 text-gray-900" />
                         </div>
-                      </div>
-                      <span className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-white text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-                        Capture
-                      </span>
-                    </button>
+                      </button>
+                      
+                      {/* Camera Cycle Button */}
+                      {availableCameras.length > 1 && (
+                        <button
+                          onClick={cycleCamera}
+                          className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+                          title="Switch Camera"
+                        >
+                          <LuSwitchCamera className="w-6 h-6 text-white" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2769,41 +3161,67 @@ const ChatNew = () => {
             {/* File Preview Modal */}
             {filePreview && (
               <div className="sticky bottom-0 p-4 border-t border-gray-200 bg-white">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={handleCancelFile}
-                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                  >
-                    <FiX className="w-6 h-6 text-gray-600" />
-                  </button>
-                  
-                  <div className="flex-1 flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    {filePreview.type === 'image' ? (
-                      <img src={filePreview.url} alt="Preview" className="w-16 h-16 object-cover rounded" />
-                    ) : (
-                      <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-2xl">
-                        📄
+                <div className="space-y-3">
+                  {/* Image Preview */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleCancelFile}
+                      className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                    >
+                      <FiX className="w-6 h-6 text-gray-600" />
+                    </button>
+                    
+                    <div 
+                      className="flex-1 flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                      onClick={() => {
+                        if (filePreview.type === 'image') {
+                          setImageToEdit(editedImageData || filePreview.url);
+                          setShowImageEditor(true);
+                        }
+                      }}
+                    >
+                      {filePreview.type === 'image' ? (
+                        <img src={filePreview.url} alt="Preview" className="w-16 h-16 object-cover rounded" />
+                      ) : (
+                        <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-2xl">
+                          📄
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{filePreview.name}</p>
+                        <p className="text-xs text-gray-500">
+                          {(filePreview.size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                        {filePreview.type === 'image' && (
+                          <p className="text-xs text-blue-600 mt-1">Click to edit</p>
+                        )}
                       </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{filePreview.name}</p>
-                      <p className="text-xs text-gray-500">
-                        {(filePreview.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
                     </div>
-                  </div>
 
-                  <button
-                    onClick={handleSendFile}
-                    disabled={uploadingFile}
-                    className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
-                  >
-                    {uploadingFile ? (
-                      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ) : (
-                      <FiSend className="w-6 h-6" />
-                    )}
-                  </button>
+                    <button
+                      onClick={handleSendFile}
+                      disabled={uploadingFile}
+                      className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
+                    >
+                      {uploadingFile ? (
+                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <FiSend className="w-6 h-6" />
+                      )}
+                    </button>
+                  </div>
+                  
+                  {/* Caption Input */}
+                  {filePreview.type === 'image' && (
+                    <input
+                      type="text"
+                      value={imageCaption}
+                      onChange={(e) => setImageCaption(e.target.value)}
+                      placeholder="Add a caption..."
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      maxLength={200}
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -2817,8 +3235,8 @@ const ChatNew = () => {
             )}
 
             {/* Message Input - Fixed to bottom */}
-            {!showVoiceRecorder && !filePreview && (
-            <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+            {!showVoiceRecorder && !filePreview && !showImageEditor && (
+            <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative z-50">
               {/* Quick Chat & Enhance Text Links */}
               <div className="flex gap-3 mb-0.5">
                 <button
@@ -2840,21 +3258,30 @@ const ChatNew = () => {
 
               {/* Reply Preview */}
               {replyingTo && (
-                <div className="mb-2 bg-gray-100 rounded-lg p-3 flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <FiCornerUpLeft className="w-4 h-4 text-gray-600" />
-                      <p className="text-xs font-medium text-gray-700">
-                        {t('Replying to')} {getUserDisplayName(replyingTo.sender)}
+                <div className="mb-2 bg-gray-100 rounded-lg p-3 flex items-start justify-between gap-2">
+                  <div className="flex-1 flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <FiCornerUpLeft className="w-4 h-4 text-gray-600" />
+                        <p className="text-xs font-medium text-gray-700">
+                          {t('Replying to')} {getUserDisplayName(replyingTo.sender)}
+                        </p>
+                      </div>
+                      <p className="text-sm text-gray-600 truncate">
+                        {replyingTo.type === 'image' ? '📷 Photo' : replyingTo.content.length > 60 ? replyingTo.content.substring(0, 60) + '...' : replyingTo.content}
                       </p>
                     </div>
-                    <p className="text-sm text-gray-600 truncate">
-                      {replyingTo.content.length > 60 ? replyingTo.content.substring(0, 60) + '...' : replyingTo.content}
-                    </p>
+                    {replyingTo.type === 'image' && replyingTo.fileUrl && (
+                      <img
+                        src={replyingTo.fileUrl}
+                        alt="Reply preview"
+                        className="w-12 h-12 rounded object-cover flex-shrink-0"
+                      />
+                    )}
                   </div>
                   <button
                     onClick={() => setReplyingTo(null)}
-                    className="text-gray-400 hover:text-gray-600"
+                    className="text-gray-400 hover:text-gray-600 flex-shrink-0"
                   >
                     <FiX className="w-5 h-5" />
                   </button>
@@ -2899,7 +3326,7 @@ const ChatNew = () => {
                   </button>
 
                   {showAttachMenu && (
-                    <div className="absolute bottom-full left-0 mb-2 bg-white rounded-lg shadow-lg border border-gray-200 py-2 min-w-[160px] animate-slideUp">
+                    <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 min-w-[160px] animate-slideUp z-50">
                       <button
                         onClick={() => imageInputRef.current?.click()}
                         className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
@@ -3018,6 +3445,8 @@ const ChatNew = () => {
           onCallBack={handleCallBack}
           getUserDisplayName={getUserDisplayName}
           getUserAvatar={getUserAvatar}
+          currentUserId={user._id}
+          onDeleteLog={handleDeleteCallLog}
         />
       )}
 

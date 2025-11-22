@@ -8,13 +8,16 @@ import { BlogCardSkeleton } from '../components/SkeletonLoader';
 import soundNotification from '../utils/soundNotifications';
 import Avatar from '../components/Avatar';
 import ProductTour from '../components/ProductTour';
+import ShortBlogs from '../components/ShortBlogs';
 
 const Home = () => {
   const { t } = useTranslation();
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [blogs, setBlogs] = useState([]);
+  const [shortBlogs, setShortBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showShortBlogs, setShowShortBlogs] = useState(true);
   const [clickTimer, setClickTimer] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
@@ -94,6 +97,7 @@ const Home = () => {
 
   useEffect(() => {
     fetchBlogs();
+    fetchShortBlogs();
   }, []);
 
   const fetchBlogs = async () => {
@@ -106,6 +110,15 @@ const Home = () => {
       setError(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchShortBlogs = async () => {
+    try {
+      const { data } = await api.get('/blogs/short/all');
+      setShortBlogs(data.blogs);
+    } catch (error) {
+      console.error('Error fetching short blogs:', error);
     }
   };
 
@@ -323,7 +336,7 @@ const Home = () => {
         </div>
         
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredBlogs.map((blog, index) => (
+          {filteredBlogs.slice(0, 3).map((blog, index) => (
             <div 
               key={blog._id} 
               className="rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer group relative border-4 border-white"
@@ -397,6 +410,92 @@ const Home = () => {
             </div>
           ))}
         </div>
+        
+        {/* Short Blogs Section */}
+        {showShortBlogs && shortBlogs.length > 0 && (
+          <div className="mt-12">
+            <ShortBlogs blogs={shortBlogs} onClose={() => setShowShortBlogs(false)} />
+          </div>
+        )}
+        
+        {/* Remaining Blogs */}
+        {filteredBlogs.length > 3 && (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12">
+            {filteredBlogs.slice(3).map((blog, index) => (
+              <div 
+                key={blog._id} 
+                className="rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer group relative border-4 border-white"
+                onClick={() => handleCardClick(blog._id)}
+                onDoubleClick={(e) => handleCardDoubleClick(e, blog._id)}
+                style={getBackgroundStyle(blog, index + 3)}
+              >
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30 group-hover:from-black/90 group-hover:via-black/60 transition-all duration-300"></div>
+                
+                <div className="relative z-10 p-6 min-h-[400px] flex flex-col justify-end">
+                  <div className="w-[90%] mx-auto">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Link 
+                      to={`/user/${blog.author?._id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="border-2 border-white rounded-full hover:opacity-80 transition"
+                    >
+                      <Avatar user={blog.author} size="sm" />
+                    </Link>
+                    <Link 
+                      to={`/user/${blog.author?._id}`} 
+                      className="text-sm font-medium hover:underline text-white"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {blog.author?.username}
+                    </Link>
+                    <span className="text-gray-300 text-sm">•</span>
+                    <span className="text-sm text-gray-300">{new Date(blog.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  
+                  <h2 
+                    className="text-2xl font-bold mb-3 line-clamp-2 transition text-white drop-shadow-lg"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Link to={`/blog/${blog._id}`}>{blog.title}</Link>
+                  </h2>
+                  
+                  <p className="mb-4 line-clamp-2 text-sm leading-relaxed text-gray-200">
+                    {blog.content.replace(/[#*_`]/g, '').substring(0, 120)}...
+                  </p>
+                  
+                  <div className="flex items-center gap-4 text-sm text-gray-200">
+                    <button
+                      onClick={(e) => handleLike(e, blog._id)}
+                      className={`flex items-center gap-1 transition ${
+                        blog.likes?.includes(user?._id) ? 'text-red-400' : 'hover:text-red-400'
+                      }`}
+                    >
+                      <FaHeart className={blog.likes?.includes(user?._id) ? 'fill-current' : ''} /> {blog.likes?.length || 0}
+                    </button>
+                    <span className="flex items-center gap-1">
+                      <FaClock /> {blog.readingTime} {t('min read')}
+                    </span>
+                  </div>
+                  
+                  {blog.tags?.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-4">
+                      {blog.tags.map((tag, idx) => (
+                        <span 
+                          key={idx} 
+                          className="bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm border border-white/30 hover:bg-white/30 cursor-pointer transition"
+                          onClick={(e) => handleTagClick(e, tag)}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         
         {filteredBlogs.length === 0 && blogs.length > 0 && (
           <div className="text-center text-gray-600 dark:text-gray-400 py-20">

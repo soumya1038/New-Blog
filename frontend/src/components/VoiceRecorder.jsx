@@ -13,9 +13,18 @@ const VoiceRecorder = ({ onSend, onCancel }) => {
   useEffect(() => {
     startRecording();
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stop();
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (mediaRecorderRef.current) {
+        const stream = mediaRecorderRef.current.stream;
+        if (mediaRecorderRef.current.state === 'recording') {
+          mediaRecorderRef.current.stop();
+        }
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
       }
     };
   }, []);
@@ -54,14 +63,15 @@ const VoiceRecorder = ({ onSend, onCancel }) => {
   };
 
   const stopRecording = () => {
+    // Stop timer FIRST
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    setIsRecording(false);
+    
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      // Stop timer FIRST before stopping recorder
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      
-      setIsRecording(false);
       mediaRecorderRef.current.stop();
       soundManager.play('endRecord');
     }
@@ -74,8 +84,18 @@ const VoiceRecorder = ({ onSend, onCancel }) => {
   };
 
   const handleCancel = () => {
-    if (isRecording) {
-      stopRecording();
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    if (mediaRecorderRef.current) {
+      const stream = mediaRecorderRef.current.stream;
+      if (mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
     }
     onCancel();
   };
@@ -87,23 +107,23 @@ const VoiceRecorder = ({ onSend, onCancel }) => {
   };
 
   return (
-    <div className="flex items-center gap-3 p-3 bg-red-50 border-t border-red-200">
+    <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800">
       <button
         onClick={handleCancel}
-        className="p-2 hover:bg-red-100 rounded-full transition-colors"
+        className="p-1.5 sm:p-2 hover:bg-red-100 rounded-full transition-colors flex-shrink-0"
         title="Cancel"
       >
-        <FiX className="w-6 h-6 text-red-600" />
+        <FiX className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" />
       </button>
 
-      <div className="flex-1 flex items-center gap-3">
-        <div className={`w-3 h-3 rounded-full ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} />
-        <span className="text-sm font-medium text-gray-700">
-          {isRecording ? 'Recording...' : 'Recorded'} {formatDuration(duration)}
+      <div className="flex-1 flex items-center gap-2 sm:gap-3 min-w-0">
+        <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full flex-shrink-0 ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} />
+        <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-200 whitespace-nowrap">
+          {isRecording ? 'Recording' : 'Recorded'} {formatDuration(duration)}
         </span>
         {isRecording && (
-          <div className="flex-1 flex items-center gap-1">
-            {[...Array(20)].map((_, i) => (
+          <div className="hidden sm:flex flex-1 items-center gap-1 overflow-hidden">
+            {[...Array(15)].map((_, i) => (
               <div
                 key={i}
                 className="w-1 bg-red-500 rounded-full animate-pulse"
@@ -120,17 +140,17 @@ const VoiceRecorder = ({ onSend, onCancel }) => {
       {isRecording ? (
         <button
           onClick={stopRecording}
-          className="px-4 py-2 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors font-medium"
+          className="px-3 py-1.5 sm:px-4 sm:py-2 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors font-medium text-sm flex-shrink-0"
         >
           Stop
         </button>
       ) : (
         <button
           onClick={handleSend}
-          className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors"
+          className="p-1.5 sm:p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors flex-shrink-0"
           title="Send"
         >
-          <FiSend className="w-6 h-6" />
+          <FiSend className="w-5 h-5 sm:w-6 sm:h-6" />
         </button>
       )}
     </div>

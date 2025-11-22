@@ -218,3 +218,19 @@ code {
 .animate-shimmer {
   animation: shimmer 3s linear infinite;
 }
+
+/* Slide in from right animation for image editor */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.5s ease-out;
+}

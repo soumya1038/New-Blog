@@ -26,7 +26,7 @@ const upload = multer({
 // Upload file
 router.post('/', protect, upload.single('file'), async (req, res) => {
   try {
-    const { receiverId } = req.body;
+    const { receiverId, caption } = req.body;
     const senderId = req.user._id;
 
     if (!req.file) {
@@ -55,7 +55,8 @@ router.post('/', protect, upload.single('file'), async (req, res) => {
             sender: senderId,
             receiver: receiverId,
             type: messageType,
-            content: `[${messageType === 'image' ? 'Image' : 'File'}]`,
+            content: caption || `[${messageType === 'image' ? 'Image' : 'File'}]`,
+            caption: caption || null,
             fileUrl: result.secure_url,
             fileName: req.file.originalname,
             fileSize: req.file.size,

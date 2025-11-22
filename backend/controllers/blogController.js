@@ -186,6 +186,53 @@ exports.deleteBlog = async (req, res) => {
   }
 };
 
+// Track blog view
+exports.trackView = async (req, res) => {
+  try {
+    const blog = await Blog.findById(req.params.id);
+    if (!blog) {
+      return res.status(404).json({ success: false, message: 'Blog not found' });
+    }
+
+    const userId = req.user?._id;
+    const userIp = req.ip || req.connection.remoteAddress;
+
+    // Check if already viewed by this user/IP
+    const alreadyViewed = blog.viewedBy.some(view => 
+      (userId && view.user?.toString() === userId.toString()) || 
+      (!userId && view.ip === userIp)
+    );
+
+    if (!alreadyViewed) {
+      blog.views += 1;
+      blog.viewedBy.push({ user: userId, ip: userIp });
+      await blog.save();
+    }
+
+    res.json({ success: true, views: blog.views });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get short blogs only
+exports.getShortBlogs = async (req, res) => {
+  try {
+    const { author } = req.query;
+    const filter = { isShortBlog: true, isDraft: false };
+    
+    if (author) filter.author = author;
+
+    const shortBlogs = await Blog.find(filter)
+      .populate('author', 'username profileImage')
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, blogs: shortBlogs });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Like/Unlike blog
 exports.toggleLike = async (req, res) => {
   try {
