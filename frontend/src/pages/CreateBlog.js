@@ -515,6 +515,7 @@ const CreateBlog = () => {
                 </p>
                 <AIContentTools
                   content={content}
+                  isShortMode={isShortMode}
                   onTitlesGenerated={handleTitlesGenerated}
                   onTagsGenerated={handleTagsGenerated}
                   onContentImproved={handleContentImproved}

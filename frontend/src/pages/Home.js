@@ -412,11 +412,28 @@ const Home = () => {
         </div>
         
         {/* Short Blogs Section */}
-        {showShortBlogs && shortBlogs.length > 0 && (
-          <div className="mt-12">
-            <ShortBlogs blogs={shortBlogs} onClose={() => setShowShortBlogs(false)} />
-          </div>
-        )}
+        {showShortBlogs && (() => {
+          const filteredShortBlogs = shortBlogs.filter(blog => {
+            if (selectedTags.length > 0) {
+              const hasTags = selectedTags.some(tag => blog.tags?.includes(tag));
+              if (!hasTags) return false;
+            }
+            if (searchTerm.trim()) {
+              const matchesSearch = 
+                blog.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                blog.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                blog.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+              if (!matchesSearch) return false;
+            }
+            return true;
+          });
+          
+          return filteredShortBlogs.length > 0 ? (
+            <div className="mt-12">
+              <ShortBlogs blogs={filteredShortBlogs} onClose={() => setShowShortBlogs(false)} />
+            </div>
+          ) : null;
+        })()}
         
         {/* Remaining Blogs */}
         {filteredBlogs.length > 3 && (

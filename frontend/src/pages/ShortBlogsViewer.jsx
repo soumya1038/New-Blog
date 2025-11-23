@@ -403,8 +403,8 @@ const ShortBlogsViewer = () => {
           <div className="absolute inset-0 flex flex-col p-6 pt-16">
             <h2 className="text-white text-xl font-bold text-center mb-4">{currentBlog.title}</h2>
             
-            <div className="flex-1 flex items-center justify-center overflow-hidden">
-              <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center line-clamp-[15]">{currentBlog.content}</p>
+            <div className="flex-1 flex items-center justify-center overflow-y-auto px-2">
+              <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center">{currentBlog.content}</p>
             </div>
             
             {currentBlog.tags?.length > 0 && (

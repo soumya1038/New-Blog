@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { BsThreeDotsVertical } from 'react-icons/bs';
 import { FiEye } from 'react-icons/fi';
+import { GrView } from 'react-icons/gr';
 
 const ShortBlogs = ({ blogs = [], onClose }) => {
   const navigate = useNavigate();
@@ -109,20 +110,20 @@ const ShortBlogs = ({ blogs = [], onClose }) => {
 
       <div 
         ref={scrollRef}
-        className="flex overflow-x-auto gap-4 pb-4 scrollbar-hide"
+        className="grid grid-cols-2 sm:flex overflow-x-auto gap-3 sm:gap-4 pb-4 scrollbar-hide"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {shortBlogsData.map((blog, index) => (
           <div
             key={blog._id}
             onClick={() => handleCardClick(blog._id)}
-            className="relative rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group aspect-[9/16] flex-shrink-0 w-40 md:w-48"
+            className="relative rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group aspect-[9/16] sm:flex-shrink-0 h-72 sm:h-auto sm:w-48"
             style={getBackgroundStyle(blog, index)}
           >
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/50"></div>
 
             <div className="absolute inset-0 flex flex-col p-3">
-              <h3 className="text-white text-sm font-bold line-clamp-1 mb-2">
+              <h3 className="text-white text-sm font-bold line-clamp-2 mb-2">
                 {blog.title}
               </h3>
 
@@ -141,10 +142,15 @@ const ShortBlogs = ({ blogs = [], onClose }) => {
               )}
 
               {blog.metaDescription && (
-                <p className="text-white/60 text-xs line-clamp-1">
+                <p className="text-white/60 text-xs line-clamp-1 mb-2">
                   {blog.metaDescription}
                 </p>
               )}
+
+              <div className="flex items-center gap-1.5 text-white/80">
+                <GrView className="w-3 h-3" />
+                <span className="text-xs font-medium">{blog.views || 0} Views</span>
+              </div>
             </div>
           </div>
         ))}
