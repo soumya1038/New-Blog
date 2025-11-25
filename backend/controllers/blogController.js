@@ -5,13 +5,41 @@ const Notification = require('../models/Notification');
 // Create blog
 exports.createBlog = async (req, res) => {
   try {
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isShortBlog } = req.body;
+
+    console.log('=== BACKEND CREATE BLOG ===');
+    console.log('isShortBlog:', isShortBlog);
+    console.log('isDraft:', isDraft);
+    console.log('title:', title);
 
     if (!title || !content) {
       return res.status(400).json({ success: false, message: 'Title and content required' });
     }
 
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+
+    // If publishing (not draft), delete any existing draft with same title AND same isShortBlog value
+    if (!isDraft) {
+      const existingDraft = await Blog.findOne({ 
+        title, 
+        author: req.user._id, 
+        isDraft: true,
+        isShortBlog: isShortBlog || false
+      });
+      
+      if (existingDraft) {
+        // Delete draft's image from Cloudinary if exists
+        if (existingDraft.cloudinaryPublicId) {
+          const cloudinary = require('../utils/cloudinary');
+          try {
+            await cloudinary.uploader.destroy(existingDraft.cloudinaryPublicId);
+          } catch (err) {
+            console.error('Cloudinary delete error:', err);
+          }
+        }
+        await Blog.findByIdAndDelete(existingDraft._id);
+      }
+    }
 
     const blog = await Blog.create({
       title,
@@ -23,7 +51,8 @@ exports.createBlog = async (req, res) => {
       cloudinaryPublicId: cloudinaryPublicId || null,
       metaDescription: metaDescription || null,
       slug: slug || null,
-      isDraft: isDraft || false
+      isDraft: isDraft || false,
+      isShortBlog: isShortBlog || false
     });
 
     const populatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage');
@@ -75,6 +104,7 @@ exports.getBlogs = async (req, res) => {
       }
     } else {
       filter.isDraft = false; // Default: only published blogs
+      filter.isShortBlog = false; // Exclude short blogs from regular blog list
     }
 
     const blogs = await Blog.find(filter)
@@ -126,8 +156,31 @@ exports.updateBlog = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isShortBlog } = req.body;
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : blog.tags;
+
+    // If changing from draft to published, delete any other draft with same title AND same isShortBlog
+    if (blog.isDraft && isDraft === false) {
+      const otherDraft = await Blog.findOne({ 
+        title: title || blog.title, 
+        author: req.user._id, 
+        isDraft: true,
+        isShortBlog: isShortBlog !== undefined ? isShortBlog : blog.isShortBlog,
+        _id: { $ne: blog._id }
+      });
+      
+      if (otherDraft) {
+        if (otherDraft.cloudinaryPublicId) {
+          const cloudinary = require('../utils/cloudinary');
+          try {
+            await cloudinary.uploader.destroy(otherDraft.cloudinaryPublicId);
+          } catch (err) {
+            console.error('Cloudinary delete error:', err);
+          }
+        }
+        await Blog.findByIdAndDelete(otherDraft._id);
+      }
+    }
 
     blog.title = title || blog.title;
     blog.content = content || blog.content;
@@ -137,6 +190,7 @@ exports.updateBlog = async (req, res) => {
     blog.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : blog.cloudinaryPublicId;
     blog.metaDescription = metaDescription !== undefined ? metaDescription : blog.metaDescription;
     blog.isDraft = isDraft !== undefined ? isDraft : blog.isDraft;
+    blog.isShortBlog = isShortBlog !== undefined ? isShortBlog : blog.isShortBlog;
     blog.updatedAt = Date.now();
 
     await blog.save();

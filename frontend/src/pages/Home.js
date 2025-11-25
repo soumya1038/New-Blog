@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { FaHeart, FaComment, FaClock, FaSearch, FaTimes } from 'react-icons/fa';
+import { TbBrandBlogger } from 'react-icons/tb';
+import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { AuthContext } from '../context/AuthContext';
 import { BlogCardSkeleton } from '../components/SkeletonLoader';
 import soundNotification from '../utils/soundNotifications';
@@ -115,8 +117,8 @@ const Home = () => {
 
   const fetchShortBlogs = async () => {
     try {
-      const { data } = await api.get('/blogs/short/all');
-      setShortBlogs(data.blogs);
+      const { data } = await api.get('/shorts');
+      setShortBlogs(data.shorts);
     } catch (error) {
       console.error('Error fetching short blogs:', error);
     }
@@ -278,7 +280,7 @@ const Home = () => {
     <>
       {showTour && <ProductTour onComplete={() => setShowTour(false)} />}
       
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8 overflow-y-auto">
       <div className="container mx-auto px-4">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between mb-8 gap-4">
           <h1 className="text-4xl font-bold text-gray-800 dark:text-gray-100">{t('Welcome to Modern Blog')}</h1>
@@ -345,6 +347,9 @@ const Home = () => {
               style={getBackgroundStyle(blog, index)}
             >
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30 group-hover:from-black/90 group-hover:via-black/60 transition-all duration-300"></div>
+              <div className="absolute top-3 right-3 z-20 bg-white/20 backdrop-blur-sm p-1.5 md:p-2 rounded-full shadow-lg">
+                <TbBrandBlogger className="w-4 h-4 md:w-5 md:h-5 text-white" />
+              </div>
               
               <div className="relative z-10 p-6 min-h-[400px] flex flex-col justify-end">
                 <div className="w-[90%] mx-auto">
@@ -447,6 +452,9 @@ const Home = () => {
                 style={getBackgroundStyle(blog, index + 3)}
               >
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30 group-hover:from-black/90 group-hover:via-black/60 transition-all duration-300"></div>
+                <div className="absolute top-3 right-3 z-20 bg-white/20 backdrop-blur-sm p-1.5 md:p-2 rounded-full shadow-lg">
+                  <TbBrandBlogger className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                </div>
                 
                 <div className="relative z-10 p-6 min-h-[400px] flex flex-col justify-end">
                   <div className="w-[90%] mx-auto">

@@ -11,6 +11,9 @@ import AIBlogGenerator from '../components/AIBlogGenerator';
 import AIContentTools from '../components/AIContentTools';
 import { FaArrowLeft, FaTimes } from 'react-icons/fa';
 import { IoIosCheckmarkCircle } from 'react-icons/io';
+import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish } from 'react-icons/md';
+import { TbBrandBlogger } from 'react-icons/tb';
+import { CiSaveDown2 } from 'react-icons/ci';
 import { BarLoader, GridLoader } from 'react-spinners';
 
 const EditBlog = () => {
@@ -36,6 +39,9 @@ const EditBlog = () => {
   const [autoSaveSuccess, setAutoSaveSuccess] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isShortMode, setIsShortMode] = useState(false);
+  const [originalMode, setOriginalMode] = useState(false);
+  const [customCategory, setCustomCategory] = useState('');
+  const [showCustomCategory, setShowCustomCategory] = useState(false);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const autoSaveTimerRef = useRef(null);
@@ -80,9 +86,22 @@ const EditBlog = () => {
 
   const fetchBlog = async () => {
     try {
-      const { data } = await api.get(`/blogs/${id}`);
+      let data;
+      let isShort = false;
+      try {
+        const response = await api.get(`/shorts/${id}`);
+        data = { blog: response.data.short };
+        isShort = true;
+      } catch {
+        const response = await api.get(`/blogs/${id}`);
+        data = response.data;
+        isShort = false;
+      }
+      setIsShortMode(isShort);
+      setOriginalMode(isShort);
+      
       if (data.blog.author._id !== user._id) {
-        toast.error('Not authorized to edit this blog');
+        toast.error('Not authorized to edit this content');
         navigate('/');
         return;
       }
@@ -94,9 +113,8 @@ const EditBlog = () => {
       setOldCloudinaryPublicId(data.blog.cloudinaryPublicId || '');
       setMetaDescription(data.blog.metaDescription || '');
       setIsDraft(data.blog.isDraft);
-      setIsShortMode(data.blog.isShortBlog || false);
     } catch (err) {
-      setError('Failed to load blog');
+      setError('Failed to load content');
     } finally {
       setLoading(false);
     }
@@ -104,9 +122,11 @@ const EditBlog = () => {
 
   const autoSaveDraft = async () => {
     if (!title.trim() || !content.trim()) return;
+    if (isShortMode !== originalMode) return;
     setAutoSaving(true);
     try {
-      await api.put(`/blogs/${id}`, { 
+      const endpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
+      await api.put(endpoint, { 
         title, 
         content, 
         tags: tags.join(', '),
@@ -160,19 +180,40 @@ const EditBlog = () => {
         uploadedImageUrl = '';
       }
 
-      await api.put(`/blogs/${id}`, { 
-        title, 
-        content, 
-        tags: tags.join(', '),
-        category,
-        coverImage: uploadedImageUrl,
-        cloudinaryPublicId: cloudinaryPublicId || undefined,
-        metaDescription,
-        isDraft: false 
-      });
-      setHasUnsavedChanges(false);
-      toast.success('Blog updated successfully!');
-      setTimeout(() => navigate(`/blog/${id}`), 1000);
+      if (isShortMode !== originalMode) {
+        const createEndpoint = isShortMode ? '/shorts' : '/blogs';
+        const { data: newData } = await api.post(createEndpoint, { 
+          title, 
+          content, 
+          tags: tags.join(', '),
+          category,
+          coverImage: uploadedImageUrl,
+          cloudinaryPublicId: isShortMode ? null : (cloudinaryPublicId || undefined),
+          metaDescription,
+          isDraft: false
+        });
+        const deleteEndpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
+        await api.delete(deleteEndpoint);
+        const newId = isShortMode ? newData.short._id : newData.blog._id;
+        setHasUnsavedChanges(false);
+        toast.success(`Converted to ${isShortMode ? 'short' : 'blog'} successfully!`);
+        setTimeout(() => navigate(isShortMode ? `/short-blogs/${newId}` : `/blog/${newId}`), 1000);
+      } else {
+        const endpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
+        await api.put(endpoint, { 
+          title, 
+          content, 
+          tags: tags.join(', '),
+          category,
+          coverImage: uploadedImageUrl,
+          cloudinaryPublicId: cloudinaryPublicId || undefined,
+          metaDescription,
+          isDraft: false 
+        });
+        setHasUnsavedChanges(false);
+        toast.success(`${isShortMode ? 'Short' : 'Blog'} updated successfully!`);
+        setTimeout(() => navigate(isShortMode ? `/short-blogs/${id}` : `/blog/${id}`), 1000);
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update blog');
       setError(err.response?.data?.message || 'Failed to update blog');
@@ -207,7 +248,13 @@ const EditBlog = () => {
         uploadedImageUrl = '';
       }
 
-      await api.put(`/blogs/${id}`, { 
+      if (isShortMode !== originalMode) {
+        toast.error('Cannot save as draft when converting. Please publish instead.');
+        setLoading(false);
+        return;
+      }
+      const endpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
+      await api.put(endpoint, { 
         title, 
         content, 
         tags: tags.join(', '),
@@ -337,9 +384,26 @@ const EditBlog = () => {
         </button>
         <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-8">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-              {isDraft ? t('Edit Draft') : t('Edit Blog Post')}
-            </h1>
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
+                {isDraft ? t('Edit Draft') : (isShortMode ? t('Edit Short') : t('Edit Blog'))}
+              </h1>
+              <button
+                type="button"
+                onClick={() => setIsShortMode(!isShortMode)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition text-sm ${
+                  isShortMode 
+                    ? 'bg-purple-600 text-white hover:bg-purple-700' 
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+              >
+                {isShortMode ? (
+                  <><TbBrandBlogger className="w-5 h-5" /> {t('Regular Blog')}</>
+                ) : (
+                  <><MdOutlineSwitchAccessShortcutAdd className="w-5 h-5" /> {t('Create Short')}</>
+                )}
+              </button>
+            </div>
             {lastSaved && (
               <span className="text-xs text-gray-500">
                 Last saved: {lastSaved.toLocaleTimeString()}
@@ -366,21 +430,55 @@ const EditBlog = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-gray-700 mb-2 font-semibold">Category</label>
+                <label className="block text-gray-700 mb-2 font-semibold">{t('Category')}</label>
                 <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  value={showCustomCategory ? 'Others' : category}
+                  onChange={(e) => {
+                    if (e.target.value === 'Others') {
+                      setShowCustomCategory(true);
+                      setCategory('');
+                    } else {
+                      setShowCustomCategory(false);
+                      setCategory(e.target.value);
+                      setCustomCategory('');
+                    }
+                  }}
                   className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="General">General</option>
-                  <option value="Technology">Technology</option>
-                  <option value="Lifestyle">Lifestyle</option>
-                  <option value="Travel">Travel</option>
-                  <option value="Food">Food</option>
-                  <option value="Health">Health</option>
-                  <option value="Business">Business</option>
-                  <option value="Education">Education</option>
+                  <option value="General">{t('General')}</option>
+                  <option value="Technology">{t('Technology')}</option>
+                  <option value="Lifestyle">{t('Lifestyle')}</option>
+                  <option value="Travel">{t('Travel')}</option>
+                  <option value="Food">{t('Food')}</option>
+                  <option value="Health">{t('Health')}</option>
+                  <option value="Business">{t('Business')}</option>
+                  <option value="Education">{t('Education')}</option>
+                  <option value="Entertainment">{t('Entertainment')}</option>
+                  <option value="Sports">{t('Sports')}</option>
+                  <option value="Science">{t('Science')}</option>
+                  <option value="Fashion">{t('Fashion')}</option>
+                  <option value="Finance">{t('Finance')}</option>
+                  <option value="Gaming">{t('Gaming')}</option>
+                  <option value="Music">{t('Music')}</option>
+                  <option value="Art">{t('Art')}</option>
+                  <option value="Photography">{t('Photography')}</option>
+                  <option value="DIY">{t('DIY')}</option>
+                  <option value="Parenting">{t('Parenting')}</option>
+                  <option value="Pets">{t('Pets')}</option>
+                  <option value="Others">{t('Others')}</option>
                 </select>
+                {showCustomCategory && (
+                  <input
+                    type="text"
+                    value={customCategory}
+                    onChange={(e) => {
+                      setCustomCategory(e.target.value);
+                      setCategory(e.target.value);
+                    }}
+                    placeholder={t('Enter custom category...')}
+                    className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mt-2"
+                  />
+                )}
               </div>
 
               <div>
@@ -427,19 +525,10 @@ const EditBlog = () => {
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => setIsShortMode(!isShortMode)}
-                    className={`px-3 py-1 text-sm rounded-lg transition ${
-                      isShortMode ? 'bg-purple-600 text-white' : 'bg-gray-200 hover:bg-gray-300'
-                    }`}
-                  >
-                    {isShortMode ? '📝 Short Mode' : '📄 Long Mode'}
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setPreviewMode(!previewMode)}
                     className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded-lg transition"
                   >
-                    {previewMode ? '✍️ Write' : '👁️ Preview'}
+                    {previewMode ? t('Write') : t('Preview')}
                   </button>
                   <AIBlogGenerator 
                     title={title} 
@@ -462,9 +551,9 @@ const EditBlog = () => {
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="Write your short blog (max 100 words)..."
+                  placeholder={t('Write your short blog (max 100 words)...')}
                   rows={6}
-                  maxLength={600}
+                  maxLength={700}
                 />
               ) : (
                 <SimpleMDE
@@ -477,10 +566,7 @@ const EditBlog = () => {
               
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-2 gap-2">
                 <p className="text-xs sm:text-sm text-gray-500">
-                  Word Count: {wordCount} | Reading Time: {readingTime} min
-                  {isShortMode && wordCount > 100 && (
-                    <span className="text-red-500 ml-2">⚠️ Exceeds 100 words</span>
-                  )}
+                  {t('Word Count')}: {wordCount} {isShortMode && wordCount > 100 && <span className="text-red-500">({t('Max 100 words')})</span>} | {t('Reading Time')}: {readingTime} {t('min read')}
                 </p>
                 <AIContentTools
                   content={content}
@@ -527,18 +613,20 @@ const EditBlog = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {loading ? 'Updating...' : (isDraft ? t('Publish') : t('Update'))}
+                  <MdOutlinePublish className="w-5 h-5" />
+                  {loading ? t('Updating...') : (isDraft ? t('Publish') : t('Update'))}
                 </button>
                 
                 <button
                   type="button"
                   onClick={saveDraft}
                   disabled={loading}
-                  className="bg-gray-200 text-gray-700 px-8 py-3 rounded-lg font-semibold hover:bg-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-gray-200 text-gray-700 px-8 py-3 rounded-lg font-semibold hover:bg-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
-                  {loading ? 'Saving...' : t('Save Draft')}
+                  <CiSaveDown2 className="w-5 h-5" />
+                  {loading ? t('Saving...') : t('Save Draft')}
                 </button>
 
                 <button
@@ -547,7 +635,7 @@ const EditBlog = () => {
                   disabled={loading}
                   className="bg-red-100 text-red-600 px-8 py-3 rounded-lg font-semibold hover:bg-red-200 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Cancel
+                  {t('Cancel')}
                 </button>
               </div>
 
@@ -578,7 +666,7 @@ const EditBlog = () => {
           <div className="text-center">
             <GridLoader color="#3B82F6" size={20} />
             <p className="mt-6 text-white text-lg font-semibold">
-              {isDraft ? 'Saving Draft...' : 'Updating Blog...'}
+              {t('Saving...')}
             </p>
             {coverImageFile && (
               <p className="mt-2 text-gray-300 text-sm">Uploading image...</p>

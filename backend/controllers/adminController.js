@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Blog = require('../models/Blog');
+const Short = require('../models/Short');
 const Comment = require('../models/Comment');
 
 // Get dashboard statistics
@@ -9,7 +10,8 @@ exports.getStats = async (req, res) => {
     const numDays = parseInt(days);
     
     const totalUsers = await User.countDocuments();
-    const totalBlogs = await Blog.countDocuments();
+    const totalBlogs = await Blog.countDocuments({ isDraft: false });
+    const totalShorts = await Short.countDocuments({ isDraft: false });
     const totalComments = await Comment.countDocuments();
     
     // Active users today (based on lastActive field)
@@ -19,6 +21,7 @@ exports.getStats = async (req, res) => {
     
     // Generate data for selected time range
     const blogsPerDay = [];
+    const shortsPerDay = [];
     const userRegistrations = [];
     const activeUsersPerDay = [];
     
@@ -31,7 +34,14 @@ exports.getStats = async (req, res) => {
       
       // Blogs count
       const blogCount = await Blog.countDocuments({
-        createdAt: { $gte: date, $lt: nextDate }
+        createdAt: { $gte: date, $lt: nextDate },
+        isDraft: false
+      });
+      
+      // Shorts count
+      const shortCount = await Short.countDocuments({
+        createdAt: { $gte: date, $lt: nextDate },
+        isDraft: false
       });
       
       // User registrations count
@@ -49,6 +59,7 @@ exports.getStats = async (req, res) => {
         : date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
       
       blogsPerDay.push({ date: dateLabel, count: blogCount });
+      shortsPerDay.push({ date: dateLabel, count: shortCount });
       userRegistrations.push({ date: dateLabel, count: userCount });
       activeUsersPerDay.push({ date: dateLabel, count: activeUsers });
     }
@@ -58,9 +69,11 @@ exports.getStats = async (req, res) => {
       stats: {
         totalUsers,
         totalBlogs,
+        totalShorts,
         totalComments,
         activeUsersToday,
         blogsPerDay,
+        shortsPerDay,
         userRegistrations,
         activeUsersPerDay
       }
@@ -85,7 +98,7 @@ exports.getUsers = async (req, res) => {
         await user.save();
       }
       
-      const blogCount = await Blog.countDocuments({ author: user._id });
+      const blogCount = await Blog.countDocuments({ author: user._id, isDraft: false });
       return {
         ...user.toObject(),
         blogCount
@@ -106,6 +119,37 @@ exports.getAllBlogs = async (req, res) => {
       .sort({ createdAt: -1 });
 
     res.json({ success: true, blogs });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get all shorts
+exports.getAllShorts = async (req, res) => {
+  try {
+    const shorts = await Short.find()
+      .populate('author', 'username profileImage')
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, shorts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Delete short
+exports.deleteShort = async (req, res) => {
+  try {
+    const short = await Short.findById(req.params.id);
+    
+    if (!short) {
+      return res.status(404).json({ success: false, message: 'Short not found' });
+    }
+
+    await Comment.deleteMany({ short: short._id });
+    await Short.findByIdAndDelete(short._id);
+
+    res.json({ success: true, message: 'Short deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -9,6 +9,7 @@ require('dotenv').config();
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const blogRoutes = require('./routes/blogRoutes');
+const shortRoutes = require('./routes/shortRoutes');
 const commentRoutes = require('./routes/commentRoutes');
 const socialRoutes = require('./routes/socialRoutes');
 const apiRoutes = require('./routes/apiRoutes');
@@ -67,6 +68,7 @@ app.get('/api/test', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/blogs', blogRoutes);
+app.use('/api/shorts', shortRoutes);
 app.use('/api/comments', commentRoutes);
 app.use('/api/social', socialRoutes);
 app.use('/api/external', apiRoutes);

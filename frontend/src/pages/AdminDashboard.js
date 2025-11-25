@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { FaUsers, FaFileAlt, FaComments, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes } from 'react-icons/fa';
+import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { StatsCardSkeleton, TableRowSkeleton } from '../components/SkeletonLoader';
 import { BarLoader, PropagateLoader } from 'react-spinners';
@@ -15,10 +16,12 @@ const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [blogs, setBlogs] = useState([]);
+  const [shorts, setShorts] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [userSearch, setUserSearch] = useState('');
   const [blogSearch, setBlogSearch] = useState('');
+  const [shortSearch, setShortSearch] = useState('');
   const [timeRange, setTimeRange] = useState(7);
   
   // Modal states
@@ -41,14 +44,16 @@ const AdminDashboard = () => {
 
   const fetchData = async () => {
     try {
-      const [statsRes, usersRes, blogsRes] = await Promise.all([
+      const [statsRes, usersRes, blogsRes, shortsRes] = await Promise.all([
         api.get(`/admin/stats?days=${timeRange}`),
         api.get('/admin/users'),
-        api.get('/admin/blogs')
+        api.get('/admin/blogs'),
+        api.get('/admin/shorts')
       ]);
       setStats(statsRes.data.stats);
       setUsers(usersRes.data.users);
       setBlogs(blogsRes.data.blogs);
+      setShorts(shortsRes.data.shorts);
     } catch (error) {
       console.error('Error fetching admin data:', error);
     } finally {
@@ -232,6 +237,25 @@ const AdminDashboard = () => {
     });
   };
 
+  const handleDeleteShort = (shortId, title) => {
+    openModal({
+      type: 'delete-short',
+      title: t('Delete Short'),
+      message: `${t('Are you sure you want to delete')} "${title}"? ${t('This action cannot be undone.')}.`,
+      confirmText: t('Delete'),
+      onConfirm: async () => {
+        try {
+          await api.delete(`/admin/shorts/${shortId}`);
+          setShorts(shorts.filter(s => s._id !== shortId));
+          closeModal();
+          openModal({ type: 'success', title: t('Success!'), message: t('Short deleted successfully!') });
+        } catch (error) {
+          setModalError(error.response?.data?.message || 'Error deleting short');
+        }
+      }
+    });
+  };
+
   if (loading || authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 py-8">
@@ -240,8 +264,8 @@ const AdminDashboard = () => {
           <div className="flex gap-4 mb-6 border-b">
             <div className="px-4 py-2 font-semibold border-b-2 border-blue-600 text-blue-600">{t('Overview')}</div>
           </div>
-          <div className="grid md:grid-cols-4 gap-6 mb-8">
-            {[...Array(4)].map((_, i) => <StatsCardSkeleton key={i} />)}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
+            {[...Array(5)].map((_, i) => <StatsCardSkeleton key={i} />)}
           </div>
           <div className="grid md:grid-cols-2 gap-6">
             <div className="bg-white rounded-xl shadow-lg p-6">
@@ -295,18 +319,24 @@ const AdminDashboard = () => {
           >
             {t('Blogs')}
           </button>
+          <button
+            onClick={() => setActiveTab('shorts')}
+            className={`px-4 py-2 font-semibold ${activeTab === 'shorts' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+          >
+            {t('Shorts')}
+          </button>
         </div>
 
         {/* Overview Tab */}
         {activeTab === 'overview' && stats && (
           <div>
             {/* Stats Cards */}
-            <div className="grid md:grid-cols-4 gap-6 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
               <div className="bg-white rounded-xl shadow-lg p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-500 text-sm">{t('Total Users')}</p>
-                    <p className="text-3xl font-bold text-blue-600">{stats.totalUsers}</p>
+                    <p className="text-3xl font-bold text-blue-600">{stats.totalUsers || 0}</p>
                   </div>
                   <FaUsers className="text-4xl text-blue-600" />
                 </div>
@@ -315,7 +345,7 @@ const AdminDashboard = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-500 text-sm">{t('Total Blogs')}</p>
-                    <p className="text-3xl font-bold text-green-600">{stats.totalBlogs}</p>
+                    <p className="text-3xl font-bold text-green-600">{stats.totalBlogs || 0}</p>
                   </div>
                   <FaFileAlt className="text-4xl text-green-600" />
                 </div>
@@ -323,8 +353,17 @@ const AdminDashboard = () => {
               <div className="bg-white rounded-xl shadow-lg p-6">
                 <div className="flex items-center justify-between">
                   <div>
+                    <p className="text-gray-500 text-sm">{t('Total Shorts')}</p>
+                    <p className="text-3xl font-bold text-pink-600">{stats.totalShorts || 0}</p>
+                  </div>
+                  <MdOutlineSwitchAccessShortcutAdd className="text-4xl text-pink-600" />
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-center justify-between">
+                  <div>
                     <p className="text-gray-500 text-sm">{t('Total Comments')}</p>
-                    <p className="text-3xl font-bold text-purple-600">{stats.totalComments}</p>
+                    <p className="text-3xl font-bold text-purple-600">{stats.totalComments || 0}</p>
                   </div>
                   <FaComments className="text-4xl text-purple-600" />
                 </div>
@@ -333,7 +372,7 @@ const AdminDashboard = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-gray-500 text-sm">{t('Active Today')}</p>
-                    <p className="text-3xl font-bold text-orange-600">{stats.activeUsersToday}</p>
+                    <p className="text-3xl font-bold text-orange-600">{stats.activeUsersToday || 0}</p>
                   </div>
                   <FaUserCheck className="text-4xl text-orange-600" />
                 </div>
@@ -392,6 +431,19 @@ const AdminDashboard = () => {
                     <YAxis />
                     <Tooltip />
                     <Bar dataKey="count" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-xl font-bold mb-4 text-gray-800">{t('Shorts Per Day')}</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={stats.shortsPerDay || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" angle={timeRange > 30 ? -45 : 0} textAnchor={timeRange > 30 ? 'end' : 'middle'} height={timeRange > 30 ? 80 : 30} />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#ec4899" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -549,6 +601,80 @@ const AdminDashboard = () => {
           </div>
         )}
 
+        {/* Shorts Tab */}
+        {activeTab === 'shorts' && (
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div className="p-4 border-b">
+              <div className="relative">
+                <FaSearch className="absolute left-3 top-3 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder={t('Search shorts...')}
+                  value={shortSearch}
+                  onChange={(e) => setShortSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Title')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Author')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Likes')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Status')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Created')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Actions')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {shorts.filter(short => 
+                    short.title.toLowerCase().includes(shortSearch.toLowerCase()) ||
+                    short.author?.username.toLowerCase().includes(shortSearch.toLowerCase())
+                  ).map(short => (
+                    <tr key={short._id}>
+                      <td className="px-6 py-4">
+                        <p className="font-semibold text-gray-800 truncate max-w-xs">{short.title}</p>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{short.author?.username}</td>
+                      <td className="px-6 py-4 text-sm">{short.likes?.length || 0}</td>
+                      <td className="px-6 py-4">
+                        {short.isDraft ? (
+                          <span className="text-yellow-600 text-sm">{t('Draft')}</span>
+                        ) : (
+                          <span className="text-green-600 text-sm">{t('Published')}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{new Date(short.createdAt).toLocaleDateString()}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <Link
+                            to={`/short-blogs/${short._id}`}
+                            className="text-blue-600 hover:text-blue-800"
+                            title={t('View Short')}
+                          >
+                            <FaEye size={18} />
+                          </Link>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteShort(short._id, short.title)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Delete"
+                            >
+                              <FaTrash size={18} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Blogs Tab */}
         {activeTab === 'blogs' && (
           <div className="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -630,7 +756,7 @@ const AdminDashboard = () => {
             <div className="bg-white rounded-lg p-6 max-w-md w-full">
               <h3 className={`text-xl font-bold mb-4 ${
                 modalConfig.type === 'success' ? 'text-green-600' :
-                modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'remove-coadmin' ? 'text-red-600' :
+                modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'delete-short' || modalConfig.type === 'remove-coadmin' ? 'text-red-600' :
                 modalConfig.type === 'make-admin' ? 'text-purple-600' :
                 modalConfig.type === 'make-coadmin' ? 'text-blue-600' :
                 'text-orange-600'
@@ -682,7 +808,7 @@ const AdminDashboard = () => {
                     <button
                       onClick={modalConfig.type === 'suspend-user' ? handleModalConfirm : modalConfig.onConfirm}
                       className={`flex-1 px-6 py-2 rounded-lg hover:opacity-90 font-semibold text-white ${
-                        modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'remove-coadmin' ? 'bg-red-600' :
+                        modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'delete-short' || modalConfig.type === 'remove-coadmin' ? 'bg-red-600' :
                         modalConfig.type === 'make-admin' ? 'bg-purple-600' :
                         modalConfig.type === 'make-coadmin' ? 'bg-blue-600' :
                         'bg-orange-600'

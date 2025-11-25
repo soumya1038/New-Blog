@@ -1491,11 +1491,20 @@ const ChatNew = () => {
 
   const acceptCall = async () => {
     if (!incomingCall) return;
+    
+    const callerId = incomingCall.callerId;
+    const callType = incomingCall.callType;
+    const callLogId = incomingCall.callLogId;
+    const caller = incomingCall.caller;
+    
     try {
       console.log('📞 Accepting call...');
       
       // Stop incoming call sound
       soundManager.stop('incomingCall');
+      
+      // Clear incoming call UI immediately
+      setIncomingCall(null);
       
       // End any existing call first to free up camera/mic
       if (activeCall) {
@@ -1506,38 +1515,36 @@ const ChatNew = () => {
       }
       
       console.log('📞 Requesting media devices...');
-      const stream = await webrtcService.startCall(incomingCall.callType === 'video');
+      const stream = await webrtcService.startCall(callType === 'video');
       console.log('✅ Media stream obtained');
       
-      // Set active call BEFORE processing offer so UI shows immediately
-      const startTime = Date.now();
-      setActiveCall({
-        userId: incomingCall.callerId,
-        userName: getUserDisplayName(incomingCall.caller),
-        userAvatar: getUserAvatar(incomingCall.caller),
-        callType: incomingCall.callType,
-        stream,
-        remoteStream: null,
-        callLogId: incomingCall.callLogId,
-        callAccepted: true,
-        startTime
-      });
-      setIsVideoEnabled(incomingCall.callType === 'video');
-      setIncomingCall(null);
-      
-      // NOW process the pending offer after we have media
+      // Process the pending offer with media stream ready
       if (pendingOfferRef.current) {
         console.log('📞 Processing pending offer...');
-        await webrtcService.handleOffer(pendingOfferRef.current.offer);
-        const answer = await webrtcService.createAnswer(pendingOfferRef.current.callerId);
+        await webrtcService.handleOffer(pendingOfferRef.current.offer, callerId);
+        const answer = await webrtcService.createAnswer(callerId);
         console.log('✅ Answer sent to caller');
         pendingOfferRef.current = null;
       }
       
-      socket.current.emit('call:accept', {
-        callerId: incomingCall.callerId
-      });
+      // Emit accept event
+      socket.current.emit('call:accept', { callerId });
       console.log('✅ Emitted call:accept to caller');
+      
+      // Set active call with timer started
+      const startTime = Date.now();
+      setActiveCall({
+        userId: callerId,
+        userName: getUserDisplayName(caller),
+        userAvatar: getUserAvatar(caller),
+        callType,
+        stream,
+        remoteStream: null,
+        callLogId,
+        callAccepted: true,
+        startTime
+      });
+      setIsVideoEnabled(callType === 'video');
       console.log('✅ Call accepted, timer started at:', startTime);
     } catch (error) {
       console.error('❌ Failed to accept call:', error);
@@ -1551,7 +1558,7 @@ const ChatNew = () => {
       }
       showAlertModal('Cannot Accept Call', errorMsg);
       // Reject the call
-      socket.current.emit('call:reject', { callerId: incomingCall.callerId });
+      socket.current.emit('call:reject', { callerId });
       setIncomingCall(null);
     }
   };

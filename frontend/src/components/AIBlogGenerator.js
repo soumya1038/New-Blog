@@ -23,7 +23,8 @@ const AIBlogGenerator = ({ title, tags, category, existingContent, onGenerate, o
         category,
         existingContent,
         tone, 
-        length 
+        length,
+        isShortMode 
       });
       onGenerate(data.content, data.metaDescription);
       

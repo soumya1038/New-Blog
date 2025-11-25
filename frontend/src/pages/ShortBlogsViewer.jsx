@@ -11,6 +11,7 @@ import { CiEdit } from 'react-icons/ci';
 import { RiDeleteBin6Line } from 'react-icons/ri';
 import { FaPlay, FaPause } from 'react-icons/fa6';
 import { HiMiniSpeakerWave, HiMiniSpeakerXMark } from 'react-icons/hi2';
+import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
@@ -35,7 +36,14 @@ const ShortBlogsViewer = () => {
   const [isPaused, setIsPaused] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [volume, setVolume] = useState(1);
+  const [showVolumeBar, setShowVolumeBar] = useState(false);
+  const [repeatCount, setRepeatCount] = useState(0);
+  const [highlightedText, setHighlightedText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
   const utteranceRef = useRef(null);
+  const volumeTimeoutRef = useRef(null);
 
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -55,7 +63,20 @@ const ShortBlogsViewer = () => {
         window.speechSynthesis.cancel();
       }
     };
-  }, [])
+  }, []);
+
+  useEffect(() => {
+    if (blogs.length > 0 && blogs[currentIndex]) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      setIsPaused(false);
+      setRepeatCount(0);
+      setHighlightedText('');
+      setTimeout(() => {
+        speakFromSentence(0, isMuted ? 0 : volume, true);
+      }, 500);
+    }
+  }, [currentIndex, blogs]);
 
   useEffect(() => {
     if (id && blogs.length > 0) {
@@ -84,8 +105,8 @@ const ShortBlogsViewer = () => {
 
   const fetchShortBlogs = async () => {
     try {
-      const { data } = await api.get('/blogs/short/all');
-      setBlogs(data.blogs);
+      const { data } = await api.get('/shorts');
+      setBlogs(data.shorts);
       
       if (user) {
         const followStatus = {};
@@ -103,7 +124,7 @@ const ShortBlogsViewer = () => {
 
   const trackView = async (blogId) => {
     try {
-      await api.post(`/blogs/${blogId}/view`);
+      await api.post(`/shorts/${blogId}/view`);
     } catch (error) {
       console.error('Error tracking view:', error);
     }
@@ -115,7 +136,7 @@ const ShortBlogsViewer = () => {
       return;
     }
     try {
-      const { data } = await api.post(`/blogs/${blogId}/like`);
+      const { data } = await api.post(`/shorts/${blogId}/like`);
       setBlogs(blogs.map(blog => 
         blog._id === blogId ? { ...blog, likes: data.likes } : blog
       ));
@@ -124,11 +145,36 @@ const ShortBlogsViewer = () => {
     }
   };
 
-  const handleCardDoubleClick = () => {
-    handleLike(currentBlog._id);
+  const handleCardDoubleClick = async () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    if (!currentBlog.likes?.includes(user._id)) {
+      try {
+        const { data } = await api.post(`/shorts/${currentBlog._id}/like`);
+        setBlogs(blogs.map(blog => 
+          blog._id === currentBlog._id ? { ...blog, likes: data.likes } : blog
+        ));
+      } catch (error) {
+        console.error('Error liking blog:', error);
+      }
+    }
   };
 
-  const handleTextToSpeech = () => {
+  const handleCardClick = () => {
+    if (isSpeaking && !isPaused) {
+      window.speechSynthesis.pause();
+      setIsPaused(true);
+    } else if (isPaused) {
+      window.speechSynthesis.resume();
+      setIsPaused(false);
+    } else if (!isSpeaking) {
+      handleTextToSpeech(true);
+    }
+  };
+
+  const handleTextToSpeech = (isAuto = false) => {
     if (isSpeaking && !isPaused) {
       window.speechSynthesis.pause();
       setIsPaused(true);
@@ -136,19 +182,7 @@ const ShortBlogsViewer = () => {
       window.speechSynthesis.resume();
       setIsPaused(false);
     } else {
-      const text = `${currentBlog.title}. ${currentBlog.content}`;
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-      utterance.volume = isMuted ? 0 : volume;
-      utterance.onend = () => {
-        setIsSpeaking(false);
-        setIsPaused(false);
-      };
-      utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
-      setIsSpeaking(true);
-      setIsPaused(false);
+      speakFromSentence(0, isMuted ? 0 : volume, isAuto);
     }
   };
 
@@ -159,23 +193,113 @@ const ShortBlogsViewer = () => {
   };
 
   const handleMuteToggle = () => {
-    setIsMuted(!isMuted);
-    if (utteranceRef.current) {
-      utteranceRef.current.volume = !isMuted ? 0 : volume;
+    const newMuted = !isMuted;
+    setIsMuted(newMuted);
+    if (isSpeaking && utteranceRef.current) {
+      window.speechSynthesis.cancel();
+      const text = `${currentBlog.title}. ${currentBlog.content}`;
+      const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+      let currentSentence = sentences.findIndex(s => highlightedText.includes(s.trim()));
+      if (currentSentence === -1) currentSentence = 0;
+      speakFromSentence(currentSentence, newMuted ? 0 : volume, false);
     }
   };
 
   const handleVolumeChange = (e) => {
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
-    if (utteranceRef.current && !isMuted) {
-      utteranceRef.current.volume = newVolume;
+    if (isSpeaking && !isMuted && utteranceRef.current) {
+      window.speechSynthesis.cancel();
+      const text = `${currentBlog.title}. ${currentBlog.content}`;
+      const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+      let currentSentence = sentences.findIndex(s => highlightedText.includes(s.trim()));
+      if (currentSentence === -1) currentSentence = 0;
+      speakFromSentence(currentSentence, newVolume, false);
     }
   };
 
-  useEffect(() => {
-    handleStopSpeech();
-  }, [currentIndex]);
+  const speakFromSentence = (startIndex, vol, isAuto) => {
+    const text = `${currentBlog.title}. ${currentBlog.content}`;
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    let currentSentence = startIndex;
+    
+    const speakNext = () => {
+      if (currentSentence < sentences.length) {
+        const utterance = new SpeechSynthesisUtterance(sentences[currentSentence].trim());
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        utterance.volume = vol;
+        
+        utterance.onstart = () => {
+          setHighlightedText(sentences[currentSentence].trim());
+        };
+        
+        utterance.onend = () => {
+          currentSentence++;
+          if (currentSentence < sentences.length) {
+            speakNext();
+          } else {
+            setHighlightedText('');
+            if (isAuto && repeatCount < 3) {
+              setRepeatCount(prev => prev + 1);
+              currentSentence = 0;
+              setTimeout(() => speakNext(), 500);
+            } else {
+              setIsSpeaking(false);
+              setIsPaused(false);
+              setRepeatCount(0);
+            }
+          }
+        };
+        
+        utteranceRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
+      }
+    };
+    
+    setIsSpeaking(true);
+    setIsPaused(false);
+    speakNext();
+  };
+
+  const handleVolumeMouseEnter = () => {
+    setShowVolumeBar(true);
+    if (volumeTimeoutRef.current) {
+      clearTimeout(volumeTimeoutRef.current);
+    }
+  };
+
+  const handleVolumeMouseLeave = () => {
+    volumeTimeoutRef.current = setTimeout(() => {
+      setShowVolumeBar(false);
+    }, 2000);
+  };
+
+
+
+  const handleTouchStart = (e) => {
+    setTouchStart(e.touches[0].clientY);
+  };
+
+  const handleTouchMove = (e) => {
+    setTouchEnd(e.touches[0].clientY);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    
+    const distance = touchStart - touchEnd;
+    const threshold = 50;
+    
+    if (distance > threshold && currentIndex < blogs.length - 1) {
+      handleNext();
+    } else if (distance < -threshold && currentIndex > 0) {
+      handlePrev();
+    }
+    
+    setTouchStart(0);
+    setTouchEnd(0);
+  };
 
   const handleFollow = async (authorId) => {
     if (!user) {
@@ -216,15 +340,22 @@ const ShortBlogsViewer = () => {
       } catch (error) {
         console.error('Error sharing:', error);
       }
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(url);
+        alert('Link copied to clipboard!');
+      } catch (error) {
+        console.error('Error copying to clipboard:', error);
+        alert(`Share this link: ${url}`);
+      }
     } else {
-      navigator.clipboard.writeText(url);
-      alert('Link copied to clipboard!');
+      alert(`Share this link: ${url}`);
     }
   };
 
   const fetchComments = async (blogId) => {
     try {
-      const { data } = await api.get(`/comments/${blogId}`);
+      const { data } = await api.get(`/comments/${blogId}?isShort=true`);
       setComments(data.comments || []);
     } catch (error) {
       console.error('Error fetching comments:', error);
@@ -250,7 +381,7 @@ const ShortBlogsViewer = () => {
     if (!commentText.trim()) return;
     
     try {
-      await api.post(`/comments/${currentBlog._id}`, { content: commentText });
+      await api.post(`/comments/${currentBlog._id}?isShort=true`, { content: commentText });
       setCommentText('');
       fetchComments(currentBlog._id);
     } catch (error) {
@@ -285,9 +416,11 @@ const ShortBlogsViewer = () => {
   };
 
   const handleDelete = async () => {
+    setDeleting(true);
     try {
-      await api.delete(`/blogs/${currentBlog._id}`);
+      await api.delete(`/shorts/${currentBlog._id}`);
       setShowDeleteConfirm(false);
+      setDeleting(false);
       if (blogs.length > 1) {
         const newBlogs = blogs.filter(b => b._id !== currentBlog._id);
         setBlogs(newBlogs);
@@ -299,14 +432,34 @@ const ShortBlogsViewer = () => {
       }
     } catch (error) {
       console.error('Error deleting blog:', error);
+      setDeleting(false);
       alert('Failed to delete blog');
     }
   };
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
+      <div className="fixed inset-0 bg-black flex items-center justify-center gap-4 px-4">
+        <div className="w-full max-w-[400px] aspect-[9/16] sm:h-[85vh] sm:w-auto sm:aspect-[9/16] md:h-[88vh] lg:h-[95vh] relative">
+          <div className="w-full h-full rounded-3xl bg-gradient-to-br from-gray-800 to-gray-900 shadow-2xl animate-pulse">
+            <div className="absolute inset-0 flex flex-col p-6 pt-16">
+              <div className="h-6 bg-white/20 rounded w-3/4 mx-auto mb-4"></div>
+              <div className="flex-1 flex flex-col gap-3 justify-center px-4">
+                <div className="h-4 bg-white/20 rounded w-full"></div>
+                <div className="h-4 bg-white/20 rounded w-5/6"></div>
+                <div className="h-4 bg-white/20 rounded w-4/5"></div>
+              </div>
+              <div className="flex gap-2 justify-center mb-4">
+                <div className="h-6 w-16 bg-white/20 rounded-full"></div>
+                <div className="h-6 w-16 bg-white/20 rounded-full"></div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/20 rounded-full"></div>
+                <div className="h-4 bg-white/20 rounded w-24"></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -352,22 +505,32 @@ const ShortBlogsViewer = () => {
     <div className="fixed inset-0 bg-black flex items-center justify-center gap-4 px-4">
       <button
         onClick={() => navigate('/')}
-        className="absolute top-4 left-4 z-20 p-3 bg-white/10 hover:bg-white/20 rounded-full transition"
+        className="absolute top-4 left-4 z-20 p-2 md:p-3 bg-white/10 hover:bg-white/20 rounded-full transition"
       >
-        <FiX className="w-6 h-6 text-white" />
+        <FiX className="w-4 h-4 md:w-6 md:h-6 text-white" />
       </button>
 
-      <div className="w-full max-w-[400px] aspect-[9/16] sm:h-[85vh] sm:w-auto sm:aspect-[9/16] md:h-[88vh] lg:h-[95vh] relative">
+      <div 
+        className="w-full max-w-[400px] aspect-[9/16] sm:h-[85vh] sm:w-auto sm:aspect-[9/16] md:h-[88vh] lg:h-[95vh] relative"
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
         <div
+          onClick={handleCardClick}
           onDoubleClick={handleCardDoubleClick}
-          className="w-full h-full rounded-3xl overflow-hidden shadow-2xl relative"
+          className="w-full h-full rounded-3xl overflow-hidden shadow-2xl relative transition-transform duration-500 ease-out"
           style={getBackgroundStyle(currentBlog, currentIndex)}
         >
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-black/50"></div>
 
-          <div className="absolute top-4 left-4 z-10 flex items-center gap-2">
+          <div 
+            className="absolute top-4 left-4 z-10 flex items-center gap-2"
+            onMouseEnter={handleVolumeMouseEnter}
+            onMouseLeave={handleVolumeMouseLeave}
+          >
             <button
-              onClick={isSpeaking ? handleStopSpeech : handleTextToSpeech}
+              onClick={(e) => { e.stopPropagation(); isSpeaking ? handleStopSpeech() : handleTextToSpeech(); }}
               className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
             >
               {isSpeaking && !isPaused ? (
@@ -377,7 +540,7 @@ const ShortBlogsViewer = () => {
               )}
             </button>
             <button
-              onClick={handleMuteToggle}
+              onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
               className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
             >
               {isMuted ? (
@@ -386,32 +549,51 @@ const ShortBlogsViewer = () => {
                 <HiMiniSpeakerWave className="w-5 h-5 text-white" />
               )}
             </button>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={volume}
-              onChange={handleVolumeChange}
-              className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer"
-              style={{
-                background: `linear-gradient(to right, white ${volume * 100}%, rgba(255,255,255,0.3) ${volume * 100}%)`
-              }}
-            />
+            {showVolumeBar && (
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={volume}
+                onChange={handleVolumeChange}
+                onClick={(e) => e.stopPropagation()}
+                className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer transition-opacity"
+                style={{
+                  background: `linear-gradient(to right, white ${volume * 100}%, rgba(255,255,255,0.3) ${volume * 100}%)`
+                }}
+              />
+            )}
           </div>
 
           <div className="absolute inset-0 flex flex-col p-6 pt-16">
             <h2 className="text-white text-xl font-bold text-center mb-4">{currentBlog.title}</h2>
             
-            <div className="flex-1 flex items-center justify-center overflow-y-auto px-2">
-              <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center">{currentBlog.content}</p>
+            <div className="flex-1 flex items-center justify-center overflow-hidden px-2">
+              <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center">
+                {currentBlog.content.split(/([.!?]+)/).map((part, idx) => {
+                  const sentence = part + (currentBlog.content.split(/([.!?]+)/)[idx + 1] || '');
+                  const isHighlighted = highlightedText.includes(sentence.trim());
+                  return (
+                    <span
+                      key={idx}
+                      className={isHighlighted ? 'bg-white/30 px-1 rounded transition-colors' : ''}
+                    >
+                      {part}
+                    </span>
+                  );
+                })}
+              </p>
             </div>
             
             {currentBlog.tags?.length > 0 && (
-              <div className="flex flex-wrap gap-2 justify-center mb-4">
-                {currentBlog.tags.map((tag, idx) => (
-                  <span key={idx} className="bg-white/20 text-white text-sm px-3 py-1 rounded-full">#{tag}</span>
+              <div className="flex flex-wrap gap-1 justify-center mb-3 max-h-12 overflow-hidden">
+                {currentBlog.tags.slice(0, 5).map((tag, idx) => (
+                  <span key={idx} className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">#{tag}</span>
                 ))}
+                {currentBlog.tags.length > 5 && (
+                  <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">+{currentBlog.tags.length - 5} more</span>
+                )}
               </div>
             )}
 
@@ -908,20 +1090,26 @@ const ShortBlogsViewer = () => {
             <p className="text-gray-600 dark:text-gray-400 mb-6">
               Are you sure you want to delete this short blog? This action cannot be undone.
             </p>
-            <div className="flex gap-3">
-              <button
-                onClick={handleDelete}
-                className="flex-1 bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition"
-              >
-                Yes, Delete
-              </button>
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 py-3 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition"
-              >
-                Cancel
-              </button>
-            </div>
+            {deleting ? (
+              <div className="flex justify-center py-4">
+                <ScaleLoader color="#ef4444" height={35} width={4} />
+              </div>
+            ) : (
+              <div className="flex gap-3">
+                <button
+                  onClick={handleDelete}
+                  className="flex-1 bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition"
+                >
+                  Yes, Delete
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 py-3 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

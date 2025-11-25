@@ -3,7 +3,7 @@ const groq = require('../utils/openai'); // Using Groq now
 // Generate blog content from title and tags
 exports.generateBlog = async (req, res) => {
   try {
-    const { title, tags = '', category = 'General', existingContent = '', tone = 'professional', length = 'medium' } = req.body;
+    const { title, tags = '', category = 'General', existingContent = '', tone = 'professional', length = 'medium', isShortMode = false } = req.body;
 
     if (!title || !title.trim()) {
       return res.status(400).json({ success: false, message: 'Title is required' });
@@ -18,28 +18,56 @@ exports.generateBlog = async (req, res) => {
       long: '800-1200 words'
     };
 
-    const isShortLength = ['10-50', '50-100', '100-110'].includes(length);
+    const isShortLength = ['10-50', '50-100', '100-110'].includes(length) || isShortMode;
     const tagsText = tags ? ` Focus on these topics: ${tags}.` : '';
     const categoryText = category ? ` Category: ${category}.` : '';
     
     let userPrompt;
     if (existingContent && existingContent.trim()) {
-      // Improve existing content
-      userPrompt = `Improve and ${isShortLength ? 'condense' : 'expand'} this existing blog content about "${title}".${categoryText}${tagsText} Target length: ${lengthMap[length] || lengthMap.medium}.
+      if (isShortLength) {
+        userPrompt = `Improve this short blog content about "${title}".${categoryText}${tagsText} Target: ${lengthMap[length] || '50-100 words'}.
 
-Existing content:
+Existing:
 ${existingContent}
 
-Rewrite and improve it to be more ${isShortLength ? 'concise and impactful' : 'engaging, detailed, and well-structured'}. ${isShortLength ? 'Keep it brief and to the point.' : 'Keep the markdown format.'}`;
+Make it punchy, engaging, and memorable. Use short sentences. Remove fluff. Keep only the most impactful points.`;
+      } else {
+        userPrompt = `Enhance this blog about "${title}".${categoryText}${tagsText} Target: ${lengthMap[length] || lengthMap.medium}.
+
+Existing:
+${existingContent}
+
+Improve structure, add depth, use markdown formatting (headers, lists, bold). Make it comprehensive and engaging.`;
+      }
     } else {
-      // Generate new content
-      userPrompt = `Write a ${isShortLength ? 'short' : 'blog'} post with the title: "${title}".${categoryText} Length: ${lengthMap[length] || lengthMap.medium}.${tagsText} Write only the content, not the title. ${isShortLength ? 'Keep it concise and impactful.' : ''}`;
+      if (isShortLength) {
+        userPrompt = `Write a short, impactful post: "${title}".${categoryText}${tagsText} Length: ${lengthMap[length] || '50-100 words'}.
+
+Make it:
+- Punchy and memorable
+- Easy to read (short sentences)
+- Engaging from first word
+- No fluff, only value
+
+Write ONLY the content, NO title.`;
+      } else {
+        userPrompt = `Write a comprehensive blog: "${title}".${categoryText}${tagsText} Length: ${lengthMap[length] || lengthMap.medium}.
+
+Include:
+- Clear structure with headers
+- Engaging introduction
+- Detailed main points
+- Practical examples
+- Strong conclusion
+
+Use markdown. Write ONLY content, NO title.`;
+      }
     }
 
     const maxTokens = isShortLength ? 300 : 2000;
     const systemContent = isShortLength 
-      ? `You are a professional writer. Write in a ${tone} tone. Generate concise, impactful content. Do not include the title in the output. Keep it brief and within the specified word count.`
-      : `You are a professional blog writer. Write in a ${tone} tone. Generate content in markdown format. Do not include the title in the output.`;
+      ? `You are an expert at writing viral short-form content. Write in a ${tone} tone. Be concise, punchy, and memorable. Every word must add value. No fluff.`
+      : `You are a professional blog writer. Write in a ${tone} tone. Create well-structured, engaging content with markdown formatting. Be comprehensive yet readable.`;
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -57,10 +85,50 @@ Rewrite and improve it to be more ${isShortLength ? 'concise and impactful' : 'e
       max_tokens: maxTokens
     });
 
-    const content = completion.choices[0].message.content.trim();
+    let content = completion.choices[0].message.content.trim();
     
-    // Generate SEO meta description
-    const metaDescription = content.substring(0, 160).replace(/[#*_\[\]]/g, '').trim();
+    // Enforce word limit for short content
+    if (isShortLength) {
+      const words = content.split(/\s+/);
+      const targetWords = {
+        '10-50': 50,
+        '50-100': 100,
+        '100-110': 110
+      };
+      const maxWords = targetWords[length] || 100;
+      
+      if (words.length > maxWords) {
+        content = words.slice(0, maxWords).join(' ');
+        // Remove incomplete sentence at end
+        const lastPunctuation = Math.max(
+          content.lastIndexOf('.'),
+          content.lastIndexOf('!'),
+          content.lastIndexOf('?')
+        );
+        if (lastPunctuation > content.length * 0.7) {
+          content = content.substring(0, lastPunctuation + 1);
+        }
+      }
+    }
+    
+    // Generate fresh SEO meta description
+    const metaCompletion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an SEO expert. Write compelling meta descriptions under 160 characters.'
+        },
+        {
+          role: 'user',
+          content: `Write a meta description for: "${title}"\n\nContent preview: ${content.substring(0, 200)}`
+        }
+      ],
+      temperature: 0.5,
+      max_tokens: 100
+    });
+    
+    const metaDescription = metaCompletion.choices[0].message.content.trim().replace(/^["']|["']$/g, '').substring(0, 160);
 
     res.json({
       success: true,
@@ -120,24 +188,26 @@ exports.improveContent = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Content is required' });
     }
 
-    const prompts = {
-      grammar: 'Fix grammar and spelling errors while maintaining the original meaning and style.',
-      clarity: 'Improve clarity and readability while keeping the same message.',
-      professional: 'Make the content more professional and polished.',
-      engaging: 'Make the content more engaging and interesting to read.',
-      concise: 'Make the content more concise without losing important information.'
+    const prompts = isShortMode ? {
+      grammar: 'Fix grammar and spelling. Keep it punchy and under 100 words.',
+      clarity: 'Make crystal clear and easy to scan. Short sentences. Under 100 words.',
+      professional: 'Make professional yet conversational. Remove casual slang. Under 100 words.',
+      engaging: 'Make it hook readers instantly. Use power words. Create curiosity. Under 100 words.',
+      concise: 'Cut all fluff. Keep only the most impactful words. Maximum impact, minimum words.'
+    } : {
+      grammar: 'Fix all grammar, spelling, and punctuation errors. Maintain the original tone and message.',
+      clarity: 'Improve clarity and flow. Break complex sentences. Add transitions. Make it easy to understand.',
+      professional: 'Elevate to professional quality. Polish language. Add structure. Remove casual elements.',
+      engaging: 'Make it captivating. Add storytelling elements. Use vivid language. Create emotional connection.',
+      concise: 'Remove redundancy and filler. Keep essential information. Make every sentence count.'
     };
-
-    const lengthConstraint = isShortMode 
-      ? ' Keep it under 100 words for a short blog format.' 
-      : '';
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'system',
-          content: `You are a professional editor. ${prompts[improvementType] || prompts.grammar}${lengthConstraint}`
+          content: `You are an expert editor. ${prompts[improvementType] || prompts.grammar} Return only the improved content.`
         },
         {
           role: 'user',
@@ -148,7 +218,23 @@ exports.improveContent = async (req, res) => {
       max_tokens: isShortMode ? 300 : 2000
     });
 
-    const improvedContent = completion.choices[0].message.content.trim();
+    let improvedContent = completion.choices[0].message.content.trim();
+    
+    // Enforce 100 word limit for shorts
+    if (isShortMode) {
+      const words = improvedContent.split(/\s+/);
+      if (words.length > 100) {
+        improvedContent = words.slice(0, 100).join(' ');
+        const lastPunctuation = Math.max(
+          improvedContent.lastIndexOf('.'),
+          improvedContent.lastIndexOf('!'),
+          improvedContent.lastIndexOf('?')
+        );
+        if (lastPunctuation > improvedContent.length * 0.7) {
+          improvedContent = improvedContent.substring(0, lastPunctuation + 1);
+        }
+      }
+    }
 
     res.json({ success: true, improvedContent });
   } catch (error) {
@@ -161,10 +247,13 @@ exports.improveContent = async (req, res) => {
 // Generate title suggestions
 exports.generateTitles = async (req, res) => {
   try {
-    const { topic, count = 5 } = req.body;
+    const { topic = '', count = 5 } = req.body;
 
-    if (!topic) {
-      return res.status(400).json({ success: false, message: 'Topic is required' });
+    let userPrompt;
+    if (topic && topic.trim()) {
+      userPrompt = `Generate ${count} catchy, SEO-friendly blog titles about: ${topic}. Make them compelling and click-worthy. Return only titles, one per line, no numbering.`;
+    } else {
+      userPrompt = `Generate ${count} catchy blog titles about current trending topics in technology, lifestyle, business, and health. Make them timely and engaging. Return only titles, one per line, no numbering.`;
     }
 
     const completion = await groq.chat.completions.create({
@@ -172,14 +261,14 @@ exports.generateTitles = async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: 'You are a creative title generator. Generate catchy, SEO-friendly blog titles.'
+          content: 'You are a viral content creator. Generate attention-grabbing, SEO-optimized titles that make people want to click.'
         },
         {
           role: 'user',
-          content: `Generate ${count} catchy blog post titles about: ${topic}. Return only the titles, one per line, without numbering.`
+          content: userPrompt
         }
       ],
-      temperature: 0.8,
+      temperature: 0.9,
       max_tokens: 300
     });
 
@@ -187,7 +276,7 @@ exports.generateTitles = async (req, res) => {
       .trim()
       .split('\n')
       .filter(t => t.trim())
-      .map(t => t.replace(/^\d+\.\s*/, '').trim());
+      .map(t => t.replace(/^\d+\.\s*/, '').replace(/^["']|["']$/g, '').trim());
 
     res.json({ success: true, titles });
   } catch (error) {

@@ -72,14 +72,26 @@ class WebRTCService {
     }
   }
 
-  async handleOffer(offer) {
+  async handleOffer(offer, callerId) {
     try {
       this.peerConnection = new RTCPeerConnection(this.configuration);
       
+      // Set up ICE candidate handler FIRST
+      this.peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          this.socket.emit('call:ice-candidate', {
+            receiverId: callerId,
+            candidate: event.candidate
+          });
+        }
+      };
+      
+      // Add local tracks
       this.localStream.getTracks().forEach(track => {
         this.peerConnection.addTrack(track, this.localStream);
       });
 
+      // Set up remote track handler
       this.peerConnection.ontrack = (event) => {
         console.log('📹 Received remote track');
         this.remoteStream = event.streams[0];
@@ -88,6 +100,7 @@ class WebRTCService {
         }
       };
 
+      // Set remote description
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
     } catch (error) {
       console.error('Failed to handle offer:', error);
@@ -99,15 +112,6 @@ class WebRTCService {
     try {
       const answer = await this.peerConnection.createAnswer();
       await this.peerConnection.setLocalDescription(answer);
-      
-      this.peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          this.socket.emit('call:ice-candidate', {
-            receiverId: callerId,
-            candidate: event.candidate
-          });
-        }
-      };
 
       this.socket.emit('call:answer', {
         callerId,

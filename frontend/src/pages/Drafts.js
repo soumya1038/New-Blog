@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { FaEdit, FaTrash, FaClock, FaCheckCircle, FaArrowLeft } from 'react-icons/fa';
+import { TbBrandBlogger } from 'react-icons/tb';
+import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { BeatLoader, BarLoader, GridLoader, ScaleLoader } from 'react-spinners';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -18,6 +20,7 @@ const Drafts = () => {
   const [selectedDraft, setSelectedDraft] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
 
@@ -32,6 +35,7 @@ const Drafts = () => {
   const fetchDrafts = async () => {
     try {
       setError('');
+      setRefreshing(true);
       const token = localStorage.getItem('token');
       console.log('Token exists:', !!token);
       console.log('User:', user);
@@ -60,6 +64,7 @@ const Drafts = () => {
       setDrafts([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -132,9 +137,20 @@ const Drafts = () => {
             <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">{t('My Drafts')}</h1>
             <button
               onClick={fetchDrafts}
-              className="bg-blue-600 dark:bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 text-sm"
+              disabled={refreshing}
+              className="bg-blue-600 dark:bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 text-sm disabled:opacity-50 flex items-center gap-2"
             >
-              {t('Refresh')}
+              {refreshing ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  {t('Refreshing...')}
+                </>
+              ) : (
+                t('Refresh')
+              )}
             </button>
           </div>
 
@@ -171,7 +187,14 @@ const Drafts = () => {
           ) : (
             <div className="space-y-4">
               {drafts.map(draft => (
-                <div key={draft._id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md dark:hover:shadow-gray-900/50 transition bg-white dark:bg-gray-700/50">
+                <div key={draft._id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md dark:hover:shadow-gray-900/50 transition bg-white dark:bg-gray-700/50 relative">
+                  <div className="absolute bottom-3 right-3 text-gray-400 dark:text-gray-500">
+                    {draft.isShortBlog ? (
+                      <MdOutlineSwitchAccessShortcutAdd className="w-5 h-5" title="Short Blog" />
+                    ) : (
+                      <TbBrandBlogger className="w-5 h-5" title="Blog" />
+                    )}
+                  </div>
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
                     <div className="flex-1">
                       <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">{draft.title}</h3>

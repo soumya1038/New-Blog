@@ -10,8 +10,10 @@ import toast, { Toaster } from 'react-hot-toast';
 import AIBlogGenerator from '../components/AIBlogGenerator';
 import AIContentTools from '../components/AIContentTools';
 import { FaArrowLeft, FaTimes } from 'react-icons/fa';
-import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
+import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish } from 'react-icons/md';
 import { IoIosCheckmarkCircle } from 'react-icons/io';
+import { TbBrandBlogger } from 'react-icons/tb';
+import { CiSaveDown2 } from 'react-icons/ci';
 import { GridLoader } from 'react-spinners';
 
 const CreateBlog = () => {
@@ -37,6 +39,8 @@ const CreateBlog = () => {
   const [autoSaveSuccess, setAutoSaveSuccess] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isShortMode, setIsShortMode] = useState(false);
+  const [customCategory, setCustomCategory] = useState('');
+  const [showCustomCategory, setShowCustomCategory] = useState(false);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const autoSaveTimerRef = useRef(null);
@@ -111,19 +115,41 @@ const CreateBlog = () => {
           category,
           coverImage,
           metaDescription,
-          isDraft: true 
+          isDraft: true,
+          isShortBlog: isShortMode
         });
       } else {
-        const { data } = await api.post('/blogs', { 
-          title, 
-          content, 
-          tags: tags.join(', '),
-          category,
-          coverImage,
-          metaDescription,
-          isDraft: true 
-        });
-        setDraftId(data.blog._id);
+        // Check if draft with same title exists
+        const { data: existingDrafts } = await api.get('/blogs?draft=true');
+        const existingDraft = existingDrafts.blogs?.find(d => d.title === title);
+        
+        if (existingDraft) {
+          // Update existing draft
+          await api.put(`/blogs/${existingDraft._id}`, { 
+            title, 
+            content, 
+            tags: tags.join(', '),
+            category,
+            coverImage,
+            metaDescription,
+            isDraft: true,
+            isShortBlog: isShortMode
+          });
+          setDraftId(existingDraft._id);
+        } else {
+          // Create new draft
+          const { data } = await api.post('/blogs', { 
+            title, 
+            content, 
+            tags: tags.join(', '),
+            category,
+            coverImage,
+            metaDescription,
+            isDraft: true,
+            isShortBlog: isShortMode
+          });
+          setDraftId(data.blog._id);
+        }
       }
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
@@ -171,19 +197,78 @@ const CreateBlog = () => {
         cloudinaryPublicId = imageData.public_id;
       }
 
-      const { data } = await api.post('/blogs', { 
-        title, 
-        content, 
-        tags: tags.join(', '),
-        category,
-        coverImage: uploadedImageUrl,
-        cloudinaryPublicId,
-        metaDescription,
-        isDraft 
-      });
-      setHasUnsavedChanges(false);
-      toast.success('Blog published successfully!');
-      setTimeout(() => navigate(`/blog/${data.blog._id}`), 1000);
+      const wordCount = content.split(/\s+/).filter(w => w).length;
+      
+      console.log('=== PUBLISH DEBUG ===');
+      console.log('isShortMode:', isShortMode);
+      console.log('wordCount:', wordCount);
+      
+      // Scenario A: Regular Blog mode
+      if (!isShortMode) {
+        if (wordCount <= 100) {
+          // Create BOTH blog and short (2 separate documents)
+          // Blog owns the cloudinary image
+          const { data: blogData } = await api.post('/blogs', { 
+            title, 
+            content, 
+            tags: tags.join(', '),
+            category,
+            coverImage: uploadedImageUrl,
+            cloudinaryPublicId,
+            metaDescription,
+            isDraft: false,
+            isShortBlog: false
+          });
+          
+          // Create short in Short table
+          await api.post('/shorts', { 
+            title, 
+            content, 
+            tags: tags.join(', '),
+            category,
+            coverImage: uploadedImageUrl,
+            metaDescription,
+            isDraft: false
+          });
+          
+          setHasUnsavedChanges(false);
+          toast.success('Published as blog and short successfully!');
+          setTimeout(() => navigate(`/blog/${blogData.blog._id}`), 1000);
+        } else {
+          // Create only BLOG
+          const { data } = await api.post('/blogs', { 
+            title, 
+            content, 
+            tags: tags.join(', '),
+            category,
+            coverImage: uploadedImageUrl,
+            cloudinaryPublicId,
+            metaDescription,
+            isDraft: false,
+            isShortBlog: false
+          });
+          
+          setHasUnsavedChanges(false);
+          toast.success('Blog published successfully!');
+          setTimeout(() => navigate(`/blog/${data.blog._id}`), 1000);
+        }
+      } else {
+        // Scenario B: Create Short mode - only create SHORT
+        const { data } = await api.post('/shorts', { 
+          title, 
+          content, 
+          tags: tags.join(', '),
+          category,
+          coverImage: uploadedImageUrl,
+          cloudinaryPublicId,
+          metaDescription,
+          isDraft: false
+        });
+        
+        setHasUnsavedChanges(false);
+        toast.success('Short blog published successfully!');
+        setTimeout(() => navigate(`/short-blogs/${data.short._id}`), 1000);
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to create blog');
       setError(err.response?.data?.message || 'Failed to create blog');
@@ -223,9 +308,19 @@ const CreateBlog = () => {
           coverImage: uploadedImageUrl || coverImage,
           cloudinaryPublicId: cloudinaryPublicId || undefined,
           metaDescription,
-          isDraft: true 
+          isDraft: true,
+          isShortBlog: isShortMode
         });
       } else {
+        // Check if draft with same title exists
+        const { data: existingDrafts } = await api.get('/blogs?draft=true');
+        const existingDraft = existingDrafts.blogs?.find(d => d.title === title);
+        
+        if (existingDraft) {
+          // Delete old draft and create new one
+          await api.delete(`/blogs/${existingDraft._id}`);
+        }
+        
         // Create new draft
         const { data } = await api.post('/blogs', { 
           title, 
@@ -235,7 +330,8 @@ const CreateBlog = () => {
           coverImage: uploadedImageUrl,
           cloudinaryPublicId,
           metaDescription,
-          isDraft: true 
+          isDraft: true,
+          isShortBlog: isShortMode
         });
         setDraftId(data.blog._id);
       }
@@ -356,7 +452,7 @@ const CreateBlog = () => {
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-4">
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100">
-                {isShortMode ? t('Create Short Blog') : t('Create New Blog Post')}
+                {isShortMode ? t('Create Short Blog') : t('Create New Blog')}
               </h1>
               <button
                 type="button"
@@ -367,8 +463,11 @@ const CreateBlog = () => {
                     : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
                 }`}
               >
-                <MdOutlineSwitchAccessShortcutAdd className="w-5 h-5" />
-                {isShortMode ? t('Regular Blog') : t('Create Short')}
+                {isShortMode ? (
+                  <><TbBrandBlogger className="w-5 h-5" /> {t('Regular Blog')}</>
+                ) : (
+                  <><MdOutlineSwitchAccessShortcutAdd className="w-5 h-5" /> {t('Create Short')}</>
+                )}
               </button>
             </div>
             {lastSaved && (
@@ -399,8 +498,17 @@ const CreateBlog = () => {
               <div>
                 <label className="block text-gray-700 dark:text-gray-300 mb-2 font-semibold">{t('Category')}</label>
                 <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  value={showCustomCategory ? 'Others' : category}
+                  onChange={(e) => {
+                    if (e.target.value === 'Others') {
+                      setShowCustomCategory(true);
+                      setCategory('');
+                    } else {
+                      setShowCustomCategory(false);
+                      setCategory(e.target.value);
+                      setCustomCategory('');
+                    }
+                  }}
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="General">{t('General')}</option>
@@ -423,7 +531,20 @@ const CreateBlog = () => {
                   <option value="DIY">{t('DIY')}</option>
                   <option value="Parenting">{t('Parenting')}</option>
                   <option value="Pets">{t('Pets')}</option>
+                  <option value="Others">{t('Others')}</option>
                 </select>
+                {showCustomCategory && (
+                  <input
+                    type="text"
+                    value={customCategory}
+                    onChange={(e) => {
+                      setCustomCategory(e.target.value);
+                      setCategory(e.target.value);
+                    }}
+                    placeholder={t('Enter custom category...')}
+                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 mt-2"
+                  />
+                )}
               </div>
 
               <div>
@@ -558,8 +679,9 @@ const CreateBlog = () => {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
+                  <MdOutlinePublish className="w-5 h-5" />
                   {loading ? t('Publishing...') : t('Publish')}
                 </button>
                 
@@ -567,8 +689,9 @@ const CreateBlog = () => {
                   type="button"
                   onClick={saveDraft}
                   disabled={loading}
-                  className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-8 py-3 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-8 py-3 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
+                  <CiSaveDown2 className="w-5 h-5" />
                   {loading ? t('Saving...') : t('Save Draft')}
                 </button>
 

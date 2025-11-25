@@ -6,11 +6,10 @@ const AIContentTools = ({ content, isShortMode = false, onTitlesGenerated, onTag
   const [loading, setLoading] = useState(false);
 
   const generateTitles = async () => {
-    if (!content.trim()) return alert('Please enter some content first');
-    
     setLoading(true);
     try {
-      const { data } = await api.post('/ai/generate-titles', { topic: content.substring(0, 200) });
+      const topic = content.trim() ? content.substring(0, 200) : '';
+      const { data } = await api.post('/ai/generate-titles', { topic });
       onTitlesGenerated(data.titles);
     } catch (error) {
       alert('Title generation failed');

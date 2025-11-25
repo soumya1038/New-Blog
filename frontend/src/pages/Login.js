@@ -339,7 +339,7 @@ const Login = () => {
           </div>
 
           {/* Math CAPTCHA */}
-          <div className="bg-blue-50 dark:bg-gray-700 border-2 border-blue-200 dark:border-gray-600 rounded-lg p-3 sm:p-4">
+          <div className="bg-blue-50 dark:bg-gray-700 border-2 border-blue-200 dark:border-gray-600 rounded-lg p-4">
             <div className="flex justify-between items-center mb-2">
               <label className="text-gray-700 dark:text-gray-300 font-semibold text-xs sm:text-sm">{t("Verify you're human")}</label>
               <span className={`text-xs font-mono font-bold px-2 py-1 rounded ${
@@ -352,13 +352,13 @@ const Login = () => {
               <div className="bg-white dark:bg-gray-800 px-3 py-2 rounded-lg border-2 border-blue-300 dark:border-gray-600 font-mono text-base sm:text-lg font-bold text-gray-800 dark:text-white text-center">
                 {mathQuestion.num1} {mathQuestion.operator} {mathQuestion.num2} = ?
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 <input
                   type="number"
                   value={mathAnswer}
                   onChange={(e) => setMathAnswer(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && !isMathVerified && handleMathVerify()}
-                  className="flex-1 px-3 py-2 border-2 border-blue-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold text-sm sm:text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-20 sm:flex-1 px-2 sm:px-3 py-2 border-2 border-blue-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-center font-semibold text-base bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   placeholder="?"
                   disabled={isMathVerified}
                 />
@@ -366,17 +366,17 @@ const Login = () => {
                   <button
                     type="button"
                     onClick={handleMathVerify}
-                    className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold text-xs sm:text-sm whitespace-nowrap"
+                    className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 font-semibold text-sm whitespace-nowrap flex-shrink-0"
                   >
                     {t('Check')}
                   </button>
                 ) : (
-                  <FaCheckCircle className="text-green-500 flex-shrink-0" size={20} />
+                  <FaCheckCircle className="text-green-500 flex-shrink-0" size={24} />
                 )}
                 <button
                   type="button"
                   onClick={generateMathQuestion}
-                  className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 p-2 flex-shrink-0"
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 p-1.5 sm:p-2 flex-shrink-0"
                   title="Refresh question"
                 >
                   <FaRedo size={16} />

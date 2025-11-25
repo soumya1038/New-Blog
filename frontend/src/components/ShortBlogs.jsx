@@ -110,17 +110,20 @@ const ShortBlogs = ({ blogs = [], onClose }) => {
 
       <div 
         ref={scrollRef}
-        className="grid grid-cols-2 sm:flex overflow-x-auto gap-3 sm:gap-4 pb-4 scrollbar-hide"
+        className="flex overflow-x-auto gap-3 sm:gap-4 pb-4 scrollbar-hide"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {shortBlogsData.map((blog, index) => (
           <div
             key={blog._id}
             onClick={() => handleCardClick(blog._id)}
-            className="relative rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group aspect-[9/16] sm:flex-shrink-0 h-72 sm:h-auto sm:w-48"
+            className="relative rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer group flex-shrink-0 w-40 sm:w-48 aspect-[9/16]"
             style={getBackgroundStyle(blog, index)}
           >
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/50"></div>
+            <div className="absolute top-2 right-2 z-20 bg-white/20 backdrop-blur-sm p-1 md:p-1.5 rounded-full shadow-lg">
+              <MdOutlineSwitchAccessShortcutAdd className="w-3 h-3 md:w-4 md:h-4 text-white" />
+            </div>
 
             <div className="absolute inset-0 flex flex-col p-3">
               <h3 className="text-white text-sm font-bold line-clamp-2 mb-2">
