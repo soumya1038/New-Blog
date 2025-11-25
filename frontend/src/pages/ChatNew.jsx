@@ -374,6 +374,8 @@ const ChatNew = () => {
       socket.current.on('call:accepted', async ({ receiverId }) => {
         console.log('✅ Call accepted by receiver');
         soundManager.stop('callRing');
+        // Clear any incoming call state (shouldn't exist but safety check)
+        setIncomingCall(null);
         // Receiver accepted - start timer
         setActiveCall(prev => {
           if (prev) {

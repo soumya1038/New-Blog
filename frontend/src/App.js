@@ -105,6 +105,13 @@ function AppContent() {
       window.dispatchEvent(new CustomEvent('callEnded'));
     };
 
+    const handleCallAccepted = () => {
+      console.log('📞 App.js: Call accepted, clearing global popup');
+      soundManager.stop('callRing');
+      soundManager.stop('incomingCall');
+      setGlobalIncomingCall(null);
+    };
+
     socket.on('message:receive', handleMessageReceive);
     socket.on('notification:like', handleNotificationLike);
     socket.on('notification:comment', handleNotificationComment);
@@ -112,6 +119,7 @@ function AppContent() {
     socket.on('notification:message', handleNotificationMessage);
     socket.on('notifications:updated', handleNotificationsUpdated);
     socket.on('call:incoming', handleIncomingCall);
+    socket.on('call:accepted', handleCallAccepted);
     socket.on('call:rejected', handleCallRejected);
     socket.on('call:ended', handleCallEnded);
     
@@ -125,6 +133,7 @@ function AppContent() {
       socket.off('notification:message', handleNotificationMessage);
       socket.off('notifications:updated', handleNotificationsUpdated);
       socket.off('call:incoming', handleIncomingCall);
+      socket.off('call:accepted', handleCallAccepted);
       socket.off('call:rejected', handleCallRejected);
       socket.off('call:ended', handleCallEnded);
     };
