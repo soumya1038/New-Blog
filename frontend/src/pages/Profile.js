@@ -7,6 +7,7 @@ import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, Fa
 import AIBioGenerator from '../components/AIBioGenerator';
 import Avatar from '../components/Avatar';
 import { ScaleLoader, SyncLoader, BeatLoader, PulseLoader, HashLoader } from 'react-spinners';
+import ScrollToTop from '../components/ScrollToTop';
 
 const Profile = () => {
   const { t } = useTranslation();
@@ -794,6 +795,7 @@ const Profile = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
+      <ScrollToTop />
       <div className="container mx-auto px-4 max-w-4xl">
         <button
           onClick={() => navigate(-1)}

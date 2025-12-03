@@ -94,12 +94,13 @@ const Navbar = () => {
           </Link>
           
           {/* Desktop Menu */}
-          <div className="hidden lg:flex items-center gap-6">
+          <div className="hidden xl:flex items-center gap-6">
             {user ? (
               <>
                 {(user.role === 'admin' || user.role === 'coAdmin') && (
                   <Link to="/admin" className="hover:text-gray-200 font-semibold">{t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}</Link>
                 )}
+                <Link to="/news" className="hover:text-gray-200 font-semibold">📰 {t('News')}</Link>
                 <Link to="/create" className="create-blog-btn hover:text-gray-200">{t('Create Blog')}</Link>
                 <Link to="/drafts" className="hover:text-gray-200">{t('My Drafts')}</Link>
                 <button
@@ -197,10 +198,11 @@ const Navbar = () => {
             )}
           </div>
 
-          {/* Tablet Menu (md) */}
-          <div className="hidden md:flex lg:hidden items-center gap-4">
+          {/* Tablet/Large Menu */}
+          <div className="hidden lg:flex xl:hidden items-center gap-3">
             {user ? (
               <>
+                <Link to="/news" className="hover:text-gray-200 text-sm">📰</Link>
                 <Link to="/create" className="hover:text-gray-200 text-sm">{t('Create')}</Link>
                 <button
                   onClick={toggleTheme}
@@ -293,6 +295,96 @@ const Navbar = () => {
             )}
           </div>
 
+          {/* Small Tablet Menu */}
+          <div className="hidden md:flex lg:hidden items-center gap-2">
+            {user ? (
+              <>
+                <Link to="/news" className="hover:text-gray-200 text-sm">📰</Link>
+                <Link to="/create" className="hover:text-gray-200 text-xs">Create</Link>
+                <button
+                  onClick={toggleTheme}
+                  className="hover:text-gray-200 p-1.5 rounded-lg hover:bg-white/10 transition"
+                >
+                  {isDarkMode ? <FaSun size={16} /> : <FaMoon size={16} />}
+                </button>
+                <Link to="/notifications" className="hover:text-gray-200 relative">
+                  <FaBell size={18} />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Link>
+                <div className="relative" ref={tabletDropdownRef}>
+                  <button
+                    onClick={() => setShowDropdown(!showDropdown)}
+                    className="flex items-center gap-1 hover:bg-white/10 px-2 py-1 rounded-lg transition"
+                  >
+                    <div className="border-2 border-white rounded-full">
+                      <Avatar user={user} size="sm" />
+                    </div>
+                    <FaChevronDown size={10} />
+                  </button>
+                  {showDropdown && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-50">
+                      {(user.role === 'admin' || user.role === 'coAdmin') && (
+                        <Link
+                          to="/admin"
+                          onClick={() => setShowDropdown(false)}
+                          className={`block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold ${
+                            user.role === 'coAdmin' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'
+                          }`}
+                        >
+                          {t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}
+                        </Link>
+                      )}
+                      <Link
+                        to="/profile"
+                        onClick={() => setShowDropdown(false)}
+                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        {t('My Profile')}
+                      </Link>
+                      <Link
+                        to="/drafts"
+                        onClick={() => setShowDropdown(false)}
+                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        {t('My Drafts')}
+                      </Link>
+                      <Link
+                        to="/chat"
+                        onClick={() => setShowDropdown(false)}
+                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                      >
+                        <FaComments /> {t('Chat')}
+                      </Link>
+                      <hr className="my-2 border-gray-200 dark:border-gray-700" />
+                      <button
+                        onClick={handleLogout}
+                        className="w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                      >
+                        <FaSignOutAlt /> {t('Logout')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={toggleTheme}
+                  className="hover:text-gray-200 p-1.5 rounded-lg hover:bg-white/10 transition"
+                >
+                  {isDarkMode ? <FaSun size={16} /> : <FaMoon size={16} />}
+                </button>
+                <LanguageSelector />
+                <Link to="/login" className="hover:text-gray-200 text-xs">{t('Login')}</Link>
+                <Link to="/register" className="bg-white text-blue-600 px-2 py-1 rounded-lg font-semibold hover:bg-gray-100 text-xs">{t('Sign Up')}</Link>
+              </>
+            )}
+          </div>
+
           {/* Mobile Menu Button & Notification */}
           <div className="md:hidden flex items-center gap-3">
             <button
@@ -367,6 +459,13 @@ const Navbar = () => {
                     {t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}
                   </Link>
                 )}
+                <Link
+                  to="/news"
+                  onClick={() => setShowMobileMenu(false)}
+                  className="block py-2 hover:bg-white/10 px-3 rounded"
+                >
+                  📰 {t('News')}
+                </Link>
                 <Link
                   to="/create"
                   onClick={() => setShowMobileMenu(false)}

@@ -17,9 +17,11 @@ import VerifyEmail from './pages/VerifyEmail';
 import ChatNew from './pages/ChatNew';
 import JoinGroup from './pages/JoinGroup';
 import ShortBlogsViewer from './pages/ShortBlogsViewer';
+import News from './pages/News';
 import NotFound from './pages/NotFound';
 import ErrorFallback from './components/ErrorFallback';
 import IncomingCallModal from './components/IncomingCallModal';
+import Chatbot from './components/Chatbot';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
 import soundNotification from './utils/soundNotifications';
@@ -159,6 +161,7 @@ function AppContent() {
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       <div className="min-h-screen">
         <Navbar />
+        <Chatbot />
         {globalIncomingCall && (
           <IncomingCallModal
             caller={globalIncomingCall.caller}
@@ -184,6 +187,7 @@ function AppContent() {
           <Route path="/join-group/:inviteCode" element={<JoinGroup />} />
           <Route path="/short-blogs" element={<ShortBlogsViewer />} />
           <Route path="/short-blogs/:id" element={<ShortBlogsViewer />} />
+          <Route path="/news" element={<News />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </div>

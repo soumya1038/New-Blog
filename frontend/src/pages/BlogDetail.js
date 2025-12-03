@@ -10,6 +10,8 @@ import soundNotification from '../utils/soundNotifications';
 import { BarLoader, ScaleLoader } from 'react-spinners';
 import toast, { Toaster } from 'react-hot-toast';
 import Avatar from '../components/Avatar';
+import AudioControls from '../components/AudioControls';
+import ScrollToTop from '../components/ScrollToTop';
 
 const BlogDetail = () => {
   const { t } = useTranslation();
@@ -251,6 +253,7 @@ const BlogDetail = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
       <Toaster />
+      <ScrollToTop />
       {editLoading && (
         <div className="fixed top-0 left-0 right-0 z-50">
           <BarLoader color="#3B82F6" width="100%" height={4} />
@@ -394,9 +397,7 @@ const BlogDetail = () => {
             </div>
           )}
           
-          <div className="prose max-w-none mb-8">
-            <ReactMarkdown>{blog.content}</ReactMarkdown>
-          </div>
+          <AudioControls text={blog.content} content={blog.content} />
           
           <hr className="my-8" />
           

@@ -11,6 +11,7 @@ import soundNotification from '../utils/soundNotifications';
 import Avatar from '../components/Avatar';
 import ProductTour from '../components/ProductTour';
 import ShortBlogs from '../components/ShortBlogs';
+import ScrollToTop from '../components/ScrollToTop';
 
 const Home = () => {
   const { t } = useTranslation();
@@ -279,6 +280,7 @@ const Home = () => {
   return (
     <>
       {showTour && <ProductTour onComplete={() => setShowTour(false)} />}
+      <ScrollToTop />
       
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8 overflow-y-auto">
       <div className="container mx-auto px-4">

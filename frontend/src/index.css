@@ -234,3 +234,19 @@ code {
 .animate-slide-in-right {
   animation: slideInRight 0.5s ease-out;
 }
+
+/* Slide down animation for refresh button */
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.animate-slide-down {
+  animation: slide-down 0.4s ease-out;
+}
