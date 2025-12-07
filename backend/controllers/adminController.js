@@ -22,6 +22,7 @@ exports.getStats = async (req, res) => {
     // Generate data for selected time range
     const blogsPerDay = [];
     const shortsPerDay = [];
+    const commentsPerDay = [];
     const userRegistrations = [];
     const activeUsersPerDay = [];
     
@@ -49,6 +50,11 @@ exports.getStats = async (req, res) => {
         createdAt: { $gte: date, $lt: nextDate }
       });
       
+      // Comments count
+      const commentCount = await Comment.countDocuments({
+        createdAt: { $gte: date, $lt: nextDate }
+      });
+      
       // Active users count (based on lastActive)
       const activeUsers = await User.countDocuments({
         lastActive: { $gte: date, $lt: nextDate }
@@ -60,6 +66,7 @@ exports.getStats = async (req, res) => {
       
       blogsPerDay.push({ date: dateLabel, count: blogCount });
       shortsPerDay.push({ date: dateLabel, count: shortCount });
+      commentsPerDay.push({ date: dateLabel, count: commentCount });
       userRegistrations.push({ date: dateLabel, count: userCount });
       activeUsersPerDay.push({ date: dateLabel, count: activeUsers });
     }
@@ -74,6 +81,7 @@ exports.getStats = async (req, res) => {
         activeUsersToday,
         blogsPerDay,
         shortsPerDay,
+        commentsPerDay,
         userRegistrations,
         activeUsersPerDay
       }
@@ -99,9 +107,11 @@ exports.getUsers = async (req, res) => {
       }
       
       const blogCount = await Blog.countDocuments({ author: user._id, isDraft: false });
+      const shortCount = await Short.countDocuments({ author: user._id, isDraft: false });
       return {
         ...user.toObject(),
-        blogCount
+        blogCount,
+        shortCount
       };
     }));
 
@@ -118,7 +128,15 @@ exports.getAllBlogs = async (req, res) => {
       .populate('author', 'username profileImage')
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, blogs });
+    const blogsWithComments = await Promise.all(blogs.map(async (blog) => {
+      const commentCount = await Comment.countDocuments({ blog: blog._id });
+      return {
+        ...blog.toObject(),
+        commentCount
+      };
+    }));
+
+    res.json({ success: true, blogs: blogsWithComments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -131,7 +149,15 @@ exports.getAllShorts = async (req, res) => {
       .populate('author', 'username profileImage')
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, shorts });
+    const shortsWithComments = await Promise.all(shorts.map(async (short) => {
+      const commentCount = await Comment.countDocuments({ short: short._id });
+      return {
+        ...short.toObject(),
+        commentCount
+      };
+    }));
+
+    res.json({ success: true, shorts: shortsWithComments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

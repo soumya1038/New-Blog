@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { FiX, FiChevronUp, FiChevronDown, FiEye } from 'react-icons/fi';
 import { AiOutlineLike, AiFillLike } from 'react-icons/ai';
@@ -15,6 +15,7 @@ import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
+import EnhancedComment from '../components/EnhancedComment';
 
 const ShortBlogsViewer = () => {
   const { id } = useParams();
@@ -31,6 +32,13 @@ const ShortBlogsViewer = () => {
   const [commentText, setCommentText] = useState('');
   const [sortBy, setSortBy] = useState('newest');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [replies, setReplies] = useState({});
+  const [showReplies, setShowReplies] = useState({});
+  const [loadingReplies, setLoadingReplies] = useState({});
+  const [commentCount, setCommentCount] = useState(0);
+  const [deletingComment, setDeletingComment] = useState(null);
+  const [editingComment, setEditingComment] = useState(null);
+  const [editText, setEditText] = useState('');
   const [lastTap, setLastTap] = useState(0);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -107,7 +115,7 @@ const ShortBlogsViewer = () => {
     try {
       const { data } = await api.get('/shorts');
       setBlogs(data.shorts);
-      
+
       if (user) {
         const followStatus = {};
         data.blogs.forEach(blog => {
@@ -137,7 +145,7 @@ const ShortBlogsViewer = () => {
     }
     try {
       const { data } = await api.post(`/shorts/${blogId}/like`);
-      setBlogs(blogs.map(blog => 
+      setBlogs(blogs.map(blog =>
         blog._id === blogId ? { ...blog, likes: data.likes } : blog
       ));
     } catch (error) {
@@ -153,7 +161,7 @@ const ShortBlogsViewer = () => {
     if (!currentBlog.likes?.includes(user._id)) {
       try {
         const { data } = await api.post(`/shorts/${currentBlog._id}/like`);
-        setBlogs(blogs.map(blog => 
+        setBlogs(blogs.map(blog =>
           blog._id === currentBlog._id ? { ...blog, likes: data.likes } : blog
         ));
       } catch (error) {
@@ -222,18 +230,18 @@ const ShortBlogsViewer = () => {
     const text = `${currentBlog.title}. ${currentBlog.content}`;
     const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
     let currentSentence = startIndex;
-    
+
     const speakNext = () => {
       if (currentSentence < sentences.length) {
         const utterance = new SpeechSynthesisUtterance(sentences[currentSentence].trim());
         utterance.rate = 1.0;
         utterance.pitch = 1.0;
         utterance.volume = vol;
-        
+
         utterance.onstart = () => {
           setHighlightedText(sentences[currentSentence].trim());
         };
-        
+
         utterance.onend = () => {
           currentSentence++;
           if (currentSentence < sentences.length) {
@@ -251,12 +259,12 @@ const ShortBlogsViewer = () => {
             }
           }
         };
-        
+
         utteranceRef.current = utterance;
         window.speechSynthesis.speak(utterance);
       }
     };
-    
+
     setIsSpeaking(true);
     setIsPaused(false);
     speakNext();
@@ -287,16 +295,16 @@ const ShortBlogsViewer = () => {
 
   const handleTouchEnd = () => {
     if (!touchStart || !touchEnd) return;
-    
+
     const distance = touchStart - touchEnd;
     const threshold = 50;
-    
+
     if (distance > threshold && currentIndex < blogs.length - 1) {
       handleNext();
     } else if (distance < -threshold && currentIndex > 0) {
       handlePrev();
     }
-    
+
     setTouchStart(0);
     setTouchEnd(0);
   };
@@ -357,20 +365,203 @@ const ShortBlogsViewer = () => {
     try {
       const { data } = await api.get(`/comments/${blogId}?isShort=true`);
       setComments(data.comments || []);
+      const totalCount = (data.comments || []).reduce((acc, comment) =>
+        acc + 1 + (comment.replyCount || 0), 0
+      );
+      setCommentCount(totalCount);
     } catch (error) {
       console.error('Error fetching comments:', error);
     }
   };
 
+  const fetchReplies = async (commentId, keepOpen = false) => {
+    setLoadingReplies(prev => ({ ...prev, [commentId]: true }));
+    try {
+      const { data } = await api.get(`/comments/${commentId}/replies`);
+      setReplies(prev => ({ ...prev, [commentId]: data.replies }));
+      
+      if (keepOpen) {
+        setShowReplies(prev => ({ ...prev, [commentId]: true }));
+      } else {
+        setShowReplies(prev => ({ ...prev, [commentId]: !prev[commentId] }));
+      }
+    } catch (error) {
+      console.error('Error fetching replies:', error);
+    } finally {
+      setLoadingReplies(prev => ({ ...prev, [commentId]: false }));
+    }
+  };
+
+  const handleReply = async (parentCommentId, content, replyToUserId) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    const currentBlog = blogs[currentIndex];
+    if (!currentBlog) return;
+
+    try {
+      await api.post(`/comments/${currentBlog._id}?isShort=true`, {
+        content,
+        parentComment: parentCommentId,
+        replyTo: replyToUserId
+      });
+      
+      // Update parent comment reply count
+      setComments(prev => prev.map(comment =>
+        comment._id === parentCommentId ?
+          { ...comment, replyCount: (comment.replyCount || 0) + 1 } :
+          comment
+      ));
+      
+      // Refresh replies and keep them visible
+      await fetchReplies(parentCommentId, true);
+      setCommentCount(prev => prev + 1);
+    } catch (error) {
+      console.error('Error adding reply:', error);
+    }
+  };
+
+  const handleLikeComment = async (commentId) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    try {
+      const { data } = await api.post(`/comments/${commentId}/like`);
+      
+      // Update main comments
+      setComments(prev => prev.map(comment =>
+        comment._id === commentId ? { ...comment, likes: data.likes } : comment
+      ));
+      
+      // Update replies
+      setReplies(prev => {
+        const newReplies = { ...prev };
+        Object.keys(newReplies).forEach(parentId => {
+          newReplies[parentId] = newReplies[parentId].map(reply =>
+            reply._id === commentId ? { ...reply, likes: data.likes } : reply
+          );
+        });
+        return newReplies;
+      });
+    } catch (error) {
+      console.error('Error liking comment:', error);
+    }
+  };
+
+  const handleHeartComment = async (commentId) => {
+    const currentBlog = blogs[currentIndex];
+    if (!user || !currentBlog || user._id !== currentBlog.author._id) return;
+
+    try {
+      const { data } = await api.post(`/comments/${commentId}/heart`);
+      setComments(prev => prev.map(comment =>
+        comment._id === commentId ? { ...comment, isHearted: data.isHearted } : comment
+      ));
+      setReplies(prev => {
+        const newReplies = { ...prev };
+        Object.keys(newReplies).forEach(parentId => {
+          newReplies[parentId] = newReplies[parentId].map(reply =>
+            reply._id === commentId ? { ...reply, isHearted: data.isHearted } : reply
+          );
+        });
+        return newReplies;
+      });
+    } catch (error) {
+      console.error('Error hearting comment:', error);
+    }
+  };
+
+  const handlePinComment = async (commentId) => {
+    const currentBlog = blogs[currentIndex];
+    if (!user || !currentBlog || user._id !== currentBlog.author._id) return;
+
+    try {
+      const { data } = await api.post(`/comments/${commentId}/pin`);
+      setComments(prev => prev.map(comment =>
+        comment._id === commentId ? { ...comment, isPinned: data.isPinned } : comment
+      ));
+      fetchComments(currentBlog._id);
+    } catch (error) {
+      console.error('Error pinning comment:', error);
+    }
+  };
+
   const handleCommentClick = () => {
+    const currentBlog = blogs[currentIndex];
+    if (!currentBlog) return;
+
     setShowDescription(false);
     setShowComments(true);
-    fetchComments(currentBlog._id);
+    if (comments.length === 0) {
+      fetchComments(currentBlog._id);
+    }
   };
+
+  useEffect(() => {
+    if (blogs[currentIndex]?._id) {
+      setComments([]);
+      setReplies({});
+      setShowReplies({});
+      setCommentCount(0);
+      fetchComments(blogs[currentIndex]._id);
+    }
+  }, [blogs, currentIndex]);
 
   const handleDescriptionClick = () => {
     setShowComments(false);
     setShowDescription(true);
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    setDeletingComment(commentId);
+    try {
+      await api.delete(`/comments/${commentId}`);
+      const deletedComment = comments.find(c => c._id === commentId);
+      const replyCount = deletedComment?.replyCount || 0;
+
+      setComments(prev => prev.filter(c => c._id !== commentId));
+      setReplies(prev => {
+        const newReplies = { ...prev };
+        Object.keys(newReplies).forEach(parentId => {
+          newReplies[parentId] = newReplies[parentId].filter(reply => reply._id !== commentId);
+        });
+        return newReplies;
+      });
+      setCommentCount(prev => prev - (1 + replyCount));
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+    } finally {
+      setDeletingComment(null);
+    }
+  };
+
+  const handleEditComment = (commentId, currentText) => {
+    setEditingComment(commentId);
+    setEditText(currentText);
+  };
+
+  const handleSaveEdit = async (commentId) => {
+    try {
+      const { data } = await api.put(`/comments/${commentId}`, { content: editText });
+      setComments(prev => prev.map(comment =>
+        comment._id === commentId ? { ...comment, content: data.comment.content } : comment
+      ));
+      setReplies(prev => {
+        const newReplies = { ...prev };
+        Object.keys(newReplies).forEach(parentId => {
+          newReplies[parentId] = newReplies[parentId].map(reply =>
+            reply._id === commentId ? { ...reply, content: data.comment.content } : reply
+          );
+        });
+        return newReplies;
+      });
+      setEditingComment(null);
+      setEditText('');
+    } catch (error) {
+      console.error('Error editing comment:', error);
+    }
   };
 
   const handleAddComment = async () => {
@@ -379,23 +570,35 @@ const ShortBlogsViewer = () => {
       return;
     }
     if (!commentText.trim()) return;
-    
+
+    const currentBlog = blogs[currentIndex];
+    if (!currentBlog) return;
+
     try {
       await api.post(`/comments/${currentBlog._id}?isShort=true`, { content: commentText });
       setCommentText('');
       fetchComments(currentBlog._id);
+      setCommentCount(prev => prev + 1);
     } catch (error) {
       console.error('Error adding comment:', error);
     }
   };
 
-  const sortedComments = [...comments].sort((a, b) => {
-    if (sortBy === 'newest') {
-      return new Date(b.createdAt) - new Date(a.createdAt);
-    } else {
-      return (b.likes?.length || 0) - (a.likes?.length || 0);
-    }
-  });
+  const sortedComments = useMemo(() => {
+    const sorted = [...comments].sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+
+      if (sortBy === 'newest') {
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      } else {
+        const aEngagement = (a.likes?.length || 0) + (a.replyCount || 0);
+        const bEngagement = (b.likes?.length || 0) + (b.replyCount || 0);
+        return bEngagement - aEngagement;
+      }
+    });
+    return sorted;
+  }, [comments, sortBy]);
 
   const handleNext = () => {
     if (currentIndex < blogs.length - 1) {
@@ -492,7 +695,7 @@ const ShortBlogsViewer = () => {
     }
     const baseGradient = gradients[index % gradients.length];
     const pattern = getSvgPattern(index);
-    return { 
+    return {
       backgroundImage: `url("${pattern}"), ${baseGradient}`,
       backgroundSize: 'auto, cover',
       backgroundPosition: 'center'
@@ -510,7 +713,7 @@ const ShortBlogsViewer = () => {
         <FiX className="w-4 h-4 md:w-6 md:h-6 text-white" />
       </button>
 
-      <div 
+      <div
         className="w-full max-w-[400px] aspect-[9/16] sm:h-[85vh] sm:w-auto sm:aspect-[9/16] md:h-[88vh] lg:h-[95vh] relative"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -524,7 +727,7 @@ const ShortBlogsViewer = () => {
         >
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-black/50"></div>
 
-          <div 
+          <div
             className="absolute top-4 left-4 z-10 flex items-center gap-2"
             onMouseEnter={handleVolumeMouseEnter}
             onMouseLeave={handleVolumeMouseLeave}
@@ -568,7 +771,7 @@ const ShortBlogsViewer = () => {
 
           <div className="absolute inset-0 flex flex-col p-6 pt-16">
             <h2 className="text-white text-xl font-bold text-center mb-4">{currentBlog.title}</h2>
-            
+
             <div className="flex-1 flex items-center justify-center overflow-hidden px-2">
               <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center">
                 {currentBlog.content.split(/([.!?]+)/).map((part, idx) => {
@@ -585,7 +788,7 @@ const ShortBlogsViewer = () => {
                 })}
               </p>
             </div>
-            
+
             {currentBlog.tags?.length > 0 && (
               <div className="flex flex-wrap gap-1 justify-center mb-3 max-h-12 overflow-hidden">
                 {currentBlog.tags.slice(0, 5).map((tag, idx) => (
@@ -602,7 +805,7 @@ const ShortBlogsViewer = () => {
                 <Avatar user={currentBlog.author} size="md" className="border-2 border-white" />
               </Link>
               <div className="flex-1 flex items-center gap-2">
-                <Link 
+                <Link
                   to={`/user/${currentBlog.author._id}`}
                   className="text-white font-semibold hover:underline"
                 >
@@ -611,11 +814,10 @@ const ShortBlogsViewer = () => {
                 {user && user._id !== currentBlog.author._id && (
                   <button
                     onClick={() => handleFollow(currentBlog.author._id)}
-                    className={`px-4 py-1.5 rounded-full font-semibold transition text-sm ${
-                      following[currentBlog.author._id]
+                    className={`px-4 py-1.5 rounded-full font-semibold transition text-sm ${following[currentBlog.author._id]
                         ? 'bg-white/20 text-white hover:bg-white/30'
                         : 'bg-white text-black hover:bg-gray-200'
-                    }`}
+                      }`}
                   >
                     {following[currentBlog.author._id] ? 'Following' : 'Follow'}
                   </button>
@@ -637,76 +839,76 @@ const ShortBlogsViewer = () => {
 
       {!isMobile && (
         <div className="flex flex-col gap-6">
-        {user && user._id === currentBlog.author._id && (
-          <>
-            <button
-              onClick={handleEdit}
-              className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-            >
-              <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-                <CiEdit className="w-6 h-6" />
-              </div>
-              <span className="text-xs">Edit</span>
-            </button>
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-            >
-              <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-                <RiDeleteBin6Line className="w-6 h-6" />
-              </div>
-              <span className="text-xs">Delete</span>
-            </button>
-          </>
-        )}
-        <button
-          onClick={() => handleLike(currentBlog._id)}
-          className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-        >
-          <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-            {currentBlog.likes?.includes(user?._id) ? (
-              <AiFillLike className="w-6 h-6" />
-            ) : (
-              <AiOutlineLike className="w-6 h-6" />
-            )}
-          </div>
-          <span className="text-sm font-semibold">{currentBlog.likes?.length || 0}</span>
-        </button>
+          {user && user._id === currentBlog.author._id && (
+            <>
+              <button
+                onClick={handleEdit}
+                className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+              >
+                <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
+                  <CiEdit className="w-6 h-6" />
+                </div>
+                <span className="text-xs">Edit</span>
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+              >
+                <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
+                  <RiDeleteBin6Line className="w-6 h-6" />
+                </div>
+                <span className="text-xs">Delete</span>
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => handleLike(currentBlog._id)}
+            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+          >
+            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
+              {currentBlog.likes?.includes(user?._id) ? (
+                <AiFillLike className="w-6 h-6" />
+              ) : (
+                <AiOutlineLike className="w-6 h-6" />
+              )}
+            </div>
+            <span className="text-sm font-semibold">{currentBlog.likes?.length || 0}</span>
+          </button>
 
-        <button
-          onClick={handleCommentClick}
-          className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-        >
-          <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-            <TfiCommentAlt className="w-6 h-6" />
-          </div>
-          <span className="text-sm font-semibold">{comments.length}</span>
-        </button>
+          <button
+            onClick={handleCommentClick}
+            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+          >
+            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
+              <TfiCommentAlt className="w-6 h-6" />
+            </div>
+            <span className="text-sm font-semibold">{commentCount}</span>
+          </button>
 
-        <button
-          onClick={handleShare}
-          className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-        >
-          <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-            <IoIosShareAlt className="w-6 h-6" />
-          </div>
-          <span className="text-xs">Share</span>
-        </button>
+          <button
+            onClick={handleShare}
+            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+          >
+            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
+              <IoIosShareAlt className="w-6 h-6" />
+            </div>
+            <span className="text-xs">Share</span>
+          </button>
 
-        <button
-          onClick={handleRepost}
-          className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-        >
-          <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-            <BiRepost className="w-7 h-7" />
-          </div>
-          <span className="text-xs">Repost</span>
-        </button>
+          <button
+            onClick={handleRepost}
+            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+          >
+            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
+              <BiRepost className="w-7 h-7" />
+            </div>
+            <span className="text-xs">Repost</span>
+          </button>
 
-        <Link to={`/user/${currentBlog.author._id}`}>
-          <Avatar user={currentBlog.author} size="md" className="border-2 border-white hover:scale-110 transition" />
-        </Link>
-      </div>
+          <Link to={`/user/${currentBlog.author._id}`}>
+            <Avatar user={currentBlog.author} size="md" className="border-2 border-white hover:scale-110 transition" />
+          </Link>
+        </div>
       )}
 
       {!isMobile && showDescription && (
@@ -754,10 +956,10 @@ const ShortBlogsViewer = () => {
       )}
 
       {showComments && !isMobile && (
-        <div className="w-full max-w-md h-[90vh] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col">
+        <div className="w-full max-w-md h-[90vh] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col" onWheel={(e) => e.stopPropagation()}>
           <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              Comments ({comments.length})
+              Comments ({commentCount})
             </h3>
             <div className="flex items-center gap-2">
               <div className="relative">
@@ -773,7 +975,7 @@ const ShortBlogsViewer = () => {
                       onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
                       className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
                     >
-                      Top comments
+                      Most engaging
                     </button>
                     <button
                       onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
@@ -800,24 +1002,27 @@ const ShortBlogsViewer = () => {
               </div>
             ) : (
               sortedComments.map((comment) => (
-                <div key={comment._id} className="flex gap-3">
-                  <Avatar user={comment.author} size="sm" />
-                  <div className="flex-1">
-                    <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-                      <p className="font-semibold text-sm text-gray-900 dark:text-white">
-                        {comment.author?.username}
-                      </p>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
-                        {comment.content}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      <button className="hover:text-blue-600">Like</button>
-                      <button className="hover:text-blue-600">Reply</button>
-                      <span>{new Date(comment.createdAt).toLocaleDateString()}</span>
-                    </div>
-                  </div>
-                </div>
+                <EnhancedComment
+                  key={comment._id}
+                  comment={comment}
+                  isOwner={user?._id === blogs[currentIndex]?.author._id}
+                  onReply={handleReply}
+                  onLike={handleLikeComment}
+                  onHeart={handleHeartComment}
+                  onPin={handlePinComment}
+                  onDelete={handleDeleteComment}
+                  onEdit={handleEditComment}
+                  onSaveEdit={handleSaveEdit}
+                  editingComment={editingComment}
+                  editText={editText}
+                  setEditText={setEditText}
+                  onLoadReplies={fetchReplies}
+                  replies={replies[comment._id] || []}
+                  showReplies={showReplies[comment._id]}
+                  loadingReplies={loadingReplies[comment._id]}
+                  deletingComment={deletingComment}
+                  postOwner={blogs[currentIndex]?.author}
+                />
               ))
             )}
           </div>
@@ -906,11 +1111,11 @@ const ShortBlogsViewer = () => {
       )}
 
       {isMobile && showComments && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col w-full max-w-md max-h-[80vh]">
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onWheel={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col w-full max-w-md max-h-[80vh]" onWheel={(e) => e.stopPropagation()}>
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                Comments ({comments.length})
+                Comments ({commentCount})
               </h3>
               <div className="flex items-center gap-2">
                 <div className="relative">
@@ -926,7 +1131,7 @@ const ShortBlogsViewer = () => {
                         onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
                         className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
                       >
-                        Top comments
+                        Most engaging
                       </button>
                       <button
                         onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
@@ -953,24 +1158,27 @@ const ShortBlogsViewer = () => {
                 </div>
               ) : (
                 sortedComments.map((comment) => (
-                  <div key={comment._id} className="flex gap-3">
-                    <Avatar user={comment.author} size="sm" />
-                    <div className="flex-1">
-                      <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3">
-                        <p className="font-semibold text-sm text-gray-900 dark:text-white">
-                          {comment.author?.username}
-                        </p>
-                        <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
-                          {comment.content}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        <button className="hover:text-blue-600">Like</button>
-                        <button className="hover:text-blue-600">Reply</button>
-                        <span>{new Date(comment.createdAt).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                  </div>
+                  <EnhancedComment
+                    key={comment._id}
+                    comment={comment}
+                    isOwner={user?._id === blogs[currentIndex]?.author._id}
+                    onReply={handleReply}
+                    onLike={handleLikeComment}
+                    onHeart={handleHeartComment}
+                    onPin={handlePinComment}
+                    onDelete={handleDeleteComment}
+                    onEdit={handleEditComment}
+                    onSaveEdit={handleSaveEdit}
+                    editingComment={editingComment}
+                    editText={editText}
+                    setEditText={setEditText}
+                    onLoadReplies={fetchReplies}
+                    replies={replies[comment._id] || []}
+                    showReplies={showReplies[comment._id]}
+                    loadingReplies={loadingReplies[comment._id]}
+                    deletingComment={deletingComment}
+                    postOwner={blogs[currentIndex]?.author}
+                  />
                 ))
               )}
             </div>
@@ -1056,7 +1264,7 @@ const ShortBlogsViewer = () => {
             <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
               <TfiCommentAlt className="w-6 h-6" />
             </div>
-            <span className="text-sm font-semibold">{comments.length}</span>
+            <span className="text-sm font-semibold">{commentCount}</span>
           </button>
 
           <button
@@ -1118,22 +1326,20 @@ const ShortBlogsViewer = () => {
         <button
           onClick={handlePrev}
           disabled={currentIndex === 0}
-          className={`p-3 rounded-full transition ${
-            currentIndex === 0
+          className={`p-3 rounded-full transition ${currentIndex === 0
               ? 'bg-gray-600 cursor-not-allowed'
               : 'bg-white/20 hover:bg-white/30'
-          }`}
+            }`}
         >
           <FiChevronUp className="w-6 h-6 text-white" />
         </button>
         <button
           onClick={handleNext}
           disabled={currentIndex === blogs.length - 1}
-          className={`p-3 rounded-full transition ${
-            currentIndex === blogs.length - 1
+          className={`p-3 rounded-full transition ${currentIndex === blogs.length - 1
               ? 'bg-gray-600 cursor-not-allowed'
               : 'bg-white/20 hover:bg-white/30'
-          }`}
+            }`}
         >
           <FiChevronDown className="w-6 h-6 text-white" />
         </button>

@@ -94,10 +94,11 @@ const News = () => {
           isExternal: true
         }));
         
-        const extended = [...articles, ...articles, ...articles, ...articles, ...articles].slice(0, 50);
-        setCarouselNews(extended.slice(0, 6));
-        setAllNews(extended.slice(6));
-        setDisplayedNews(extended.slice(6, 6 + CHUNK_SIZE));
+        // Remove duplicates and limit to actual articles
+        const uniqueArticles = articles.slice(0, Math.min(articles.length, 50));
+        setCarouselNews(uniqueArticles.slice(0, Math.min(6, uniqueArticles.length)));
+        setAllNews(uniqueArticles.slice(6));
+        setDisplayedNews(uniqueArticles.slice(6, Math.min(6 + CHUNK_SIZE, uniqueArticles.length)));
         setCurrentChunk(1);
       } else {
         setPlaceholderNews();
@@ -121,9 +122,9 @@ const News = () => {
   };
 
   const setPlaceholderNews = () => {
-    const mockNews = Array(50).fill(null).map((_, i) => ({
-      id: i,
-      title: `Breaking News ${i + 1}: Latest Updates from India`,
+    const mockNews = Array(20).fill(null).map((_, i) => ({
+      id: `mock-${i}`,
+      title: `Breaking News ${i + 1}: Latest Updates`,
       description: 'Stay tuned for the latest news updates. Refresh the page to try loading news again.',
       image: 'https://via.placeholder.com/400x250',
       source: 'News Source',

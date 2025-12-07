@@ -5,6 +5,11 @@ const commentSchema = new mongoose.Schema({
   author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   blog: { type: mongoose.Schema.Types.ObjectId, ref: 'Blog' },
   short: { type: mongoose.Schema.Types.ObjectId, ref: 'Short' },
+  parentComment: { type: mongoose.Schema.Types.ObjectId, ref: 'Comment' },
+  replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  isHearted: { type: Boolean, default: false },
+  isPinned: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 

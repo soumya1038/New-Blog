@@ -449,6 +449,19 @@ const AdminDashboard = () => {
               </div>
 
               <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-xl font-bold mb-4 text-gray-800">{t('Comments Per Day')}</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={stats.commentsPerDay || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" angle={timeRange > 30 ? -45 : 0} textAnchor={timeRange > 30 ? 'end' : 'middle'} height={timeRange > 30 ? 80 : 30} />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-lg p-6">
                 <h3 className="text-xl font-bold mb-4 text-gray-800">{t('User Registrations')}</h3>
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={stats.userRegistrations}>
@@ -503,6 +516,7 @@ const AdminDashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Users')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Email Address')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Blogs')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Shorts')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Status')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Joined')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Actions')}</th>
@@ -526,6 +540,7 @@ const AdminDashboard = () => {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{u.email || 'N/A'}</td>
                       <td className="px-6 py-4 text-sm">{u.blogCount}</td>
+                      <td className="px-6 py-4 text-sm">{u.shortCount || 0}</td>
                       <td className="px-6 py-4">
                         {u.isActive ? (
                           <span className="text-green-600 flex items-center gap-1"><FaCheckCircle /> {t('Active')}</span>
@@ -583,13 +598,36 @@ const AdminDashboard = () => {
                             </>
                           )}
                           {isAdmin && u.role === 'coAdmin' && (
-                            <button
-                              onClick={() => handleRemoveCoAdmin(u._id, u.username)}
-                              className="text-red-600 hover:text-red-800"
-                              title={t('Remove Co-Admin')}
-                            >
-                              <FaTimes size={18} />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleSuspendUser(u._id, u.username, u.isActive)}
+                                className="text-orange-600 hover:text-orange-800"
+                                title={t('Suspend') + '/' + t('Unsuspend')}
+                              >
+                                <FaBan size={18} />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteUser(u._id, u.username)}
+                                className="text-red-600 hover:text-red-800"
+                                title={t('Delete')}
+                              >
+                                <FaTrash size={18} />
+                              </button>
+                              <button
+                                onClick={() => handleMakeAdmin(u._id, u.username)}
+                                className="text-purple-600 hover:text-purple-800"
+                                title={t('Make Admin')}
+                              >
+                                <FaUserShield size={18} />
+                              </button>
+                              <button
+                                onClick={() => handleRemoveCoAdmin(u._id, u.username)}
+                                className="text-red-600 hover:text-red-800"
+                                title={t('Remove Co-Admin')}
+                              >
+                                <FaTimes size={18} />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -623,6 +661,7 @@ const AdminDashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Title')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Author')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Likes')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Comments')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Status')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Created')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Actions')}</th>
@@ -639,6 +678,7 @@ const AdminDashboard = () => {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{short.author?.username}</td>
                       <td className="px-6 py-4 text-sm">{short.likes?.length || 0}</td>
+                      <td className="px-6 py-4 text-sm">{short.commentCount || 0}</td>
                       <td className="px-6 py-4">
                         {short.isDraft ? (
                           <span className="text-yellow-600 text-sm">{t('Draft')}</span>
@@ -698,6 +738,7 @@ const AdminDashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Title')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Author')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Likes')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Comments')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Status')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Created')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Actions')}</th>
@@ -714,6 +755,7 @@ const AdminDashboard = () => {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{blog.author?.username}</td>
                       <td className="px-6 py-4 text-sm">{blog.likes?.length || 0}</td>
+                      <td className="px-6 py-4 text-sm">{blog.commentCount || 0}</td>
                       <td className="px-6 py-4">
                         {blog.isDraft ? (
                           <span className="text-yellow-600 text-sm">{t('Draft')}</span>
