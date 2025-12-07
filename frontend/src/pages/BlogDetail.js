@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import ReactMarkdown from 'react-markdown';
 import { FaHeart, FaComment, FaClock, FaEdit, FaTrash, FaArrowLeft, FaShare, FaRetweet, FaTimes, FaFacebook, FaTwitter, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink, FaUserPlus, FaUserCheck } from 'react-icons/fa';
+import { BiMenuAltRight } from 'react-icons/bi';
 import { BlogDetailSkeleton } from '../components/SkeletonLoader';
 import soundNotification from '../utils/soundNotifications';
 import { BarLoader, ScaleLoader } from 'react-spinners';
@@ -12,6 +13,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import Avatar from '../components/Avatar';
 import AudioControls from '../components/AudioControls';
 import ScrollToTop from '../components/ScrollToTop';
+import EnhancedComment from '../components/EnhancedComment';
 
 const BlogDetail = () => {
   const { t } = useTranslation();
@@ -30,6 +32,14 @@ const BlogDetail = () => {
   const [deleting, setDeleting] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [sortBy, setSortBy] = useState('newest');
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [replies, setReplies] = useState({});
+  const [showReplies, setShowReplies] = useState({});
+  const [loadingReplies, setLoadingReplies] = useState({});
+  const [deletingComment, setDeletingComment] = useState(null);
+  const [editingComment, setEditingComment] = useState(null);
+  const [editText, setEditText] = useState('');
 
   useEffect(() => {
     fetchBlog();
@@ -70,9 +80,31 @@ const BlogDetail = () => {
   const fetchComments = async () => {
     try {
       const { data } = await api.get(`/comments/${id}`);
-      setComments(data.comments);
+      const commentsWithReplies = await Promise.all(data.comments.map(async (comment) => {
+        const replyCount = await api.get(`/comments/${comment._id}/replies`).then(res => res.data.replies.length).catch(() => 0);
+        return { ...comment, replyCount };
+      }));
+      setComments(commentsWithReplies);
     } catch (error) {
       console.error('Error fetching comments:', error);
+    }
+  };
+
+  const fetchReplies = async (commentId, keepOpen = false) => {
+    setLoadingReplies(prev => ({ ...prev, [commentId]: true }));
+    try {
+      const { data } = await api.get(`/comments/${commentId}/replies`);
+      setReplies(prev => ({ ...prev, [commentId]: data.replies }));
+      
+      if (keepOpen) {
+        setShowReplies(prev => ({ ...prev, [commentId]: true }));
+      } else {
+        setShowReplies(prev => ({ ...prev, [commentId]: !prev[commentId] }));
+      }
+    } catch (error) {
+      console.error('Error fetching replies:', error);
+    } finally {
+      setLoadingReplies(prev => ({ ...prev, [commentId]: false }));
     }
   };
 
@@ -102,10 +134,145 @@ const BlogDetail = () => {
     }
     try {
       const { data } = await api.post(`/comments/${id}`, { content: newComment });
-      setComments([data.comment, ...comments]);
+      fetchComments();
       setNewComment('');
     } catch (error) {
       console.error('Error posting comment:', error);
+    }
+  };
+
+  const handleReply = async (parentCommentId, content, replyToUserId) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    try {
+      await api.post(`/comments/${id}`, {
+        content,
+        parentComment: parentCommentId,
+        replyTo: replyToUserId
+      });
+      
+      setComments(prev => prev.map(comment =>
+        comment._id === parentCommentId ?
+          { ...comment, replyCount: (comment.replyCount || 0) + 1 } :
+          comment
+      ));
+      
+      await fetchReplies(parentCommentId, true);
+    } catch (error) {
+      console.error('Error adding reply:', error);
+    }
+  };
+
+  const handleLikeComment = async (commentId) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    try {
+      const { data } = await api.post(`/comments/${commentId}/like`);
+      
+      setComments(prev => prev.map(comment =>
+        comment._id === commentId ? { ...comment, likes: data.likes } : comment
+      ));
+      
+      setReplies(prev => {
+        const newReplies = { ...prev };
+        Object.keys(newReplies).forEach(parentId => {
+          newReplies[parentId] = newReplies[parentId].map(reply =>
+            reply._id === commentId ? { ...reply, likes: data.likes } : reply
+          );
+        });
+        return newReplies;
+      });
+    } catch (error) {
+      console.error('Error liking comment:', error);
+    }
+  };
+
+  const handleHeartComment = async (commentId) => {
+    if (!user || !blog || user._id !== blog.author._id) return;
+
+    try {
+      const { data } = await api.post(`/comments/${commentId}/heart`);
+      setComments(prev => prev.map(comment =>
+        comment._id === commentId ? { ...comment, isHearted: data.isHearted } : comment
+      ));
+      setReplies(prev => {
+        const newReplies = { ...prev };
+        Object.keys(newReplies).forEach(parentId => {
+          newReplies[parentId] = newReplies[parentId].map(reply =>
+            reply._id === commentId ? { ...reply, isHearted: data.isHearted } : reply
+          );
+        });
+        return newReplies;
+      });
+    } catch (error) {
+      console.error('Error hearting comment:', error);
+    }
+  };
+
+  const handlePinComment = async (commentId) => {
+    if (!user || !blog || user._id !== blog.author._id) return;
+
+    try {
+      const { data } = await api.post(`/comments/${commentId}/pin`);
+      setComments(prev => prev.map(comment =>
+        comment._id === commentId ? { ...comment, isPinned: data.isPinned } : comment
+      ));
+      fetchComments();
+    } catch (error) {
+      console.error('Error pinning comment:', error);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    setDeletingComment(commentId);
+    try {
+      await api.delete(`/comments/${commentId}`);
+      const deletedComment = comments.find(c => c._id === commentId);
+      const replyCount = deletedComment?.replyCount || 0;
+
+      setComments(prev => prev.filter(c => c._id !== commentId));
+      setReplies(prev => {
+        const newReplies = { ...prev };
+        Object.keys(newReplies).forEach(parentId => {
+          newReplies[parentId] = newReplies[parentId].filter(reply => reply._id !== commentId);
+        });
+        return newReplies;
+      });
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+    } finally {
+      setDeletingComment(null);
+    }
+  };
+
+  const handleEditComment = (commentId, currentText) => {
+    setEditingComment(commentId);
+    setEditText(currentText);
+  };
+
+  const handleSaveEdit = async (commentId) => {
+    try {
+      const { data } = await api.put(`/comments/${commentId}`, { content: editText });
+      setComments(prev => prev.map(comment =>
+        comment._id === commentId ? { ...comment, content: data.comment.content } : comment
+      ));
+      setReplies(prev => {
+        const newReplies = { ...prev };
+        Object.keys(newReplies).forEach(parentId => {
+          newReplies[parentId] = newReplies[parentId].map(reply =>
+            reply._id === commentId ? { ...reply, content: data.comment.content } : reply
+          );
+        });
+        return newReplies;
+      });
+      setEditingComment(null);
+      setEditText('');
+    } catch (error) {
+      console.error('Error editing comment:', error);
     }
   };
 
@@ -215,6 +382,22 @@ const BlogDetail = () => {
       commentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+
+  const sortedComments = useMemo(() => {
+    const sorted = [...comments].sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+
+      if (sortBy === 'newest') {
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      } else {
+        const aEngagement = (a.likes?.length || 0) + (a.replyCount || 0);
+        const bEngagement = (b.likes?.length || 0) + (b.replyCount || 0);
+        return bEngagement - aEngagement;
+      }
+    });
+    return sorted;
+  }, [comments, sortBy]);
 
   if (loading) {
     return (
@@ -401,38 +584,101 @@ const BlogDetail = () => {
           
           <hr className="my-8" />
           
-          <h2 id="comments-section" className="text-2xl font-bold mb-4">{t('Comments')} ({comments.length})</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 id="comments-section" className="text-2xl font-bold">{t('Comments')} ({comments.length})</h2>
+            <div className="relative">
+              <button
+                onClick={() => setShowSortMenu(!showSortMenu)}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition text-sm font-medium"
+              >
+                <BiMenuAltRight className="w-4 h-4" />
+                {sortBy === 'newest' ? t('Newest First') : t('Most Engaging')}
+              </button>
+              {showSortMenu && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                  <button
+                    onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 rounded-t-lg"
+                  >
+                    {t('Most Engaging')}
+                  </button>
+                  <button
+                    onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 rounded-b-lg"
+                  >
+                    {t('Newest First')}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
           
           {user && (
-            <form onSubmit={handleComment} className="mb-6">
-              <textarea
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows="3"
-                placeholder={t('Write a comment...')}
-                required
-              />
-              <button
-                type="submit"
-                className="mt-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-              >
-                {t('Add Comment')}
-              </button>
+            <form onSubmit={handleComment} className="mb-8">
+              <div className="flex gap-3">
+                <Avatar user={user} size="sm" />
+                <div className="flex-1">
+                  <textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    rows="3"
+                    placeholder={t('Write a comment...')}
+                    required
+                  />
+                  {newComment.trim() && (
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={() => setNewComment('')}
+                        className="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                      >
+                        {t('Cancel')}
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                      >
+                        {t('Add Comment')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </form>
           )}
           
-          <div className="space-y-4">
-            {comments.map(comment => (
-              <div key={comment._id} className="bg-gray-50 p-4 rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <Avatar user={comment.author} size="sm" />
-                  <span className="font-semibold">{comment.author?.username}</span>
-                  <span className="text-sm text-gray-500">{new Date(comment.createdAt).toLocaleDateString()}</span>
-                </div>
-                <p className="text-gray-700">{comment.content}</p>
+          <div className="space-y-6">
+            {sortedComments.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <FaComment className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg">{t('No comments yet. Be the first to comment!')}</p>
               </div>
-            ))}
+            ) : (
+              sortedComments.map((comment) => (
+                <EnhancedComment
+                  key={comment._id}
+                  comment={comment}
+                  isOwner={user?._id === blog?.author._id}
+                  onReply={handleReply}
+                  onLike={handleLikeComment}
+                  onHeart={handleHeartComment}
+                  onPin={handlePinComment}
+                  onDelete={handleDeleteComment}
+                  onEdit={handleEditComment}
+                  onSaveEdit={handleSaveEdit}
+                  editingComment={editingComment}
+                  editText={editText}
+                  setEditText={setEditText}
+                  onLoadReplies={fetchReplies}
+                  replies={replies[comment._id] || []}
+                  showReplies={showReplies[comment._id]}
+                  loadingReplies={loadingReplies[comment._id]}
+                  deletingComment={deletingComment}
+                  postOwner={blog?.author}
+                />
+              ))
+            )}
           </div>
           </div>
         </div>
