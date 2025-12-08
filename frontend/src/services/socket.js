@@ -11,8 +11,8 @@ class SocketService {
   connect(userId) {
     this.userId = userId;
     if (!this.socket) {
+      // Allow Socket.IO to select best transport (polling/websocket) and enable reconnection
       this.socket = io(SOCKET_URL, {
-        transports: ['websocket'],
         reconnection: true
       });
 

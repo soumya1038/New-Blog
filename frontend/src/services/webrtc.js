@@ -11,6 +11,25 @@ class WebRTCService {
         { urls: 'stun:stun1.l.google.com:19302' }
       ]
     };
+
+    // Optionally load TURN server from environment variables (build-time for CRA)
+    try {
+      const turnUrl = (typeof process !== 'undefined' && process.env.REACT_APP_TURN_URL) || null;
+      const turnUser = (typeof process !== 'undefined' && process.env.REACT_APP_TURN_USERNAME) || null;
+      const turnPass = (typeof process !== 'undefined' && process.env.REACT_APP_TURN_PASSWORD) || null;
+      if (turnUrl && turnUser && turnPass) {
+        this.configuration.iceServers.push({
+          urls: [`turn:${turnUrl}:3478`],
+          username: turnUser,
+          credential: turnPass
+        });
+        console.log('WebRTC: TURN server added from env');
+      } else {
+        console.log('WebRTC: No TURN server configured (REACT_APP_TURN_* env vars missing)');
+      }
+    } catch (err) {
+      console.warn('WebRTC: Failed to read TURN env vars', err);
+    }
   }
 
   setSocket(socket) {

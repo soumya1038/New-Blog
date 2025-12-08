@@ -30,11 +30,11 @@ module.exports = (io, onlineUsers = new Map()) => {
         for (const msg of pendingMessages) {
           msg.delivered = true;
           await msg.save();
-          
+
           // Notify sender that message is now delivered
-          const senderSocketId = onlineUsers.get(msg.sender.toString());
-          if (senderSocketId) {
-            io.to(senderSocketId).emit('message:status', {
+          const senderData = onlineUsers.get(msg.sender.toString());
+          if (senderData && senderData.socketId) {
+            io.to(senderData.socketId).emit('message:status', {
               messageId: msg._id,
               status: 'delivered'
             });
