@@ -232,9 +232,9 @@ module.exports = (io, onlineUsers = new Map()) => {
         );
         
         if (message) {
-          const senderSocketId = onlineUsers.get(message.sender.toString());
-          if (senderSocketId) {
-            io.to(senderSocketId).emit('message:status', {
+          const senderData = onlineUsers.get(message.sender.toString());
+          if (senderData && senderData.socketId) {
+            io.to(senderData.socketId).emit('message:status', {
               messageId,
               status: 'read',
               readAt: message.readAt
@@ -263,9 +263,9 @@ module.exports = (io, onlineUsers = new Map()) => {
           msg.readAt = new Date();
           await msg.save();
           
-          const senderSocketId = onlineUsers.get(senderId);
-          if (senderSocketId) {
-            io.to(senderSocketId).emit('message:status', {
+          const senderData = onlineUsers.get(senderId);
+          if (senderData && senderData.socketId) {
+            io.to(senderData.socketId).emit('message:status', {
               messageId: msg._id,
               status: 'read',
               readAt: msg.readAt
@@ -374,9 +374,9 @@ module.exports = (io, onlineUsers = new Map()) => {
         const { messageId, receiverId } = data;
         
         // Notify the other user about the pin
-        const receiverSocketId = onlineUsers.get(receiverId);
-        if (receiverSocketId) {
-          io.to(receiverSocketId).emit('message:pinned', { messageId, pinned: true });
+        const receiverData = onlineUsers.get(receiverId);
+        if (receiverData && receiverData.socketId) {
+          io.to(receiverData.socketId).emit('message:pinned', { messageId, pinned: true });
         }
       } catch (error) {
         console.error('Pin notification error:', error);
@@ -388,9 +388,9 @@ module.exports = (io, onlineUsers = new Map()) => {
         const { messageId, receiverId } = data;
         
         // Notify the other user about the unpin
-        const receiverSocketId = onlineUsers.get(receiverId);
-        if (receiverSocketId) {
-          io.to(receiverSocketId).emit('message:pinned', { messageId, pinned: false });
+        const receiverData = onlineUsers.get(receiverId);
+        if (receiverData && receiverData.socketId) {
+          io.to(receiverData.socketId).emit('message:pinned', { messageId, pinned: false });
         }
       } catch (error) {
         console.error('Unpin notification error:', error);

@@ -409,9 +409,22 @@ const ChatNew = () => {
 
       socket.current.on('call:offer', async ({ callerId, offer }) => {
         console.log('📞 Received call:offer from:', callerId);
-        // Store offer - don't process until user accepts
+        // Store offer - process immediately if local media already acquired (user accepted earlier)
         pendingOfferRef.current = { callerId, offer };
-        console.log('✅ Offer stored, waiting for user to accept');
+        try {
+          // If local stream already exists (user accepted earlier), handle offer and send answer immediately
+          if (webrtcService.localStream) {
+            console.log('📞 Local stream already available — auto-processing offer');
+            await webrtcService.handleOffer(offer, callerId);
+            await webrtcService.createAnswer(callerId);
+            pendingOfferRef.current = null;
+            console.log('✅ Offer handled and answer sent (auto)');
+          } else {
+            console.log('✅ Offer stored, waiting for user to accept');
+          }
+        } catch (err) {
+          console.error('Failed to auto-process incoming offer:', err);
+        }
       });
 
       socket.current.on('call:answer', async ({ answer }) => {
