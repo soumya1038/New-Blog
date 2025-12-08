@@ -30,6 +30,8 @@ class WebRTCService {
     } catch (err) {
       console.warn('WebRTC: Failed to read TURN env vars', err);
     }
+    // Queue for ICE candidates received before PeerConnection exists
+    this._remoteCandidateQueue = [];
   }
 
   setSocket(socket) {
@@ -80,7 +82,19 @@ class WebRTCService {
 
       const offer = await this.peerConnection.createOffer();
       await this.peerConnection.setLocalDescription(offer);
-      
+
+      // Drain queued remote ICE candidates (if any) after local description is set
+      if (this._remoteCandidateQueue.length && this.peerConnection) {
+        for (const c of this._remoteCandidateQueue) {
+          try {
+            await this.peerConnection.addIceCandidate(new RTCIceCandidate(c));
+          } catch (e) {
+            console.warn('WebRTC: failed to add queued candidate', e);
+          }
+        }
+        this._remoteCandidateQueue = [];
+      }
+
       this.socket.emit('call:offer', {
         receiverId,
         offer
@@ -121,6 +135,18 @@ class WebRTCService {
 
       // Set remote description
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+      // Drain any queued ICE candidates that arrived before PeerConnection creation
+      if (this._remoteCandidateQueue.length) {
+        for (const c of this._remoteCandidateQueue) {
+          try {
+            await this.peerConnection.addIceCandidate(new RTCIceCandidate(c));
+          } catch (e) {
+            console.warn('WebRTC: failed to add queued candidate', e);
+          }
+        }
+        this._remoteCandidateQueue = [];
+      }
     } catch (error) {
       console.error('Failed to handle offer:', error);
       throw error;
@@ -157,6 +183,9 @@ class WebRTCService {
     try {
       if (this.peerConnection) {
         await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      } else {
+        // PeerConnection not ready yet — queue candidate for later
+        this._remoteCandidateQueue.push(candidate);
       }
     } catch (error) {
       console.error('Failed to add ICE candidate:', error);
