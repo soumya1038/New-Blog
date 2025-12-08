@@ -139,7 +139,7 @@ const ShortBlogs = ({ blogs = [], onClose }) => {
               {blog.tags?.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-2 overflow-hidden max-h-6">
                   {blog.tags.map((tag, idx) => (
-                    <span key={idx} className="bg-white/10 text-white text-xs px-2 py-0.5 rounded-full">#{tag}</span>
+                    <span key={idx} className="bg-white/10 text-white text-xs px-2 py-0.5 rounded-full">{tag}</span>
                   ))}
                 </div>
               )}

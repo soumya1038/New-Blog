@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
+import socketService from '../services/socket';
 import ReactMarkdown from 'react-markdown';
 import { FaHeart, FaComment, FaClock, FaEdit, FaTrash, FaArrowLeft, FaShare, FaRetweet, FaTimes, FaFacebook, FaTwitter, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink, FaUserPlus, FaUserCheck } from 'react-icons/fa';
 import { BiMenuAltRight } from 'react-icons/bi';
@@ -44,6 +45,44 @@ const BlogDetail = () => {
   useEffect(() => {
     fetchBlog();
     fetchComments();
+  }, [id]);
+
+  useEffect(() => {
+    const handleNewComment = () => {
+      fetchComments();
+    };
+
+    window.addEventListener('newComment', handleNewComment);
+    
+    const socket = socketService.getSocket();
+    if (socket) {
+      socket.on('comment:new', (data) => {
+        if (data.blogId === id) {
+          fetchComments();
+        }
+      });
+
+      socket.on('comment:updated', (data) => {
+        if (data.blogId === id) {
+          fetchComments();
+        }
+      });
+
+      socket.on('comment:deleted', (data) => {
+        if (data.blogId === id) {
+          fetchComments();
+        }
+      });
+    }
+
+    return () => {
+      window.removeEventListener('newComment', handleNewComment);
+      if (socket) {
+        socket.off('comment:new');
+        socket.off('comment:updated');
+        socket.off('comment:deleted');
+      }
+    };
   }, [id]);
 
   const fetchBlog = async () => {
@@ -134,8 +173,9 @@ const BlogDetail = () => {
     }
     try {
       const { data } = await api.post(`/comments/${id}`, { content: newComment });
-      fetchComments();
+      await fetchComments();
       setNewComment('');
+      window.dispatchEvent(new CustomEvent('newComment'));
     } catch (error) {
       console.error('Error posting comment:', error);
     }
@@ -160,6 +200,7 @@ const BlogDetail = () => {
       ));
       
       await fetchReplies(parentCommentId, true);
+      window.dispatchEvent(new CustomEvent('newComment'));
     } catch (error) {
       console.error('Error adding reply:', error);
     }
@@ -242,6 +283,7 @@ const BlogDetail = () => {
         });
         return newReplies;
       });
+      window.dispatchEvent(new CustomEvent('newComment'));
     } catch (error) {
       console.error('Error deleting comment:', error);
     } finally {
@@ -580,7 +622,7 @@ const BlogDetail = () => {
             </div>
           )}
           
-          <AudioControls text={blog.content} content={blog.content} />
+          <AudioControls text={blog.content} content={blog.content} blogId={blog._id} />
           
           <hr className="my-8" />
           
@@ -648,7 +690,7 @@ const BlogDetail = () => {
             </form>
           )}
           
-          <div className="space-y-6">
+          <div className="space-y-6 pb-24 md:pb-8">
             {sortedComments.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
                 <FaComment className="w-12 h-12 mx-auto mb-4 opacity-50" />

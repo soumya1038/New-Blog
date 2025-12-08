@@ -99,7 +99,7 @@ const Chatbot = () => {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className={`fixed right-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300 z-50 animate-bounce ${
+          className={`fixed right-6 bg-gradient-to-r from-blue-600 to-purple-600 text-white p-4 rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300 z-30 animate-bounce ${
             showScrollTop ? 'bottom-20' : 'bottom-6'
           }`}
         >
@@ -108,7 +108,7 @@ const Chatbot = () => {
       )}
 
       {isOpen && (
-        <div className={`fixed right-6 w-96 h-[600px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl z-50 flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700 transition-all duration-300 ${
+        <div className={`fixed right-6 w-96 h-[600px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl z-30 flex flex-col overflow-hidden border border-gray-200 dark:border-gray-700 transition-all duration-300 ${
           showScrollTop ? 'bottom-20' : 'bottom-6'
         }`}>
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 flex items-center justify-between">

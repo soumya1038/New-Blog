@@ -466,3 +466,50 @@ exports.generateTags = async (req, res) => {
     res.status(500).json({ success: false, message: errorMessage });
   }
 };
+
+// Summarize blog content
+exports.summarizeBlog = async (req, res) => {
+  try {
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ success: false, message: 'Content is required' });
+    }
+
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert at creating concise, structured summaries. Extract key points, core concepts, and main ideas.'
+        },
+        {
+          role: 'user',
+          content: `Create a compact summary of this blog with the following structure:
+
+**Key Points:**
+- List 3-5 main points
+
+**Core Concepts:**
+- List 2-3 fundamental ideas
+
+**Summary:**
+A brief 2-3 sentence overview
+
+Content to summarize:
+${content}`
+        }
+      ],
+      temperature: 0.5,
+      max_tokens: 500
+    });
+
+    const summary = completion.choices[0].message.content.trim();
+
+    res.json({ success: true, summary });
+  } catch (error) {
+    console.error('AI Error:', error);
+    const errorMessage = error.response?.data?.error?.message || error.message || 'Summarization failed';
+    res.status(500).json({ success: false, message: errorMessage });
+  }
+};

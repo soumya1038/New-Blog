@@ -43,6 +43,12 @@ exports.createComment = async (req, res) => {
       });
     }
 
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('comment:new', { blogId, comment: populatedComment });
+    }
+
     res.status(201).json({ success: true, comment: populatedComment });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -162,7 +168,7 @@ exports.pinComment = async (req, res) => {
 exports.editComment = async (req, res) => {
   try {
     const { content } = req.body;
-    const comment = await Comment.findById(req.params.id);
+    const comment = await Comment.findById(req.params.id).populate('blog short');
 
     if (!comment) {
       return res.status(404).json({ success: false, message: 'Comment not found' });
@@ -178,6 +184,13 @@ exports.editComment = async (req, res) => {
     const populatedComment = await Comment.findById(comment._id)
       .populate('author', 'username profileImage')
       .populate('replyTo', 'username');
+
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      const blogId = comment.blog?._id || comment.short?._id;
+      io.emit('comment:updated', { blogId, comment: populatedComment });
+    }
 
     res.json({ success: true, comment: populatedComment });
   } catch (error) {
@@ -202,9 +215,17 @@ exports.deleteComment = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
+    const blogId = comment.blog?._id || comment.short?._id;
+
     // Delete all replies to this comment
     await Comment.deleteMany({ parentComment: comment._id });
     await Comment.findByIdAndDelete(comment._id);
+
+    // Emit socket event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('comment:deleted', { blogId, commentId: req.params.id });
+    }
 
     res.json({ success: true, message: 'Comment deleted' });
   } catch (error) {

@@ -7,7 +7,8 @@ const {
   generateTags,
   generateDescription,
   generateQuickChat,
-  enhanceMessage
+  enhanceMessage,
+  summarizeBlog
 } = require('../controllers/aiController');
 const { protect } = require('../middleware/auth');
 
@@ -21,5 +22,6 @@ router.post('/generate-titles', protect, generateTitles);
 router.post('/generate-tags', protect, generateTags);
 router.post('/quick-chat', protect, generateQuickChat);
 router.post('/enhance-message', protect, enhanceMessage);
+router.post('/summarize', summarizeBlog);
 
 module.exports = router;

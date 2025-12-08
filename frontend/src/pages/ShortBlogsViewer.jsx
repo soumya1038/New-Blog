@@ -11,6 +11,8 @@ import { CiEdit } from 'react-icons/ci';
 import { RiDeleteBin6Line } from 'react-icons/ri';
 import { FaPlay, FaPause } from 'react-icons/fa6';
 import { HiMiniSpeakerWave, HiMiniSpeakerXMark } from 'react-icons/hi2';
+import { VscSaveAs } from 'react-icons/vsc';
+import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
@@ -52,6 +54,10 @@ const ShortBlogsViewer = () => {
   const [touchEnd, setTouchEnd] = useState(0);
   const utteranceRef = useRef(null);
   const volumeTimeoutRef = useRef(null);
+  const contentRef = useRef(null);
+  const [showOwnerShorts, setShowOwnerShorts] = useState(false);
+  const [ownerShorts, setOwnerShorts] = useState([]);
+  const [loadingOwnerShorts, setLoadingOwnerShorts] = useState(false);
 
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -229,22 +235,31 @@ const ShortBlogsViewer = () => {
   const speakFromSentence = (startIndex, vol, isAuto) => {
     const text = `${currentBlog.title}. ${currentBlog.content}`;
     const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    const uniqueSentences = [...new Set(sentences.map(s => s.trim()))];
     let currentSentence = startIndex;
 
     const speakNext = () => {
-      if (currentSentence < sentences.length) {
-        const utterance = new SpeechSynthesisUtterance(sentences[currentSentence].trim());
+      if (currentSentence < uniqueSentences.length) {
+        const utterance = new SpeechSynthesisUtterance(uniqueSentences[currentSentence]);
         utterance.rate = 1.0;
         utterance.pitch = 1.0;
         utterance.volume = vol;
 
         utterance.onstart = () => {
-          setHighlightedText(sentences[currentSentence].trim());
+          setHighlightedText(uniqueSentences[currentSentence]);
+          setTimeout(() => {
+            if (contentRef.current) {
+              const highlightedElement = contentRef.current.querySelector('.bg-white\\/30');
+              if (highlightedElement) {
+                highlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }
+          }, 100);
         };
 
         utterance.onend = () => {
           currentSentence++;
-          if (currentSentence < sentences.length) {
+          if (currentSentence < uniqueSentences.length) {
             speakNext();
           } else {
             setHighlightedText('');
@@ -319,6 +334,21 @@ const ShortBlogsViewer = () => {
       setFollowing(prev => ({ ...prev, [authorId]: !prev[authorId] }));
     } catch (error) {
       console.error('Error following user:', error);
+    }
+  };
+
+  const handleOwnerClick = async () => {
+    setShowComments(false);
+    setShowDescription(false);
+    setShowOwnerShorts(true);
+    setLoadingOwnerShorts(true);
+    try {
+      const { data } = await api.get(`/shorts?author=${currentBlog.author._id}`);
+      setOwnerShorts(data.shorts);
+    } catch (error) {
+      console.error('Error fetching owner shorts:', error);
+    } finally {
+      setLoadingOwnerShorts(false);
     }
   };
 
@@ -493,6 +523,7 @@ const ShortBlogsViewer = () => {
     if (!currentBlog) return;
 
     setShowDescription(false);
+    setShowOwnerShorts(false);
     setShowComments(true);
     if (comments.length === 0) {
       fetchComments(currentBlog._id);
@@ -505,12 +536,15 @@ const ShortBlogsViewer = () => {
       setReplies({});
       setShowReplies({});
       setCommentCount(0);
+      setShowOwnerShorts(false);
+      setOwnerShorts([]);
       fetchComments(blogs[currentIndex]._id);
     }
   }, [blogs, currentIndex]);
 
   const handleDescriptionClick = () => {
     setShowComments(false);
+    setShowOwnerShorts(false);
     setShowDescription(true);
   };
 
@@ -772,7 +806,7 @@ const ShortBlogsViewer = () => {
           <div className="absolute inset-0 flex flex-col p-6 pt-16">
             <h2 className="text-white text-xl font-bold text-center mb-4">{currentBlog.title}</h2>
 
-            <div className="flex-1 flex items-center justify-center overflow-hidden px-2">
+            <div ref={contentRef} className="flex-1 flex items-start justify-center overflow-y-auto overflow-x-hidden px-2 pt-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
               <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center">
                 {currentBlog.content.split(/([.!?]+)/).map((part, idx) => {
                   const sentence = part + (currentBlog.content.split(/([.!?]+)/)[idx + 1] || '');
@@ -792,7 +826,7 @@ const ShortBlogsViewer = () => {
             {currentBlog.tags?.length > 0 && (
               <div className="flex flex-wrap gap-1 justify-center mb-3 max-h-12 overflow-hidden">
                 {currentBlog.tags.slice(0, 5).map((tag, idx) => (
-                  <span key={idx} className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">#{tag}</span>
+                  <span key={idx} className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">{tag}</span>
                 ))}
                 {currentBlog.tags.length > 5 && (
                   <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">+{currentBlog.tags.length - 5} more</span>
@@ -905,9 +939,9 @@ const ShortBlogsViewer = () => {
             <span className="text-xs">Repost</span>
           </button>
 
-          <Link to={`/user/${currentBlog.author._id}`}>
+          <button onClick={handleOwnerClick}>
             <Avatar user={currentBlog.author} size="md" className="border-2 border-white hover:scale-110 transition" />
-          </Link>
+          </button>
         </div>
       )}
 
@@ -1086,7 +1120,7 @@ const ShortBlogsViewer = () => {
                   <div className="flex flex-wrap gap-2">
                     {currentBlog.tags.map((tag, idx) => (
                       <span key={idx} className="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full text-sm">
-                        #{tag}
+                        {tag}
                       </span>
                     ))}
                   </div>
@@ -1285,9 +1319,149 @@ const ShortBlogsViewer = () => {
             </div>
           </button>
 
-          <Link to={`/user/${currentBlog.author._id}`}>
+          <button onClick={handleOwnerClick}>
             <Avatar user={currentBlog.author} size="md" className="border-2 border-white hover:scale-110 transition" />
-          </Link>
+          </button>
+        </div>
+      )}
+
+      {!isMobile && showOwnerShorts && (
+        <div className="w-full max-w-md h-[90vh] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col overflow-hidden" onWheel={(e) => e.stopPropagation()}>
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Owner's Shorts</h3>
+            <button
+              onClick={() => setShowOwnerShorts(false)}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+            >
+              <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+              <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{currentBlog.title}</h4>
+              <Link 
+                to={`/user/${currentBlog.author._id}`}
+                className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-lg transition"
+              >
+                <Avatar user={currentBlog.author} size="md" />
+                <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
+              </Link>
+            </div>
+
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+              <button className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition font-medium">
+                <VscSaveAs className="w-5 h-5" />
+                Save
+              </button>
+            </div>
+
+            <div className="p-4">
+              {loadingOwnerShorts ? (
+                <div className="flex justify-center py-8">
+                  <ScaleLoader color="#3B82F6" height={35} width={4} />
+                </div>
+              ) : ownerShorts.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <p>No shorts available</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {ownerShorts.map((short, index) => (
+                    <div
+                      key={short._id}
+                      onClick={() => {
+                        setShowOwnerShorts(false);
+                        navigate(`/short-blogs/${short._id}`);
+                      }}
+                      className="relative rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer aspect-[9/16]"
+                      style={getBackgroundStyle(short, index)}
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/50"></div>
+                      <div className="absolute top-2 right-2 z-20 bg-white/20 backdrop-blur-sm p-1 rounded-full">
+                        <MdOutlineSwitchAccessShortcutAdd className="w-3 h-3 text-white" />
+                      </div>
+                      <div className="absolute inset-0 flex flex-col p-3 justify-end">
+                        <h4 className="text-white text-sm font-bold line-clamp-2 mb-1">{short.title}</h4>
+                        <p className="text-white text-xs line-clamp-3">{short.content}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isMobile && showOwnerShorts && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onWheel={(e) => e.stopPropagation()}>
+          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col w-full max-w-md max-h-[80vh] overflow-hidden" onWheel={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Owner's Shorts</h3>
+              <button
+                onClick={() => setShowOwnerShorts(false)}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+              >
+                <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{currentBlog.title}</p>
+                <Link 
+                  to={`/user/${currentBlog.author._id}`}
+                  className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-lg transition"
+                >
+                  <Avatar user={currentBlog.author} size="md" />
+                  <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
+                </Link>
+              </div>
+
+              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <button className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition font-medium">
+                  <VscSaveAs className="w-5 h-5" />
+                  Save
+                </button>
+              </div>
+
+              <div className="p-4">
+                {loadingOwnerShorts ? (
+                  <div className="flex justify-center py-8">
+                    <ScaleLoader color="#3B82F6" height={35} width={4} />
+                  </div>
+                ) : ownerShorts.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                    <p>No shorts available</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {ownerShorts.map((short, index) => (
+                      <div
+                        key={short._id}
+                        onClick={() => {
+                          setShowOwnerShorts(false);
+                          navigate(`/short-blogs/${short._id}`);
+                        }}
+                        className="relative rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer aspect-[9/16]"
+                        style={getBackgroundStyle(short, index)}
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/50"></div>
+                        <div className="absolute top-2 right-2 z-20 bg-white/20 backdrop-blur-sm p-1 rounded-full">
+                          <MdOutlineSwitchAccessShortcutAdd className="w-3 h-3 text-white" />
+                        </div>
+                        <div className="absolute inset-0 flex flex-col p-3 justify-end">
+                          <h4 className="text-white text-sm font-bold line-clamp-2 mb-1">{short.title}</h4>
+                          <p className="text-white text-xs line-clamp-3">{short.content}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

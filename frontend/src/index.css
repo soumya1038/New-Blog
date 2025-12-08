@@ -250,3 +250,13 @@ code {
 .animate-slide-down {
   animation: slide-down 0.4s ease-out;
 }
+
+/* Hide scrollbar for webkit browsers */
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for Firefox */
+* {
+  scrollbar-width: none;
+}
