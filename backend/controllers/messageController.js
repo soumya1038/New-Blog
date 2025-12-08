@@ -59,6 +59,10 @@ exports.sendMessage = async (req, res) => {
 // Get conversations
 exports.getConversations = async (req, res) => {
   try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
+
     const messages = await Message.aggregate([
       {
         $match: {
@@ -134,6 +138,7 @@ exports.getConversations = async (req, res) => {
 
     res.json({ conversations: decryptedConversations });
   } catch (error) {
+    console.error('GetConversations error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

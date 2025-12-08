@@ -182,9 +182,11 @@ class WebRTCService {
   async handleIceCandidate(candidate) {
     try {
       if (this.peerConnection) {
+        console.log('🧊 ICE candidate received, PeerConnection ready — adding immediately');
         await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
       } else {
         // PeerConnection not ready yet — queue candidate for later
+        console.log(`🧊 ICE candidate received, PeerConnection NOT ready — queueing (total queued: ${this._remoteCandidateQueue.length + 1})`);
         this._remoteCandidateQueue.push(candidate);
       }
     } catch (error) {
