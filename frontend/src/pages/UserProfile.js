@@ -63,10 +63,11 @@ const UserProfile = () => {
 
   const fetchUserShorts = async () => {
     try {
-      const { data } = await api.get(`/blogs/short/all?author=${id}`);
-      setShorts(data.blogs);
+      const { data } = await api.get(`/shorts?author=${id}`);
+      setShorts(data.shorts || []);
     } catch (error) {
       console.error('Error fetching user shorts:', error);
+      setShorts([]);
     }
   };
 
@@ -176,6 +177,14 @@ const UserProfile = () => {
     return blogs.filter(blog => {
       const blogDate = new Date(blog.createdAt);
       return blogDate.toDateString() === selectedDay.toDateString();
+    });
+  };
+
+  const getFilteredShorts = () => {
+    if (!selectedDay) return shorts;
+    return shorts.filter(short => {
+      const shortDate = new Date(short.createdAt);
+      return shortDate.toDateString() === selectedDay.toDateString();
     });
   };
 
@@ -610,11 +619,13 @@ const UserProfile = () => {
               </div>
             )
           ) : (
-            shorts.length === 0 ? (
-              <p className="text-gray-600 text-center py-8">{t('No shorts yet')}</p>
+            getFilteredShorts().length === 0 ? (
+              <p className="text-gray-600 text-center py-8">
+                {selectedDay ? t('No shorts on this day') : t('No shorts yet')}
+              </p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {shorts.map((short, index) => {
+                {getFilteredShorts().map((short, index) => {
                   const gradients = [
                     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                     'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
@@ -634,7 +645,7 @@ const UserProfile = () => {
                   return (
                     <Link
                       key={short._id}
-                      to={`/short-blogs/${short._id}`}
+                      to={`/shorts/${short._id}`}
                       className="relative rounded-2xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer aspect-[9/16]"
                       style={getBackgroundStyle(short, index)}
                     >

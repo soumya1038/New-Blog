@@ -277,12 +277,15 @@ exports.getShortBlogs = async (req, res) => {
     
     if (author) filter.author = author;
 
+    console.log('Fetching short blogs with filter:', filter);
     const shortBlogs = await Blog.find(filter)
       .populate('author', 'username profileImage')
       .sort({ createdAt: -1 });
 
+    console.log('Found short blogs:', shortBlogs.length);
     res.json({ success: true, blogs: shortBlogs });
   } catch (error) {
+    console.error('Error in getShortBlogs:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

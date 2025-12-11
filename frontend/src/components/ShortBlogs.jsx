@@ -63,11 +63,11 @@ const ShortBlogs = ({ blogs = [], onClose }) => {
   const shortBlogsData = blogs.slice(0, 7);
 
   const handleCardClick = (blogId) => {
-    navigate(`/short-blogs/${blogId}`);
+    navigate(`/shorts/${blogId}`);
   };
 
   const handleViewMore = () => {
-    navigate('/short-blogs');
+    navigate('/shorts');
     setShowMenu(false);
   };
 

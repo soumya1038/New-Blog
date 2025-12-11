@@ -2,6 +2,7 @@ const User = require('../models/User');
 const Blog = require('../models/Blog');
 const Short = require('../models/Short');
 const Comment = require('../models/Comment');
+const GuestAnalytics = require('../models/GuestAnalytics');
 
 // Get dashboard statistics
 exports.getStats = async (req, res) => {
@@ -19,12 +20,18 @@ exports.getStats = async (req, res) => {
     today.setHours(0, 0, 0, 0);
     const activeUsersToday = await User.countDocuments({ lastActive: { $gte: today } });
     
+    // Guest users today
+    const guestToday = await GuestAnalytics.distinct('ipAddress', {
+      createdAt: { $gte: today }
+    });
+    
     // Generate data for selected time range
     const blogsPerDay = [];
     const shortsPerDay = [];
     const commentsPerDay = [];
     const userRegistrations = [];
     const activeUsersPerDay = [];
+    const guestAnalytics = [];
     
     for (let i = numDays - 1; i >= 0; i--) {
       const date = new Date();
@@ -60,6 +67,15 @@ exports.getStats = async (req, res) => {
         lastActive: { $gte: date, $lt: nextDate }
       });
       
+      // Guest analytics
+      const uniqueGuests = await GuestAnalytics.distinct('ipAddress', {
+        createdAt: { $gte: date, $lt: nextDate }
+      });
+      const totalPageViews = await GuestAnalytics.aggregate([
+        { $match: { createdAt: { $gte: date, $lt: nextDate } } },
+        { $group: { _id: null, total: { $sum: '$pageViews' } } }
+      ]);
+      
       const dateLabel = numDays <= 31 
         ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         : date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
@@ -69,6 +85,11 @@ exports.getStats = async (req, res) => {
       commentsPerDay.push({ date: dateLabel, count: commentCount });
       userRegistrations.push({ date: dateLabel, count: userCount });
       activeUsersPerDay.push({ date: dateLabel, count: activeUsers });
+      guestAnalytics.push({ 
+        date: dateLabel, 
+        uniqueVisitors: uniqueGuests.length,
+        pageViews: totalPageViews[0]?.total || 0
+      });
     }
 
     res.json({
@@ -79,11 +100,13 @@ exports.getStats = async (req, res) => {
         totalShorts,
         totalComments,
         activeUsersToday,
+        guestToday: guestToday.length,
         blogsPerDay,
         shortsPerDay,
         commentsPerDay,
         userRegistrations,
-        activeUsersPerDay
+        activeUsersPerDay,
+        guestAnalytics
       }
     });
   } catch (error) {

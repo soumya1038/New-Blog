@@ -29,6 +29,7 @@ import soundManager from './utils/soundManager';
 import api from './services/api';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useRouteTracker } from './hooks/useRouteTracker';
+import guestTracker from './services/guestTracking';
 
 function AppContent() {
   const { user } = useContext(AuthContext);
@@ -38,6 +39,11 @@ function AppContent() {
   
   // Track route changes and emit to backend
   useRouteTracker();
+  
+  // Initialize guest tracking
+  useEffect(() => {
+    guestTracker.startTracking();
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -187,6 +193,8 @@ function AppContent() {
           <Route path="/join-group/:inviteCode" element={<JoinGroup />} />
           <Route path="/short-blogs" element={<ShortBlogsViewer />} />
           <Route path="/short-blogs/:id" element={<ShortBlogsViewer />} />
+          <Route path="/shorts" element={<ShortBlogsViewer />} />
+          <Route path="/shorts/:id" element={<ShortBlogsViewer />} />
           <Route path="/news" element={<News />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

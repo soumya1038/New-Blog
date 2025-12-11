@@ -331,7 +331,7 @@ const AdminDashboard = () => {
         {activeTab === 'overview' && stats && (
           <div>
             {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
               <div className="bg-white rounded-xl shadow-lg p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -375,6 +375,15 @@ const AdminDashboard = () => {
                     <p className="text-3xl font-bold text-orange-600">{stats.activeUsersToday || 0}</p>
                   </div>
                   <FaUserCheck className="text-4xl text-orange-600" />
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm">{t('Guests Today')}</p>
+                    <p className="text-3xl font-bold text-teal-600">{stats.guestToday || 0}</p>
+                  </div>
+                  <FaUsers className="text-4xl text-teal-600" />
                 </div>
               </div>
             </div>
@@ -462,6 +471,20 @@ const AdminDashboard = () => {
               </div>
 
               <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-xl font-bold mb-4 text-gray-800">{t('Active Users Per Day')}</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={stats.activeUsersPerDay}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" angle={timeRange > 30 ? -45 : 0} textAnchor={timeRange > 30 ? 'end' : 'middle'} height={timeRange > 30 ? 80 : 30} />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="count" fill="#f59e0b" radius={[8, 8, 0, 0]} name="Active Users" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-lg p-6">
                 <h3 className="text-xl font-bold mb-4 text-gray-800">{t('User Registrations')}</h3>
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={stats.userRegistrations}>
@@ -474,22 +497,24 @@ const AdminDashboard = () => {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+              
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-xl font-bold mb-4 text-gray-800">{t('Guest Analytics')}</h3>
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={stats.guestAnalytics || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" angle={timeRange > 30 ? -45 : 0} textAnchor={timeRange > 30 ? 'end' : 'middle'} height={timeRange > 30 ? 80 : 30} />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="uniqueVisitors" stroke="#f59e0b" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 7 }} name="Unique Visitors" />
+                    <Line type="monotone" dataKey="pageViews" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 7 }} name="Page Views" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
-            {/* Active Users Chart */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h3 className="text-xl font-bold mb-4 text-gray-800">{t('Active Users Per Day')}</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={stats.activeUsersPerDay}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" angle={timeRange > 30 ? -45 : 0} textAnchor={timeRange > 30 ? 'end' : 'middle'} height={timeRange > 30 ? 80 : 30} />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="count" fill="#f59e0b" radius={[8, 8, 0, 0]} name="Active Users" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+
           </div>
         )}
 
@@ -690,7 +715,7 @@ const AdminDashboard = () => {
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
                           <Link
-                            to={`/short-blogs/${short._id}`}
+                            to={`/shorts/${short._id}`}
                             className="text-blue-600 hover:text-blue-800"
                             title={t('View Short')}
                           >

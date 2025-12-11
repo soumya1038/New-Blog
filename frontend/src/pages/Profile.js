@@ -279,8 +279,8 @@ const Profile = () => {
 
   const fetchUserShorts = async () => {
     try {
-      const { data } = await api.get(`/blogs/short/all?author=${user._id}`);
-      setShorts(data.blogs.slice(0, 5));
+      const { data } = await api.get(`/shorts?author=${user._id}`);
+      setShorts(data.shorts.slice(0, 5));
     } catch (error) {
       console.error('Error fetching shorts:', error);
     }
@@ -1021,7 +1021,7 @@ const Profile = () => {
                 {shorts.map(short => (
                   <div
                     key={short._id}
-                    onClick={() => navigate(`/short-blogs/${short._id}`)}
+                    onClick={() => navigate(`/shorts/${short._id}`)}
                     className="bg-gray-50 p-3 rounded-lg border hover:border-purple-500 hover:shadow-md transition cursor-pointer"
                   >
                     <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={short.title}>

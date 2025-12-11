@@ -267,7 +267,7 @@ const CreateBlog = () => {
         
         setHasUnsavedChanges(false);
         toast.success('Short blog published successfully!');
-        setTimeout(() => navigate(`/short-blogs/${data.short._id}`), 1000);
+        setTimeout(() => navigate(`/shorts/${data.short._id}`), 1000);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to create blog');
