@@ -1,0 +1,14 @@
+# Cache index.html - never cache (always get fresh version)
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+  X-Content-Type-Options: nosniff
+
+# Cache static assets forever (they have hash names)
+/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Default headers for all files
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  X-XSS-Protection: 1; mode=block
