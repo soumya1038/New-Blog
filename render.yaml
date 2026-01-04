@@ -47,10 +47,19 @@ services:
     rootDir: frontend
     buildCommand: npm install --legacy-peer-deps && npm run build
     staticPublishPath: build
+    # SPA Routing - Critical for React Router
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
+    # Headers for proper caching
+    headers:
+      - path: /index.html
+        name: Cache-Control
+        value: "public, max-age=0, must-revalidate"
+      - path: /static/*
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
     envVars:
       - key: REACT_APP_API_URL
         sync: false

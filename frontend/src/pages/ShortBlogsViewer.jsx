@@ -58,6 +58,13 @@ const ShortBlogsViewer = () => {
   const [showOwnerShorts, setShowOwnerShorts] = useState(false);
   const [ownerShorts, setOwnerShorts] = useState([]);
   const [loadingOwnerShorts, setLoadingOwnerShorts] = useState(false);
+  
+  // YouTube Shorts scrolling state
+  const containerRef = useRef(null);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const [scrollDirection, setScrollDirection] = useState(0);
+  const scrollTimeoutRef = useRef(null);
+  const lastScrollY = useRef(0);
 
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -95,7 +102,16 @@ const ShortBlogsViewer = () => {
   useEffect(() => {
     if (id && blogs.length > 0) {
       const index = blogs.findIndex(blog => blog._id === id);
-      if (index !== -1) setCurrentIndex(index);
+      if (index !== -1) {
+        setCurrentIndex(index);
+        // Scroll to the specific short without animation
+        if (containerRef.current) {
+          containerRef.current.scrollTo({
+            top: index * window.innerHeight,
+            behavior: 'auto'
+          });
+        }
+      }
     }
   }, [id, blogs]);
 
@@ -105,17 +121,78 @@ const ShortBlogsViewer = () => {
     }
   }, [currentIndex, blogs]);
 
+  // YouTube Shorts scrolling logic
   useEffect(() => {
-    const handleWheel = (e) => {
-      if (e.deltaY > 0 && currentIndex < blogs.length - 1) {
-        handleNext();
-      } else if (e.deltaY < 0 && currentIndex > 0) {
-        handlePrev();
-      }
+    const container = containerRef.current;
+    if (!container) return;
+
+    let lastScrollTop = 0;
+    let scrollVelocity = 0;
+    let isScrolling = false;
+    let scrollTimeout;
+    let velocityTimeout;
+
+    const handleScroll = () => {
+      const currentScrollTop = container.scrollTop;
+      const containerHeight = container.clientHeight;
+      
+      // Calculate velocity
+      scrollVelocity = currentScrollTop - lastScrollTop;
+      lastScrollTop = currentScrollTop;
+      
+      isScrolling = true;
+      clearTimeout(scrollTimeout);
+      clearTimeout(velocityTimeout);
+      
+      // Reset velocity after a short delay
+      velocityTimeout = setTimeout(() => {
+        scrollVelocity = 0;
+      }, 50);
+      
+      // Detect scroll end and snap
+      scrollTimeout = setTimeout(() => {
+        isScrolling = false;
+        
+        const currentPosition = currentScrollTop / containerHeight;
+        let targetIndex;
+        
+        // Velocity-based snapping like YouTube
+        if (Math.abs(scrollVelocity) > 5) {
+          // High velocity - snap in scroll direction
+          targetIndex = scrollVelocity > 0 
+            ? Math.ceil(currentPosition)
+            : Math.floor(currentPosition);
+        } else {
+          // Low velocity - snap to nearest
+          targetIndex = Math.round(currentPosition);
+        }
+        
+        // Clamp to valid range
+        targetIndex = Math.max(0, Math.min(blogs.length - 1, targetIndex));
+        
+        if (targetIndex !== currentIndex) {
+          setCurrentIndex(targetIndex);
+          navigate(`/shorts/${blogs[targetIndex]._id}`, { replace: true });
+        }
+        
+        // Smooth snap to target
+        const targetScrollTop = targetIndex * containerHeight;
+        if (Math.abs(currentScrollTop - targetScrollTop) > 10) {
+          container.scrollTo({
+            top: targetScrollTop,
+            behavior: 'smooth'
+          });
+        }
+      }, 150);
     };
-    window.addEventListener('wheel', handleWheel);
-    return () => window.removeEventListener('wheel', handleWheel);
-  }, [currentIndex, blogs.length]);
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      clearTimeout(scrollTimeout);
+      clearTimeout(velocityTimeout);
+    };
+  }, [blogs, currentIndex, navigate]);
 
   const fetchShortBlogs = async () => {
     try {
@@ -635,16 +712,26 @@ const ShortBlogsViewer = () => {
   }, [comments, sortBy]);
 
   const handleNext = () => {
-    if (currentIndex < blogs.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      navigate(`/short-blogs/${blogs[currentIndex + 1]._id}`);
+    if (currentIndex < blogs.length - 1 && containerRef.current) {
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      navigate(`/shorts/${blogs[nextIndex]._id}`, { replace: true });
+      containerRef.current.scrollTo({
+        top: nextIndex * window.innerHeight,
+        behavior: 'smooth'
+      });
     }
   };
 
   const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-      navigate(`/short-blogs/${blogs[currentIndex - 1]._id}`);
+    if (currentIndex > 0 && containerRef.current) {
+      const prevIndex = currentIndex - 1;
+      setCurrentIndex(prevIndex);
+      navigate(`/shorts/${blogs[prevIndex]._id}`, { replace: true });
+      containerRef.current.scrollTo({
+        top: prevIndex * window.innerHeight,
+        behavior: 'smooth'
+      });
     }
   };
 
@@ -739,214 +826,236 @@ const ShortBlogsViewer = () => {
   const isMobile = window.innerWidth < 768;
 
   return (
-    <div className="fixed inset-0 bg-black flex items-center justify-center gap-4 px-4">
+    <div 
+      ref={containerRef}
+      className="fixed inset-0 bg-black overflow-y-auto overflow-x-hidden"
+      style={{ 
+        scrollBehavior: 'auto',
+        WebkitOverflowScrolling: 'touch'
+      }}
+    >
       <button
         onClick={() => navigate('/')}
-        className="absolute top-4 left-4 z-20 p-2 md:p-3 bg-white/10 hover:bg-white/20 rounded-full transition"
+        className="fixed top-4 left-4 z-50 p-2 md:p-3 bg-white/10 hover:bg-white/20 rounded-full transition"
       >
         <FiX className="w-4 h-4 md:w-6 md:h-6 text-white" />
       </button>
 
-      <div
-        className="w-full max-w-[400px] aspect-[9/16] sm:h-[85vh] sm:w-auto sm:aspect-[9/16] md:h-[88vh] lg:h-[95vh] relative"
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
+      {blogs.map((blog, index) => (
         <div
-          onClick={handleCardClick}
-          onDoubleClick={handleCardDoubleClick}
-          className="w-full h-full rounded-3xl overflow-hidden shadow-2xl relative transition-transform duration-500 ease-out"
-          style={getBackgroundStyle(currentBlog, currentIndex)}
+          key={blog._id}
+          className="relative w-full h-screen flex items-center justify-center"
         >
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-black/50"></div>
-
           <div
-            className="absolute top-4 left-4 z-10 flex items-center gap-2"
-            onMouseEnter={handleVolumeMouseEnter}
-            onMouseLeave={handleVolumeMouseLeave}
+            className="w-full h-full max-w-sm mx-auto relative"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
           >
-            <button
-              onClick={(e) => { e.stopPropagation(); isSpeaking ? handleStopSpeech() : handleTextToSpeech(); }}
-              className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
+            <div
+              onClick={() => index === currentIndex && handleCardClick()}
+              onDoubleClick={() => index === currentIndex && handleCardDoubleClick()}
+              className="w-full h-full overflow-hidden relative transition-transform duration-500 ease-out"
+              style={getBackgroundStyle(blog, index)}
             >
-              {isSpeaking && !isPaused ? (
-                <FaPause className="w-4 h-4 text-white" />
-              ) : (
-                <FaPlay className="w-4 h-4 text-white" />
-              )}
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
-              className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
-            >
-              {isMuted ? (
-                <HiMiniSpeakerXMark className="w-5 h-5 text-white" />
-              ) : (
-                <HiMiniSpeakerWave className="w-5 h-5 text-white" />
-              )}
-            </button>
-            {showVolumeBar && (
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={volume}
-                onChange={handleVolumeChange}
-                onClick={(e) => e.stopPropagation()}
-                className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer transition-opacity"
-                style={{
-                  background: `linear-gradient(to right, white ${volume * 100}%, rgba(255,255,255,0.3) ${volume * 100}%)`
-                }}
-              />
-            )}
-          </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-black/50"></div>
 
-          <div className="absolute inset-0 flex flex-col p-6 pt-16">
-            <h2 className="text-white text-xl font-bold text-center mb-4">{currentBlog.title}</h2>
-
-            <div ref={contentRef} className="flex-1 flex items-start justify-center overflow-y-auto overflow-x-hidden px-2 pt-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-              <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center">
-                {currentBlog.content.split(/([.!?]+)/).map((part, idx) => {
-                  const sentence = part + (currentBlog.content.split(/([.!?]+)/)[idx + 1] || '');
-                  const isHighlighted = highlightedText.includes(sentence.trim());
-                  return (
-                    <span
-                      key={idx}
-                      className={isHighlighted ? 'bg-white/30 px-1 rounded transition-colors' : ''}
-                    >
-                      {part}
-                    </span>
-                  );
-                })}
-              </p>
-            </div>
-
-            {currentBlog.tags?.length > 0 && (
-              <div className="flex flex-wrap gap-1 justify-center mb-3 max-h-12 overflow-hidden">
-                {currentBlog.tags.slice(0, 5).map((tag, idx) => (
-                  <span key={idx} className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">{tag}</span>
-                ))}
-                {currentBlog.tags.length > 5 && (
-                  <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">+{currentBlog.tags.length - 5} more</span>
-                )}
-              </div>
-            )}
-
-            <div className="flex items-center gap-3 mb-3">
-              <Link to={`/user/${currentBlog.author._id}`}>
-                <Avatar user={currentBlog.author} size="md" className="border-2 border-white" />
-              </Link>
-              <div className="flex-1 flex items-center gap-2">
-                <Link
-                  to={`/user/${currentBlog.author._id}`}
-                  className="text-white font-semibold hover:underline"
+              {index === currentIndex && (
+                <div
+                  className="absolute top-4 left-4 z-10 flex items-center gap-2"
+                  onMouseEnter={handleVolumeMouseEnter}
+                  onMouseLeave={handleVolumeMouseLeave}
                 >
-                  {currentBlog.author?.username}
-                </Link>
-                {user && user._id !== currentBlog.author._id && (
                   <button
-                    onClick={() => handleFollow(currentBlog.author._id)}
-                    className={`px-4 py-1.5 rounded-full font-semibold transition text-sm ${following[currentBlog.author._id]
-                        ? 'bg-white/20 text-white hover:bg-white/30'
-                        : 'bg-white text-black hover:bg-gray-200'
-                      }`}
+                    onClick={(e) => { e.stopPropagation(); isSpeaking ? handleStopSpeech() : handleTextToSpeech(); }}
+                    className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
                   >
-                    {following[currentBlog.author._id] ? 'Following' : 'Follow'}
+                    {isSpeaking && !isPaused ? (
+                      <FaPause className="w-4 h-4 text-white" />
+                    ) : (
+                      <FaPlay className="w-4 h-4 text-white" />
+                    )}
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
+                    className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
+                  >
+                    {isMuted ? (
+                      <HiMiniSpeakerXMark className="w-5 h-5 text-white" />
+                    ) : (
+                      <HiMiniSpeakerWave className="w-5 h-5 text-white" />
+                    )}
+                  </button>
+                  {showVolumeBar && (
+                    <input
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.1"
+                      value={volume}
+                      onChange={handleVolumeChange}
+                      onClick={(e) => e.stopPropagation()}
+                      className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer transition-opacity"
+                      style={{
+                        background: `linear-gradient(to right, white ${volume * 100}%, rgba(255,255,255,0.3) ${volume * 100}%)`
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+
+              <div className="absolute inset-0 flex flex-col p-6 pt-16">
+                <h2 className="text-white text-xl font-bold text-center mb-4">{blog.title}</h2>
+
+                <div ref={index === currentIndex ? contentRef : null} className="flex-1 flex items-start justify-center overflow-y-auto overflow-x-hidden px-2 pt-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                  <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center">
+                    {index === currentIndex ? (
+                      blog.content.split(/([.!?]+)/).map((part, idx) => {
+                        const sentence = part + (blog.content.split(/([.!?]+)/)[idx + 1] || '');
+                        const isHighlighted = highlightedText.includes(sentence.trim());
+                        return (
+                          <span
+                            key={idx}
+                            className={isHighlighted ? 'bg-white/30 px-1 rounded transition-colors' : ''}
+                          >
+                            {part}
+                          </span>
+                        );
+                      })
+                    ) : (
+                      blog.content
+                    )}
+                  </p>
+                </div>
+
+                {blog.tags?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 justify-center mb-3 max-h-12 overflow-hidden">
+                    {blog.tags.slice(0, 5).map((tag, idx) => (
+                      <span key={idx} className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">{tag}</span>
+                    ))}
+                    {blog.tags.length > 5 && (
+                      <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">+{blog.tags.length - 5} more</span>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3 mb-3">
+                  <Link to={`/user/${blog.author._id}`}>
+                    <Avatar user={blog.author} size="md" className="border-2 border-white" />
+                  </Link>
+                  <div className="flex-1 flex items-center gap-2">
+                    <Link
+                      to={`/user/${blog.author._id}`}
+                      className="text-white font-semibold hover:underline"
+                    >
+                      {blog.author?.username}
+                    </Link>
+                    {user && user._id !== blog.author._id && (
+                      <button
+                        onClick={() => handleFollow(blog.author._id)}
+                        className={`px-4 py-1.5 rounded-full font-semibold transition text-sm ${
+                          following[blog.author._id]
+                            ? 'bg-white/20 text-white hover:bg-white/30'
+                            : 'bg-white text-black hover:bg-gray-200'
+                        }`}
+                      >
+                        {following[blog.author._id] ? 'Following' : 'Follow'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {blog.metaDescription && (
+                  <button
+                    onClick={() => index === currentIndex && handleDescriptionClick()}
+                    className="text-white/70 text-xs text-center line-clamp-2 hover:underline cursor-pointer"
+                  >
+                    {blog.metaDescription}
                   </button>
                 )}
               </div>
             </div>
-
-            {currentBlog.metaDescription && (
-              <button
-                onClick={handleDescriptionClick}
-                className="text-white/70 text-xs text-center line-clamp-2 hover:underline cursor-pointer"
-              >
-                {currentBlog.metaDescription}
-              </button>
-            )}
           </div>
         </div>
-      </div>
+      ))}
 
-      {!isMobile && (
-        <div className="flex flex-col gap-6">
-          {user && user._id === currentBlog.author._id && (
+      {/* Fixed side controls for current short only */}
+      {blogs[currentIndex] && (
+        <div className="fixed right-3 md:right-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 md:gap-6 z-40">
+          {user && user._id === blogs[currentIndex].author._id && (
             <>
               <button
                 onClick={handleEdit}
                 className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
               >
-                <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-                  <CiEdit className="w-6 h-6" />
+                <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                  <CiEdit className="w-5 h-5 md:w-6 md:h-6" />
                 </div>
-                <span className="text-xs">Edit</span>
+                <span className="text-xs hidden md:block">Edit</span>
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
                 className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
               >
-                <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-                  <RiDeleteBin6Line className="w-6 h-6" />
+                <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                  <RiDeleteBin6Line className="w-5 h-5 md:w-6 md:h-6" />
                 </div>
-                <span className="text-xs">Delete</span>
+                <span className="text-xs hidden md:block">Delete</span>
               </button>
             </>
           )}
           <button
-            onClick={() => handleLike(currentBlog._id)}
+            onClick={() => handleLike(blogs[currentIndex]._id)}
             className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
           >
-            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-              {currentBlog.likes?.includes(user?._id) ? (
-                <AiFillLike className="w-6 h-6" />
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+              {blogs[currentIndex].likes?.includes(user?._id) ? (
+                <AiFillLike className="w-5 h-5 md:w-6 md:h-6" />
               ) : (
-                <AiOutlineLike className="w-6 h-6" />
+                <AiOutlineLike className="w-5 h-5 md:w-6 md:h-6" />
               )}
             </div>
-            <span className="text-sm font-semibold">{currentBlog.likes?.length || 0}</span>
+            <span className="text-xs font-semibold">{blogs[currentIndex].likes?.length || 0}</span>
           </button>
 
           <button
             onClick={handleCommentClick}
             className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
           >
-            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-              <TfiCommentAlt className="w-6 h-6" />
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+              <TfiCommentAlt className="w-5 h-5 md:w-6 md:h-6" />
             </div>
-            <span className="text-sm font-semibold">{commentCount}</span>
+            <span className="text-xs font-semibold">{commentCount}</span>
           </button>
 
           <button
             onClick={handleShare}
             className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
           >
-            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-              <IoIosShareAlt className="w-6 h-6" />
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+              <IoIosShareAlt className="w-5 h-5 md:w-6 md:h-6" />
             </div>
-            <span className="text-xs">Share</span>
+            <span className="text-xs hidden md:block">Share</span>
           </button>
 
           <button
             onClick={handleRepost}
             className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
           >
-            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-              <BiRepost className="w-7 h-7" />
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+              <BiRepost className="w-6 h-6 md:w-7 md:h-7" />
             </div>
-            <span className="text-xs">Repost</span>
+            <span className="text-xs hidden md:block">Repost</span>
           </button>
 
           <button onClick={handleOwnerClick}>
-            <Avatar user={currentBlog.author} size="md" className="border-2 border-white hover:scale-110 transition" />
+            <Avatar user={blogs[currentIndex].author} size={isMobile ? "sm" : "md"} className="border-2 border-white hover:scale-110 transition" />
           </button>
         </div>
       )}
 
       {!isMobile && showDescription && (
-        <div className="w-full max-w-md h-[90vh] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col">
+        <div className="fixed left-4 top-1/2 -translate-y-1/2 w-full max-w-sm h-[85vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col z-40">
           <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Description</h3>
             <button
@@ -990,7 +1099,7 @@ const ShortBlogsViewer = () => {
       )}
 
       {showComments && !isMobile && (
-        <div className="w-full max-w-md h-[90vh] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col" onWheel={(e) => e.stopPropagation()}>
+        <div className="fixed left-4 top-1/2 -translate-y-1/2 w-full max-w-sm h-[85vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col z-40" onWheel={(e) => e.stopPropagation()}>
           <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">
               Comments ({commentCount})
@@ -1255,78 +1364,10 @@ const ShortBlogsViewer = () => {
         </div>
       )}
 
-      {isMobile && (
-        <div className="absolute right-4 bottom-20 flex flex-col gap-4 z-10">
-          {user && user._id === currentBlog.author._id && (
-            <>
-              <button
-                onClick={handleEdit}
-                className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-              >
-                <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-                  <CiEdit className="w-6 h-6" />
-                </div>
-              </button>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-              >
-                <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-                  <RiDeleteBin6Line className="w-6 h-6" />
-                </div>
-              </button>
-            </>
-          )}
-          <button
-            onClick={() => handleLike(currentBlog._id)}
-            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-          >
-            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-              {currentBlog.likes?.includes(user?._id) ? (
-                <AiFillLike className="w-6 h-6" />
-              ) : (
-                <AiOutlineLike className="w-6 h-6" />
-              )}
-            </div>
-            <span className="text-sm font-semibold">{currentBlog.likes?.length || 0}</span>
-          </button>
 
-          <button
-            onClick={handleCommentClick}
-            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-          >
-            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-              <TfiCommentAlt className="w-6 h-6" />
-            </div>
-            <span className="text-sm font-semibold">{commentCount}</span>
-          </button>
-
-          <button
-            onClick={handleShare}
-            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-          >
-            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-              <IoIosShareAlt className="w-6 h-6" />
-            </div>
-          </button>
-
-          <button
-            onClick={handleRepost}
-            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-          >
-            <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center">
-              <BiRepost className="w-7 h-7" />
-            </div>
-          </button>
-
-          <button onClick={handleOwnerClick}>
-            <Avatar user={currentBlog.author} size="md" className="border-2 border-white hover:scale-110 transition" />
-          </button>
-        </div>
-      )}
 
       {!isMobile && showOwnerShorts && (
-        <div className="w-full max-w-md h-[90vh] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col overflow-hidden" onWheel={(e) => e.stopPropagation()}>
+        <div className="fixed left-4 top-1/2 -translate-y-1/2 w-full max-w-sm h-[85vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-40" onWheel={(e) => e.stopPropagation()}>
           <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Owner's Shorts</h3>
             <button
@@ -1496,28 +1537,31 @@ const ShortBlogsViewer = () => {
         </div>
       )}
 
-      <div className="hidden md:flex absolute right-8 top-1/2 -translate-y-1/2 flex-col gap-4">
-        <button
-          onClick={handlePrev}
-          disabled={currentIndex === 0}
-          className={`p-3 rounded-full transition ${currentIndex === 0
-              ? 'bg-gray-600 cursor-not-allowed'
-              : 'bg-white/20 hover:bg-white/30'
-            }`}
-        >
-          <FiChevronUp className="w-6 h-6 text-white" />
-        </button>
-        <button
-          onClick={handleNext}
-          disabled={currentIndex === blogs.length - 1}
-          className={`p-3 rounded-full transition ${currentIndex === blogs.length - 1
-              ? 'bg-gray-600 cursor-not-allowed'
-              : 'bg-white/20 hover:bg-white/30'
-            }`}
-        >
-          <FiChevronDown className="w-6 h-6 text-white" />
-        </button>
-      </div>
+      {/* Navigation arrows - hidden on mobile to avoid conflicts */}
+      {!isMobile && (
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-8 flex gap-4 z-30">
+          <button
+            onClick={handlePrev}
+            disabled={currentIndex === 0}
+            className={`p-3 rounded-full transition backdrop-blur-sm ${currentIndex === 0
+                ? 'bg-gray-600/50 cursor-not-allowed'
+                : 'bg-white/20 hover:bg-white/30'
+              }`}
+          >
+            <FiChevronUp className="w-6 h-6 text-white" />
+          </button>
+          <button
+            onClick={handleNext}
+            disabled={currentIndex === blogs.length - 1}
+            className={`p-3 rounded-full transition backdrop-blur-sm ${currentIndex === blogs.length - 1
+                ? 'bg-gray-600/50 cursor-not-allowed'
+                : 'bg-white/20 hover:bg-white/30'
+              }`}
+          >
+            <FiChevronDown className="w-6 h-6 text-white" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
