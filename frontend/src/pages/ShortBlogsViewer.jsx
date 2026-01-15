@@ -9,10 +9,11 @@ import { IoClose } from 'react-icons/io5';
 import { RxAvatar } from 'react-icons/rx';
 import { CiEdit } from 'react-icons/ci';
 import { RiDeleteBin6Line } from 'react-icons/ri';
-import { FaPlay, FaPause } from 'react-icons/fa6';
+import { FaPlay, FaPause, FaChevronLeft, FaChevronRight } from 'react-icons/fa6';
 import { HiMiniSpeakerWave, HiMiniSpeakerXMark } from 'react-icons/hi2';
 import { VscSaveAs } from 'react-icons/vsc';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
+import { PiMonitorPlayDuotone } from 'react-icons/pi';
 import { BsFillPlayFill } from 'react-icons/bs';
 import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
@@ -61,6 +62,7 @@ const ShortBlogsViewer = () => {
   const [ownerShorts, setOwnerShorts] = useState([]);
   const [loadingOwnerShorts, setLoadingOwnerShorts] = useState(false);
   const [loadingComments, setLoadingComments] = useState(false);
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
 
   const containerRef = useRef(null);
   const scrollTimeoutRef = useRef(null);
@@ -73,19 +75,17 @@ const ShortBlogsViewer = () => {
 
   const getVideoTitle = (url) => {
     if (!url) return null;
-    
     try {
       if (url.includes('youtube.com') || url.includes('youtu.be')) {
         const videoId = url.includes('youtu.be') 
           ? url.split('youtu.be/')[1]?.split('?')[0]
           : new URL(url).searchParams.get('v');
-        return `YouTube Video ${videoId ? `(${videoId.substring(0, 8)}...)` : ''}`;
+        return `YouTube ${videoId ? videoId.substring(0, 8) : ''}`;
       } else if (url.includes('vimeo.com')) {
         const videoId = url.split('vimeo.com/')[1]?.split('?')[0];
-        return `Vimeo Video ${videoId ? `(${videoId})` : ''}`;
+        return `Vimeo ${videoId || ''}`;
       } else {
-        const fileName = url.split('/').pop()?.split('?')[0];
-        return fileName || 'Video';
+        return 'Video';
       }
     } catch {
       return 'Video';
@@ -1055,7 +1055,7 @@ const ShortBlogsViewer = () => {
                         </div>
                       </div>
 
-                      {(blog.metaDescription || blog.videoUrl) && (
+                      {(blog.metaDescription || (blog.videoUrls && blog.videoUrls.length > 0)) && (
                         <div className="space-y-1">
                           {blog.metaDescription && (
                             <button
@@ -1065,13 +1065,13 @@ const ShortBlogsViewer = () => {
                               {blog.metaDescription}
                             </button>
                           )}
-                          {blog.videoUrl && (
+                          {blog.videoUrls && blog.videoUrls.length > 0 && (
                             <button
                               onClick={() => index === currentIndex && handleDescriptionClick()}
                               className="text-blue-300 text-xs text-center hover:underline cursor-pointer w-full flex items-center justify-center gap-1"
                             >
-                              <BsFillPlayFill className="w-4 h-4" />
-                              {getVideoTitle(blog.videoUrl)}
+                              <PiMonitorPlayDuotone className="w-4 h-4" />
+                              {getVideoTitle(blog.videoUrls[0])}{blog.videoUrls.length > 1 && ` +${blog.videoUrls.length - 1}`}
                             </button>
                           )}
                         </div>
@@ -1287,37 +1287,66 @@ const ShortBlogsViewer = () => {
                               <p className="text-gray-700 dark:text-gray-300">{currentBlog.metaDescription}</p>
                             </div>
                           )}
-                          {currentBlog?.videoUrl && (
+                          {currentBlog?.videoUrls && currentBlog.videoUrls.length > 0 && (
                             <div>
                               <h4 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-                                <BsFillPlayFill className="w-5 h-5" />
-                                {getVideoTitle(currentBlog.videoUrl)}
+                                <PiMonitorPlayDuotone className="w-5 h-5" />
+                                Video {currentVideoIndex + 1} of {currentBlog.videoUrls.length}
                               </h4>
-                              <div className="relative w-full rounded-lg overflow-hidden shadow-lg" style={{ paddingBottom: '56.25%' }}>
-                                {currentBlog.videoUrl.includes('youtube.com') || currentBlog.videoUrl.includes('youtu.be') ? (
-                                  <iframe
-                                    src={currentBlog.videoUrl.includes('youtu.be') 
-                                      ? `https://www.youtube.com/embed/${currentBlog.videoUrl.split('youtu.be/')[1].split('?')[0]}`
-                                      : currentBlog.videoUrl.replace('watch?v=', 'embed/')}
-                                    className="absolute top-0 left-0 w-full h-full"
-                                    frameBorder="0"
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                    allowFullScreen
-                                  />
-                                ) : currentBlog.videoUrl.includes('vimeo.com') ? (
-                                  <iframe
-                                    src={`https://player.vimeo.com/video/${currentBlog.videoUrl.split('vimeo.com/')[1]}`}
-                                    className="absolute top-0 left-0 w-full h-full"
-                                    frameBorder="0"
-                                    allow="autoplay; fullscreen; picture-in-picture"
-                                    allowFullScreen
-                                  />
-                                ) : (
-                                  <video
-                                    src={currentBlog.videoUrl}
-                                    controls
-                                    className="absolute top-0 left-0 w-full h-full"
-                                  />
+                              <div className="relative">
+                                <div className="relative w-full rounded-lg overflow-hidden shadow-lg" style={{ paddingBottom: '56.25%' }}>
+                                  {currentBlog.videoUrls[currentVideoIndex].includes('youtube.com') || currentBlog.videoUrls[currentVideoIndex].includes('youtu.be') ? (
+                                    <iframe
+                                      src={currentBlog.videoUrls[currentVideoIndex].includes('youtu.be') 
+                                        ? `https://www.youtube.com/embed/${currentBlog.videoUrls[currentVideoIndex].split('youtu.be/')[1].split('?')[0]}`
+                                        : currentBlog.videoUrls[currentVideoIndex].replace('watch?v=', 'embed/')}
+                                      className="absolute top-0 left-0 w-full h-full"
+                                      frameBorder="0"
+                                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                      allowFullScreen
+                                    />
+                                  ) : currentBlog.videoUrls[currentVideoIndex].includes('vimeo.com') ? (
+                                    <iframe
+                                      src={`https://player.vimeo.com/video/${currentBlog.videoUrls[currentVideoIndex].split('vimeo.com/')[1]}`}
+                                      className="absolute top-0 left-0 w-full h-full"
+                                      frameBorder="0"
+                                      allow="autoplay; fullscreen; picture-in-picture"
+                                      allowFullScreen
+                                    />
+                                  ) : (
+                                    <video
+                                      src={currentBlog.videoUrls[currentVideoIndex]}
+                                      controls
+                                      className="absolute top-0 left-0 w-full h-full"
+                                    />
+                                  )}
+                                </div>
+                                {currentBlog.videoUrls.length > 1 && (
+                                  <>
+                                    <button
+                                      onClick={() => setCurrentVideoIndex((prev) => (prev === 0 ? currentBlog.videoUrls.length - 1 : prev - 1))}
+                                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition z-10"
+                                    >
+                                      <FaChevronLeft className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => setCurrentVideoIndex((prev) => (prev === currentBlog.videoUrls.length - 1 ? 0 : prev + 1))}
+                                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition z-10"
+                                    >
+                                      <FaChevronRight className="w-4 h-4" />
+                                    </button>
+                                    <div className="flex gap-2 justify-center mt-3">
+                                      {currentBlog.videoUrls.map((_, index) => (
+                                        <button
+                                          key={index}
+                                          onClick={() => setCurrentVideoIndex(index)}
+                                          className={`w-2 h-2 rounded-full transition ${
+                                            index === currentVideoIndex ? 'bg-blue-600' : 'bg-gray-300'
+                                          }`}
+                                        />
+                                      ))}
+                                    </div>
+                                  </>
                                 )}
                               </div>
                             </div>
@@ -1534,7 +1563,7 @@ const ShortBlogsViewer = () => {
                       </div>
                     </div>
 
-                    {(blog.metaDescription || blog.videoUrl) && (
+                    {(blog.metaDescription || (blog.videoUrls && blog.videoUrls.length > 0)) && (
                       <div className="space-y-1">
                         {blog.metaDescription && (
                           <button
@@ -1544,13 +1573,13 @@ const ShortBlogsViewer = () => {
                             {blog.metaDescription}
                           </button>
                         )}
-                        {blog.videoUrl && (
+                        {blog.videoUrls && blog.videoUrls.length > 0 && (
                           <button
                             onClick={() => index === currentIndex && handleDescriptionClick()}
                             className="text-blue-300 text-xs text-center hover:underline cursor-pointer w-full flex items-center justify-center gap-1"
                           >
-                            <BsFillPlayFill className="w-4 h-4" />
-                            {getVideoTitle(blog.videoUrl)}
+                            <PiMonitorPlayDuotone className="w-4 h-4" />
+                            {getVideoTitle(blog.videoUrls[0])}{blog.videoUrls.length > 1 && ` +${blog.videoUrls.length - 1}`}
                           </button>
                         )}
                       </div>
@@ -1652,37 +1681,66 @@ const ShortBlogsViewer = () => {
                         <p className="text-gray-700 dark:text-gray-300">{currentBlog.metaDescription}</p>
                       </div>
                     )}
-                    {currentBlog?.videoUrl && (
+                    {currentBlog?.videoUrls && currentBlog.videoUrls.length > 0 && (
                       <div>
                         <h4 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-                          <BsFillPlayFill className="w-5 h-5" />
-                          {getVideoTitle(currentBlog.videoUrl)}
+                          <PiMonitorPlayDuotone className="w-5 h-5" />
+                          Video {currentVideoIndex + 1} of {currentBlog.videoUrls.length}
                         </h4>
-                        <div className="relative w-full rounded-lg overflow-hidden shadow-lg" style={{ paddingBottom: '56.25%' }}>
-                          {currentBlog.videoUrl.includes('youtube.com') || currentBlog.videoUrl.includes('youtu.be') ? (
-                            <iframe
-                              src={currentBlog.videoUrl.includes('youtu.be') 
-                                ? `https://www.youtube.com/embed/${currentBlog.videoUrl.split('youtu.be/')[1].split('?')[0]}`
-                                : currentBlog.videoUrl.replace('watch?v=', 'embed/')}
-                              className="absolute top-0 left-0 w-full h-full"
-                              frameBorder="0"
-                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                              allowFullScreen
-                            />
-                          ) : currentBlog.videoUrl.includes('vimeo.com') ? (
-                            <iframe
-                              src={`https://player.vimeo.com/video/${currentBlog.videoUrl.split('vimeo.com/')[1]}`}
-                              className="absolute top-0 left-0 w-full h-full"
-                              frameBorder="0"
-                              allow="autoplay; fullscreen; picture-in-picture"
-                              allowFullScreen
-                            />
-                          ) : (
-                            <video
-                              src={currentBlog.videoUrl}
-                              controls
-                              className="absolute top-0 left-0 w-full h-full"
-                            />
+                        <div className="relative">
+                          <div className="relative w-full rounded-lg overflow-hidden shadow-lg" style={{ paddingBottom: '56.25%' }}>
+                            {currentBlog.videoUrls[currentVideoIndex].includes('youtube.com') || currentBlog.videoUrls[currentVideoIndex].includes('youtu.be') ? (
+                              <iframe
+                                src={currentBlog.videoUrls[currentVideoIndex].includes('youtu.be') 
+                                  ? `https://www.youtube.com/embed/${currentBlog.videoUrls[currentVideoIndex].split('youtu.be/')[1].split('?')[0]}`
+                                  : currentBlog.videoUrls[currentVideoIndex].replace('watch?v=', 'embed/')}
+                                className="absolute top-0 left-0 w-full h-full"
+                                frameBorder="0"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            ) : currentBlog.videoUrls[currentVideoIndex].includes('vimeo.com') ? (
+                              <iframe
+                                src={`https://player.vimeo.com/video/${currentBlog.videoUrls[currentVideoIndex].split('vimeo.com/')[1]}`}
+                                className="absolute top-0 left-0 w-full h-full"
+                                frameBorder="0"
+                                allow="autoplay; fullscreen; picture-in-picture"
+                                allowFullScreen
+                              />
+                            ) : (
+                              <video
+                                src={currentBlog.videoUrls[currentVideoIndex]}
+                                controls
+                                className="absolute top-0 left-0 w-full h-full"
+                              />
+                            )}
+                          </div>
+                          {currentBlog.videoUrls.length > 1 && (
+                            <>
+                              <button
+                                onClick={() => setCurrentVideoIndex((prev) => (prev === 0 ? currentBlog.videoUrls.length - 1 : prev - 1))}
+                                className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition z-10"
+                              >
+                                <FaChevronLeft className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setCurrentVideoIndex((prev) => (prev === currentBlog.videoUrls.length - 1 ? 0 : prev + 1))}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition z-10"
+                              >
+                                <FaChevronRight className="w-4 h-4" />
+                              </button>
+                              <div className="flex gap-2 justify-center mt-3">
+                                {currentBlog.videoUrls.map((_, index) => (
+                                  <button
+                                    key={index}
+                                    onClick={() => setCurrentVideoIndex(index)}
+                                    className={`w-2 h-2 rounded-full transition ${
+                                      index === currentVideoIndex ? 'bg-blue-600' : 'bg-gray-300'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </>
                           )}
                         </div>
                       </div>

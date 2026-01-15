@@ -5,7 +5,7 @@ const Notification = require('../models/Notification');
 // Create blog
 exports.createBlog = async (req, res) => {
   try {
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrl } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls } = req.body;
 
     console.log('=== BACKEND CREATE BLOG ===');
     console.log('isDraft:', isDraft);
@@ -26,6 +26,7 @@ exports.createBlog = async (req, res) => {
     }
 
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+    const videoUrlsArray = videoUrls ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : [];
 
     // If publishing (not draft and not scheduled), delete any existing draft with same title
     if (!isDraft && !isScheduled) {
@@ -57,7 +58,7 @@ exports.createBlog = async (req, res) => {
       category: category || 'General',
       coverImage: coverImage || null,
       cloudinaryPublicId: cloudinaryPublicId || null,
-      videoUrl: videoUrl || null,
+      videoUrls: videoUrlsArray,
       metaDescription: metaDescription || null,
       slug: slug || null,
       isDraft: isScheduled ? true : (isDraft || false),
@@ -166,7 +167,7 @@ exports.updateBlog = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrl } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrls } = req.body;
     
     // Validate scheduled date
     if (isScheduled && scheduledPublishDate) {
@@ -177,6 +178,7 @@ exports.updateBlog = async (req, res) => {
     }
     
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : blog.tags;
+    const videoUrlsArray = videoUrls !== undefined ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : blog.videoUrls;
 
     // If changing from draft/scheduled to published, delete any other draft with same title
     if ((blog.isDraft || blog.isScheduled) && isDraft === false && !isScheduled) {
@@ -206,7 +208,7 @@ exports.updateBlog = async (req, res) => {
     blog.category = category || blog.category;
     blog.coverImage = coverImage !== undefined ? coverImage : blog.coverImage;
     blog.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : blog.cloudinaryPublicId;
-    blog.videoUrl = videoUrl !== undefined ? videoUrl : blog.videoUrl;
+    blog.videoUrls = videoUrlsArray;
     blog.metaDescription = metaDescription !== undefined ? metaDescription : blog.metaDescription;
     blog.isDraft = isScheduled ? true : (isDraft !== undefined ? isDraft : blog.isDraft);
     blog.isScheduled = isScheduled !== undefined ? isScheduled : blog.isScheduled;

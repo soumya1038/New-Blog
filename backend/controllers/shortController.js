@@ -5,7 +5,7 @@ const Notification = require('../models/Notification');
 // Create short
 exports.createShort = async (req, res) => {
   try {
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrl } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrls } = req.body;
 
     if (!title || !content) {
       return res.status(400).json({ success: false, message: 'Title and content required' });
@@ -20,6 +20,7 @@ exports.createShort = async (req, res) => {
     }
 
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+    const videoUrlsArray = videoUrls ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : [];
 
     // If publishing, delete existing draft with same title
     if (!isDraft && !isScheduled) {
@@ -50,7 +51,7 @@ exports.createShort = async (req, res) => {
       category: category || 'General',
       coverImage: coverImage || null,
       cloudinaryPublicId: cloudinaryPublicId || null,
-      videoUrl: videoUrl || null,
+      videoUrls: videoUrlsArray,
       metaDescription: metaDescription || null,
       isDraft: isScheduled ? true : (isDraft || false),
       isScheduled: isScheduled || false,
@@ -156,7 +157,7 @@ exports.updateShort = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrl } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrls } = req.body;
     
     // Validate scheduled date
     if (isScheduled && scheduledPublishDate) {
@@ -167,6 +168,7 @@ exports.updateShort = async (req, res) => {
     }
     
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : short.tags;
+    const videoUrlsArray = videoUrls !== undefined ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : short.videoUrls;
 
     // If changing from draft/scheduled to published, delete other drafts with same title
     if ((short.isDraft || short.isScheduled) && isDraft === false && !isScheduled) {
@@ -196,7 +198,7 @@ exports.updateShort = async (req, res) => {
     short.category = category || short.category;
     short.coverImage = coverImage !== undefined ? coverImage : short.coverImage;
     short.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : short.cloudinaryPublicId;
-    short.videoUrl = videoUrl !== undefined ? videoUrl : short.videoUrl;
+    short.videoUrls = videoUrlsArray;
     short.metaDescription = metaDescription !== undefined ? metaDescription : short.metaDescription;
     short.isDraft = isScheduled ? true : (isDraft !== undefined ? isDraft : short.isDraft);
     short.isScheduled = isScheduled !== undefined ? isScheduled : short.isScheduled;

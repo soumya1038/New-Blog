@@ -8,7 +8,7 @@ const blogSchema = new mongoose.Schema({
   category: { type: String, default: 'General' },
   coverImage: { type: String },
   cloudinaryPublicId: { type: String },
-  videoUrl: { type: String },
+  videoUrls: [{ type: String }],
   metaDescription: { type: String, maxlength: 160 },
   slug: { type: String },
   wordCount: { type: Number, default: 0 },

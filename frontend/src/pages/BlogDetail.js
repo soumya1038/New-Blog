@@ -5,7 +5,7 @@ import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
 import ReactMarkdown from 'react-markdown';
-import { FaHeart, FaComment, FaClock, FaEdit, FaTrash, FaArrowLeft, FaShare, FaRetweet, FaTimes, FaFacebook, FaTwitter, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink, FaUserPlus, FaUserCheck } from 'react-icons/fa';
+import { FaHeart, FaComment, FaClock, FaEdit, FaTrash, FaArrowLeft, FaShare, FaRetweet, FaTimes, FaFacebook, FaTwitter, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink, FaUserPlus, FaUserCheck, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 import { BiMenuAltRight } from 'react-icons/bi';
 import { BlogDetailSkeleton } from '../components/SkeletonLoader';
 import soundNotification from '../utils/soundNotifications';
@@ -41,6 +41,7 @@ const BlogDetail = () => {
   const [deletingComment, setDeletingComment] = useState(null);
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState('');
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
 
   useEffect(() => {
     fetchBlog();
@@ -627,21 +628,53 @@ const BlogDetail = () => {
               <ReactMarkdown>{blog.content}</ReactMarkdown>
             </div>
 
-            {blog.videoUrl && (
+            {blog.videoUrls && blog.videoUrls.length > 0 && (
               <div className="mb-6">
-                <div className="aspect-video w-full rounded-lg overflow-hidden shadow-lg">
-                  <iframe
-                    src={blog.videoUrl.includes('youtube.com') || blog.videoUrl.includes('youtu.be')
-                      ? `https://www.youtube.com/embed/${blog.videoUrl.includes('youtu.be') ? blog.videoUrl.split('/').pop() : new URLSearchParams(new URL(blog.videoUrl).search).get('v')}`
-                      : blog.videoUrl.includes('vimeo.com')
-                        ? `https://player.vimeo.com/video/${blog.videoUrl.split('/').pop()}`
-                        : blog.videoUrl}
-                    className="w-full h-full"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    title="Video"
-                  />
+                <div className="relative">
+                  <div className="aspect-video w-full rounded-lg overflow-hidden shadow-lg">
+                    <iframe
+                      src={blog.videoUrls[currentVideoIndex].includes('youtube.com') || blog.videoUrls[currentVideoIndex].includes('youtu.be')
+                        ? `https://www.youtube.com/embed/${blog.videoUrls[currentVideoIndex].includes('youtu.be') ? blog.videoUrls[currentVideoIndex].split('/').pop().split('?')[0] : new URLSearchParams(new URL(blog.videoUrls[currentVideoIndex]).search).get('v')}`
+                        : blog.videoUrls[currentVideoIndex].includes('vimeo.com')
+                          ? `https://player.vimeo.com/video/${blog.videoUrls[currentVideoIndex].split('vimeo.com/')[1]}`
+                          : blog.videoUrls[currentVideoIndex]}
+                      className="w-full h-full"
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                      title={`Video ${currentVideoIndex + 1}`}
+                    />
+                  </div>
+                  {blog.videoUrls.length > 1 && (
+                    <>
+                      <button
+                        onClick={() => setCurrentVideoIndex((prev) => (prev === 0 ? blog.videoUrls.length - 1 : prev - 1))}
+                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition"
+                      >
+                        <FaChevronLeft className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={() => setCurrentVideoIndex((prev) => (prev === blog.videoUrls.length - 1 ? 0 : prev + 1))}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full transition"
+                      >
+                        <FaChevronRight className="w-5 h-5" />
+                      </button>
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                        {blog.videoUrls.map((_, index) => (
+                          <button
+                            key={index}
+                            onClick={() => setCurrentVideoIndex(index)}
+                            className={`w-2 h-2 rounded-full transition ${
+                              index === currentVideoIndex ? 'bg-white' : 'bg-white/50'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <div className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                        {currentVideoIndex + 1} / {blog.videoUrls.length}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}

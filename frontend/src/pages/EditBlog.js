@@ -10,11 +10,13 @@ import toast, { Toaster } from 'react-hot-toast';
 import AIBlogGenerator from '../components/AIBlogGenerator';
 import AIContentTools from '../components/AIContentTools';
 import { FaArrowLeft, FaTimes } from 'react-icons/fa';
-import { IoIosCheckmarkCircle } from 'react-icons/io';
+import { IoIosCheckmarkCircle, IoIosCloseCircleOutline } from 'react-icons/io';
 import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish } from 'react-icons/md';
 import { TbBrandBlogger } from 'react-icons/tb';
 import { CiSaveDown2 } from 'react-icons/ci';
 import { BsFillCalendarRangeFill } from 'react-icons/bs';
+import { BsPatchPlus } from 'react-icons/bs';
+import { PiMonitorPlayDuotone } from 'react-icons/pi';
 import { BarLoader, GridLoader } from 'react-spinners';
 
 const EditBlog = () => {
@@ -46,7 +48,7 @@ const EditBlog = () => {
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
-  const [videoUrl, setVideoUrl] = useState('');
+  const [videoUrls, setVideoUrls] = useState(['']);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const autoSaveTimerRef = useRef(null);
@@ -119,7 +121,7 @@ const EditBlog = () => {
       setMetaDescription(data.blog.metaDescription || '');
       setIsDraft(data.blog.isDraft);
       setIsScheduled(data.blog.isScheduled || false);
-      setVideoUrl(data.blog.videoUrl || '');
+      setVideoUrls(data.blog.videoUrls && data.blog.videoUrls.length > 0 ? data.blog.videoUrls : ['']);
       if (data.blog.isScheduled && data.blog.scheduledPublishDate) {
         const scheduleDate = new Date(data.blog.scheduledPublishDate);
         setScheduledDate(scheduleDate.toISOString().split('T')[0]);
@@ -137,6 +139,7 @@ const EditBlog = () => {
     if (isShortMode !== originalMode) return;
     setAutoSaving(true);
     try {
+      const filteredVideoUrls = videoUrls.filter(url => url.trim());
       const endpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
       await api.put(endpoint, { 
         title, 
@@ -144,7 +147,7 @@ const EditBlog = () => {
         tags: tags.join(', '),
         category,
         coverImage,
-        videoUrl,
+        videoUrls: JSON.stringify(filteredVideoUrls),
         metaDescription,
         isDraft: true 
       });
@@ -190,6 +193,7 @@ const EditBlog = () => {
       let uploadedImageUrl = coverImage;
       let cloudinaryPublicId = '';
       const scheduledPublishDate = isScheduled ? new Date(`${scheduledDate}T${scheduledTime}`).toISOString() : null;
+      const filteredVideoUrls = videoUrls.filter(url => url.trim());
 
       if (coverImageFile) {
         if (oldCloudinaryPublicId) {
@@ -216,7 +220,7 @@ const EditBlog = () => {
           category,
           coverImage: uploadedImageUrl,
           cloudinaryPublicId: isShortMode ? null : (cloudinaryPublicId || undefined),
-          videoUrl,
+          videoUrls: JSON.stringify(filteredVideoUrls),
           metaDescription,
           isDraft: false,
           isScheduled,
@@ -237,7 +241,7 @@ const EditBlog = () => {
           category,
           coverImage: uploadedImageUrl,
           cloudinaryPublicId: cloudinaryPublicId || undefined,
-          videoUrl,
+          videoUrls: JSON.stringify(filteredVideoUrls),
           metaDescription,
           isDraft: false,
           isScheduled,
@@ -267,6 +271,7 @@ const EditBlog = () => {
       const scheduledPublishDate = isScheduled && scheduledDate && scheduledTime 
         ? new Date(`${scheduledDate}T${scheduledTime}`).toISOString() 
         : null;
+      const filteredVideoUrls = videoUrls.filter(url => url.trim());
 
       if (coverImageFile) {
         if (oldCloudinaryPublicId) {
@@ -297,7 +302,7 @@ const EditBlog = () => {
         category,
         coverImage: uploadedImageUrl,
         cloudinaryPublicId: cloudinaryPublicId || undefined,
-        videoUrl,
+        videoUrls: JSON.stringify(filteredVideoUrls),
         metaDescription,
         isDraft: true,
         isScheduled,
@@ -546,15 +551,45 @@ const EditBlog = () => {
             </div>
 
             <div>
-              <label className="block text-gray-700 dark:text-gray-300 mb-2 font-semibold">📹 Video URL <span className="text-xs text-gray-500 font-normal">(Optional)</span></label>
-              <input
-                type="url"
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                placeholder="https://www.youtube.com/watch?v=... or https://vimeo.com/..."
-              />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Supports YouTube, Vimeo, and direct video links</p>
+              <label className="block text-gray-700 mb-2 font-semibold flex items-center gap-2">
+                <PiMonitorPlayDuotone className="w-5 h-5 text-blue-600" />
+                <span>Video URLs</span>
+                <span className="text-xs text-gray-500 font-normal">(Optional)</span>
+              </label>
+              {videoUrls.map((url, index) => (
+                <div key={index} className="flex gap-2 mb-2">
+                  <input
+                    type="url"
+                    value={url}
+                    onChange={(e) => {
+                      const newUrls = [...videoUrls];
+                      newUrls[index] = e.target.value;
+                      setVideoUrls(newUrls);
+                    }}
+                    className="flex-1 px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://www.youtube.com/watch?v=... or https://vimeo.com/..."
+                  />
+                  {videoUrls.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setVideoUrls(videoUrls.filter((_, i) => i !== index))}
+                      className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition"
+                    >
+                      <IoIosCloseCircleOutline className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {videoUrls.length < 5 && (
+                <button
+                  type="button"
+                  onClick={() => setVideoUrls([...videoUrls, ''])}
+                  className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition"
+                >
+                  <BsPatchPlus className="w-5 h-5" />
+                </button>
+              )}
+              <p className="text-xs text-gray-500 mt-2">Supports YouTube, Vimeo, and direct video links (max 5 videos)</p>
             </div>
 
             <div>

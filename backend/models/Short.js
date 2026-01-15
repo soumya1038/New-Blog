@@ -8,7 +8,7 @@ const shortSchema = new mongoose.Schema({
   category: { type: String, default: 'General' },
   coverImage: { type: String },
   cloudinaryPublicId: { type: String },
-  videoUrl: { type: String },
+  videoUrls: [{ type: String }],
   metaDescription: { type: String, maxlength: 160 },
   wordCount: { type: Number, default: 0 },
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

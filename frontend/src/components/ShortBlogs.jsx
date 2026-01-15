@@ -4,6 +4,7 @@ import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { BsThreeDotsVertical, BsFillPlayFill } from 'react-icons/bs';
 import { FiEye } from 'react-icons/fi';
 import { GrView } from 'react-icons/gr';
+import { PiMonitorPlayDuotone } from 'react-icons/pi';
 
 const ShortBlogs = ({ blogs = [], onClose }) => {
   const navigate = useNavigate();
@@ -25,19 +26,17 @@ const ShortBlogs = ({ blogs = [], onClose }) => {
   
   const getVideoTitle = (url) => {
     if (!url) return null;
-    
     try {
       if (url.includes('youtube.com') || url.includes('youtu.be')) {
         const videoId = url.includes('youtu.be') 
           ? url.split('youtu.be/')[1]?.split('?')[0]
           : new URL(url).searchParams.get('v');
-        return `YouTube Video ${videoId ? `(${videoId.substring(0, 8)}...)` : ''}`;
+        return `YouTube ${videoId ? videoId.substring(0, 8) : ''}`;
       } else if (url.includes('vimeo.com')) {
         const videoId = url.split('vimeo.com/')[1]?.split('?')[0];
-        return `Vimeo Video ${videoId ? `(${videoId})` : ''}`;
+        return `Vimeo ${videoId || ''}`;
       } else {
-        const fileName = url.split('/').pop()?.split('?')[0];
-        return fileName || 'Video';
+        return 'Video';
       }
     } catch {
       return 'Video';
@@ -171,11 +170,11 @@ const ShortBlogs = ({ blogs = [], onClose }) => {
                 </p>
               )}
 
-              {blog.videoUrl && (
+              {blog.videoUrls && blog.videoUrls.length > 0 && (
                 <div className="flex items-center gap-1 mb-2">
-                  <BsFillPlayFill className="w-3 h-3 text-blue-300" />
-                  <p className="text-blue-300 text-xs line-clamp-1">
-                    {getVideoTitle(blog.videoUrl)}
+                  <PiMonitorPlayDuotone className="w-4 h-4 text-blue-300" />
+                  <p className="text-blue-300 text-xs">
+                    {getVideoTitle(blog.videoUrls[0])}{blog.videoUrls.length > 1 && ` +${blog.videoUrls.length - 1}`}
                   </p>
                 </div>
               )}

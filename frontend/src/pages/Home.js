@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { FaHeart, FaComment, FaClock, FaSearch, FaTimes } from 'react-icons/fa';
+import { PiMonitorPlayDuotone } from 'react-icons/pi';
 import { TbBrandBlogger } from 'react-icons/tb';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { AuthContext } from '../context/AuthContext';
@@ -237,6 +238,25 @@ const Home = () => {
 
   const allTags = [...new Set(blogs.flatMap(blog => blog.tags || []))];
 
+  const getVideoTitle = (url) => {
+    if (!url) return null;
+    try {
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        const videoId = url.includes('youtu.be') 
+          ? url.split('youtu.be/')[1]?.split('?')[0]
+          : new URL(url).searchParams.get('v');
+        return `YouTube ${videoId ? videoId.substring(0, 8) : ''}`;
+      } else if (url.includes('vimeo.com')) {
+        const videoId = url.split('vimeo.com/')[1]?.split('?')[0];
+        return `Vimeo ${videoId || ''}`;
+      } else {
+        return 'Video';
+      }
+    } catch {
+      return 'Video';
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
@@ -386,6 +406,13 @@ const Home = () => {
                 </p>
                 
                 <div className="flex items-center gap-4 text-sm text-gray-200">
+                  {blog.videoUrls && blog.videoUrls.length > 0 && (
+                    <span className="flex items-center gap-1 text-blue-300">
+                      <PiMonitorPlayDuotone className="w-4 h-4" /> {blog.videoUrls[0] && getVideoTitle(blog.videoUrls[0])}{blog.videoUrls.length > 1 && ` +${blog.videoUrls.length - 1}`}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-4 text-sm text-gray-200 mt-2">
                   <button
                     onClick={(e) => handleLike(e, blog._id)}
                     className={`flex items-center gap-1 transition ${
