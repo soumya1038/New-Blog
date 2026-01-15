@@ -136,7 +136,7 @@ const Navbar = () => {
                   </button>
 
                   {showDropdown && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-50">
+                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-[9999]">
                       {(user.role === 'admin' || user.role === 'coAdmin') && (
                         <Link
                           to="/admin"
@@ -233,7 +233,7 @@ const Navbar = () => {
                     <FaChevronDown size={12} />
                   </button>
                   {showDropdown && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-50">
+                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-[9999]">
                       {(user.role === 'admin' || user.role === 'coAdmin') && (
                         <Link
                           to="/admin"
@@ -326,7 +326,7 @@ const Navbar = () => {
                     <FaChevronDown size={10} />
                   </button>
                   {showDropdown && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-50">
+                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-[9999]">
                       {(user.role === 'admin' || user.role === 'coAdmin') && (
                         <Link
                           to="/admin"

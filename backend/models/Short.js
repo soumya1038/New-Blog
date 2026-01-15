@@ -8,10 +8,13 @@ const shortSchema = new mongoose.Schema({
   category: { type: String, default: 'General' },
   coverImage: { type: String },
   cloudinaryPublicId: { type: String },
+  videoUrl: { type: String },
   metaDescription: { type: String, maxlength: 160 },
   wordCount: { type: Number, default: 0 },
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   isDraft: { type: Boolean, default: false },
+  isScheduled: { type: Boolean, default: false },
+  scheduledPublishDate: { type: Date },
   views: { type: Number, default: 0 },
   viewedBy: [{ 
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaEdit, FaTrash, FaClock, FaCheckCircle, FaArrowLeft } from 'react-icons/fa';
+import { FaEdit, FaTrash, FaClock, FaCheckCircle, FaArrowLeft, FaCalendarAlt } from 'react-icons/fa';
 import { TbBrandBlogger } from 'react-icons/tb';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
+import { BsFillCalendarRangeFill } from 'react-icons/bs';
 import { BeatLoader, BarLoader, GridLoader, ScaleLoader } from 'react-spinners';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -17,12 +18,16 @@ const Drafts = () => {
   const [showWarning, setShowWarning] = useState(true);
   const [showPublishModal, setShowPublishModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [selectedDraft, setSelectedDraft] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState('');
+  const [rescheduleTime, setRescheduleTime] = useState('');
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!user) {
@@ -30,32 +35,33 @@ const Drafts = () => {
       return;
     }
     fetchDrafts();
-  }, [user]); // Removed navigate from dependencies
+  }, [user]);
+
+  // Refresh when returning from edit
+  useEffect(() => {
+    if (location.state?.refreshDrafts) {
+      fetchDrafts();
+      // Clear the state
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state]);
 
   const fetchDrafts = async () => {
     try {
       setError('');
       setRefreshing(true);
-      const token = localStorage.getItem('token');
-      console.log('Token exists:', !!token);
-      console.log('User:', user);
-      console.log('Fetching drafts from: /blogs?draft=true');
       
-      const { data } = await api.get('/blogs?draft=true');
-      console.log('Drafts response:', data);
-      console.log('Number of drafts:', data.blogs?.length || 0);
+      // Single API call for all drafts
+      const { data } = await api.get('/drafts');
       
       if (data.success) {
-        setDrafts(data.blogs || []);
+        setDrafts(data.drafts || []);
       } else {
         setError(data.message || 'Failed to load drafts');
         setDrafts([]);
       }
     } catch (err) {
       console.error('Error fetching drafts:', err);
-      console.error('Error response:', err.response?.data);
-      console.error('Error status:', err.response?.status);
-      
       if (err.response?.status === 401) {
         setError('Please login to view your drafts');
       } else {
@@ -78,13 +84,28 @@ const Drafts = () => {
     setShowDeleteModal(true);
   };
 
+  const openRescheduleModal = (draft) => {
+    setSelectedDraft(draft);
+    if (draft.scheduledPublishDate) {
+      const scheduleDate = new Date(draft.scheduledPublishDate);
+      setRescheduleDate(scheduleDate.toISOString().split('T')[0]);
+      setRescheduleTime(scheduleDate.toTimeString().slice(0, 5));
+    }
+    setShowRescheduleModal(true);
+  };
+
   const handlePublish = async () => {
     setActionLoading(true);
     try {
-      await api.put(`/blogs/${selectedDraft._id}`, { isDraft: false });
-      setDrafts(drafts.filter(d => d._id !== selectedDraft._id));
-      toast.success('Draft published successfully!');
+      const endpoint = selectedDraft.isShortBlog ? `/shorts/${selectedDraft._id}` : `/blogs/${selectedDraft._id}`;
+      await api.put(endpoint, { 
+        isDraft: false, 
+        isScheduled: false, 
+        scheduledPublishDate: null 
+      });
       setShowPublishModal(false);
+      await fetchDrafts();
+      toast.success('Draft published successfully!');
     } catch (error) {
       toast.error('Failed to publish draft');
     } finally {
@@ -92,11 +113,81 @@ const Drafts = () => {
     }
   };
 
+  const handleReschedule = async () => {
+    if (!rescheduleDate || !rescheduleTime) {
+      toast.error('Please select both date and time');
+      return;
+    }
+    const scheduleDateTime = new Date(`${rescheduleDate}T${rescheduleTime}`);
+    if (scheduleDateTime <= new Date()) {
+      toast.error('Scheduled date must be in the future');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const endpoint = selectedDraft.isShortBlog ? `/shorts/${selectedDraft._id}` : `/blogs/${selectedDraft._id}`;
+      await api.put(endpoint, { 
+        isScheduled: true,
+        scheduledPublishDate: scheduleDateTime.toISOString()
+      });
+      setShowRescheduleModal(false);
+      await fetchDrafts();
+      toast.success('Rescheduled successfully!');
+    } catch (error) {
+      toast.error('Failed to reschedule');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const CountdownTimer = ({ scheduledDate }) => {
+    const [timeLeft, setTimeLeft] = useState('');
+
+    useEffect(() => {
+      const calculateTimeLeft = () => {
+        const now = new Date();
+        const target = new Date(scheduledDate);
+        const diff = target - now;
+
+        if (diff <= 0) {
+          setTimeLeft('Publishing soon...');
+          return;
+        }
+
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        if (days > 0) {
+          setTimeLeft(`${days}d ${hours}h ${minutes}m ${seconds}s`);
+        } else if (hours > 0) {
+          setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+        } else if (minutes > 0) {
+          setTimeLeft(`${minutes}m ${seconds}s`);
+        } else {
+          setTimeLeft(`${seconds}s`);
+        }
+      };
+
+      calculateTimeLeft();
+      const interval = setInterval(calculateTimeLeft, 1000);
+      return () => clearInterval(interval);
+    }, [scheduledDate]);
+
+    return (
+      <span className="text-blue-600 dark:text-blue-400 font-semibold animate-pulse">
+        {timeLeft}
+      </span>
+    );
+  };
+
   const handleDelete = async () => {
     setActionLoading(true);
     try {
-      await api.delete(`/blogs/${selectedDraft._id}`);
-      setDrafts(drafts.filter(d => d._id !== selectedDraft._id));
+      const endpoint = selectedDraft.isShortBlog ? `/shorts/${selectedDraft._id}` : `/blogs/${selectedDraft._id}`;
+      await api.delete(endpoint);
+      await fetchDrafts();
       toast.success('Draft deleted successfully!');
       setShowDeleteModal(false);
     } catch (error) {
@@ -159,7 +250,7 @@ const Drafts = () => {
               <div className="flex items-center gap-2">
                 <FaClock className="text-yellow-600" />
                 <span className="text-sm">
-                  ⚠️ Drafts are automatically deleted after 42 hours of inactivity
+                  ⚠️ Drafts are automatically deleted after 42 hours (scheduled content excluded)
                 </span>
               </div>
               <button
@@ -188,11 +279,14 @@ const Drafts = () => {
             <div className="space-y-4">
               {drafts.map(draft => (
                 <div key={draft._id} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md dark:hover:shadow-gray-900/50 transition bg-white dark:bg-gray-700/50 relative">
-                  <div className="absolute bottom-3 right-3 text-gray-400 dark:text-gray-500">
+                  <div className="absolute bottom-3 right-3 flex items-center gap-2 text-gray-400 dark:text-gray-500">
+                    {draft.isScheduled && (
+                      <BsFillCalendarRangeFill className="w-5 h-5 text-blue-600 dark:text-blue-400" title="Scheduled" />
+                    )}
                     {draft.isShortBlog ? (
-                      <MdOutlineSwitchAccessShortcutAdd className="w-5 h-5" title="Short Blog" />
+                      <MdOutlineSwitchAccessShortcutAdd className="w-6 h-6" title="Short Blog" />
                     ) : (
-                      <TbBrandBlogger className="w-5 h-5" title="Blog" />
+                      <TbBrandBlogger className="w-6 h-6" title="Blog" />
                     )}
                   </div>
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
@@ -211,14 +305,35 @@ const Drafts = () => {
                             {draft.tags.slice(0, 2).join(', ')}
                           </span>
                         )}
+                        {draft.isScheduled && draft.scheduledPublishDate && (
+                          <>
+                            <span className="flex items-center gap-1">
+                              <FaCalendarAlt className="text-blue-600" /> 
+                              {new Date(draft.scheduledPublishDate).toLocaleString()}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <FaClock className="text-blue-600" /> 
+                              <CountdownTimer scheduledDate={draft.scheduledPublishDate} />
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                      {draft.isScheduled && (
+                        <button
+                          onClick={() => openRescheduleModal(draft)}
+                          className="flex items-center gap-1 bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 text-sm"
+                          title="Reschedule"
+                        >
+                          <BsFillCalendarRangeFill /> <span className="hidden sm:inline">{t('Reschedule')}</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => openPublishModal(draft)}
                         className="flex items-center gap-1 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 text-sm"
-                        title="Publish draft"
+                        title={draft.isScheduled ? "Cancel schedule and publish now" : "Publish draft"}
                       >
                         <FaCheckCircle /> <span className="hidden sm:inline">{t('Publish')}</span>
                       </button>
@@ -250,9 +365,11 @@ const Drafts = () => {
       {showPublishModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">📢 Publish Draft</h3>
+            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">📢 Publish {selectedDraft?.isScheduled ? 'Now' : 'Draft'}</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Are you sure you want to publish this draft? It will be visible to everyone.
+              {selectedDraft?.isScheduled 
+                ? 'This will cancel the schedule and publish immediately. Continue?' 
+                : 'Are you sure you want to publish this draft? It will be visible to everyone.'}
             </p>
             <div className="flex gap-3">
               <button
@@ -266,6 +383,54 @@ const Drafts = () => {
                 onClick={() => setShowPublishModal(false)}
                 disabled={actionLoading}
                 className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg font-semibold hover:bg-gray-300 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reschedule Modal */}
+      {showRescheduleModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4 flex items-center gap-2">
+              <BsFillCalendarRangeFill className="text-blue-600" /> Reschedule Publication
+            </h3>
+            <div className="space-y-4 mb-6">
+              <div>
+                <label className="block text-gray-700 dark:text-gray-300 mb-2 text-sm">Publish Date</label>
+                <input
+                  type="date"
+                  value={rescheduleDate}
+                  onChange={(e) => setRescheduleDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-700 dark:text-gray-300 mb-2 text-sm">Publish Time</label>
+                <input
+                  type="time"
+                  value={rescheduleTime}
+                  onChange={(e) => setRescheduleTime(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleReschedule}
+                disabled={actionLoading}
+                className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {actionLoading ? <GridLoader color="#fff" size={8} /> : 'Reschedule'}
+              </button>
+              <button
+                onClick={() => setShowRescheduleModal(false)}
+                disabled={actionLoading}
+                className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 py-3 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition disabled:opacity-50"
               >
                 Cancel
               </button>

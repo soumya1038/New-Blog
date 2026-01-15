@@ -14,6 +14,7 @@ import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish } from 'react-icons/
 import { IoIosCheckmarkCircle } from 'react-icons/io';
 import { TbBrandBlogger } from 'react-icons/tb';
 import { CiSaveDown2 } from 'react-icons/ci';
+import { BsFillCalendarRangeFill } from 'react-icons/bs';
 import { GridLoader } from 'react-spinners';
 
 const CreateBlog = () => {
@@ -41,6 +42,10 @@ const CreateBlog = () => {
   const [isShortMode, setIsShortMode] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
   const [showCustomCategory, setShowCustomCategory] = useState(false);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const autoSaveTimerRef = useRef(null);
@@ -115,8 +120,7 @@ const CreateBlog = () => {
           category,
           coverImage,
           metaDescription,
-          isDraft: true,
-          isShortBlog: isShortMode
+          isDraft: true
         });
       } else {
         // Check if draft with same title exists
@@ -132,8 +136,7 @@ const CreateBlog = () => {
             category,
             coverImage,
             metaDescription,
-            isDraft: true,
-            isShortBlog: isShortMode
+            isDraft: true
           });
           setDraftId(existingDraft._id);
         } else {
@@ -145,8 +148,7 @@ const CreateBlog = () => {
             category,
             coverImage,
             metaDescription,
-            isDraft: true,
-            isShortBlog: isShortMode
+            isDraft: true
           });
           setDraftId(data.blog._id);
         }
@@ -181,6 +183,19 @@ const CreateBlog = () => {
       return;
     }
 
+    // Validate scheduled date
+    if (isScheduled) {
+      if (!scheduledDate || !scheduledTime) {
+        toast.error('Please select both date and time for scheduling');
+        return;
+      }
+      const scheduleDateTime = new Date(`${scheduledDate}T${scheduledTime}`);
+      if (scheduleDateTime <= new Date()) {
+        toast.error('Scheduled date must be in the future');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       let uploadedImageUrl = '';
@@ -198,10 +213,13 @@ const CreateBlog = () => {
       }
 
       const wordCount = content.split(/\s+/).filter(w => w).length;
+      const scheduledPublishDate = isScheduled ? new Date(`${scheduledDate}T${scheduledTime}`).toISOString() : null;
       
       console.log('=== PUBLISH DEBUG ===');
       console.log('isShortMode:', isShortMode);
       console.log('wordCount:', wordCount);
+      console.log('isScheduled:', isScheduled);
+      console.log('scheduledPublishDate:', scheduledPublishDate);
       
       // Scenario A: Regular Blog mode
       if (!isShortMode) {
@@ -215,9 +233,11 @@ const CreateBlog = () => {
             category,
             coverImage: uploadedImageUrl,
             cloudinaryPublicId,
+            videoUrl,
             metaDescription,
             isDraft: false,
-            isShortBlog: false
+            isScheduled,
+            scheduledPublishDate
           });
           
           // Create short in Short table
@@ -227,13 +247,16 @@ const CreateBlog = () => {
             tags: tags.join(', '),
             category,
             coverImage: uploadedImageUrl,
+            videoUrl,
             metaDescription,
-            isDraft: false
+            isDraft: false,
+            isScheduled,
+            scheduledPublishDate
           });
           
           setHasUnsavedChanges(false);
-          toast.success('Published as blog and short successfully!');
-          setTimeout(() => navigate(`/blog/${blogData.blog._id}`), 1000);
+          toast.success(isScheduled ? 'Scheduled successfully!' : 'Published as blog and short successfully!');
+          setTimeout(() => navigate(isScheduled ? '/drafts' : `/blog/${blogData.blog._id}`), 1000);
         } else {
           // Create only BLOG
           const { data } = await api.post('/blogs', { 
@@ -243,14 +266,16 @@ const CreateBlog = () => {
             category,
             coverImage: uploadedImageUrl,
             cloudinaryPublicId,
+            videoUrl,
             metaDescription,
             isDraft: false,
-            isShortBlog: false
+            isScheduled,
+            scheduledPublishDate
           });
           
           setHasUnsavedChanges(false);
-          toast.success('Blog published successfully!');
-          setTimeout(() => navigate(`/blog/${data.blog._id}`), 1000);
+          toast.success(isScheduled ? 'Blog scheduled successfully!' : 'Blog published successfully!');
+          setTimeout(() => navigate(isScheduled ? '/drafts' : `/blog/${data.blog._id}`), 1000);
         }
       } else {
         // Scenario B: Create Short mode - only create SHORT
@@ -261,13 +286,16 @@ const CreateBlog = () => {
           category,
           coverImage: uploadedImageUrl,
           cloudinaryPublicId,
+          videoUrl,
           metaDescription,
-          isDraft: false
+          isDraft: false,
+          isScheduled,
+          scheduledPublishDate
         });
         
         setHasUnsavedChanges(false);
-        toast.success('Short blog published successfully!');
-        setTimeout(() => navigate(`/shorts/${data.short._id}`), 1000);
+        toast.success(isScheduled ? 'Short scheduled successfully!' : 'Short blog published successfully!');
+        setTimeout(() => navigate(isScheduled ? '/drafts' : `/shorts/${data.short._id}`), 1000);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to create blog');
@@ -307,9 +335,9 @@ const CreateBlog = () => {
           category,
           coverImage: uploadedImageUrl || coverImage,
           cloudinaryPublicId: cloudinaryPublicId || undefined,
+          videoUrl,
           metaDescription,
-          isDraft: true,
-          isShortBlog: isShortMode
+          isDraft: true
         });
       } else {
         // Check if draft with same title exists
@@ -329,9 +357,9 @@ const CreateBlog = () => {
           category,
           coverImage: uploadedImageUrl,
           cloudinaryPublicId,
+          videoUrl,
           metaDescription,
-          isDraft: true,
-          isShortBlog: isShortMode
+          isDraft: true
         });
         setDraftId(data.blog._id);
       }
@@ -573,6 +601,18 @@ const CreateBlog = () => {
             </div>
 
             <div>
+              <label className="block text-gray-700 dark:text-gray-300 mb-2 font-semibold">📹 {t('Video URL')} <span className="text-xs text-gray-500 font-normal">({t('Optional')})</span></label>
+              <input
+                type="url"
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                placeholder="https://www.youtube.com/watch?v=... or https://vimeo.com/..."
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('Supports YouTube, Vimeo, and direct video links')}</p>
+            </div>
+
+            <div>
               <label className="block text-gray-700 dark:text-gray-300 mb-2 font-semibold">{t('SEO Meta Description')}</label>
               <textarea
                 value={metaDescription}
@@ -674,6 +714,51 @@ const CreateBlog = () => {
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('Press Enter or comma to add tags')}</p>
             </div>
             
+            {/* Schedule Publication Section */}
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <BsFillCalendarRangeFill className="text-blue-600 dark:text-blue-400 w-5 h-5" />
+                  <label className="block text-gray-700 dark:text-gray-300 font-semibold">{t('Schedule Publication')}</label>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isScheduled}
+                    onChange={(e) => setIsScheduled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              
+              {isScheduled && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="block text-gray-700 dark:text-gray-300 mb-2 text-sm">{t('Publish Date')}</label>
+                    <input
+                      type="date"
+                      value={scheduledDate}
+                      onChange={(e) => setScheduledDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      required={isScheduled}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 dark:text-gray-300 mb-2 text-sm">{t('Publish Time')}</label>
+                    <input
+                      type="time"
+                      value={scheduledTime}
+                      onChange={(e) => setScheduledTime(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      required={isScheduled}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
                 <button
@@ -682,7 +767,7 @@ const CreateBlog = () => {
                   className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <MdOutlinePublish className="w-5 h-5" />
-                  {loading ? t('Publishing...') : t('Publish')}
+                  {loading ? t('Publishing...') : (isScheduled ? t('Schedule') : t('Publish'))}
                 </button>
                 
                 <button

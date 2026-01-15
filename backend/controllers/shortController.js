@@ -5,16 +5,24 @@ const Notification = require('../models/Notification');
 // Create short
 exports.createShort = async (req, res) => {
   try {
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrl } = req.body;
 
     if (!title || !content) {
       return res.status(400).json({ success: false, message: 'Title and content required' });
     }
 
+    // Validate scheduled date
+    if (isScheduled && scheduledPublishDate) {
+      const scheduleDate = new Date(scheduledPublishDate);
+      if (scheduleDate <= new Date()) {
+        return res.status(400).json({ success: false, message: 'Scheduled date must be in the future' });
+      }
+    }
+
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
 
     // If publishing, delete existing draft with same title
-    if (!isDraft) {
+    if (!isDraft && !isScheduled) {
       const existingDraft = await Short.findOne({ 
         title, 
         author: req.user._id, 
@@ -42,8 +50,11 @@ exports.createShort = async (req, res) => {
       category: category || 'General',
       coverImage: coverImage || null,
       cloudinaryPublicId: cloudinaryPublicId || null,
+      videoUrl: videoUrl || null,
       metaDescription: metaDescription || null,
-      isDraft: isDraft || false
+      isDraft: isScheduled ? true : (isDraft || false),
+      isScheduled: isScheduled || false,
+      scheduledPublishDate: isScheduled ? scheduledPublishDate : null
     });
 
     const populatedShort = await Short.findById(short._id).populate('author', 'username profileImage');
@@ -67,11 +78,12 @@ exports.getShorts = async (req, res) => {
       if (req.user) {
         filter.author = req.user._id;
         
-        // Auto-delete drafts older than 42 hours
+        // Auto-delete drafts older than 42 hours (exclude scheduled)
         const fortyTwoHoursAgo = new Date(Date.now() - 42 * 60 * 60 * 1000);
         const oldDrafts = await Short.find({
           author: req.user._id,
           isDraft: true,
+          isScheduled: false,
           updatedAt: { $lt: fortyTwoHoursAgo }
         });
         
@@ -144,11 +156,20 @@ exports.updateShort = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrl } = req.body;
+    
+    // Validate scheduled date
+    if (isScheduled && scheduledPublishDate) {
+      const scheduleDate = new Date(scheduledPublishDate);
+      if (scheduleDate <= new Date()) {
+        return res.status(400).json({ success: false, message: 'Scheduled date must be in the future' });
+      }
+    }
+    
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : short.tags;
 
-    // If changing from draft to published, delete other drafts with same title
-    if (short.isDraft && isDraft === false) {
+    // If changing from draft/scheduled to published, delete other drafts with same title
+    if ((short.isDraft || short.isScheduled) && isDraft === false && !isScheduled) {
       const otherDraft = await Short.findOne({ 
         title: title || short.title, 
         author: req.user._id, 
@@ -175,8 +196,11 @@ exports.updateShort = async (req, res) => {
     short.category = category || short.category;
     short.coverImage = coverImage !== undefined ? coverImage : short.coverImage;
     short.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : short.cloudinaryPublicId;
+    short.videoUrl = videoUrl !== undefined ? videoUrl : short.videoUrl;
     short.metaDescription = metaDescription !== undefined ? metaDescription : short.metaDescription;
-    short.isDraft = isDraft !== undefined ? isDraft : short.isDraft;
+    short.isDraft = isScheduled ? true : (isDraft !== undefined ? isDraft : short.isDraft);
+    short.isScheduled = isScheduled !== undefined ? isScheduled : short.isScheduled;
+    short.scheduledPublishDate = isScheduled ? scheduledPublishDate : null;
     short.updatedAt = Date.now();
 
     await short.save();

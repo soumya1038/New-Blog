@@ -5,26 +5,34 @@ const Notification = require('../models/Notification');
 // Create blog
 exports.createBlog = async (req, res) => {
   try {
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isShortBlog } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrl } = req.body;
 
     console.log('=== BACKEND CREATE BLOG ===');
-    console.log('isShortBlog:', isShortBlog);
     console.log('isDraft:', isDraft);
+    console.log('isScheduled:', isScheduled);
+    console.log('scheduledPublishDate:', scheduledPublishDate);
     console.log('title:', title);
 
     if (!title || !content) {
       return res.status(400).json({ success: false, message: 'Title and content required' });
     }
 
+    // Validate scheduled date
+    if (isScheduled && scheduledPublishDate) {
+      const scheduleDate = new Date(scheduledPublishDate);
+      if (scheduleDate <= new Date()) {
+        return res.status(400).json({ success: false, message: 'Scheduled date must be in the future' });
+      }
+    }
+
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
 
-    // If publishing (not draft), delete any existing draft with same title AND same isShortBlog value
-    if (!isDraft) {
+    // If publishing (not draft and not scheduled), delete any existing draft with same title
+    if (!isDraft && !isScheduled) {
       const existingDraft = await Blog.findOne({ 
         title, 
         author: req.user._id, 
-        isDraft: true,
-        isShortBlog: isShortBlog || false
+        isDraft: true
       });
       
       if (existingDraft) {
@@ -49,10 +57,12 @@ exports.createBlog = async (req, res) => {
       category: category || 'General',
       coverImage: coverImage || null,
       cloudinaryPublicId: cloudinaryPublicId || null,
+      videoUrl: videoUrl || null,
       metaDescription: metaDescription || null,
       slug: slug || null,
-      isDraft: isDraft || false,
-      isShortBlog: isShortBlog || false
+      isDraft: isScheduled ? true : (isDraft || false),
+      isScheduled: isScheduled || false,
+      scheduledPublishDate: isScheduled ? scheduledPublishDate : null
     });
 
     const populatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage');
@@ -77,11 +87,12 @@ exports.getBlogs = async (req, res) => {
       if (req.user) {
         filter.author = req.user._id;
         
-        // Auto-delete drafts older than 42 hours
+        // Auto-delete drafts older than 42 hours (exclude scheduled)
         const fortyTwoHoursAgo = new Date(Date.now() - 42 * 60 * 60 * 1000);
         const oldDrafts = await Blog.find({
           author: req.user._id,
           isDraft: true,
+          isScheduled: false,
           updatedAt: { $lt: fortyTwoHoursAgo }
         });
         
@@ -104,7 +115,6 @@ exports.getBlogs = async (req, res) => {
       }
     } else {
       filter.isDraft = false; // Default: only published blogs
-      filter.isShortBlog = false; // Exclude short blogs from regular blog list
     }
 
     const blogs = await Blog.find(filter)
@@ -156,16 +166,24 @@ exports.updateBlog = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isShortBlog } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrl } = req.body;
+    
+    // Validate scheduled date
+    if (isScheduled && scheduledPublishDate) {
+      const scheduleDate = new Date(scheduledPublishDate);
+      if (scheduleDate <= new Date()) {
+        return res.status(400).json({ success: false, message: 'Scheduled date must be in the future' });
+      }
+    }
+    
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : blog.tags;
 
-    // If changing from draft to published, delete any other draft with same title AND same isShortBlog
-    if (blog.isDraft && isDraft === false) {
+    // If changing from draft/scheduled to published, delete any other draft with same title
+    if ((blog.isDraft || blog.isScheduled) && isDraft === false && !isScheduled) {
       const otherDraft = await Blog.findOne({ 
         title: title || blog.title, 
         author: req.user._id, 
         isDraft: true,
-        isShortBlog: isShortBlog !== undefined ? isShortBlog : blog.isShortBlog,
         _id: { $ne: blog._id }
       });
       
@@ -188,9 +206,11 @@ exports.updateBlog = async (req, res) => {
     blog.category = category || blog.category;
     blog.coverImage = coverImage !== undefined ? coverImage : blog.coverImage;
     blog.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : blog.cloudinaryPublicId;
+    blog.videoUrl = videoUrl !== undefined ? videoUrl : blog.videoUrl;
     blog.metaDescription = metaDescription !== undefined ? metaDescription : blog.metaDescription;
-    blog.isDraft = isDraft !== undefined ? isDraft : blog.isDraft;
-    blog.isShortBlog = isShortBlog !== undefined ? isShortBlog : blog.isShortBlog;
+    blog.isDraft = isScheduled ? true : (isDraft !== undefined ? isDraft : blog.isDraft);
+    blog.isScheduled = isScheduled !== undefined ? isScheduled : blog.isScheduled;
+    blog.scheduledPublishDate = isScheduled ? scheduledPublishDate : null;
     blog.updatedAt = Date.now();
 
     await blog.save();
@@ -273,7 +293,7 @@ exports.trackView = async (req, res) => {
 exports.getShortBlogs = async (req, res) => {
   try {
     const { author } = req.query;
-    const filter = { isShortBlog: true, isDraft: false };
+    const filter = { isDraft: false };
     
     if (author) filter.author = author;
 

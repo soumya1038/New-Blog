@@ -62,6 +62,19 @@
   @apply text-gray-400;
 }
 
+/* Fix cursor color in light mode */
+input,
+textarea,
+select {
+  caret-color: #1f2937;
+}
+
+.dark input,
+.dark textarea,
+.dark select {
+  caret-color: #f3f4f6;
+}
+
 .dark .shadow-lg,
 .dark .shadow-xl,
 .dark .shadow-2xl {

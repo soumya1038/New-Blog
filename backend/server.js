@@ -22,11 +22,13 @@ const fileRoutes = require('./routes/fileRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const callRoutes = require('./routes/callRoutes');
 const zohoAuthRoutes = require('./routes/zohoAuth');
+const draftRoutes = require('./routes/draftRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const chatSocket = require('./socket/chatSocket');
 const { cleanupOldNotifications } = require('./controllers/socialController');
 const cleanupExpiredStatuses = require('./utils/statusCleanup');
 const cleanupExpiredMessages = require('./jobs/cleanupExpiredMessages');
+const publishScheduledContent = require('./jobs/publishScheduledContent');
 
 const app = express();
 const server = http.createServer(app);
@@ -82,6 +84,7 @@ app.use('/api/files', fileRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/auth/zoho', zohoAuthRoutes);
+app.use('/api/drafts', draftRoutes);
 
 // Error handler
 app.use(errorHandler);
@@ -116,6 +119,10 @@ mongoose.connect(process.env.MONGODB_URI)
       // Start Cloudinary cleanup cron job
       cleanupExpiredMessages();
       console.log('✅ Message Cloudinary cleanup scheduled');
+      
+      // Start scheduled content publish job
+      publishScheduledContent(io);
+      console.log('✅ Scheduled content publish job started');
     });
   })
   .catch(err => {

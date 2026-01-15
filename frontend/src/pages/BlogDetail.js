@@ -53,7 +53,7 @@ const BlogDetail = () => {
     };
 
     window.addEventListener('newComment', handleNewComment);
-    
+
     const socket = socketService.getSocket();
     if (socket) {
       socket.on('comment:new', (data) => {
@@ -134,7 +134,7 @@ const BlogDetail = () => {
     try {
       const { data } = await api.get(`/comments/${commentId}/replies`);
       setReplies(prev => ({ ...prev, [commentId]: data.replies }));
-      
+
       if (keepOpen) {
         setShowReplies(prev => ({ ...prev, [commentId]: true }));
       } else {
@@ -156,7 +156,7 @@ const BlogDetail = () => {
       const { data } = await api.post(`/blogs/${id}/like`);
       setLiked(data.liked);
       setBlog({ ...blog, likeCount: data.likeCount });
-      
+
       if (data.liked) {
         soundNotification.playLikeActionSound();
       }
@@ -192,13 +192,13 @@ const BlogDetail = () => {
         parentComment: parentCommentId,
         replyTo: replyToUserId
       });
-      
+
       setComments(prev => prev.map(comment =>
         comment._id === parentCommentId ?
           { ...comment, replyCount: (comment.replyCount || 0) + 1 } :
           comment
       ));
-      
+
       await fetchReplies(parentCommentId, true);
       window.dispatchEvent(new CustomEvent('newComment'));
     } catch (error) {
@@ -213,11 +213,11 @@ const BlogDetail = () => {
     }
     try {
       const { data } = await api.post(`/comments/${commentId}/like`);
-      
+
       setComments(prev => prev.map(comment =>
         comment._id === commentId ? { ...comment, likes: data.likes } : comment
       ));
-      
+
       setReplies(prev => {
         const newReplies = { ...prev };
         Object.keys(newReplies).forEach(parentId => {
@@ -388,15 +388,15 @@ const BlogDetail = () => {
       navigate('/login');
       return;
     }
-    navigate('/create', { 
-      state: { 
-        repostContent: blog.content, 
-        repostTitle: blog.title, 
+    navigate('/create', {
+      state: {
+        repostContent: blog.content,
+        repostTitle: blog.title,
         repostTags: blog.tags?.join(', '),
         repostMetaDescription: blog.metaDescription,
         repostCategory: blog.category,
         repostCoverImage: blog.coverImage
-      } 
+      }
     });
   };
 
@@ -450,14 +450,14 @@ const BlogDetail = () => {
       </div>
     );
   }
-  
+
   if (!blog) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
         <div className="text-center">
-          <img 
-            src="/image/failed_to_load.png" 
-            alt="Blog Not Found" 
+          <img
+            src="/image/failed_to_load.png"
+            alt="Blog Not Found"
             className="w-64 h-64 mx-auto mb-6 object-contain"
           />
           <h1 className="text-4xl font-bold text-gray-800 mb-4">{t('Blog Not Found')}</h1>
@@ -508,11 +508,10 @@ const BlogDetail = () => {
                     <button
                       onClick={handleFollow}
                       disabled={followLoading}
-                      className={`flex items-center gap-2 font-semibold transition ${
-                        isFollowing 
-                          ? 'text-gray-600 hover:text-gray-800' 
+                      className={`flex items-center gap-2 font-semibold transition ${isFollowing
+                          ? 'text-gray-600 hover:text-gray-800'
                           : 'text-blue-600 hover:text-blue-800'
-                      } disabled:opacity-50`}
+                        } disabled:opacity-50`}
                     >
                       {followLoading ? (
                         '...'
@@ -530,12 +529,12 @@ const BlogDetail = () => {
                 </div>
               </div>
               {blog.coverImage && (
-                <div 
+                <div
                   onClick={() => setShowImageLightbox(true)}
                   className="flex-shrink-0 cursor-pointer group relative w-full sm:w-32 mt-4 sm:mt-0"
                 >
-                  <img 
-                    src={blog.coverImage} 
+                  <img
+                    src={blog.coverImage}
                     alt={blog.title}
                     className="w-full sm:w-32 h-48 sm:h-32 object-cover rounded-lg shadow-md group-hover:shadow-xl transition-all"
                   />
@@ -545,200 +544,223 @@ const BlogDetail = () => {
                 </div>
               )}
             </div>
-          
-            <div className="flex items-center justify-between mb-6">
-            <div></div>
-            {user?._id === blog.author?._id && (
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => {
-                    setEditLoading(true);
-                    navigate(`/edit/${id}`);
-                  }} 
-                  className="text-blue-600 hover:text-blue-800"
-                >
-                  <FaEdit size={20} />
-                </button>
-                <button onClick={() => setShowDeleteModal(true)} className="text-red-600 hover:text-red-800">
-                  <FaTrash size={20} />
-                </button>
-              </div>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-6 mb-6 text-gray-600">
-            <button onClick={handleLike} className={`flex items-center gap-2 ${liked ? 'text-red-500' : 'hover:text-red-500'} transition`}>
-              <FaHeart /> {blog.likeCount || 0}
-            </button>
-            <button onClick={scrollToComments} className="flex items-center gap-2 hover:text-blue-600 transition">
-              <FaComment /> {blog.commentCount || 0}
-            </button>
-            <span className="flex items-center gap-2">
-              <FaClock /> {blog.readingTime} {t('min read')}
-            </span>
-            {user?._id !== blog.author?._id && (
-              <button onClick={handleRepost} className="flex items-center gap-2 hover:text-green-600 transition">
-                <FaRetweet /> {t('Repost')}
-              </button>
-            )}
-            <button onClick={handleShare} className="flex items-center gap-2 hover:text-blue-600 transition">
-              <FaShare /> {t('Share')}
-            </button>
-          </div>
 
-          {/* Share Modal */}
-          {showShareModal && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowShareModal(false)}>
-              <div className="bg-white rounded-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-xl font-bold text-gray-800">{t('Share this post')}</h3>
-                  <button onClick={() => setShowShareModal(false)} className="text-gray-500 hover:text-gray-700">
-                    <FaTimes size={24} />
-                  </button>
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  {shareOptions.map((option, index) => (
-                    <button
-                      key={index}
-                      onClick={option.action}
-                      className={`${option.color} text-white p-4 rounded-lg flex flex-col items-center gap-2 transition`}
-                    >
-                      {option.icon}
-                      <span className="text-xs font-semibold">{option.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {blog.tags?.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-6">
-              {blog.tags.map((tag, idx) => (
-                <span key={idx} className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-sm">
-                  {tag}
-                </span>
-              ))}
-            </div>
-          )}
-          
-          <AudioControls text={blog.content} content={blog.content} blogId={blog._id} />
-          
-          <hr className="my-8" />
-          
-          <div className="flex items-center justify-between mb-6">
-            <h2 id="comments-section" className="text-2xl font-bold">{t('Comments')} ({comments.length})</h2>
-            <div className="relative">
-              <button
-                onClick={() => setShowSortMenu(!showSortMenu)}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition text-sm font-medium"
-              >
-                <BiMenuAltRight className="w-4 h-4" />
-                {sortBy === 'newest' ? t('Newest First') : t('Most Engaging')}
-              </button>
-              {showSortMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+            <div className="flex items-center justify-between mb-6">
+              <div></div>
+              {user?._id === blog.author?._id && (
+                <div className="flex gap-2">
                   <button
-                    onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 rounded-t-lg"
+                    onClick={() => {
+                      setEditLoading(true);
+                      navigate(`/edit/${id}`);
+                    }}
+                    className="text-blue-600 hover:text-blue-800"
                   >
-                    {t('Most Engaging')}
+                    <FaEdit size={20} />
                   </button>
-                  <button
-                    onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 rounded-b-lg"
-                  >
-                    {t('Newest First')}
+                  <button onClick={() => setShowDeleteModal(true)} className="text-red-600 hover:text-red-800">
+                    <FaTrash size={20} />
                   </button>
                 </div>
               )}
             </div>
-          </div>
-          
-          {user && (
-            <form onSubmit={handleComment} className="mb-8">
-              <div className="flex gap-3">
-                <Avatar user={user} size="sm" />
-                <div className="flex-1">
-                  <textarea
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                    rows="3"
-                    placeholder={t('Write a comment...')}
-                    required
-                  />
-                  {newComment.trim() && (
-                    <div className="flex gap-2 mt-3">
+
+            <div className="flex items-center gap-6 mb-6 text-gray-600">
+              <button onClick={handleLike} className={`flex items-center gap-2 ${liked ? 'text-red-500' : 'hover:text-red-500'} transition`}>
+                <FaHeart /> {blog.likeCount || 0}
+              </button>
+              <button onClick={scrollToComments} className="flex items-center gap-2 hover:text-blue-600 transition">
+                <FaComment /> {blog.commentCount || 0}
+              </button>
+              <span className="flex items-center gap-2">
+                <FaClock /> {blog.readingTime} {t('min read')}
+              </span>
+              {user?._id !== blog.author?._id && (
+                <button onClick={handleRepost} className="flex items-center gap-2 hover:text-green-600 transition">
+                  <FaRetweet /> {t('Repost')}
+                </button>
+              )}
+              <button onClick={handleShare} className="flex items-center gap-2 hover:text-blue-600 transition">
+                <FaShare /> {t('Share')}
+              </button>
+            </div>
+
+            {/* Share Modal */}
+            {showShareModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowShareModal(false)}>
+                <div className="bg-white rounded-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-gray-800">{t('Share this post')}</h3>
+                    <button onClick={() => setShowShareModal(false)} className="text-gray-500 hover:text-gray-700">
+                      <FaTimes size={24} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    {shareOptions.map((option, index) => (
                       <button
-                        type="button"
-                        onClick={() => setNewComment('')}
-                        className="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                        key={index}
+                        onClick={option.action}
+                        className={`${option.color} text-white p-4 rounded-lg flex flex-col items-center gap-2 transition`}
                       >
-                        {t('Cancel')}
+                        {option.icon}
+                        <span className="text-xs font-semibold">{option.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {blog.tags?.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-6">
+                {blog.tags.map((tag, idx) => (
+                  <span key={idx} className="bg-blue-100 text-blue-600 px-3 py-1 rounded-full text-sm">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <AudioControls text={blog.content} content={blog.content} blogId={blog._id} />
+
+            <div className="prose max-w-none mb-8">
+              <ReactMarkdown>{blog.content}</ReactMarkdown>
+            </div>
+
+            {blog.videoUrl && (
+              <div className="mb-6">
+                <div className="aspect-video w-full rounded-lg overflow-hidden shadow-lg">
+                  <iframe
+                    src={blog.videoUrl.includes('youtube.com') || blog.videoUrl.includes('youtu.be')
+                      ? `https://www.youtube.com/embed/${blog.videoUrl.includes('youtu.be') ? blog.videoUrl.split('/').pop() : new URLSearchParams(new URL(blog.videoUrl).search).get('v')}`
+                      : blog.videoUrl.includes('vimeo.com')
+                        ? `https://player.vimeo.com/video/${blog.videoUrl.split('/').pop()}`
+                        : blog.videoUrl}
+                    className="w-full h-full"
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    title="Video"
+                  />
+                </div>
+              </div>
+            )}
+
+            <hr className="my-8" />
+
+            <div className="flex items-center justify-between mb-6">
+              <h2 id="comments-section" className="text-2xl font-bold">{t('Comments')} ({comments.length})</h2>
+              <div className="relative">
+                  <button
+                    onClick={() => setShowSortMenu(!showSortMenu)}
+                    className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition text-sm font-medium"
+                  >
+                    <BiMenuAltRight className="w-4 h-4" />
+                    {sortBy === 'newest' ? t('Newest First') : t('Most Engaging')}
+                  </button>
+                  {showSortMenu && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                      <button
+                        onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 rounded-t-lg"
+                      >
+                        {t('Most Engaging')}
                       </button>
                       <button
-                        type="submit"
-                        className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                        onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 rounded-b-lg"
                       >
-                        {t('Add Comment')}
+                        {t('Newest First')}
                       </button>
                     </div>
                   )}
                 </div>
               </div>
-            </form>
-          )}
           
-          <div className="space-y-6 pb-24 md:pb-8">
-            {sortedComments.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <FaComment className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg">{t('No comments yet. Be the first to comment!')}</p>
-              </div>
-            ) : (
-              sortedComments.map((comment) => (
-                <EnhancedComment
-                  key={comment._id}
-                  comment={comment}
-                  isOwner={user?._id === blog?.author._id}
-                  onReply={handleReply}
-                  onLike={handleLikeComment}
-                  onHeart={handleHeartComment}
-                  onPin={handlePinComment}
-                  onDelete={handleDeleteComment}
-                  onEdit={handleEditComment}
-                  onSaveEdit={handleSaveEdit}
-                  editingComment={editingComment}
-                  editText={editText}
-                  setEditText={setEditText}
-                  onLoadReplies={fetchReplies}
-                  replies={replies[comment._id] || []}
-                  showReplies={showReplies[comment._id]}
-                  loadingReplies={loadingReplies[comment._id]}
-                  deletingComment={deletingComment}
-                  postOwner={blog?.author}
-                />
-              ))
+          {user && (
+              <form onSubmit={handleComment} className="mb-8">
+                <div className="flex gap-3">
+                  <Avatar user={user} size="sm" />
+                  <div className="flex-1">
+                    <textarea
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      rows="3"
+                      placeholder={t('Write a comment...')}
+                      required
+                    />
+                    {newComment.trim() && (
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          type="button"
+                          onClick={() => setNewComment('')}
+                          className="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                        >
+                          {t('Cancel')}
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                        >
+                          {t('Add Comment')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </form>
             )}
-          </div>
+
+            <div className="space-y-6 pb-24 md:pb-8">
+              {sortedComments.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <FaComment className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg">{t('No comments yet. Be the first to comment!')}</p>
+                </div>
+              ) : (
+                sortedComments.map((comment) => (
+                  <EnhancedComment
+                    key={comment._id}
+                    comment={comment}
+                    isOwner={user?._id === blog?.author._id}
+                    onReply={handleReply}
+                    onLike={handleLikeComment}
+                    onHeart={handleHeartComment}
+                    onPin={handlePinComment}
+                    onDelete={handleDeleteComment}
+                    onEdit={handleEditComment}
+                    onSaveEdit={handleSaveEdit}
+                    editingComment={editingComment}
+                    editText={editText}
+                    setEditText={setEditText}
+                    onLoadReplies={fetchReplies}
+                    replies={replies[comment._id] || []}
+                    showReplies={showReplies[comment._id]}
+                    loadingReplies={loadingReplies[comment._id]}
+                    deletingComment={deletingComment}
+                    postOwner={blog?.author}
+                  />
+                ))
+              )}
+            </div>
           </div>
         </div>
 
         {/* Image Lightbox */}
         {showImageLightbox && blog.coverImage && (
-          <div 
+          <div
             className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4"
             onClick={() => setShowImageLightbox(false)}
           >
-            <button 
+            <button
               onClick={() => setShowImageLightbox(false)}
               className="absolute top-4 right-4 text-white hover:text-gray-300 transition"
             >
               <FaTimes size={32} />
             </button>
-            <img 
-              src={blog.coverImage} 
+            <img
+              src={blog.coverImage}
               alt={blog.title}
               className="max-w-full max-h-full object-contain"
               onClick={(e) => e.stopPropagation()}

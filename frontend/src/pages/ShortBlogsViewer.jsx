@@ -13,6 +13,7 @@ import { FaPlay, FaPause } from 'react-icons/fa6';
 import { HiMiniSpeakerWave, HiMiniSpeakerXMark } from 'react-icons/hi2';
 import { VscSaveAs } from 'react-icons/vsc';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
+import { BsFillPlayFill } from 'react-icons/bs';
 import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
@@ -69,6 +70,27 @@ const ShortBlogsViewer = () => {
   const isInitialLoad = useRef(true);
   const lastScrollTop = useRef(0);
   const scrollVelocity = useRef(0);
+
+  const getVideoTitle = (url) => {
+    if (!url) return null;
+    
+    try {
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        const videoId = url.includes('youtu.be') 
+          ? url.split('youtu.be/')[1]?.split('?')[0]
+          : new URL(url).searchParams.get('v');
+        return `YouTube Video ${videoId ? `(${videoId.substring(0, 8)}...)` : ''}`;
+      } else if (url.includes('vimeo.com')) {
+        const videoId = url.split('vimeo.com/')[1]?.split('?')[0];
+        return `Vimeo Video ${videoId ? `(${videoId})` : ''}`;
+      } else {
+        const fileName = url.split('/').pop()?.split('?')[0];
+        return fileName || 'Video';
+      }
+    } catch {
+      return 'Video';
+    }
+  };
 
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -1033,13 +1055,26 @@ const ShortBlogsViewer = () => {
                         </div>
                       </div>
 
-                      {blog.metaDescription && (
-                        <button
-                          onClick={() => index === currentIndex && handleDescriptionClick()}
-                          className="text-white/70 text-xs text-center line-clamp-2 hover:underline cursor-pointer"
-                        >
-                          {blog.metaDescription}
-                        </button>
+                      {(blog.metaDescription || blog.videoUrl) && (
+                        <div className="space-y-1">
+                          {blog.metaDescription && (
+                            <button
+                              onClick={() => index === currentIndex && handleDescriptionClick()}
+                              className="text-white/70 text-xs text-center line-clamp-2 hover:underline cursor-pointer w-full"
+                            >
+                              {blog.metaDescription}
+                            </button>
+                          )}
+                          {blog.videoUrl && (
+                            <button
+                              onClick={() => index === currentIndex && handleDescriptionClick()}
+                              className="text-blue-300 text-xs text-center hover:underline cursor-pointer w-full flex items-center justify-center gap-1"
+                            >
+                              <BsFillPlayFill className="w-4 h-4" />
+                              {getVideoTitle(blog.videoUrl)}
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1247,44 +1282,71 @@ const ShortBlogsViewer = () => {
                           </button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                          {currentBlog?.metaDescription ? (
-                            <>
-                              <div>
-                                <p className="text-gray-700 dark:text-gray-300">{currentBlog.metaDescription}</p>
-                              </div>
-                              {currentBlog.tags?.length > 0 && (
-                                <div>
-                                  <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Tags</h4>
-                                  <div className="flex flex-wrap gap-2">
-                                    {currentBlog.tags.map((tag, idx) => (
-                                      <span key={idx} className="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full text-sm">
-                                        #{tag}
-                                      </span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
-                                <div className="flex items-center gap-2">
-                                  <AiOutlineLike className="w-5 h-5" />
-                                  <span>{currentBlog.likes?.length || 0} likes</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <FiEye className="w-5 h-5" />
-                                  <span>{currentBlog.views || 0} views</span>
-                                </div>
-                                <div>
-                                  <span>{new Date(currentBlog.createdAt).toLocaleDateString()}</span>
-                                </div>
-                              </div>
-                            </>
-                          ) : (
-                            <div className="animate-pulse space-y-4">
-                              <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-3/4"></div>
-                              <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-full"></div>
-                              <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-5/6"></div>
+                          {currentBlog?.metaDescription && (
+                            <div>
+                              <p className="text-gray-700 dark:text-gray-300">{currentBlog.metaDescription}</p>
                             </div>
                           )}
+                          {currentBlog?.videoUrl && (
+                            <div>
+                              <h4 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                                <BsFillPlayFill className="w-5 h-5" />
+                                {getVideoTitle(currentBlog.videoUrl)}
+                              </h4>
+                              <div className="relative w-full rounded-lg overflow-hidden shadow-lg" style={{ paddingBottom: '56.25%' }}>
+                                {currentBlog.videoUrl.includes('youtube.com') || currentBlog.videoUrl.includes('youtu.be') ? (
+                                  <iframe
+                                    src={currentBlog.videoUrl.includes('youtu.be') 
+                                      ? `https://www.youtube.com/embed/${currentBlog.videoUrl.split('youtu.be/')[1].split('?')[0]}`
+                                      : currentBlog.videoUrl.replace('watch?v=', 'embed/')}
+                                    className="absolute top-0 left-0 w-full h-full"
+                                    frameBorder="0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                  />
+                                ) : currentBlog.videoUrl.includes('vimeo.com') ? (
+                                  <iframe
+                                    src={`https://player.vimeo.com/video/${currentBlog.videoUrl.split('vimeo.com/')[1]}`}
+                                    className="absolute top-0 left-0 w-full h-full"
+                                    frameBorder="0"
+                                    allow="autoplay; fullscreen; picture-in-picture"
+                                    allowFullScreen
+                                  />
+                                ) : (
+                                  <video
+                                    src={currentBlog.videoUrl}
+                                    controls
+                                    className="absolute top-0 left-0 w-full h-full"
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          )}
+                          {currentBlog?.tags?.length > 0 && (
+                            <div>
+                              <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Tags</h4>
+                              <div className="flex flex-wrap gap-2">
+                                {currentBlog.tags.map((tag, idx) => (
+                                  <span key={idx} className="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full text-sm">
+                                    #{tag}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
+                            <div className="flex items-center gap-2">
+                              <AiOutlineLike className="w-5 h-5" />
+                              <span>{currentBlog.likes?.length || 0} likes</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <FiEye className="w-5 h-5" />
+                              <span>{currentBlog.views || 0} views</span>
+                            </div>
+                            <div>
+                              <span>{new Date(currentBlog.createdAt).toLocaleDateString()}</span>
+                            </div>
+                          </div>
                         </div>
                       </>
                     )}
@@ -1472,13 +1534,26 @@ const ShortBlogsViewer = () => {
                       </div>
                     </div>
 
-                    {blog.metaDescription && (
-                      <button
-                        onClick={() => index === currentIndex && handleDescriptionClick()}
-                        className="text-white/70 text-xs text-center line-clamp-2 hover:underline cursor-pointer"
-                      >
-                        {blog.metaDescription}
-                      </button>
+                    {(blog.metaDescription || blog.videoUrl) && (
+                      <div className="space-y-1">
+                        {blog.metaDescription && (
+                          <button
+                            onClick={() => index === currentIndex && handleDescriptionClick()}
+                            className="text-white/70 text-xs text-center line-clamp-2 hover:underline cursor-pointer w-full"
+                          >
+                            {blog.metaDescription}
+                          </button>
+                        )}
+                        {blog.videoUrl && (
+                          <button
+                            onClick={() => index === currentIndex && handleDescriptionClick()}
+                            className="text-blue-300 text-xs text-center hover:underline cursor-pointer w-full flex items-center justify-center gap-1"
+                          >
+                            <BsFillPlayFill className="w-4 h-4" />
+                            {getVideoTitle(blog.videoUrl)}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1572,10 +1647,47 @@ const ShortBlogsViewer = () => {
                     </button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    <div>
-                      <p className="text-gray-700 dark:text-gray-300">{currentBlog.metaDescription}</p>
-                    </div>
-                    {currentBlog.tags?.length > 0 && (
+                    {currentBlog?.metaDescription && (
+                      <div>
+                        <p className="text-gray-700 dark:text-gray-300">{currentBlog.metaDescription}</p>
+                      </div>
+                    )}
+                    {currentBlog?.videoUrl && (
+                      <div>
+                        <h4 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                          <BsFillPlayFill className="w-5 h-5" />
+                          {getVideoTitle(currentBlog.videoUrl)}
+                        </h4>
+                        <div className="relative w-full rounded-lg overflow-hidden shadow-lg" style={{ paddingBottom: '56.25%' }}>
+                          {currentBlog.videoUrl.includes('youtube.com') || currentBlog.videoUrl.includes('youtu.be') ? (
+                            <iframe
+                              src={currentBlog.videoUrl.includes('youtu.be') 
+                                ? `https://www.youtube.com/embed/${currentBlog.videoUrl.split('youtu.be/')[1].split('?')[0]}`
+                                : currentBlog.videoUrl.replace('watch?v=', 'embed/')}
+                              className="absolute top-0 left-0 w-full h-full"
+                              frameBorder="0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          ) : currentBlog.videoUrl.includes('vimeo.com') ? (
+                            <iframe
+                              src={`https://player.vimeo.com/video/${currentBlog.videoUrl.split('vimeo.com/')[1]}`}
+                              className="absolute top-0 left-0 w-full h-full"
+                              frameBorder="0"
+                              allow="autoplay; fullscreen; picture-in-picture"
+                              allowFullScreen
+                            />
+                          ) : (
+                            <video
+                              src={currentBlog.videoUrl}
+                              controls
+                              className="absolute top-0 left-0 w-full h-full"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {currentBlog?.tags?.length > 0 && (
                       <div>
                         <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Tags</h4>
                         <div className="flex flex-wrap gap-2">

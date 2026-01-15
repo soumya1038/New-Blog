@@ -14,6 +14,7 @@ import { IoIosCheckmarkCircle } from 'react-icons/io';
 import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish } from 'react-icons/md';
 import { TbBrandBlogger } from 'react-icons/tb';
 import { CiSaveDown2 } from 'react-icons/ci';
+import { BsFillCalendarRangeFill } from 'react-icons/bs';
 import { BarLoader, GridLoader } from 'react-spinners';
 
 const EditBlog = () => {
@@ -42,6 +43,10 @@ const EditBlog = () => {
   const [originalMode, setOriginalMode] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
   const [showCustomCategory, setShowCustomCategory] = useState(false);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTime, setScheduledTime] = useState('');
+  const [videoUrl, setVideoUrl] = useState('');
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const autoSaveTimerRef = useRef(null);
@@ -113,6 +118,13 @@ const EditBlog = () => {
       setOldCloudinaryPublicId(data.blog.cloudinaryPublicId || '');
       setMetaDescription(data.blog.metaDescription || '');
       setIsDraft(data.blog.isDraft);
+      setIsScheduled(data.blog.isScheduled || false);
+      setVideoUrl(data.blog.videoUrl || '');
+      if (data.blog.isScheduled && data.blog.scheduledPublishDate) {
+        const scheduleDate = new Date(data.blog.scheduledPublishDate);
+        setScheduledDate(scheduleDate.toISOString().split('T')[0]);
+        setScheduledTime(scheduleDate.toTimeString().slice(0, 5));
+      }
     } catch (err) {
       setError('Failed to load content');
     } finally {
@@ -132,6 +144,7 @@ const EditBlog = () => {
         tags: tags.join(', '),
         category,
         coverImage,
+        videoUrl,
         metaDescription,
         isDraft: true 
       });
@@ -159,10 +172,24 @@ const EditBlog = () => {
       return;
     }
 
+    // Validate scheduled date
+    if (isScheduled) {
+      if (!scheduledDate || !scheduledTime) {
+        toast.error('Please select both date and time for scheduling');
+        return;
+      }
+      const scheduleDateTime = new Date(`${scheduledDate}T${scheduledTime}`);
+      if (scheduleDateTime <= new Date()) {
+        toast.error('Scheduled date must be in the future');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       let uploadedImageUrl = coverImage;
       let cloudinaryPublicId = '';
+      const scheduledPublishDate = isScheduled ? new Date(`${scheduledDate}T${scheduledTime}`).toISOString() : null;
 
       if (coverImageFile) {
         if (oldCloudinaryPublicId) {
@@ -189,15 +216,18 @@ const EditBlog = () => {
           category,
           coverImage: uploadedImageUrl,
           cloudinaryPublicId: isShortMode ? null : (cloudinaryPublicId || undefined),
+          videoUrl,
           metaDescription,
-          isDraft: false
+          isDraft: false,
+          isScheduled,
+          scheduledPublishDate
         });
         const deleteEndpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
         await api.delete(deleteEndpoint);
         const newId = isShortMode ? newData.short._id : newData.blog._id;
         setHasUnsavedChanges(false);
-        toast.success(`Converted to ${isShortMode ? 'short' : 'blog'} successfully!`);
-        setTimeout(() => navigate(isShortMode ? `/short-blogs/${newId}` : `/blog/${newId}`), 1000);
+        toast.success(isScheduled ? `Scheduled as ${isShortMode ? 'short' : 'blog'} successfully!` : `Converted to ${isShortMode ? 'short' : 'blog'} successfully!`);
+        setTimeout(() => navigate(isScheduled ? '/drafts' : (isShortMode ? `/short-blogs/${newId}` : `/blog/${newId}`)), 1000);
       } else {
         const endpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
         await api.put(endpoint, { 
@@ -207,12 +237,15 @@ const EditBlog = () => {
           category,
           coverImage: uploadedImageUrl,
           cloudinaryPublicId: cloudinaryPublicId || undefined,
+          videoUrl,
           metaDescription,
-          isDraft: false 
+          isDraft: false,
+          isScheduled,
+          scheduledPublishDate
         });
         setHasUnsavedChanges(false);
-        toast.success(`${isShortMode ? 'Short' : 'Blog'} updated successfully!`);
-        setTimeout(() => navigate(isShortMode ? `/short-blogs/${id}` : `/blog/${id}`), 1000);
+        toast.success(isScheduled ? `${isShortMode ? 'Short' : 'Blog'} scheduled successfully!` : `${isShortMode ? 'Short' : 'Blog'} updated successfully!`);
+        setTimeout(() => navigate(isScheduled ? '/drafts' : (isShortMode ? `/short-blogs/${id}` : `/blog/${id}`)), 1000);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update blog');
@@ -231,6 +264,9 @@ const EditBlog = () => {
     try {
       let uploadedImageUrl = coverImage;
       let cloudinaryPublicId = '';
+      const scheduledPublishDate = isScheduled && scheduledDate && scheduledTime 
+        ? new Date(`${scheduledDate}T${scheduledTime}`).toISOString() 
+        : null;
 
       if (coverImageFile) {
         if (oldCloudinaryPublicId) {
@@ -261,8 +297,11 @@ const EditBlog = () => {
         category,
         coverImage: uploadedImageUrl,
         cloudinaryPublicId: cloudinaryPublicId || undefined,
+        videoUrl,
         metaDescription,
-        isDraft: true 
+        isDraft: true,
+        isScheduled,
+        scheduledPublishDate
       });
       
       if (coverImageFile) {
@@ -271,7 +310,7 @@ const EditBlog = () => {
       
       setHasUnsavedChanges(false);
       toast.success('Draft saved successfully!');
-      setTimeout(() => navigate('/drafts'), 1000);
+      setTimeout(() => navigate('/drafts', { state: { refreshDrafts: true } }), 1000);
     } catch (err) {
       toast.error('Failed to save draft');
       setError('Failed to save draft');
@@ -507,6 +546,18 @@ const EditBlog = () => {
             </div>
 
             <div>
+              <label className="block text-gray-700 dark:text-gray-300 mb-2 font-semibold">📹 Video URL <span className="text-xs text-gray-500 font-normal">(Optional)</span></label>
+              <input
+                type="url"
+                value={videoUrl}
+                onChange={(e) => setVideoUrl(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                placeholder="https://www.youtube.com/watch?v=... or https://vimeo.com/..."
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Supports YouTube, Vimeo, and direct video links</p>
+            </div>
+
+            <div>
               <label className="block text-gray-700 mb-2 font-semibold">SEO Meta Description</label>
               <textarea
                 value={metaDescription}
@@ -608,6 +659,51 @@ const EditBlog = () => {
               <p className="text-xs text-gray-500 mt-1">Press Enter or comma to add tags</p>
             </div>
             
+            {/* Schedule Publication Section */}
+            <div className="border-t border-gray-200 pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <BsFillCalendarRangeFill className="text-blue-600 w-5 h-5" />
+                  <label className="block text-gray-700 font-semibold">{t('Schedule Publication')}</label>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isScheduled}
+                    onChange={(e) => setIsScheduled(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+              
+              {isScheduled && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <label className="block text-gray-700 mb-2 text-sm">{t('Publish Date')}</label>
+                    <input
+                      type="date"
+                      value={scheduledDate}
+                      onChange={(e) => setScheduledDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required={isScheduled}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-gray-700 mb-2 text-sm">{t('Publish Time')}</label>
+                    <input
+                      type="time"
+                      value={scheduledTime}
+                      onChange={(e) => setScheduledTime(e.target.value)}
+                      className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required={isScheduled}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
                 <button
@@ -616,7 +712,7 @@ const EditBlog = () => {
                   className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <MdOutlinePublish className="w-5 h-5" />
-                  {loading ? t('Updating...') : (isDraft ? t('Publish') : t('Update'))}
+                  {loading ? t('Updating...') : (isScheduled ? t('Schedule') : (isDraft ? t('Publish') : t('Update')))}
                 </button>
                 
                 <button

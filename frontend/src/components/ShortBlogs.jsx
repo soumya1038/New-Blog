@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
-import { BsThreeDotsVertical } from 'react-icons/bs';
+import { BsThreeDotsVertical, BsFillPlayFill } from 'react-icons/bs';
 import { FiEye } from 'react-icons/fi';
 import { GrView } from 'react-icons/gr';
 
@@ -23,6 +23,27 @@ const ShortBlogs = ({ blogs = [], onClose }) => {
     return () => scrollContainer.removeEventListener('wheel', handleWheel);
   }, []);
   
+  const getVideoTitle = (url) => {
+    if (!url) return null;
+    
+    try {
+      if (url.includes('youtube.com') || url.includes('youtu.be')) {
+        const videoId = url.includes('youtu.be') 
+          ? url.split('youtu.be/')[1]?.split('?')[0]
+          : new URL(url).searchParams.get('v');
+        return `YouTube Video ${videoId ? `(${videoId.substring(0, 8)}...)` : ''}`;
+      } else if (url.includes('vimeo.com')) {
+        const videoId = url.split('vimeo.com/')[1]?.split('?')[0];
+        return `Vimeo Video ${videoId ? `(${videoId})` : ''}`;
+      } else {
+        const fileName = url.split('/').pop()?.split('?')[0];
+        return fileName || 'Video';
+      }
+    } catch {
+      return 'Video';
+    }
+  };
+
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
     'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
@@ -148,6 +169,15 @@ const ShortBlogs = ({ blogs = [], onClose }) => {
                 <p className="text-white/60 text-xs line-clamp-1 mb-2">
                   {blog.metaDescription}
                 </p>
+              )}
+
+              {blog.videoUrl && (
+                <div className="flex items-center gap-1 mb-2">
+                  <BsFillPlayFill className="w-3 h-3 text-blue-300" />
+                  <p className="text-blue-300 text-xs line-clamp-1">
+                    {getVideoTitle(blog.videoUrl)}
+                  </p>
+                </div>
               )}
 
               <div className="flex items-center gap-1.5 text-white/80">
