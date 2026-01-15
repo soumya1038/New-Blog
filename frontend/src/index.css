@@ -260,3 +260,20 @@ code {
 * {
   scrollbar-width: none;
 }
+
+/* Scroll snap utilities */
+.snap-y {
+  scroll-snap-type: y mandatory;
+}
+
+.snap-mandatory {
+  scroll-snap-stop: always;
+}
+
+.snap-start {
+  scroll-snap-align: start;
+}
+
+.snap-always {
+  scroll-snap-stop: always;
+}

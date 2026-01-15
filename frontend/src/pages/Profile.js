@@ -1200,14 +1200,20 @@ const Profile = () => {
           <div className="border-t pt-6 mb-6">
             <div className="flex items-center gap-4 mb-4">
               <button
-                onClick={() => setShowPasswordForm(!showPasswordForm)}
+                onClick={() => {
+                  setShowPasswordForm(!showPasswordForm);
+                  setShowForgotSection(false);
+                }}
                 className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
               >
                 <FaKey /> {t('Change Password')}
               </button>
               <span className="text-gray-400 dark:text-gray-600">|</span>
               <button
-                onClick={() => setShowForgotSection(!showForgotSection)}
+                onClick={() => {
+                  setShowForgotSection(!showForgotSection);
+                  setShowPasswordForm(false);
+                }}
                 className="flex items-center gap-2 text-purple-600 dark:text-purple-400 hover:text-purple-800 dark:hover:text-purple-300"
               >
                 <FaKey /> {t('Forgot Password')}

@@ -18,6 +18,7 @@ import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
 import EnhancedComment from '../components/EnhancedComment';
+import './ShortBlogsViewer.css';
 
 const ShortBlogsViewer = () => {
   const { id } = useParams();
@@ -58,13 +59,16 @@ const ShortBlogsViewer = () => {
   const [showOwnerShorts, setShowOwnerShorts] = useState(false);
   const [ownerShorts, setOwnerShorts] = useState([]);
   const [loadingOwnerShorts, setLoadingOwnerShorts] = useState(false);
-  
-  // YouTube Shorts scrolling state
+  const [loadingComments, setLoadingComments] = useState(false);
+
   const containerRef = useRef(null);
-  const [isScrolling, setIsScrolling] = useState(false);
-  const [scrollDirection, setScrollDirection] = useState(0);
   const scrollTimeoutRef = useRef(null);
-  const lastScrollY = useRef(0);
+  const touchStartY = useRef(0);
+  const isUserScrolling = useRef(false);
+  const isProgrammaticScroll = useRef(false);
+  const isInitialLoad = useRef(true);
+  const lastScrollTop = useRef(0);
+  const scrollVelocity = useRef(0);
 
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -102,15 +106,14 @@ const ShortBlogsViewer = () => {
   useEffect(() => {
     if (id && blogs.length > 0) {
       const index = blogs.findIndex(blog => blog._id === id);
-      if (index !== -1) {
+      if (index !== -1 && containerRef.current) {
+        isProgrammaticScroll.current = true;
         setCurrentIndex(index);
-        // Scroll to the specific short without animation
-        if (containerRef.current) {
-          containerRef.current.scrollTo({
-            top: index * window.innerHeight,
-            behavior: 'auto'
-          });
-        }
+        containerRef.current.scrollTop = index * containerRef.current.clientHeight;
+        setTimeout(() => {
+          isProgrammaticScroll.current = false;
+          isInitialLoad.current = false;
+        }, 100);
       }
     }
   }, [id, blogs]);
@@ -121,78 +124,139 @@ const ShortBlogsViewer = () => {
     }
   }, [currentIndex, blogs]);
 
-  // YouTube Shorts scrolling logic
+  // Scroll detection with velocity
   useEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
-
-    let lastScrollTop = 0;
-    let scrollVelocity = 0;
-    let isScrolling = false;
-    let scrollTimeout;
-    let velocityTimeout;
+    if (!container || blogs.length === 0) return;
 
     const handleScroll = () => {
+      if (isProgrammaticScroll.current) return;
+      
       const currentScrollTop = container.scrollTop;
-      const containerHeight = container.clientHeight;
+      scrollVelocity.current = currentScrollTop - lastScrollTop.current;
+      lastScrollTop.current = currentScrollTop;
       
-      // Calculate velocity
-      scrollVelocity = currentScrollTop - lastScrollTop;
-      lastScrollTop = currentScrollTop;
-      
-      isScrolling = true;
-      clearTimeout(scrollTimeout);
-      clearTimeout(velocityTimeout);
-      
-      // Reset velocity after a short delay
-      velocityTimeout = setTimeout(() => {
-        scrollVelocity = 0;
-      }, 50);
-      
-      // Detect scroll end and snap
-      scrollTimeout = setTimeout(() => {
-        isScrolling = false;
+      clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = setTimeout(() => {
+        const scrollTop = container.scrollTop;
+        const itemHeight = container.clientHeight;
+        let newIndex = Math.round(scrollTop / itemHeight);
         
-        const currentPosition = currentScrollTop / containerHeight;
-        let targetIndex;
-        
-        // Velocity-based snapping like YouTube
-        if (Math.abs(scrollVelocity) > 5) {
-          // High velocity - snap in scroll direction
-          targetIndex = scrollVelocity > 0 
-            ? Math.ceil(currentPosition)
-            : Math.floor(currentPosition);
-        } else {
-          // Low velocity - snap to nearest
-          targetIndex = Math.round(currentPosition);
+        // Smart snap based on velocity
+        if (Math.abs(scrollVelocity.current) > 5) {
+          newIndex = scrollVelocity.current > 0 
+            ? Math.ceil(scrollTop / itemHeight)
+            : Math.floor(scrollTop / itemHeight);
         }
         
-        // Clamp to valid range
-        targetIndex = Math.max(0, Math.min(blogs.length - 1, targetIndex));
-        
-        if (targetIndex !== currentIndex) {
-          setCurrentIndex(targetIndex);
-          navigate(`/shorts/${blogs[targetIndex]._id}`, { replace: true });
-        }
-        
-        // Smooth snap to target
-        const targetScrollTop = targetIndex * containerHeight;
-        if (Math.abs(currentScrollTop - targetScrollTop) > 10) {
-          container.scrollTo({
-            top: targetScrollTop,
-            behavior: 'smooth'
+        newIndex = Math.max(0, Math.min(newIndex, blogs.length - 1));
+
+        if (newIndex !== currentIndex) {
+          isProgrammaticScroll.current = true;
+          setCurrentIndex(newIndex);
+          container.scrollTo({ 
+            top: newIndex * itemHeight, 
+            behavior: 'smooth' 
           });
+          navigate(`/shorts/${blogs[newIndex]._id}`, { replace: true });
+          setTimeout(() => {
+            isProgrammaticScroll.current = false;
+          }, 400);
         }
-      }, 150);
+        scrollVelocity.current = 0;
+      }, 100);
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => {
       container.removeEventListener('scroll', handleScroll);
-      clearTimeout(scrollTimeout);
-      clearTimeout(velocityTimeout);
+      clearTimeout(scrollTimeoutRef.current);
     };
   }, [blogs, currentIndex, navigate]);
+
+  // Touch gestures with swipe detection
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let touchStartTime = 0;
+    let touchStartPos = 0;
+
+    const handleTouchStart = (e) => {
+      isUserScrolling.current = true;
+      touchStartTime = Date.now();
+      touchStartPos = e.touches[0].clientY;
+    };
+
+    const handleTouchEnd = (e) => {
+      const touchEndTime = Date.now();
+      const touchEndPos = e.changedTouches[0].clientY;
+      const timeDiff = touchEndTime - touchStartTime;
+      const distance = touchStartPos - touchEndPos;
+      const velocity = Math.abs(distance / timeDiff);
+      
+      // Fast swipe detection
+      if (velocity > 0.5 && Math.abs(distance) > 50) {
+        const container = containerRef.current;
+        const itemHeight = container.clientHeight;
+        const targetIndex = distance > 0 
+          ? Math.min(currentIndex + 1, blogs.length - 1)
+          : Math.max(currentIndex - 1, 0);
+        
+        isProgrammaticScroll.current = true;
+        container.scrollTo({ 
+          top: targetIndex * itemHeight, 
+          behavior: 'smooth' 
+        });
+        setTimeout(() => {
+          isProgrammaticScroll.current = false;
+        }, 400);
+      }
+      
+      setTimeout(() => {
+        isUserScrolling.current = false;
+      }, 150);
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [currentIndex, blogs.length]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      if (e.key === 'ArrowDown' && currentIndex < blogs.length - 1) {
+        e.preventDefault();
+        isProgrammaticScroll.current = true;
+        isUserScrolling.current = true;
+        container.scrollTo({ top: (currentIndex + 1) * container.clientHeight, behavior: 'smooth' });
+        setTimeout(() => { 
+          isUserScrolling.current = false;
+          isProgrammaticScroll.current = false;
+        }, 600);
+      } else if (e.key === 'ArrowUp' && currentIndex > 0) {
+        e.preventDefault();
+        isProgrammaticScroll.current = true;
+        isUserScrolling.current = true;
+        container.scrollTo({ top: (currentIndex - 1) * container.clientHeight, behavior: 'smooth' });
+        setTimeout(() => { 
+          isUserScrolling.current = false;
+          isProgrammaticScroll.current = false;
+        }, 600);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentIndex, blogs.length]);
 
   const fetchShortBlogs = async () => {
     try {
@@ -340,15 +404,9 @@ const ShortBlogsViewer = () => {
             speakNext();
           } else {
             setHighlightedText('');
-            if (isAuto && repeatCount < 3) {
-              setRepeatCount(prev => prev + 1);
-              currentSentence = 0;
-              setTimeout(() => speakNext(), 500);
-            } else {
-              setIsSpeaking(false);
-              setIsPaused(false);
-              setRepeatCount(0);
-            }
+            setIsSpeaking(false);
+            setIsPaused(false);
+            setRepeatCount(0);
           }
         };
 
@@ -377,29 +435,7 @@ const ShortBlogsViewer = () => {
 
 
 
-  const handleTouchStart = (e) => {
-    setTouchStart(e.touches[0].clientY);
-  };
 
-  const handleTouchMove = (e) => {
-    setTouchEnd(e.touches[0].clientY);
-  };
-
-  const handleTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-
-    const distance = touchStart - touchEnd;
-    const threshold = 50;
-
-    if (distance > threshold && currentIndex < blogs.length - 1) {
-      handleNext();
-    } else if (distance < -threshold && currentIndex > 0) {
-      handlePrev();
-    }
-
-    setTouchStart(0);
-    setTouchEnd(0);
-  };
 
   const handleFollow = async (authorId) => {
     if (!user) {
@@ -469,6 +505,7 @@ const ShortBlogsViewer = () => {
   };
 
   const fetchComments = async (blogId) => {
+    setLoadingComments(true);
     try {
       const { data } = await api.get(`/comments/${blogId}?isShort=true`);
       setComments(data.comments || []);
@@ -478,6 +515,8 @@ const ShortBlogsViewer = () => {
       setCommentCount(totalCount);
     } catch (error) {
       console.error('Error fetching comments:', error);
+    } finally {
+      setLoadingComments(false);
     }
   };
 
@@ -486,7 +525,7 @@ const ShortBlogsViewer = () => {
     try {
       const { data } = await api.get(`/comments/${commentId}/replies`);
       setReplies(prev => ({ ...prev, [commentId]: data.replies }));
-      
+
       if (keepOpen) {
         setShowReplies(prev => ({ ...prev, [commentId]: true }));
       } else {
@@ -513,14 +552,14 @@ const ShortBlogsViewer = () => {
         parentComment: parentCommentId,
         replyTo: replyToUserId
       });
-      
+
       // Update parent comment reply count
       setComments(prev => prev.map(comment =>
         comment._id === parentCommentId ?
           { ...comment, replyCount: (comment.replyCount || 0) + 1 } :
           comment
       ));
-      
+
       // Refresh replies and keep them visible
       await fetchReplies(parentCommentId, true);
       setCommentCount(prev => prev + 1);
@@ -536,12 +575,12 @@ const ShortBlogsViewer = () => {
     }
     try {
       const { data } = await api.post(`/comments/${commentId}/like`);
-      
+
       // Update main comments
       setComments(prev => prev.map(comment =>
         comment._id === commentId ? { ...comment, likes: data.likes } : comment
       ));
-      
+
       // Update replies
       setReplies(prev => {
         const newReplies = { ...prev };
@@ -598,13 +637,10 @@ const ShortBlogsViewer = () => {
   const handleCommentClick = () => {
     const currentBlog = blogs[currentIndex];
     if (!currentBlog) return;
-
     setShowDescription(false);
     setShowOwnerShorts(false);
     setShowComments(true);
-    if (comments.length === 0) {
-      fetchComments(currentBlog._id);
-    }
+    fetchComments(currentBlog._id);
   };
 
   useEffect(() => {
@@ -618,6 +654,21 @@ const ShortBlogsViewer = () => {
       fetchComments(blogs[currentIndex]._id);
     }
   }, [blogs, currentIndex]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    if (showComments || showDescription || showOwnerShorts) {
+      container.style.overflow = 'hidden';
+    } else {
+      container.style.overflow = 'scroll';
+    }
+
+    return () => {
+      if (container) container.style.overflow = 'scroll';
+    };
+  }, [showComments, showDescription, showOwnerShorts]);
 
   const handleDescriptionClick = () => {
     setShowComments(false);
@@ -712,26 +763,28 @@ const ShortBlogsViewer = () => {
   }, [comments, sortBy]);
 
   const handleNext = () => {
-    if (currentIndex < blogs.length - 1 && containerRef.current) {
-      const nextIndex = currentIndex + 1;
-      setCurrentIndex(nextIndex);
-      navigate(`/shorts/${blogs[nextIndex]._id}`, { replace: true });
-      containerRef.current.scrollTo({
-        top: nextIndex * window.innerHeight,
-        behavior: 'smooth'
-      });
+    const container = containerRef.current;
+    if (container && currentIndex < blogs.length - 1) {
+      isProgrammaticScroll.current = true;
+      isUserScrolling.current = true;
+      container.scrollTo({ top: (currentIndex + 1) * container.clientHeight, behavior: 'smooth' });
+      setTimeout(() => { 
+        isUserScrolling.current = false;
+        isProgrammaticScroll.current = false;
+      }, 600);
     }
   };
 
   const handlePrev = () => {
-    if (currentIndex > 0 && containerRef.current) {
-      const prevIndex = currentIndex - 1;
-      setCurrentIndex(prevIndex);
-      navigate(`/shorts/${blogs[prevIndex]._id}`, { replace: true });
-      containerRef.current.scrollTo({
-        top: prevIndex * window.innerHeight,
-        behavior: 'smooth'
-      });
+    const container = containerRef.current;
+    if (container && currentIndex > 0) {
+      isProgrammaticScroll.current = true;
+      isUserScrolling.current = true;
+      container.scrollTo({ top: (currentIndex - 1) * container.clientHeight, behavior: 'smooth' });
+      setTimeout(() => { 
+        isUserScrolling.current = false;
+        isProgrammaticScroll.current = false;
+      }, 600);
     }
   };
 
@@ -824,744 +877,978 @@ const ShortBlogsViewer = () => {
   };
 
   const isMobile = window.innerWidth < 768;
+  const isDesktop = window.innerWidth >= 768;
+  const isPanelOpen = showComments || showDescription || showOwnerShorts;
 
   return (
-    <div 
-      ref={containerRef}
-      className="fixed inset-0 bg-black overflow-y-auto overflow-x-hidden"
-      style={{ 
-        scrollBehavior: 'auto',
-        WebkitOverflowScrolling: 'touch'
-      }}
-    >
-      <button
-        onClick={() => navigate('/')}
-        className="fixed top-4 left-4 z-50 p-2 md:p-3 bg-white/10 hover:bg-white/20 rounded-full transition"
+    <div className="fixed inset-0 bg-black flex">
+      <div
+        ref={containerRef}
+        className="shorts-container flex-1 bg-black overflow-y-scroll"
+        style={{
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          scrollSnapType: 'y mandatory',
+          scrollSnapStop: 'always',
+          WebkitOverflowScrolling: 'touch',
+          overscrollBehavior: 'contain',
+          touchAction: (showComments || showDescription || showOwnerShorts) ? 'none' : 'pan-y',
+          willChange: 'scroll-position'
+        }}
+        onScroll={() => {
+          if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+        }}
       >
-        <FiX className="w-4 h-4 md:w-6 md:h-6 text-white" />
-      </button>
-
-      {blogs.map((blog, index) => (
-        <div
-          key={blog._id}
-          className="relative w-full h-screen flex items-center justify-center"
+        <button
+          onClick={() => navigate('/')}
+          className="fixed top-2 left-2 z-50 p-2 md:p-3 bg-black/40 hover:bg-black/60 rounded-full transition backdrop-blur-sm"
         >
+          <FiX className="w-5 h-5 md:w-6 md:h-6 text-white" />
+        </button>
+
+        {blogs.map((blog, index) => (
           <div
-            className="w-full h-full max-w-sm mx-auto relative"
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            key={blog._id}
+            data-index={index}
+            className="short-item relative w-full h-screen flex items-center justify-center"
+            style={{
+              scrollSnapAlign: 'start',
+              scrollSnapStop: 'always',
+              scrollMarginTop: '0px'
+            }}
           >
-            <div
-              onClick={() => index === currentIndex && handleCardClick()}
-              onDoubleClick={() => index === currentIndex && handleCardDoubleClick()}
-              className="w-full h-full overflow-hidden relative transition-transform duration-500 ease-out"
-              style={getBackgroundStyle(blog, index)}
-            >
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-black/50"></div>
-
-              {index === currentIndex && (
-                <div
-                  className="absolute top-4 left-4 z-10 flex items-center gap-2"
-                  onMouseEnter={handleVolumeMouseEnter}
-                  onMouseLeave={handleVolumeMouseLeave}
-                >
-                  <button
-                    onClick={(e) => { e.stopPropagation(); isSpeaking ? handleStopSpeech() : handleTextToSpeech(); }}
-                    className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
+            {isDesktop ? (
+              <div className="flex items-center justify-center gap-6">
+                <div className="w-[450px] h-[85vh]">
+                  <div
+                    onClick={() => index === currentIndex && handleCardClick()}
+                    onDoubleClick={() => index === currentIndex && handleCardDoubleClick()}
+                    className={`w-full overflow-hidden relative ${isDesktop ? 'h-[85vh] rounded-3xl' : 'h-full rounded-2xl'
+                      }`}
+                    style={getBackgroundStyle(blog, index)}
                   >
-                    {isSpeaking && !isPaused ? (
-                      <FaPause className="w-4 h-4 text-white" />
-                    ) : (
-                      <FaPlay className="w-4 h-4 text-white" />
-                    )}
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
-                    className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
-                  >
-                    {isMuted ? (
-                      <HiMiniSpeakerXMark className="w-5 h-5 text-white" />
-                    ) : (
-                      <HiMiniSpeakerWave className="w-5 h-5 text-white" />
-                    )}
-                  </button>
-                  {showVolumeBar && (
-                    <input
-                      type="range"
-                      min="0"
-                      max="1"
-                      step="0.1"
-                      value={volume}
-                      onChange={handleVolumeChange}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer transition-opacity"
-                      style={{
-                        background: `linear-gradient(to right, white ${volume * 100}%, rgba(255,255,255,0.3) ${volume * 100}%)`
-                      }}
-                    />
-                  )}
-                </div>
-              )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-black/50"></div>
 
-              <div className="absolute inset-0 flex flex-col p-6 pt-16">
-                <h2 className="text-white text-xl font-bold text-center mb-4">{blog.title}</h2>
-
-                <div ref={index === currentIndex ? contentRef : null} className="flex-1 flex items-start justify-center overflow-y-auto overflow-x-hidden px-2 pt-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                  <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center">
-                    {index === currentIndex ? (
-                      blog.content.split(/([.!?]+)/).map((part, idx) => {
-                        const sentence = part + (blog.content.split(/([.!?]+)/)[idx + 1] || '');
-                        const isHighlighted = highlightedText.includes(sentence.trim());
-                        return (
-                          <span
-                            key={idx}
-                            className={isHighlighted ? 'bg-white/30 px-1 rounded transition-colors' : ''}
-                          >
-                            {part}
-                          </span>
-                        );
-                      })
-                    ) : (
-                      blog.content
-                    )}
-                  </p>
-                </div>
-
-                {blog.tags?.length > 0 && (
-                  <div className="flex flex-wrap gap-1 justify-center mb-3 max-h-12 overflow-hidden">
-                    {blog.tags.slice(0, 5).map((tag, idx) => (
-                      <span key={idx} className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">{tag}</span>
-                    ))}
-                    {blog.tags.length > 5 && (
-                      <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">+{blog.tags.length - 5} more</span>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3 mb-3">
-                  <Link to={`/user/${blog.author._id}`}>
-                    <Avatar user={blog.author} size="md" className="border-2 border-white" />
-                  </Link>
-                  <div className="flex-1 flex items-center gap-2">
-                    <Link
-                      to={`/user/${blog.author._id}`}
-                      className="text-white font-semibold hover:underline"
-                    >
-                      {blog.author?.username}
-                    </Link>
-                    {user && user._id !== blog.author._id && (
-                      <button
-                        onClick={() => handleFollow(blog.author._id)}
-                        className={`px-4 py-1.5 rounded-full font-semibold transition text-sm ${
-                          following[blog.author._id]
-                            ? 'bg-white/20 text-white hover:bg-white/30'
-                            : 'bg-white text-black hover:bg-gray-200'
-                        }`}
+                    {index === currentIndex && (
+                      <div
+                        className="absolute top-4 left-4 z-10 flex items-center gap-2"
+                        onMouseEnter={handleVolumeMouseEnter}
+                        onMouseLeave={handleVolumeMouseLeave}
                       >
-                        {following[blog.author._id] ? 'Following' : 'Follow'}
-                      </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); isSpeaking ? handleStopSpeech() : handleTextToSpeech(); }}
+                          className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
+                        >
+                          {isSpeaking && !isPaused ? (
+                            <FaPause className="w-4 h-4 text-white" />
+                          ) : (
+                            <FaPlay className="w-4 h-4 text-white" />
+                          )}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
+                          className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
+                        >
+                          {isMuted ? (
+                            <HiMiniSpeakerXMark className="w-5 h-5 text-white" />
+                          ) : (
+                            <HiMiniSpeakerWave className="w-5 h-5 text-white" />
+                          )}
+                        </button>
+                        {showVolumeBar && (
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={volume}
+                            onChange={handleVolumeChange}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer transition-opacity"
+                            style={{
+                              background: `linear-gradient(to right, white ${volume * 100}%, rgba(255,255,255,0.3) ${volume * 100}%)`
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    <div className="absolute inset-0 flex flex-col p-6 pt-16">
+                      <h2 className="text-white text-xl font-bold text-center mb-4">{blog.title}</h2>
+
+                      <div ref={index === currentIndex ? contentRef : null} className="flex-1 flex items-start justify-center overflow-y-auto overflow-x-hidden px-2 pt-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                        <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center">
+                          {index === currentIndex ? (
+                            blog.content.split(/([.!?]+)/).map((part, idx) => {
+                              const sentence = part + (blog.content.split(/([.!?]+)/)[idx + 1] || '');
+                              const isHighlighted = highlightedText.includes(sentence.trim());
+                              return (
+                                <span
+                                  key={idx}
+                                  className={isHighlighted ? 'bg-white/30 px-1 rounded transition-colors' : ''}
+                                >
+                                  {part}
+                                </span>
+                              );
+                            })
+                          ) : (
+                            blog.content
+                          )}
+                        </p>
+                      </div>
+
+                      {blog.tags?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 justify-center mb-3 max-h-12 overflow-hidden">
+                          {blog.tags.slice(0, 5).map((tag, idx) => (
+                            <span key={idx} className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">{tag}</span>
+                          ))}
+                          {blog.tags.length > 5 && (
+                            <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">+{blog.tags.length - 5} more</span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-3 mb-3">
+                        <Link to={`/user/${blog.author._id}`}>
+                          <Avatar user={blog.author} size="md" className="border-2 border-white" />
+                        </Link>
+                        <div className="flex-1 flex items-center gap-2">
+                          <Link
+                            to={`/user/${blog.author._id}`}
+                            className="text-white font-semibold hover:underline"
+                          >
+                            {blog.author?.username}
+                          </Link>
+                          {user && user._id !== blog.author._id && (
+                            <button
+                              onClick={() => handleFollow(blog.author._id)}
+                              className={`px-4 py-1.5 rounded-full font-semibold transition text-sm ${following[blog.author._id]
+                                ? 'bg-white/20 text-white hover:bg-white/30'
+                                : 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600'
+                                }`}
+                            >
+                              {following[blog.author._id] ? 'Following' : 'Follow'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {blog.metaDescription && (
+                        <button
+                          onClick={() => index === currentIndex && handleDescriptionClick()}
+                          className="text-white/70 text-xs text-center line-clamp-2 hover:underline cursor-pointer"
+                        >
+                          {blog.metaDescription}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+
+                </div>
+                {index === currentIndex && (
+                  <div className="flex flex-col gap-6">
+                    {user && user._id === blog.author._id && (
+                      <>
+                        <button
+                          onClick={handleEdit}
+                          className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                        >
+                          <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                            <CiEdit className="w-6 h-6" />
+                          </div>
+                          <span className="text-xs">Edit</span>
+                        </button>
+                        <button
+                          onClick={() => setShowDeleteConfirm(true)}
+                          className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                        >
+                          <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                            <RiDeleteBin6Line className="w-6 h-6" />
+                          </div>
+                          <span className="text-xs">Delete</span>
+                        </button>
+                      </>
+                    )}
+                    <button
+                      onClick={() => handleLike(blog._id)}
+                      className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                    >
+                      <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                        {blog.likes?.includes(user?._id) ? (
+                          <AiFillLike className="w-6 h-6" />
+                        ) : (
+                          <AiOutlineLike className="w-6 h-6" />
+                        )}
+                      </div>
+                      <span className="text-xs font-semibold">{blog.likes?.length || 0}</span>
+                    </button>
+                    <button
+                      onClick={handleCommentClick}
+                      className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                    >
+                      <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                        <TfiCommentAlt className="w-6 h-6" />
+                      </div>
+                      <span className="text-xs font-semibold">{commentCount}</span>
+                    </button>
+                    <button
+                      onClick={handleShare}
+                      className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                    >
+                      <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                        <IoIosShareAlt className="w-6 h-6" />
+                      </div>
+                      <span className="text-xs">Share</span>
+                    </button>
+                    <button
+                      onClick={handleRepost}
+                      className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                    >
+                      <div className="w-12 h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                        <BiRepost className="w-7 h-7" />
+                      </div>
+                      <span className="text-xs">Repost</span>
+                    </button>
+                    <button onClick={handleOwnerClick} className="w-12 h-12">
+                      <Avatar user={blog.author} size="md" className="border-2 border-white hover:scale-110 transition" />
+                    </button>
+                  </div>
+                )}
+                {isPanelOpen && index === currentIndex && (
+                  <div className={`w-[450px] h-[85vh] bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col overflow-hidden transition-all duration-300 ${isPanelOpen ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4'}`}>
+                    {showComments && (
+                      <>
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                            Comments ({commentCount})
+                          </h3>
+                          <div className="flex items-center gap-2">
+                            <div className="relative">
+                              <button
+                                onClick={() => setShowSortMenu(!showSortMenu)}
+                                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+                              >
+                                <BiMenuAltRight className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+                              </button>
+                              {showSortMenu && (
+                                <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                                  <button
+                                    onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
+                                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
+                                  >
+                                    Most engaging
+                                  </button>
+                                  <button
+                                    onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
+                                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg"
+                                  >
+                                    Newest First
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => setShowComments(false)}
+                              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+                            >
+                              <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                          {loadingComments ? (
+                            <div className="space-y-4">
+                              {[1,2,3].map(i => (
+                                <div key={i} className="animate-pulse flex gap-3">
+                                  <div className="w-10 h-10 bg-gray-300 dark:bg-gray-700 rounded-full"></div>
+                                  <div className="flex-1 space-y-2">
+                                    <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-1/4"></div>
+                                    <div className="h-3 bg-gray-300 dark:bg-gray-700 rounded w-3/4"></div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : sortedComments.length === 0 ? (
+                            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                              <p>No comments yet. Be the first to comment!</p>
+                            </div>
+                          ) : (
+                            sortedComments.map((comment) => (
+                              <EnhancedComment
+                                key={comment._id}
+                                comment={comment}
+                                isOwner={user?._id === blog.author._id}
+                                onReply={handleReply}
+                                onLike={handleLikeComment}
+                                onHeart={handleHeartComment}
+                                onPin={handlePinComment}
+                                onDelete={handleDeleteComment}
+                                onEdit={handleEditComment}
+                                onSaveEdit={handleSaveEdit}
+                                editingComment={editingComment}
+                                editText={editText}
+                                setEditText={setEditText}
+                                onLoadReplies={fetchReplies}
+                                replies={replies[comment._id] || []}
+                                showReplies={showReplies[comment._id]}
+                                loadingReplies={loadingReplies[comment._id]}
+                                deletingComment={deletingComment}
+                                postOwner={blog.author}
+                              />
+                            ))
+                          )}
+                        </div>
+                        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex gap-3">
+                            {user ? (
+                              <Avatar user={user} size="sm" />
+                            ) : (
+                              <RxAvatar className="w-10 h-10 text-gray-400" />
+                            )}
+                            <div className="flex-1">
+                              <textarea
+                                value={commentText}
+                                onChange={(e) => setCommentText(e.target.value)}
+                                placeholder="Add a comment..."
+                                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
+                                rows={2}
+                              />
+                              {commentText.trim() && (
+                                <div className="flex gap-2 mt-2">
+                                  <button
+                                    onClick={() => setCommentText('')}
+                                    className="px-4 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    onClick={handleAddComment}
+                                    className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                                  >
+                                    Add
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                    {showDescription && (
+                      <>
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Description</h3>
+                          <button
+                            onClick={() => setShowDescription(false)}
+                            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+                          >
+                            <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+                          </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                          {currentBlog?.metaDescription ? (
+                            <>
+                              <div>
+                                <p className="text-gray-700 dark:text-gray-300">{currentBlog.metaDescription}</p>
+                              </div>
+                              {currentBlog.tags?.length > 0 && (
+                                <div>
+                                  <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Tags</h4>
+                                  <div className="flex flex-wrap gap-2">
+                                    {currentBlog.tags.map((tag, idx) => (
+                                      <span key={idx} className="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full text-sm">
+                                        #{tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
+                                <div className="flex items-center gap-2">
+                                  <AiOutlineLike className="w-5 h-5" />
+                                  <span>{currentBlog.likes?.length || 0} likes</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <FiEye className="w-5 h-5" />
+                                  <span>{currentBlog.views || 0} views</span>
+                                </div>
+                                <div>
+                                  <span>{new Date(currentBlog.createdAt).toLocaleDateString()}</span>
+                                </div>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="animate-pulse space-y-4">
+                              <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-3/4"></div>
+                              <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-full"></div>
+                              <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-5/6"></div>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+                    {showOwnerShorts && (
+                      <>
+                        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                          <h3 className="text-lg font-bold text-gray-900 dark:text-white">Owner's Shorts</h3>
+                          <button
+                            onClick={() => setShowOwnerShorts(false)}
+                            className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+                          >
+                            <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+                          </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto">
+                          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                            <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{currentBlog.title}</h4>
+                            <Link
+                              to={`/user/${currentBlog.author._id}`}
+                              className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-lg transition"
+                            >
+                              <Avatar user={currentBlog.author} size="md" />
+                              <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
+                            </Link>
+                          </div>
+                          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                            <button className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition font-medium">
+                              <VscSaveAs className="w-5 h-5" />
+                              Save
+                            </button>
+                          </div>
+                          <div className="p-4">
+                            {loadingOwnerShorts ? (
+                              <div className="grid grid-cols-2 gap-3">
+                                {[1,2,3,4].map(i => (
+                                  <div key={i} className="aspect-[9/16] bg-gray-300 dark:bg-gray-700 rounded-xl animate-pulse"></div>
+                                ))}
+                              </div>
+                            ) : ownerShorts.length === 0 ? (
+                              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                                <p>No shorts available</p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-3">
+                                {ownerShorts.map((short, idx) => (
+                                  <div
+                                    key={short._id}
+                                    onClick={() => {
+                                      setShowOwnerShorts(false);
+                                      navigate(`/short-blogs/${short._id}`);
+                                    }}
+                                    className="relative rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer aspect-[9/16]"
+                                    style={getBackgroundStyle(short, idx)}
+                                  >
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/50"></div>
+                                    <div className="absolute top-2 right-2 z-20 bg-white/20 backdrop-blur-sm p-1 rounded-full">
+                                      <MdOutlineSwitchAccessShortcutAdd className="w-3 h-3 text-white" />
+                                    </div>
+                                    <div className="absolute inset-0 flex flex-col p-3 justify-end">
+                                      <h4 className="text-white text-sm font-bold line-clamp-2 mb-1">{short.title}</h4>
+                                      <p className="text-white text-xs line-clamp-3">{short.content}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
                     )}
                   </div>
-                </div>
-
-                {blog.metaDescription && (
-                  <button
-                    onClick={() => index === currentIndex && handleDescriptionClick()}
-                    className="text-white/70 text-xs text-center line-clamp-2 hover:underline cursor-pointer"
-                  >
-                    {blog.metaDescription}
-                  </button>
                 )}
-              </div>
-            </div>
-          </div>
-        </div>
-      ))}
-
-      {/* Fixed side controls for current short only */}
-      {blogs[currentIndex] && (
-        <div className="fixed right-3 md:right-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 md:gap-6 z-40">
-          {user && user._id === blogs[currentIndex].author._id && (
-            <>
-              <button
-                onClick={handleEdit}
-                className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-              >
-                <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
-                  <CiEdit className="w-5 h-5 md:w-6 md:h-6" />
-                </div>
-                <span className="text-xs hidden md:block">Edit</span>
-              </button>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-              >
-                <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
-                  <RiDeleteBin6Line className="w-5 h-5 md:w-6 md:h-6" />
-                </div>
-                <span className="text-xs hidden md:block">Delete</span>
-              </button>
-            </>
-          )}
-          <button
-            onClick={() => handleLike(blogs[currentIndex]._id)}
-            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-          >
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
-              {blogs[currentIndex].likes?.includes(user?._id) ? (
-                <AiFillLike className="w-5 h-5 md:w-6 md:h-6" />
-              ) : (
-                <AiOutlineLike className="w-5 h-5 md:w-6 md:h-6" />
-              )}
-            </div>
-            <span className="text-xs font-semibold">{blogs[currentIndex].likes?.length || 0}</span>
-          </button>
-
-          <button
-            onClick={handleCommentClick}
-            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-          >
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
-              <TfiCommentAlt className="w-5 h-5 md:w-6 md:h-6" />
-            </div>
-            <span className="text-xs font-semibold">{commentCount}</span>
-          </button>
-
-          <button
-            onClick={handleShare}
-            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-          >
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
-              <IoIosShareAlt className="w-5 h-5 md:w-6 md:h-6" />
-            </div>
-            <span className="text-xs hidden md:block">Share</span>
-          </button>
-
-          <button
-            onClick={handleRepost}
-            className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
-          >
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
-              <BiRepost className="w-6 h-6 md:w-7 md:h-7" />
-            </div>
-            <span className="text-xs hidden md:block">Repost</span>
-          </button>
-
-          <button onClick={handleOwnerClick}>
-            <Avatar user={blogs[currentIndex].author} size={isMobile ? "sm" : "md"} className="border-2 border-white hover:scale-110 transition" />
-          </button>
-        </div>
-      )}
-
-      {!isMobile && showDescription && (
-        <div className="fixed left-4 top-1/2 -translate-y-1/2 w-full max-w-sm h-[85vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col z-40">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Description</h3>
-            <button
-              onClick={() => setShowDescription(false)}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
-            >
-              <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            <div>
-              <p className="text-gray-700 dark:text-gray-300">{currentBlog.metaDescription}</p>
-            </div>
-            {currentBlog.tags?.length > 0 && (
-              <div>
-                <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Tags</h4>
-                <div className="flex flex-wrap gap-2">
-                  {currentBlog.tags.map((tag, idx) => (
-                    <span key={idx} className="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full text-sm">
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
-              <div className="flex items-center gap-2">
-                <AiOutlineLike className="w-5 h-5" />
-                <span>{currentBlog.likes?.length || 0} likes</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <FiEye className="w-5 h-5" />
-                <span>{currentBlog.views || 0} views</span>
-              </div>
-              <div>
-                <span>{new Date(currentBlog.createdAt).toLocaleDateString()}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showComments && !isMobile && (
-        <div className="fixed left-4 top-1/2 -translate-y-1/2 w-full max-w-sm h-[85vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col z-40" onWheel={(e) => e.stopPropagation()}>
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-              Comments ({commentCount})
-            </h3>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <button
-                  onClick={() => setShowSortMenu(!showSortMenu)}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
-                >
-                  <BiMenuAltRight className="w-6 h-6 text-gray-700 dark:text-gray-300" />
-                </button>
-                {showSortMenu && (
-                  <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-10">
-                    <button
-                      onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
-                    >
-                      Most engaging
-                    </button>
-                    <button
-                      onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
-                      className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg"
-                    >
-                      Newest First
-                    </button>
-                  </div>
-                )}
-              </div>
-              <button
-                onClick={() => setShowComments(false)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
-              >
-                <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {sortedComments.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                <p>No comments yet. Be the first to comment!</p>
               </div>
             ) : (
-              sortedComments.map((comment) => (
-                <EnhancedComment
-                  key={comment._id}
-                  comment={comment}
-                  isOwner={user?._id === blogs[currentIndex]?.author._id}
-                  onReply={handleReply}
-                  onLike={handleLikeComment}
-                  onHeart={handleHeartComment}
-                  onPin={handlePinComment}
-                  onDelete={handleDeleteComment}
-                  onEdit={handleEditComment}
-                  onSaveEdit={handleSaveEdit}
-                  editingComment={editingComment}
-                  editText={editText}
-                  setEditText={setEditText}
-                  onLoadReplies={fetchReplies}
-                  replies={replies[comment._id] || []}
-                  showReplies={showReplies[comment._id]}
-                  loadingReplies={loadingReplies[comment._id]}
-                  deletingComment={deletingComment}
-                  postOwner={blogs[currentIndex]?.author}
-                />
-              ))
-            )}
-          </div>
+              <div className="w-full h-[96vh] my-[2vh]">
+                <div
+                  onClick={() => index === currentIndex && handleCardClick()}
+                  onDoubleClick={() => index === currentIndex && handleCardDoubleClick()}
+                  className="w-full h-full overflow-hidden relative rounded-2xl"
+                  style={getBackgroundStyle(blog, index)}
+                >
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-black/50"></div>
 
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex gap-3">
-              {user ? (
-                <Avatar user={user} size="sm" />
-              ) : (
-                <RxAvatar className="w-10 h-10 text-gray-400" />
-              )}
-              <div className="flex-1">
-                <textarea
-                  value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
-                  placeholder="Add a comment..."
-                  className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
-                  rows={2}
-                />
-                {commentText.trim() && (
-                  <div className="flex gap-2 mt-2">
-                    <button
-                      onClick={() => setCommentText('')}
-                      className="px-4 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                  {index === currentIndex && (
+                    <div
+                      className="absolute top-4 left-4 z-10 flex items-center gap-2"
+                      onMouseEnter={handleVolumeMouseEnter}
+                      onMouseLeave={handleVolumeMouseLeave}
                     >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleAddComment}
-                      className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                    >
-                      Add
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isMobile && showDescription && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col w-full max-w-md max-h-[80vh]">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Description</h3>
-              <button
-                onClick={() => setShowDescription(false)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
-              >
-                <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              <div>
-                <p className="text-gray-700 dark:text-gray-300">{currentBlog.metaDescription}</p>
-              </div>
-              {currentBlog.tags?.length > 0 && (
-                <div>
-                  <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Tags</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {currentBlog.tags.map((tag, idx) => (
-                      <span key={idx} className="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full text-sm">
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
-                <div className="flex items-center gap-2">
-                  <AiOutlineLike className="w-5 h-5" />
-                  <span>{currentBlog.likes?.length || 0} likes</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <FiEye className="w-5 h-5" />
-                  <span>{currentBlog.views || 0} views</span>
-                </div>
-                <div>
-                  <span>{new Date(currentBlog.createdAt).toLocaleDateString()}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isMobile && showComments && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onWheel={(e) => e.stopPropagation()}>
-          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col w-full max-w-md max-h-[80vh]" onWheel={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                Comments ({commentCount})
-              </h3>
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <button
-                    onClick={() => setShowSortMenu(!showSortMenu)}
-                    className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
-                  >
-                    <BiMenuAltRight className="w-6 h-6 text-gray-700 dark:text-gray-300" />
-                  </button>
-                  {showSortMenu && (
-                    <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-10">
                       <button
-                        onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
+                        onClick={(e) => { e.stopPropagation(); isSpeaking ? handleStopSpeech() : handleTextToSpeech(); }}
+                        className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
                       >
-                        Most engaging
+                        {isSpeaking && !isPaused ? (
+                          <FaPause className="w-4 h-4 text-white" />
+                        ) : (
+                          <FaPlay className="w-4 h-4 text-white" />
+                        )}
                       </button>
                       <button
-                        onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg"
+                        onClick={(e) => { e.stopPropagation(); handleMuteToggle(); }}
+                        className="p-2 bg-white/20 hover:bg-white/30 rounded-full transition backdrop-blur-sm"
                       >
-                        Newest First
+                        {isMuted ? (
+                          <HiMiniSpeakerXMark className="w-5 h-5 text-white" />
+                        ) : (
+                          <HiMiniSpeakerWave className="w-5 h-5 text-white" />
+                        )}
                       </button>
+                      {showVolumeBar && (
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.1"
+                          value={volume}
+                          onChange={handleVolumeChange}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer transition-opacity"
+                          style={{
+                            background: `linear-gradient(to right, white ${volume * 100}%, rgba(255,255,255,0.3) ${volume * 100}%)`
+                          }}
+                        />
+                      )}
                     </div>
                   )}
+
+                  <div className="absolute inset-0 flex flex-col p-6 pt-16">
+                    <h2 className="text-white text-xl font-bold text-center mb-4">{blog.title}</h2>
+
+                    <div ref={index === currentIndex ? contentRef : null} className="flex-1 flex items-start justify-center overflow-y-auto overflow-x-hidden px-2 pt-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                      <p className="text-white text-base leading-relaxed whitespace-pre-wrap text-center">
+                        {index === currentIndex ? (
+                          blog.content.split(/([.!?]+)/).map((part, idx) => {
+                            const sentence = part + (blog.content.split(/([.!?]+)/)[idx + 1] || '');
+                            const isHighlighted = highlightedText.includes(sentence.trim());
+                            return (
+                              <span
+                                key={idx}
+                                className={isHighlighted ? 'bg-white/30 px-1 rounded transition-colors' : ''}
+                              >
+                                {part}
+                              </span>
+                            );
+                          })
+                        ) : (
+                          blog.content
+                        )}
+                      </p>
+                    </div>
+
+                    {blog.tags?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 justify-center mb-3 max-h-12 overflow-hidden">
+                        {blog.tags.slice(0, 5).map((tag, idx) => (
+                          <span key={idx} className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">{tag}</span>
+                        ))}
+                        {blog.tags.length > 5 && (
+                          <span className="bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">+{blog.tags.length - 5} more</span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-3 mb-3">
+                      <Link to={`/user/${blog.author._id}`}>
+                        <Avatar user={blog.author} size="md" className="border-2 border-white" />
+                      </Link>
+                      <div className="flex-1 flex items-center gap-2">
+                        <Link
+                          to={`/user/${blog.author._id}`}
+                          className="text-white font-semibold hover:underline"
+                        >
+                          {blog.author?.username}
+                        </Link>
+                        {user && user._id !== blog.author._id && (
+                          <button
+                            onClick={() => handleFollow(blog.author._id)}
+                            className={`px-4 py-1.5 rounded-full font-semibold transition text-sm ${following[blog.author._id]
+                              ? 'bg-white/20 text-white hover:bg-white/30'
+                              : 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600'
+                              }`}
+                          >
+                            {following[blog.author._id] ? 'Following' : 'Follow'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {blog.metaDescription && (
+                      <button
+                        onClick={() => index === currentIndex && handleDescriptionClick()}
+                        className="text-white/70 text-xs text-center line-clamp-2 hover:underline cursor-pointer"
+                      >
+                        {blog.metaDescription}
+                      </button>
+                    )}
+                  </div>
                 </div>
+              </div>
+            )}
+            {!isDesktop && blogs[currentIndex] && (
+              <div className="fixed right-3 md:right-4 top-1/2 -translate-y-1/2 flex flex-col gap-5 md:gap-6 z-40">
+                {user && user._id === blogs[currentIndex].author._id && (
+                  <>
+                    <button
+                      onClick={handleEdit}
+                      className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                    >
+                      <div className="w-12 h-12 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                        <CiEdit className="w-5 h-5 md:w-6 md:h-6" />
+                      </div>
+                      <span className="text-xs hidden md:block">Edit</span>
+                    </button>
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                    >
+                      <div className="w-12 h-12 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                        <RiDeleteBin6Line className="w-5 h-5 md:w-6 md:h-6" />
+                      </div>
+                      <span className="text-xs hidden md:block">Delete</span>
+                    </button>
+                  </>
+                )}
                 <button
-                  onClick={() => setShowComments(false)}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+                  onClick={() => handleLike(blogs[currentIndex]._id)}
+                  className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
                 >
-                  <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+                  <div className="w-12 h-12 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                    {blogs[currentIndex].likes?.includes(user?._id) ? (
+                      <AiFillLike className="w-6 h-6 md:w-6 md:h-6" />
+                    ) : (
+                      <AiOutlineLike className="w-6 h-6 md:w-6 md:h-6" />
+                    )}
+                  </div>
+                  <span className="text-xs font-semibold">{blogs[currentIndex].likes?.length || 0}</span>
+                </button>
+
+                <button
+                  onClick={handleCommentClick}
+                  className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                >
+                  <div className="w-12 h-12 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                    <TfiCommentAlt className="w-6 h-6 md:w-6 md:h-6" />
+                  </div>
+                  <span className="text-xs font-semibold">{commentCount}</span>
+                </button>
+
+                <button
+                  onClick={handleShare}
+                  className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                >
+                  <div className="w-12 h-12 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                    <IoIosShareAlt className="w-6 h-6 md:w-6 md:h-6" />
+                  </div>
+                  <span className="text-xs hidden md:block">Share</span>
+                </button>
+
+                <button
+                  onClick={handleRepost}
+                  className="flex flex-col items-center gap-1 text-white hover:scale-110 transition"
+                >
+                  <div className="w-12 h-12 md:w-12 md:h-12 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm">
+                    <BiRepost className="w-7 h-7 md:w-7 md:h-7" />
+                  </div>
+                  <span className="text-xs hidden md:block">Repost</span>
+                </button>
+
+                <button onClick={handleOwnerClick} className="w-12 h-12 md:w-auto md:h-auto">
+                  <Avatar user={blogs[currentIndex].author} size={isMobile ? "md" : "md"} className="border-2 border-white hover:scale-110 transition" />
                 </button>
               </div>
-            </div>
+            )}
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              {sortedComments.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                  <p>No comments yet. Be the first to comment!</p>
+            {/* Mobile: Description Panel */}
+            {isMobile && showDescription && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col w-full max-w-md max-h-[80vh]">
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Description</h3>
+                    <button
+                      onClick={() => setShowDescription(false)}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+                    >
+                      <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    <div>
+                      <p className="text-gray-700 dark:text-gray-300">{currentBlog.metaDescription}</p>
+                    </div>
+                    {currentBlog.tags?.length > 0 && (
+                      <div>
+                        <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Tags</h4>
+                        <div className="flex flex-wrap gap-2">
+                          {currentBlog.tags.map((tag, idx) => (
+                            <span key={idx} className="bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 px-3 py-1 rounded-full text-sm">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
+                      <div className="flex items-center gap-2">
+                        <AiOutlineLike className="w-5 h-5" />
+                        <span>{currentBlog.likes?.length || 0} likes</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <FiEye className="w-5 h-5" />
+                        <span>{currentBlog.views || 0} views</span>
+                      </div>
+                      <div>
+                        <span>{new Date(currentBlog.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                sortedComments.map((comment) => (
-                  <EnhancedComment
-                    key={comment._id}
-                    comment={comment}
-                    isOwner={user?._id === blogs[currentIndex]?.author._id}
-                    onReply={handleReply}
-                    onLike={handleLikeComment}
-                    onHeart={handleHeartComment}
-                    onPin={handlePinComment}
-                    onDelete={handleDeleteComment}
-                    onEdit={handleEditComment}
-                    onSaveEdit={handleSaveEdit}
-                    editingComment={editingComment}
-                    editText={editText}
-                    setEditText={setEditText}
-                    onLoadReplies={fetchReplies}
-                    replies={replies[comment._id] || []}
-                    showReplies={showReplies[comment._id]}
-                    loadingReplies={loadingReplies[comment._id]}
-                    deletingComment={deletingComment}
-                    postOwner={blogs[currentIndex]?.author}
-                  />
-                ))
-              )}
-            </div>
+              </div>
+            )}
 
-            <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-              <div className="flex gap-3">
-                {user ? (
-                  <Avatar user={user} size="sm" />
-                ) : (
-                  <RxAvatar className="w-10 h-10 text-gray-400" />
-                )}
-                <div className="flex-1">
-                  <textarea
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    placeholder="Add a comment..."
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
-                    rows={2}
-                  />
-                  {commentText.trim() && (
-                    <div className="flex gap-2 mt-2">
+            {/* Mobile: Comments Panel */}
+            {isMobile && showComments && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col w-full max-w-md max-h-[80vh]">
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                      Comments ({commentCount})
+                    </h3>
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowSortMenu(!showSortMenu)}
+                          className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+                        >
+                          <BiMenuAltRight className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+                        </button>
+                        {showSortMenu && (
+                          <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                            <button
+                              onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
+                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
+                            >
+                              Most engaging
+                            </button>
+                            <button
+                              onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
+                              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg"
+                            >
+                              Newest First
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <button
-                        onClick={() => setCommentText('')}
-                        className="px-4 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                        onClick={() => setShowComments(false)}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+                      >
+                        <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {sortedComments.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                        <p>No comments yet. Be the first to comment!</p>
+                      </div>
+                    ) : (
+                      sortedComments.map((comment) => (
+                        <EnhancedComment
+                          key={comment._id}
+                          comment={comment}
+                          isOwner={user?._id === blogs[currentIndex]?.author._id}
+                          onReply={handleReply}
+                          onLike={handleLikeComment}
+                          onHeart={handleHeartComment}
+                          onPin={handlePinComment}
+                          onDelete={handleDeleteComment}
+                          onEdit={handleEditComment}
+                          onSaveEdit={handleSaveEdit}
+                          editingComment={editingComment}
+                          editText={editText}
+                          setEditText={setEditText}
+                          onLoadReplies={fetchReplies}
+                          replies={replies[comment._id] || []}
+                          showReplies={showReplies[comment._id]}
+                          loadingReplies={loadingReplies[comment._id]}
+                          deletingComment={deletingComment}
+                          postOwner={blogs[currentIndex]?.author}
+                        />
+                      ))
+                    )}
+                  </div>
+
+                  <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex gap-3">
+                      {user ? (
+                        <Avatar user={user} size="sm" />
+                      ) : (
+                        <RxAvatar className="w-10 h-10 text-gray-400" />
+                      )}
+                      <div className="flex-1">
+                        <textarea
+                          value={commentText}
+                          onChange={(e) => setCommentText(e.target.value)}
+                          placeholder="Add a comment..."
+                          className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
+                          rows={2}
+                        />
+                        {commentText.trim() && (
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => setCommentText('')}
+                              className="px-4 py-1.5 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={handleAddComment}
+                              className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+
+
+            {/* Mobile: Owner Shorts Panel */}
+            {isMobile && showOwnerShorts && (
+              <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col w-full max-w-md max-h-[80vh] overflow-hidden">
+                  <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Owner's Shorts</h3>
+                    <button
+                      onClick={() => setShowOwnerShorts(false)}
+                      className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
+                    >
+                      <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{currentBlog.title}</p>
+                      <Link
+                        to={`/user/${currentBlog.author._id}`}
+                        className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-lg transition"
+                      >
+                        <Avatar user={currentBlog.author} size="md" />
+                        <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
+                      </Link>
+                    </div>
+
+                    <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                      <button className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition font-medium">
+                        <VscSaveAs className="w-5 h-5" />
+                        Save
+                      </button>
+                    </div>
+
+                    <div className="p-4">
+                      {loadingOwnerShorts ? (
+                        <div className="flex justify-center py-8">
+                          <ScaleLoader color="#3B82F6" height={35} width={4} />
+                        </div>
+                      ) : ownerShorts.length === 0 ? (
+                        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                          <p>No shorts available</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                          {ownerShorts.map((short, index) => (
+                            <div
+                              key={short._id}
+                              onClick={() => {
+                                setShowOwnerShorts(false);
+                                navigate(`/short-blogs/${short._id}`);
+                              }}
+                              className="relative rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer aspect-[9/16]"
+                              style={getBackgroundStyle(short, index)}
+                            >
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/50"></div>
+                              <div className="absolute top-2 right-2 z-20 bg-white/20 backdrop-blur-sm p-1 rounded-full">
+                                <MdOutlineSwitchAccessShortcutAdd className="w-3 h-3 text-white" />
+                              </div>
+                              <div className="absolute inset-0 flex flex-col p-3 justify-end">
+                                <h4 className="text-white text-sm font-bold line-clamp-2 mb-1">{short.title}</h4>
+                                <p className="text-white text-xs line-clamp-3">{short.content}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showDeleteConfirm && (
+              <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full">
+                  <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">⚠️ Delete Short Blog</h3>
+                  <p className="text-gray-600 dark:text-gray-400 mb-6">
+                    Are you sure you want to delete this short blog? This action cannot be undone.
+                  </p>
+                  {deleting ? (
+                    <div className="flex justify-center py-4">
+                      <ScaleLoader color="#ef4444" height={35} width={4} />
+                    </div>
+                  ) : (
+                    <div className="flex gap-3">
+                      <button
+                        onClick={handleDelete}
+                        className="flex-1 bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition"
+                      >
+                        Yes, Delete
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 py-3 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition"
                       >
                         Cancel
                       </button>
-                      <button
-                        onClick={handleAddComment}
-                        className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                      >
-                        Add
-                      </button>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+            )}
 
-
-
-      {!isMobile && showOwnerShorts && (
-        <div className="fixed left-4 top-1/2 -translate-y-1/2 w-full max-w-sm h-[85vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-40" onWheel={(e) => e.stopPropagation()}>
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Owner's Shorts</h3>
-            <button
-              onClick={() => setShowOwnerShorts(false)}
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
-            >
-              <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto">
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-              <h4 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{currentBlog.title}</h4>
-              <Link 
-                to={`/user/${currentBlog.author._id}`}
-                className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-lg transition"
-              >
-                <Avatar user={currentBlog.author} size="md" />
-                <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
-              </Link>
-            </div>
-
-            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-              <button className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition font-medium">
-                <VscSaveAs className="w-5 h-5" />
-                Save
-              </button>
-            </div>
-
-            <div className="p-4">
-              {loadingOwnerShorts ? (
-                <div className="flex justify-center py-8">
-                  <ScaleLoader color="#3B82F6" height={35} width={4} />
-                </div>
-              ) : ownerShorts.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                  <p>No shorts available</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {ownerShorts.map((short, index) => (
-                    <div
-                      key={short._id}
-                      onClick={() => {
-                        setShowOwnerShorts(false);
-                        navigate(`/short-blogs/${short._id}`);
-                      }}
-                      className="relative rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer aspect-[9/16]"
-                      style={getBackgroundStyle(short, index)}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/50"></div>
-                      <div className="absolute top-2 right-2 z-20 bg-white/20 backdrop-blur-sm p-1 rounded-full">
-                        <MdOutlineSwitchAccessShortcutAdd className="w-3 h-3 text-white" />
-                      </div>
-                      <div className="absolute inset-0 flex flex-col p-3 justify-end">
-                        <h4 className="text-white text-sm font-bold line-clamp-2 mb-1">{short.title}</h4>
-                        <p className="text-white text-xs line-clamp-3">{short.content}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isMobile && showOwnerShorts && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onWheel={(e) => e.stopPropagation()}>
-          <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-2xl flex flex-col w-full max-w-md max-h-[80vh] overflow-hidden" onWheel={(e) => e.stopPropagation()}>
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Owner's Shorts</h3>
-              <button
-                onClick={() => setShowOwnerShorts(false)}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition"
-              >
-                <IoClose className="w-6 h-6 text-gray-700 dark:text-gray-300" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{currentBlog.title}</p>
-                <Link 
-                  to={`/user/${currentBlog.author._id}`}
-                  className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-lg transition"
-                >
-                  <Avatar user={currentBlog.author} size="md" />
-                  <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
-                </Link>
-              </div>
-
-              <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                <button className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2.5 rounded-lg hover:bg-blue-700 transition font-medium">
-                  <VscSaveAs className="w-5 h-5" />
-                  Save
-                </button>
-              </div>
-
-              <div className="p-4">
-                {loadingOwnerShorts ? (
-                  <div className="flex justify-center py-8">
-                    <ScaleLoader color="#3B82F6" height={35} width={4} />
-                  </div>
-                ) : ownerShorts.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                    <p>No shorts available</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    {ownerShorts.map((short, index) => (
-                      <div
-                        key={short._id}
-                        onClick={() => {
-                          setShowOwnerShorts(false);
-                          navigate(`/short-blogs/${short._id}`);
-                        }}
-                        className="relative rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer aspect-[9/16]"
-                        style={getBackgroundStyle(short, index)}
-                      >
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/50"></div>
-                        <div className="absolute top-2 right-2 z-20 bg-white/20 backdrop-blur-sm p-1 rounded-full">
-                          <MdOutlineSwitchAccessShortcutAdd className="w-3 h-3 text-white" />
-                        </div>
-                        <div className="absolute inset-0 flex flex-col p-3 justify-end">
-                          <h4 className="text-white text-sm font-bold line-clamp-2 mb-1">{short.title}</h4>
-                          <p className="text-white text-xs line-clamp-3">{short.content}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-sm w-full">
-            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-4">⚠️ Delete Short Blog</h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              Are you sure you want to delete this short blog? This action cannot be undone.
-            </p>
-            {deleting ? (
-              <div className="flex justify-center py-4">
-                <ScaleLoader color="#ef4444" height={35} width={4} />
-              </div>
-            ) : (
-              <div className="flex gap-3">
+            {isDesktop && !isPanelOpen && index === currentIndex && (
+              <div className="fixed left-1/2 -translate-x-1/2 bottom-8 flex gap-4 z-30">
                 <button
-                  onClick={handleDelete}
-                  className="flex-1 bg-red-600 text-white py-3 rounded-lg font-semibold hover:bg-red-700 transition"
+                  onClick={handlePrev}
+                  disabled={currentIndex === 0}
+                  className={`p-3 rounded-full transition backdrop-blur-sm ${currentIndex === 0
+                    ? 'bg-gray-600/50 cursor-not-allowed'
+                    : 'bg-white/20 hover:bg-white/30'
+                    }`}
                 >
-                  Yes, Delete
+                  <FiChevronUp className="w-6 h-6 text-white" />
                 </button>
                 <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 py-3 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                  onClick={handleNext}
+                  disabled={currentIndex === blogs.length - 1}
+                  className={`p-3 rounded-full transition backdrop-blur-sm ${currentIndex === blogs.length - 1
+                    ? 'bg-gray-600/50 cursor-not-allowed'
+                    : 'bg-white/20 hover:bg-white/30'
+                    }`}
                 >
-                  Cancel
+                  <FiChevronDown className="w-6 h-6 text-white" />
                 </button>
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* Navigation arrows - hidden on mobile to avoid conflicts */}
-      {!isMobile && (
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-8 flex gap-4 z-30">
-          <button
-            onClick={handlePrev}
-            disabled={currentIndex === 0}
-            className={`p-3 rounded-full transition backdrop-blur-sm ${currentIndex === 0
-                ? 'bg-gray-600/50 cursor-not-allowed'
-                : 'bg-white/20 hover:bg-white/30'
-              }`}
-          >
-            <FiChevronUp className="w-6 h-6 text-white" />
-          </button>
-          <button
-            onClick={handleNext}
-            disabled={currentIndex === blogs.length - 1}
-            className={`p-3 rounded-full transition backdrop-blur-sm ${currentIndex === blogs.length - 1
-                ? 'bg-gray-600/50 cursor-not-allowed'
-                : 'bg-white/20 hover:bg-white/30'
-              }`}
-          >
-            <FiChevronDown className="w-6 h-6 text-white" />
-          </button>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 };

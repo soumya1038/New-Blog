@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
 export const AuthContext = createContext();
@@ -6,9 +7,20 @@ export const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
     checkAuth();
+    
+    // Listen for session expiration from API interceptor
+    const handleSessionExpired = () => {
+      setUser(null);
+      setSessionExpired(true);
+      setLoading(false);
+    };
+    
+    window.addEventListener('sessionExpired', handleSessionExpired);
+    return () => window.removeEventListener('sessionExpired', handleSessionExpired);
   }, []);
 
   const checkAuth = async () => {
@@ -19,6 +31,7 @@ export const AuthProvider = ({ children }) => {
       try {
         const { data } = await api.get('/auth/me');
         setUser(data.user);
+        setSessionExpired(false);
       } catch (error) {
         localStorage.removeItem('token');
         localStorage.removeItem('rememberMe');
@@ -35,13 +48,13 @@ export const AuthProvider = ({ children }) => {
     const { data } = await api.post('/auth/login', { username, password, rememberMe });
     localStorage.setItem('token', data.token);
     localStorage.setItem('rememberMe', rememberMe ? 'true' : 'false');
-    // Set user with role from backend
     setUser({
       _id: data.user.id,
       username: data.user.username,
       profileImage: data.user.profileImage,
       role: data.user.role
     });
+    setSessionExpired(false);
     return data;
   };
 
@@ -54,10 +67,11 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     localStorage.removeItem('rememberMe');
     setUser(null);
+    setSessionExpired(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, setUser }}>
+    <AuthContext.Provider value={{ user, loading, sessionExpired, login, register, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   );

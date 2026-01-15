@@ -40,6 +40,13 @@ const Login = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showIntroVideo, setShowIntroVideo] = useState(false);
+  
+  // Timer states for forgot password flow
+  const [verifyTimer, setVerifyTimer] = useState(120);
+  const [passwordTimer, setPasswordTimer] = useState(120);
+  const [finalTimer, setFinalTimer] = useState(120);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
 
   // Math CAPTCHA states
   const [mathQuestion, setMathQuestion] = useState({ num1: 0, num2: 0, operator: '+', answer: 0 });
@@ -163,6 +170,36 @@ const Login = () => {
       sessionStorage.removeItem('loginInProgress');
     }
   }, [showIntroVideo]);
+  
+  // Verify code timer
+  useEffect(() => {
+    if (showVerifyModal && verifyTimer > 0) {
+      const timer = setInterval(() => {
+        setVerifyTimer(prev => prev - 1);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [showVerifyModal, verifyTimer]);
+  
+  // Password change timer
+  useEffect(() => {
+    if (showNewPasswordModal && passwordTimer > 0) {
+      const timer = setInterval(() => {
+        setPasswordTimer(prev => prev - 1);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [showNewPasswordModal, passwordTimer]);
+  
+  // Final code timer
+  useEffect(() => {
+    if (showFinalCodeModal && finalTimer > 0) {
+      const timer = setInterval(() => {
+        setFinalTimer(prev => prev - 1);
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [showFinalCodeModal, finalTimer]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -185,8 +222,15 @@ const Login = () => {
       localStorage.removeItem('loginLockoutEnd');
       setIsLoggingIn(false);
       
-      // Show intro video immediately
-      setShowIntroVideo(true);
+      // Check for redirect path
+      const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+      if (redirectPath) {
+        sessionStorage.removeItem('redirectAfterLogin');
+        navigate(redirectPath);
+      } else {
+        // Show intro video immediately
+        setShowIntroVideo(true);
+      }
     } catch (err) {
       const newAttempts = failedAttempts + 1;
       setFailedAttempts(newAttempts);
@@ -215,8 +259,22 @@ const Login = () => {
       await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/forgot-password/request`, { username: forgotUsername, email: forgotEmail });
       setShowForgotModal(false);
       setShowVerifyModal(true);
+      setVerifyTimer(120);
     } catch (err) {
       setForgotError(err.response?.data?.message || 'Failed to send verification code');
+    } finally {
+      setSendingCode(false);
+    }
+  };
+  
+  const handleResendVerifyCode = async () => {
+    setVerifyError('');
+    setSendingCode(true);
+    try {
+      await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/forgot-password/request`, { username: forgotUsername, email: forgotEmail });
+      setVerifyTimer(120);
+    } catch (err) {
+      setVerifyError(err.response?.data?.message || 'Failed to resend code');
     } finally {
       setSendingCode(false);
     }
@@ -225,12 +283,16 @@ const Login = () => {
   const handleVerifyCode = async (e) => {
     e.preventDefault();
     setVerifyError('');
+    setIsVerifying(true);
     try {
       await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/forgot-password/verify`, { username: forgotUsername, email: forgotEmail, code: verifyCode });
       setShowVerifyModal(false);
       setShowNewPasswordModal(true);
+      setPasswordTimer(120);
     } catch (err) {
       setVerifyError(err.response?.data?.message || 'Invalid verification code');
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -250,8 +312,22 @@ const Login = () => {
       await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/forgot-password/change`, { username: forgotUsername, email: forgotEmail, newPassword });
       setShowNewPasswordModal(false);
       setShowFinalCodeModal(true);
+      setFinalTimer(120);
     } catch (err) {
       setPasswordError(err.response?.data?.message || 'Failed to send confirmation code');
+    } finally {
+      setSendingChangeCode(false);
+    }
+  };
+  
+  const handleResendFinalCode = async () => {
+    setFinalError('');
+    setSendingChangeCode(true);
+    try {
+      await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/forgot-password/change`, { username: forgotUsername, email: forgotEmail, newPassword });
+      setFinalTimer(120);
+    } catch (err) {
+      setFinalError(err.response?.data?.message || 'Failed to resend code');
     } finally {
       setSendingChangeCode(false);
     }
@@ -260,12 +336,15 @@ const Login = () => {
   const handleConfirmPasswordChange = async (e) => {
     e.preventDefault();
     setFinalError('');
+    setIsConfirming(true);
     try {
       await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/forgot-password/confirm`, { username: forgotUsername, email: forgotEmail, code: finalCode });
       setShowFinalCodeModal(false);
       setShowSuccessModal(true);
     } catch (err) {
       setFinalError(err.response?.data?.message || 'Invalid confirmation code');
+    } finally {
+      setIsConfirming(false);
     }
   };
 
@@ -392,11 +471,12 @@ const Login = () => {
             <div className="flex items-center">
               <input
                 type="checkbox"
+                id="rememberMe"
                 checked={rememberMe}
                 onChange={(e) => setRememberMe(e.target.checked)}
-                className="mr-2"
+                className="mr-2 cursor-pointer"
               />
-              <label className="text-gray-700 dark:text-gray-300">{t('Remember Me')}</label>
+              <label htmlFor="rememberMe" className="text-gray-700 dark:text-gray-300 cursor-pointer">{t('Remember Me')}</label>
             </div>
             <button
               type="button"
@@ -487,7 +567,12 @@ const Login = () => {
       {showVerifyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">{t('Enter Verification Code')}</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-blue-600 dark:text-blue-400">{t('Enter Verification Code')}</h3>
+              <span className={`text-sm font-mono font-bold px-3 py-1 rounded ${verifyTimer <= 30 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}>
+                {Math.floor(verifyTimer / 60)}:{(verifyTimer % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
             <p className="text-gray-700 dark:text-gray-300 mb-4">{t('A 6-digit code has been sent to your email.')}</p>
             {verifyError && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-lg mb-4 text-sm">{verifyError}</div>}
             <form onSubmit={handleVerifyCode}>
@@ -501,7 +586,24 @@ const Login = () => {
                 required
               />
               <div className="flex gap-3">
-                <button type="submit" className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">{t('Verify')}</button>
+                {verifyTimer > 0 ? (
+                  <button
+                    type="submit"
+                    disabled={isVerifying}
+                    className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isVerifying ? <SyncLoader color="#fff" size={8} /> : t('Verify')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResendVerifyCode}
+                    disabled={sendingCode}
+                    className="flex-1 bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {sendingCode ? <SyncLoader color="#fff" size={8} /> : t('Resend')}
+                  </button>
+                )}
                 <button type="button" onClick={() => { setShowVerifyModal(false); setVerifyCode(''); setVerifyError(''); }} className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300">{t('Cancel')}</button>
               </div>
             </form>
@@ -513,7 +615,12 @@ const Login = () => {
       {showNewPasswordModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">{t('Create New Password')}</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-blue-600 dark:text-blue-400">{t('Create New Password')}</h3>
+              <span className={`text-sm font-mono font-bold px-3 py-1 rounded ${passwordTimer <= 30 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}>
+                {Math.floor(passwordTimer / 60)}:{(passwordTimer % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
             {passwordError && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-lg mb-4 text-sm">{passwordError}</div>}
             <form onSubmit={handleRequestPasswordChange}>
               <div className="mb-4">
@@ -585,7 +692,12 @@ const Login = () => {
       {showFinalCodeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-xl font-bold text-blue-600 dark:text-blue-400 mb-4">{t('Enter Confirmation Code')}</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-blue-600 dark:text-blue-400">{t('Enter Confirmation Code')}</h3>
+              <span className={`text-sm font-mono font-bold px-3 py-1 rounded ${finalTimer <= 30 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-600 text-gray-600 dark:text-gray-300'}`}>
+                {Math.floor(finalTimer / 60)}:{(finalTimer % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
             <p className="text-gray-700 dark:text-gray-300 mb-4">{t('A final confirmation code has been sent to your email.')}</p>
             {finalError && <div className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-lg mb-4 text-sm">{finalError}</div>}
             <form onSubmit={handleConfirmPasswordChange}>
@@ -599,7 +711,24 @@ const Login = () => {
                 required
               />
               <div className="flex gap-3">
-                <button type="submit" className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">{t('Confirm')}</button>
+                {finalTimer > 0 ? (
+                  <button
+                    type="submit"
+                    disabled={isConfirming}
+                    className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isConfirming ? <SyncLoader color="#fff" size={8} /> : t('Confirm')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResendFinalCode}
+                    disabled={sendingChangeCode}
+                    className="flex-1 bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {sendingChangeCode ? <SyncLoader color="#fff" size={8} /> : t('Resend')}
+                  </button>
+                )}
                 <button type="button" onClick={() => { setShowFinalCodeModal(false); setFinalCode(''); setFinalError(''); }} className="flex-1 bg-gray-200 text-gray-700 px-6 py-2 rounded-lg hover:bg-gray-300">{t('Cancel')}</button>
               </div>
             </form>

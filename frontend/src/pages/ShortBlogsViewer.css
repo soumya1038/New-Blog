@@ -1,0 +1,33 @@
+/* YouTube Shorts-style smooth scrolling */
+.shorts-container {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  scroll-snap-type: y mandatory;
+}
+
+.shorts-container::-webkit-scrollbar {
+  display: none;
+}
+
+.short-item {
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .shorts-container {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shorts-container {
+    scroll-behavior: auto;
+  }
+}

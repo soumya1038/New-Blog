@@ -419,11 +419,12 @@ const Register = () => {
           <div className="flex items-center">
             <input
               type="checkbox"
+              id="rememberMeRegister"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
-              className="mr-2"
+              className="mr-2 cursor-pointer"
             />
-            <label className="text-gray-700 dark:text-gray-300">{t('Remember Me')}</label>
+            <label htmlFor="rememberMeRegister" className="text-gray-700 dark:text-gray-300 cursor-pointer">{t('Remember Me')}</label>
           </div>
           
           <button

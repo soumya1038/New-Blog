@@ -18,6 +18,10 @@ const AIBioGenerator = ({ onGenerate }) => {
       const { data } = await api.post('/ai/generate-bio', { name, profession, interests, style });
       onGenerate(data.bio);
       setShowModal(false);
+      setName('');
+      setProfession('');
+      setInterests('');
+      setStyle('professional');
     } catch (error) {
       alert(error.response?.data?.message || 'Bio generation failed');
     } finally {
@@ -28,6 +32,7 @@ const AIBioGenerator = ({ onGenerate }) => {
   return (
     <>
       <button
+        type="button"
         onClick={() => setShowModal(true)}
         className="flex items-center gap-2 text-purple-600 hover:text-purple-800 text-sm"
       >
