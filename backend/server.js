@@ -37,7 +37,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://192.168.0.101:3000',
-  'https://blog-frontend-cvda.onrender.com',
+  'https://snewblog.onrender.com',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
@@ -58,6 +58,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(compression());
 app.use('/uploads', express.static('uploads'));
+
+// Serve static frontend files (PRODUCTION)
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../frontend/build')));
+}
 
 // Test routes
 app.get('/', (req, res) => {
@@ -86,6 +91,13 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/auth/zoho', zohoAuthRoutes);
 app.use('/api/drafts', draftRoutes);
+
+// SPA fallback - MUST be AFTER all API routes
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/build', 'index.html'));
+  });
+}
 
 // Error handler
 app.use(errorHandler);

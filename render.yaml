@@ -1,13 +1,15 @@
 services:
-  # Backend API
+  # Backend API + Frontend (Single Service)
   - type: web
     name: blog-backend
     env: node
     region: oregon
     plan: free
-    rootDir: backend
-    buildCommand: npm install
-    startCommand: npm start
+    buildCommand: |
+      cd backend && npm install
+      cd ../frontend && npm install --legacy-peer-deps && npm run build
+      mv build ../backend/
+    startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
         value: production
@@ -37,18 +39,3 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
-
-  # Frontend Web App
-  - type: static_site
-    name: blog-frontend
-    env: static
-    rootDir: frontend
-    buildCommand: npm install --legacy-peer-deps && npm run build
-    staticPublishPath: ./build
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: REACT_APP_API_URL
-        value: https://blog-backend-YOUR_BACKEND_URL.onrender.com
