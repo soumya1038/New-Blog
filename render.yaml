@@ -6,10 +6,11 @@ services:
     region: oregon
     plan: free
     buildCommand: |
-      cd backend && npm install
-      cd ../frontend && npm install --legacy-peer-deps && npm run build
-      mv build ../backend/
-    startCommand: cd backend && npm start
+      npm install --prefix backend
+      npm install --legacy-peer-deps --prefix frontend
+      npm run build --prefix frontend
+      cp -r frontend/build backend/
+    startCommand: npm start --prefix backend
     envVars:
       - key: NODE_ENV
         value: production
