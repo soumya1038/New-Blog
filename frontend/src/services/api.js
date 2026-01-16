@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL 
+const API_URL = process.env.NODE_ENV === 'production'
+  ? '/api'  // Relative URL in production (same domain)
+  : process.env.REACT_APP_API_URL 
   ? `${process.env.REACT_APP_API_URL}/api`
   : 'http://localhost:5000/api';
 
