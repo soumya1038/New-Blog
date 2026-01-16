@@ -61,15 +61,8 @@ app.use('/uploads', express.static('uploads'));
 // Serve static frontend files (PRODUCTION)
 if (process.env.NODE_ENV === 'production') {
   const buildPath = path.join(__dirname, 'build');
-  console.log('📁 Looking for build folder at:', buildPath);
-  
-  const fs = require('fs');
-  if (fs.existsSync(buildPath)) {
-    app.use(express.static(buildPath));
-    console.log('✅ Serving static files from:', buildPath);
-  } else {
-    console.error('❌ Build folder not found at:', buildPath);
-  }
+  app.use(express.static(buildPath));
+  console.log('✅ Serving static files from:', buildPath);
 }
 
 // Test routes
@@ -103,14 +96,20 @@ app.use('/api/drafts', draftRoutes);
 // SPA fallback - MUST be AFTER all API routes
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {
-    const fs = require('fs');
     const indexPath = path.join(__dirname, 'build', 'index.html');
+    const fs = require('fs');
     
     if (fs.existsSync(indexPath)) {
+      console.log('📄 Serving index.html for:', req.path);
       res.sendFile(indexPath);
     } else {
-      res.status(500).send('Build not found. Check Render build logs.');
+      console.error('❌ Build folder not found at:', indexPath);
+      res.status(500).send('Frontend build not found. Please check build logs.');
     }
+  });
+} else {
+  app.get('*', (req, res) => {
+    res.send('✅ Server is running in development mode!');
   });
 }
 
