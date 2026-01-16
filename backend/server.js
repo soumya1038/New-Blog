@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const compression = require('compression');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
@@ -85,6 +86,16 @@ app.use('/api/groups', groupRoutes);
 app.use('/api/calls', callRoutes);
 app.use('/api/auth/zoho', zohoAuthRoutes);
 app.use('/api/drafts', draftRoutes);
+
+// Serve static files from React build (PRODUCTION ONLY)
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../frontend/build')));
+  
+  // SPA fallback - serve index.html for all non-API routes
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/build', 'index.html'));
+  });
+}
 
 // Error handler
 app.use(errorHandler);
