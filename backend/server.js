@@ -37,7 +37,6 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://192.168.0.101:3000',
-  'https://snewblog.onrender.com',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
@@ -61,12 +60,14 @@ app.use('/uploads', express.static('uploads'));
 
 // Serve static frontend files (PRODUCTION)
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../frontend/build')));
+  const buildPath = path.join(__dirname, 'build');
+  app.use(express.static(buildPath));
+  console.log('✅ Serving static files from:', buildPath);
 }
 
 // Test routes
-app.get('/', (req, res) => {
-  res.send('✅ Server is running!');
+app.get('/api', (req, res) => {
+  res.send('✅ API is running!');
 });
 
 app.get('/api/test', (req, res) => {
@@ -95,7 +96,20 @@ app.use('/api/drafts', draftRoutes);
 // SPA fallback - MUST be AFTER all API routes
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../frontend/build', 'index.html'));
+    const indexPath = path.join(__dirname, 'build', 'index.html');
+    const fs = require('fs');
+    
+    if (fs.existsSync(indexPath)) {
+      console.log('📄 Serving index.html for:', req.path);
+      res.sendFile(indexPath);
+    } else {
+      console.error('❌ Build folder not found at:', indexPath);
+      res.status(500).send('Frontend build not found. Please check build logs.');
+    }
+  });
+} else {
+  app.get('*', (req, res) => {
+    res.send('✅ Server is running in development mode!');
   });
 }
 
