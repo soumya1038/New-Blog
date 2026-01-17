@@ -1,6 +1,5 @@
-// Compress image before upload
-export const compressImage = (file) => {
-  return new Promise((resolve, reject) => {
+export const compressImage = async (file, maxWidth = 1920, quality = 0.8) => {
+  return new Promise((resolve) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = (event) => {
@@ -11,16 +10,9 @@ export const compressImage = (file) => {
         let width = img.width;
         let height = img.height;
 
-        // Resize if too large
-        const maxDimension = 1920;
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = (height / width) * maxDimension;
-            width = maxDimension;
-          } else {
-            width = (width / height) * maxDimension;
-            height = maxDimension;
-          }
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
         }
 
         canvas.width = width;
@@ -30,18 +22,15 @@ export const compressImage = (file) => {
 
         canvas.toBlob(
           (blob) => {
-            const compressedFile = new File([blob], file.name, {
+            resolve(new File([blob], file.name, {
               type: 'image/jpeg',
               lastModified: Date.now(),
-            });
-            resolve(compressedFile);
+            }));
           },
           'image/jpeg',
-          0.85 // Quality
+          quality
         );
       };
-      img.onerror = reject;
     };
-    reader.onerror = reject;
   });
 };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
@@ -13,6 +13,8 @@ import Avatar from '../components/Avatar';
 import ProductTour from '../components/ProductTour';
 import ShortBlogs from '../components/ShortBlogs';
 import ScrollToTop from '../components/ScrollToTop';
+import { useDebounce } from '../hooks/useDebounce';
+import { apiCache } from '../utils/apiCache';
 
 const Home = () => {
   const { t } = useTranslation();
@@ -24,6 +26,7 @@ const Home = () => {
   const [showShortBlogs, setShowShortBlogs] = useState(true);
   const [clickTimer, setClickTimer] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebounce(searchTerm, 500);
   const [selectedTags, setSelectedTags] = useState([]);
   const [showAllTags, setShowAllTags] = useState(false);
   const [visibleTagCount, setVisibleTagCount] = useState(5);
@@ -106,7 +109,18 @@ const Home = () => {
 
   const fetchBlogs = async () => {
     try {
+      const cacheKey = 'blogs-list';
+      const cached = apiCache.get(cacheKey);
+      
+      if (cached) {
+        setBlogs(cached);
+        setError(false);
+        setLoading(false);
+        return;
+      }
+      
       const { data } = await api.get('/blogs');
+      apiCache.set(cacheKey, data.blogs);
       setBlogs(data.blogs);
       setError(false);
     } catch (error) {
@@ -119,7 +133,16 @@ const Home = () => {
 
   const fetchShortBlogs = async () => {
     try {
+      const cacheKey = 'shorts-list';
+      const cached = apiCache.get(cacheKey);
+      
+      if (cached) {
+        setShortBlogs(cached);
+        return;
+      }
+      
       const { data } = await api.get('/shorts');
+      apiCache.set(cacheKey, data.shorts);
       setShortBlogs(data.shorts);
     } catch (error) {
       console.error('Error fetching short blogs:', error);
@@ -138,6 +161,7 @@ const Home = () => {
       setBlogs(blogs.map(blog => 
         blog._id === blogId ? { ...blog, likes: data.likes } : blog
       ));
+      apiCache.clear('blogs-list');
       
       if (data.liked) {
         soundNotification.playLikeActionSound();
@@ -212,29 +236,28 @@ const Home = () => {
     return () => window.removeEventListener('resize', calculateVisibleTags);
   }, [selectedTags]);
 
-  const filteredBlogs = blogs.filter(blog => {
-    // If tags selected, blog must have at least one of those tags
-    if (selectedTags.length > 0) {
-      const hasTags = selectedTags.some(tag => blog.tags?.includes(tag));
-      if (!hasTags) return false;
-    }
-    
-    // If search term entered, blog title must match
-    if (searchTerm.trim()) {
-      const matchesSearch = blog.title.toLowerCase().includes(searchTerm.toLowerCase());
-      if (!matchesSearch) return false;
-    }
-    
-    return true;
-  }).sort((a, b) => {
-    // Prioritize blogs that match selected tags
-    if (selectedTags.length > 0) {
-      const aMatchCount = selectedTags.filter(tag => a.tags?.includes(tag)).length;
-      const bMatchCount = selectedTags.filter(tag => b.tags?.includes(tag)).length;
-      if (aMatchCount !== bMatchCount) return bMatchCount - aMatchCount;
-    }
-    return 0;
-  });
+  const filteredBlogs = useMemo(() => {
+    return blogs.filter(blog => {
+      if (selectedTags.length > 0) {
+        const hasTags = selectedTags.some(tag => blog.tags?.includes(tag));
+        if (!hasTags) return false;
+      }
+      
+      if (debouncedSearch.trim()) {
+        const matchesSearch = blog.title.toLowerCase().includes(debouncedSearch.toLowerCase());
+        if (!matchesSearch) return false;
+      }
+      
+      return true;
+    }).sort((a, b) => {
+      if (selectedTags.length > 0) {
+        const aMatchCount = selectedTags.filter(tag => a.tags?.includes(tag)).length;
+        const bMatchCount = selectedTags.filter(tag => b.tags?.includes(tag)).length;
+        if (aMatchCount !== bMatchCount) return bMatchCount - aMatchCount;
+      }
+      return 0;
+    });
+  }, [blogs, selectedTags, debouncedSearch]);
 
   const allTags = [...new Set(blogs.flatMap(blog => blog.tags || []))];
 
@@ -452,11 +475,11 @@ const Home = () => {
               const hasTags = selectedTags.some(tag => blog.tags?.includes(tag));
               if (!hasTags) return false;
             }
-            if (searchTerm.trim()) {
+            if (debouncedSearch.trim()) {
               const matchesSearch = 
-                blog.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                blog.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                blog.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+                blog.title.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+                blog.content.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+                blog.tags?.some(tag => tag.toLowerCase().includes(debouncedSearch.toLowerCase()));
               if (!matchesSearch) return false;
             }
             return true;

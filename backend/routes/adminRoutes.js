@@ -1,5 +1,6 @@
 const express = require('express');
 const { adminAuth, adminOrCoAdminAuth } = require('../middleware/auth');
+const { getMetrics } = require('../middleware/monitoring');
 const {
   getStats,
   getUsers,
@@ -15,6 +16,21 @@ const {
 } = require('../controllers/adminController');
 
 const router = express.Router();
+
+// Health check endpoint (public)
+router.get('/health', (req, res) => {
+  const metrics = getMetrics();
+  const isHealthy = metrics.database === 'connected' && metrics.memory < 450;
+  res.status(isHealthy ? 200 : 503).json({
+    status: isHealthy ? 'healthy' : 'unhealthy',
+    ...metrics
+  });
+});
+
+// System metrics (admin only)
+router.get('/metrics', adminOrCoAdminAuth, (req, res) => {
+  res.json({ success: true, metrics: getMetrics() });
+});
 
 // Read-only routes (admin or coAdmin)
 router.get('/stats', adminOrCoAdminAuth, getStats);

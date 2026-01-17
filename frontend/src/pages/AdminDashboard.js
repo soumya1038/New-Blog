@@ -32,6 +32,7 @@ const AdminDashboard = () => {
   const [modalError, setModalError] = useState('');
   const [loadingStats, setLoadingStats] = useState(false);
   const [suspendLoading, setSuspendLoading] = useState(false);
+  const [systemMetrics, setSystemMetrics] = useState(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -44,16 +45,18 @@ const AdminDashboard = () => {
 
   const fetchData = async () => {
     try {
-      const [statsRes, usersRes, blogsRes, shortsRes] = await Promise.all([
+      const [statsRes, usersRes, blogsRes, shortsRes, metricsRes] = await Promise.all([
         api.get(`/admin/stats?days=${timeRange}`),
         api.get('/admin/users'),
         api.get('/admin/blogs'),
-        api.get('/admin/shorts')
+        api.get('/admin/shorts'),
+        api.get('/admin/metrics')
       ]);
       setStats(statsRes.data.stats);
       setUsers(usersRes.data.users);
       setBlogs(blogsRes.data.blogs);
       setShorts(shortsRes.data.shorts);
+      setSystemMetrics(metricsRes.data.metrics);
     } catch (error) {
       console.error('Error fetching admin data:', error);
     } finally {
@@ -514,6 +517,92 @@ const AdminDashboard = () => {
               </div>
             </div>
 
+            {/* System Health Section */}
+            {systemMetrics && (
+              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
+                <h3 className="text-xl font-bold mb-6 text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                  <span>🖥️</span> {t('System Health')}
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
+                    <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">{t('Uptime')}</p>
+                    <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                      {Math.floor(systemMetrics.uptime / 3600)}h {Math.floor((systemMetrics.uptime % 3600) / 60)}m
+                    </p>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 rounded-lg p-4 border border-green-200 dark:border-green-700">
+                    <p className="text-xs font-medium text-green-700 dark:text-green-300 mb-2">{t('Total Requests')}</p>
+                    <p className="text-2xl font-bold text-green-900 dark:text-green-100">{systemMetrics.requests.toLocaleString()}</p>
+                  </div>
+                  
+                  <div className={`bg-gradient-to-br rounded-lg p-4 border ${
+                    systemMetrics.avgResponseTime < 200 
+                      ? 'from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-800/30 border-emerald-200 dark:border-emerald-700' 
+                      : systemMetrics.avgResponseTime < 500 
+                      ? 'from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-800/30 border-amber-200 dark:border-amber-700' 
+                      : 'from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/30 border-red-200 dark:border-red-700'
+                  }`}>
+                    <p className={`text-xs font-medium mb-2 ${
+                      systemMetrics.avgResponseTime < 200 
+                        ? 'text-emerald-700 dark:text-emerald-300' 
+                        : systemMetrics.avgResponseTime < 500 
+                        ? 'text-amber-700 dark:text-amber-300' 
+                        : 'text-red-700 dark:text-red-300'
+                    }`}>{t('Avg Response')}</p>
+                    <p className={`text-2xl font-bold ${
+                      systemMetrics.avgResponseTime < 200 
+                        ? 'text-emerald-900 dark:text-emerald-100' 
+                        : systemMetrics.avgResponseTime < 500 
+                        ? 'text-amber-900 dark:text-amber-100' 
+                        : 'text-red-900 dark:text-red-100'
+                    }`}>{systemMetrics.avgResponseTime}ms</p>
+                  </div>
+                  
+                  <div className={`bg-gradient-to-br rounded-lg p-4 border ${
+                    systemMetrics.memory < 300 
+                      ? 'from-teal-50 to-teal-100 dark:from-teal-900/30 dark:to-teal-800/30 border-teal-200 dark:border-teal-700' 
+                      : systemMetrics.memory < 400 
+                      ? 'from-orange-50 to-orange-100 dark:from-orange-900/30 dark:to-orange-800/30 border-orange-200 dark:border-orange-700' 
+                      : 'from-rose-50 to-rose-100 dark:from-rose-900/30 dark:to-rose-800/30 border-rose-200 dark:border-rose-700'
+                  }`}>
+                    <p className={`text-xs font-medium mb-2 ${
+                      systemMetrics.memory < 300 
+                        ? 'text-teal-700 dark:text-teal-300' 
+                        : systemMetrics.memory < 400 
+                        ? 'text-orange-700 dark:text-orange-300' 
+                        : 'text-rose-700 dark:text-rose-300'
+                    }`}>{t('Memory Usage')}</p>
+                    <p className={`text-2xl font-bold ${
+                      systemMetrics.memory < 300 
+                        ? 'text-teal-900 dark:text-teal-100' 
+                        : systemMetrics.memory < 400 
+                        ? 'text-orange-900 dark:text-orange-100' 
+                        : 'text-rose-900 dark:text-rose-100'
+                    }`}>{systemMetrics.memory}MB</p>
+                  </div>
+                  
+                  <div className={`bg-gradient-to-br rounded-lg p-4 border ${
+                    systemMetrics.database === 'connected' 
+                      ? 'from-cyan-50 to-cyan-100 dark:from-cyan-900/30 dark:to-cyan-800/30 border-cyan-200 dark:border-cyan-700' 
+                      : 'from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/30 border-red-200 dark:border-red-700'
+                  }`}>
+                    <p className={`text-xs font-medium mb-2 ${
+                      systemMetrics.database === 'connected' 
+                        ? 'text-cyan-700 dark:text-cyan-300' 
+                        : 'text-red-700 dark:text-red-300'
+                    }`}>{t('Database')}</p>
+                    <p className={`text-2xl font-bold ${
+                      systemMetrics.database === 'connected' 
+                        ? 'text-cyan-900 dark:text-cyan-100' 
+                        : 'text-red-900 dark:text-red-100'
+                    }`}>
+                      {systemMetrics.database === 'connected' ? '✓ ' + t('Connected') : '✗ ' + t('Disconnected')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
           </div>
         )}

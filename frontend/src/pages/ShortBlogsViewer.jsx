@@ -681,8 +681,14 @@ const ShortBlogsViewer = () => {
     const container = containerRef.current;
     if (!container) return;
 
+    const isMobile = window.innerWidth < 768;
+    
     if (showComments || showDescription || showOwnerShorts) {
-      container.style.overflow = 'hidden';
+      // Only disable scrolling on mobile devices
+      if (isMobile) {
+        container.style.overflow = 'hidden';
+      }
+      // On desktop (md and above), keep scrolling enabled
     } else {
       container.style.overflow = 'scroll';
     }

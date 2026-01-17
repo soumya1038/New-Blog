@@ -1,35 +1,40 @@
-import React, { useEffect, useContext, useState } from 'react';
+import React, { useEffect, useContext, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import Navbar from './components/Navbar';
-import Home from './pages/Home';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import CreateBlog from './pages/CreateBlog';
-import EditBlog from './pages/EditBlog';
-import BlogDetail from './pages/BlogDetail';
-import Profile from './pages/Profile';
-import UserProfile from './pages/UserProfile';
-import Notifications from './pages/Notifications';
-import Drafts from './pages/Drafts';
-import AdminDashboard from './pages/AdminDashboard';
-import VerifyEmail from './pages/VerifyEmail';
-import ChatNew from './pages/ChatNew';
-import JoinGroup from './pages/JoinGroup';
-import ShortBlogsViewer from './pages/ShortBlogsViewer';
-import News from './pages/News';
-import NotFound from './pages/NotFound';
 import ErrorFallback from './components/ErrorFallback';
 import IncomingCallModal from './components/IncomingCallModal';
-import Chatbot from './components/Chatbot';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
-import soundNotification from './utils/soundNotifications';
 import soundManager from './utils/soundManager';
-import api from './services/api';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useRouteTracker } from './hooks/useRouteTracker';
 import guestTracker from './services/guestTracking';
+
+const Home = lazy(() => import('./pages/Home'));
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const CreateBlog = lazy(() => import('./pages/CreateBlog'));
+const EditBlog = lazy(() => import('./pages/EditBlog'));
+const BlogDetail = lazy(() => import('./pages/BlogDetail'));
+const Profile = lazy(() => import('./pages/Profile'));
+const UserProfile = lazy(() => import('./pages/UserProfile'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const Drafts = lazy(() => import('./pages/Drafts'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
+const ChatNew = lazy(() => import('./pages/ChatNew'));
+const JoinGroup = lazy(() => import('./pages/JoinGroup'));
+const ShortBlogsViewer = lazy(() => import('./pages/ShortBlogsViewer'));
+const News = lazy(() => import('./pages/News'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const Chatbot = lazy(() => import('./components/Chatbot'));
+
+const LoadingFallback = () => (
+  <div className="min-h-screen flex items-center justify-center">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+  </div>
+);
 
 function AppContent() {
   const { user, sessionExpired } = useContext(AuthContext);
@@ -38,15 +43,12 @@ function AppContent() {
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   
-  // Track route changes and emit to backend
   useRouteTracker();
   
-  // Initialize guest tracking
   useEffect(() => {
     guestTracker.startTracking();
   }, []);
   
-  // Handle session expiration
   useEffect(() => {
     if (sessionExpired) {
       setShowSessionExpiredModal(true);
@@ -63,7 +65,6 @@ function AppContent() {
 
     const socket = socketService.connect(user._id);
     
-    // Send initial route after a brief delay to ensure socket is connected
     setTimeout(() => {
       socketService.updateRoute(location.pathname);
     }, 100);
@@ -101,7 +102,6 @@ function AppContent() {
       window.dispatchEvent(new CustomEvent('newNotification'));
     };
 
-    // Global call listeners
     const handleIncomingCall = ({ callerId, caller, callType, callLogId }) => {
       console.log('📞 App.js: Global incoming call:', { callerId, caller, callType });
       if (location.pathname !== '/chat') {
@@ -158,7 +158,7 @@ function AppContent() {
       socket.off('call:rejected', handleCallRejected);
       socket.off('call:ended', handleCallEnded);
     };
-  }, [user]);
+  }, [user, location.pathname]);
 
   const handleAcceptGlobalCall = () => {
     soundManager.stop('incomingCall');
@@ -180,7 +180,9 @@ function AppContent() {
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       <div className="min-h-screen">
         <Navbar />
-        <Chatbot />
+        <Suspense fallback={null}>
+          <Chatbot />
+        </Suspense>
         {globalIncomingCall && (
           <IncomingCallModal
             caller={globalIncomingCall.caller}
@@ -210,28 +212,30 @@ function AppContent() {
             </div>
           </div>
         )}
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/create" element={<CreateBlog />} />
-          <Route path="/edit/:id" element={<EditBlog />} />
-          <Route path="/blog/:id" element={<BlogDetail />} />
-          <Route path="/profile" element={<Profile />} />
-          <Route path="/user/:id" element={<UserProfile />} />
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/drafts" element={<Drafts />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/verify-email/:token" element={<VerifyEmail />} />
-          <Route path="/chat" element={<ChatNew />} />
-          <Route path="/join-group/:inviteCode" element={<JoinGroup />} />
-          <Route path="/short-blogs" element={<ShortBlogsViewer />} />
-          <Route path="/short-blogs/:id" element={<ShortBlogsViewer />} />
-          <Route path="/shorts" element={<ShortBlogsViewer />} />
-          <Route path="/shorts/:id" element={<ShortBlogsViewer />} />
-          <Route path="/news" element={<News />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <Suspense fallback={<LoadingFallback />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/create" element={<CreateBlog />} />
+            <Route path="/edit/:id" element={<EditBlog />} />
+            <Route path="/blog/:id" element={<BlogDetail />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/user/:id" element={<UserProfile />} />
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/drafts" element={<Drafts />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/verify-email/:token" element={<VerifyEmail />} />
+            <Route path="/chat" element={<ChatNew />} />
+            <Route path="/join-group/:inviteCode" element={<JoinGroup />} />
+            <Route path="/short-blogs" element={<ShortBlogsViewer />} />
+            <Route path="/short-blogs/:id" element={<ShortBlogsViewer />} />
+            <Route path="/shorts" element={<ShortBlogsViewer />} />
+            <Route path="/shorts/:id" element={<ShortBlogsViewer />} />
+            <Route path="/news" element={<News />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
       </div>
     </ErrorBoundary>
   );

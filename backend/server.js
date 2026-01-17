@@ -25,6 +25,8 @@ const callRoutes = require('./routes/callRoutes');
 const zohoAuthRoutes = require('./routes/zohoAuth');
 const draftRoutes = require('./routes/draftRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
+const { systemMonitor } = require('./middleware/monitoring');
+const { startDatabaseMonitor } = require('./utils/dbMonitor');
 const chatSocket = require('./socket/chatSocket');
 const { cleanupOldNotifications } = require('./controllers/socialController');
 const cleanupExpiredStatuses = require('./utils/statusCleanup');
@@ -56,6 +58,7 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(compression());
+app.use(systemMonitor);
 app.use('/uploads', express.static('uploads'));
 
 // Serve static frontend files (PRODUCTION)
@@ -150,6 +153,9 @@ mongoose.connect(process.env.MONGODB_URI)
       // Start scheduled content publish job
       publishScheduledContent(io);
       console.log('✅ Scheduled content publish job started');
+      
+      // Start database size monitor
+      startDatabaseMonitor();
     });
   })
   .catch(err => {
