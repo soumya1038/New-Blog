@@ -667,8 +667,7 @@ const ChatNew = () => {
     }
   };
 
-<<<<<<< HEAD
-=======
+
   // Combined and sorted conversations + groups
   const getCombinedChats = () => {
     const groupChats = groups.map(g => ({ ...g, isGroup: true, lastMessageTime: g.lastMessage?.createdAt || g.createdAt }));
@@ -680,7 +679,6 @@ const ChatNew = () => {
     });
   };
 
->>>>>>> 75a58b9 (fix chat issue)
   const loadBlockedUsers = async () => {
     try {
       const { data } = await api.get('/messages/blocked-users');
@@ -2257,163 +2255,164 @@ const ChatNew = () => {
               <p className="text-sm mt-2">{t('Search for users to start chatting')}</p>
             </div>
           ) : (
-<<<<<<< HEAD
             <>
-            {/* Groups */}
-            {groups.map(group => (
-              <div
-                key={`grp-${group._id}`}
-                className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === group._id && selectedChat?.isGroup ? 'bg-blue-50 dark:bg-gray-700' : ''}`}
-                onClick={() => {
-                  setSelectedChat({ ...group, isGroup: true });
-                }}
-              >
-                <div className="flex items-center flex-1 min-w-0">
-                  <div className="relative">
-                    <img
-                      src={group.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(group.name)}&background=0D8ABC&color=fff`}
-                      alt={group.name}
-                      className="w-12 h-12 rounded-full object-cover"
-                    />
-                  </div>
-                  <div className="ml-3 flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline">
-                      <div className="flex items-center gap-2">
-                        <FiUsers className="w-4 h-4 text-gray-500" />
-                        <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{group.name}</p>
-                      </div>
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
-                      {group.members.length} members
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ))}
-            
-            {/* Individual Conversations */}
-            {conversations.map(conv => (
-              <div
-                key={conv.user._id}
-                className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === conv.user._id ? 'bg-blue-50 dark:bg-gray-700' : ''
-                  }`}
-                onClick={async () => {
-                  // Clear unread count immediately for better UX
-                  setConversations(prev => prev.map(c =>
-                    c.user._id === conv.user._id ? { ...c, unreadCount: 0 } : c
-                  ));
-                  console.log('Conversation user selected:', conv.user);
-                  setSelectedChat(conv.user);
-                  
-                  // Fetch user's statuses
-                  (async () => {
-                    try {
-                      const { data } = await api.get(`/users/profile/${conv.user._id}`);
-                      console.log('Fetched user profile:', data);
-                      const activeStatuses = data.user.statuses?.filter(s => new Date() < new Date(s.expiresAt)) || [];
-                      console.log('Active statuses:', activeStatuses);
-                      setSelectedUserStatuses(activeStatuses);
-                      setCurrentStatusIndex(0);
-                      setStatusProgress(0);
-                    } catch (error) {
-                      console.error('Failed to fetch user statuses:', error);
-                      setSelectedUserStatuses([]);
-                    }
-                  })();
-                }}
-              >
-                <div className="flex items-center flex-1 min-w-0">
-                  <div className="relative">
-                    <div
-                      className="rounded-full"
-                      style={{
-                        padding: userStatuses[conv.user._id] && !viewedStatuses.has(conv.user._id) ? '3px' : '0',
-                        background: userStatuses[conv.user._id] && !viewedStatuses.has(conv.user._id) ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent'
-                      }}
-                    >
+              {/* Groups */}
+              {groups.map(group => (
+                <div
+                  key={`grp-${group._id}`}
+                  className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === group._id && selectedChat?.isGroup ? 'bg-blue-50 dark:bg-gray-700' : ''}`}
+                  onClick={() => {
+                    setSelectedChat({ ...group, isGroup: true });
+                  }}
+                >
+                  <div className="flex items-center flex-1 min-w-0">
+                    <div className="relative">
                       <img
-                        src={getUserAvatar(conv.user)}
-                        alt={getUserDisplayName(conv.user)}
+                        src={group.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(group.name)}&background=0D8ABC&color=fff`}
+                        alt={group.name}
                         className="w-12 h-12 rounded-full object-cover"
                       />
                     </div>
-                    {isOnline(conv.user._id) && (
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+                    <div className="ml-3 flex-1 min-w-0">
+                      <div className="flex justify-between items-baseline">
+                        <div className="flex items-center gap-2">
+                          <FiUsers className="w-4 h-4 text-gray-500" />
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{group.name}</p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                        {group.members.length} members
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Individual Conversations */}
+              {conversations.map(conv => (
+                <div
+                  key={conv.user._id}
+                  className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === conv.user._id ? 'bg-blue-50 dark:bg-gray-700' : ''
+                    }`}
+                  onClick={async () => {
+                    // Clear unread count immediately for better UX
+                    setConversations(prev => prev.map(c =>
+                      c.user._id === conv.user._id ? { ...c, unreadCount: 0 } : c
+                    ));
+                    console.log('Conversation user selected:', conv.user);
+                    setSelectedChat(conv.user);
+
+                    // Fetch user's statuses
+                    (async () => {
+                      try {
+                        const { data } = await api.get(`/users/profile/${conv.user._id}`);
+                        console.log('Fetched user profile:', data);
+                        const activeStatuses = data.user.statuses?.filter(s => new Date() < new Date(s.expiresAt)) || [];
+                        console.log('Active statuses:', activeStatuses);
+                        setSelectedUserStatuses(activeStatuses);
+                        setCurrentStatusIndex(0);
+                        setStatusProgress(0);
+                      } catch (error) {
+                        console.error('Failed to fetch user statuses:', error);
+                        setSelectedUserStatuses([]);
+                      }
+                    })();
+                  }}
+                >
+                  <div className="flex items-center flex-1 min-w-0">
+                    <div className="relative">
+                      <div
+                        className="rounded-full"
+                        style={{
+                          padding: userStatuses[conv.user._id] && !viewedStatuses.has(conv.user._id) ? '3px' : '0',
+                          background: userStatuses[conv.user._id] && !viewedStatuses.has(conv.user._id) ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent'
+                        }}
+                      >
+                        <img
+                          src={getUserAvatar(conv.user)}
+                          alt={getUserDisplayName(conv.user)}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      </div>
+                      {isOnline(conv.user._id) && (
+                        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+                      )}
+                    </div>
+                    <div className="ml-3 flex-1 min-w-0">
+                      <div className="flex justify-between items-baseline">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{getUserDisplayName(conv.user)}</p>
+                          {blockedUsers.has(conv.user._id) && (
+                            <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{t('Blocked')}</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{formatDate(conv.lastMessage.createdAt)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {mutedUsers.has(conv.user._id) && (
+                          <FiBellOff className="text-gray-400 text-xs" />
+                        )}
+                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1">{conv.lastMessage.content}</p>
+                      </div>
+                    </div>
+                    {conv.unreadCount > 0 && (
+                      <span className="ml-2 bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded-full">
+                        {conv.unreadCount}
+                      </span>
                     )}
                   </div>
-                  <div className="ml-3 flex-1 min-w-0">
-                    <div className="flex justify-between items-baseline">
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{getUserDisplayName(conv.user)}</p>
-                        {blockedUsers.has(conv.user._id) && (
-                          <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{t('Blocked')}</span>
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowConvMenu(showConvMenu === conv.user._id ? null : conv.user._id);
+                      }}
+                      className="p-2 hover:bg-gray-200 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <FiMoreVertical className="text-gray-600" />
+                    </button>
+                    {showConvMenu === conv.user._id && (
+                      <div ref={convMenuRef} className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                        <button
+                          onClick={() => handleMuteUser(conv.user._id)}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          {mutedUsers.has(conv.user._id) ? (
+                            <><FiBell className="text-gray-600" /> {t('Unmute')}</>
+                          ) : (
+                            <><FiBellOff className="text-gray-600" /> {t('Mute notifications')}</>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteConversation(conv.user._id)}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                        >
+                          <FiTrash2 /> {t('Delete conversation')}
+                        </button>
+                        {blockedUsers.has(conv.user._id) ? (
+                          <button
+                            onClick={() => handleUnblockUser(conv.user._id)}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600 rounded-b-lg"
+                          >
+                            <FiUserX /> {t('Unblock user')}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleBlockUser(conv.user._id)}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600 rounded-b-lg"
+                          >
+                            <FiUserX /> {t('Block user')}
+                          </button>
                         )}
                       </div>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{formatDate(conv.lastMessage.createdAt)}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {mutedUsers.has(conv.user._id) && (
-                        <FiBellOff className="text-gray-400 text-xs" />
-                      )}
-                      <p className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1">{conv.lastMessage.content}</p>
-                    </div>
+                    )}
                   </div>
-                  {conv.unreadCount > 0 && (
-                    <span className="ml-2 bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded-full">
-                      {conv.unreadCount}
-                    </span>
-                  )}
                 </div>
-                <div className="relative">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowConvMenu(showConvMenu === conv.user._id ? null : conv.user._id);
-                    }}
-                    className="p-2 hover:bg-gray-200 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <FiMoreVertical className="text-gray-600" />
-                  </button>
-                  {showConvMenu === conv.user._id && (
-                    <div ref={convMenuRef} className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
-                      <button
-                        onClick={() => handleMuteUser(conv.user._id)}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                      >
-                        {mutedUsers.has(conv.user._id) ? (
-                          <><FiBell className="text-gray-600" /> {t('Unmute')}</>
-                        ) : (
-                          <><FiBellOff className="text-gray-600" /> {t('Mute notifications')}</>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => handleDeleteConversation(conv.user._id)}
-                        className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
-                      >
-                        <FiTrash2 /> {t('Delete conversation')}
-                      </button>
-                      {blockedUsers.has(conv.user._id) ? (
-                        <button
-                          onClick={() => handleUnblockUser(conv.user._id)}
-                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600 rounded-b-lg"
-                        >
-                          <FiUserX /> {t('Unblock user')}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleBlockUser(conv.user._id)}
-                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600 rounded-b-lg"
-                        >
-                          <FiUserX /> {t('Block user')}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+              ))}
             </>
-=======
+          )}
+          {/* Combined Chats (for example purposes) */}
+          {conversations.length === 0 && groups.length === 0 &&
             getCombinedChats().map(chat => (
               chat.isGroup ? (
                 <div
@@ -2559,8 +2558,7 @@ const ChatNew = () => {
                 </div>
               )
             ))
->>>>>>> 75a58b9 (fix chat issue)
-          )}
+}
         </div>
       </div>
 
@@ -2740,8 +2738,8 @@ const ChatNew = () => {
                             setShowUserPanel(false);
                           }}
                           className={`text-sm mt-1 font-medium ${!viewedStatuses.has(selectedChat._id)
-                              ? 'bg-gradient-to-r from-green-400 via-blue-500 to-purple-600 bg-clip-text text-transparent animate-shimmer'
-                              : 'text-gray-600'
+                            ? 'bg-gradient-to-r from-green-400 via-blue-500 to-purple-600 bg-clip-text text-transparent animate-shimmer'
+                            : 'text-gray-600'
                             }`}
                           style={{
                             backgroundSize: !viewedStatuses.has(selectedChat._id) ? '200% auto' : 'auto'
@@ -2910,20 +2908,10 @@ const ChatNew = () => {
             )}
 
             {/* Messages */}
-<<<<<<< HEAD
-            <div 
-              ref={messagesContainerRef} 
-              onScroll={handleScroll} 
-<<<<<<< HEAD
-              className="flex-1 overflow-y-auto overflow-x-hidden p-4 bg-gray-50 dark:bg-gray-900 max-w-full relative"
-=======
-=======
             <div
               ref={messagesContainerRef}
               onScroll={handleScroll}
->>>>>>> 232a67a (add status post dynamically)
               className="overflow-y-auto overflow-x-hidden p-4 pb-0 bg-gray-50 dark:bg-gray-900 max-w-full relative md:min-h-0"
->>>>>>> 75a58b9 (fix chat issue)
               style={{
                 backgroundImage: 'url(/image/chat_background.png)',
                 backgroundSize: 'cover',
@@ -2932,14 +2920,13 @@ const ChatNew = () => {
                 backgroundRepeat: 'no-repeat'
               }}
             >
-<<<<<<< HEAD
+
               {/* Overlay for readability */}
               <div className="absolute inset-0 bg-white/90 dark:bg-gray-900/90 pointer-events-none" style={{ zIndex: 0 }} />
-=======
+
               {/* Overlay for readability - only for messages area */}
               {selectedChat && <div className="pointer-events-none" style={{ position: 'sticky', top: '-1rem', left: '-1rem', right: '-1rem', bottom: '-1rem', height: '100vh', width: 'calc(100% + 2rem)', marginLeft: '-1rem', marginTop: '-1rem', backgroundColor: 'rgba(255, 255, 255, 0.9)', zIndex: 0 }} />}
               {selectedChat && <div className="pointer-events-none dark:block hidden" style={{ position: 'sticky', top: '-1rem', left: '-1rem', right: '-1rem', bottom: '-1rem', height: '100vh', width: 'calc(100% + 2rem)', marginLeft: '-1rem', marginTop: '-1rem', backgroundColor: 'rgba(17, 24, 39, 0.9)', zIndex: 0 }} />}
->>>>>>> 75a58b9 (fix chat issue)
               <div className="relative" style={{ zIndex: 10 }}>
                 {/* System Message - Auto-delete Warning */}
                 <div className="flex justify-center my-6">
@@ -3242,41 +3229,6 @@ const ChatNew = () => {
 
             {/* Image Editor */}
             {showImageEditor && (
-<<<<<<< HEAD
-              <BlogImageEditor
-                imageUrl={imageToEdit}
-                caption={imageCaption}
-                onCaptionChange={setImageCaption}
-                initialState={imageEditState}
-                onSave={(editedImageData, editState, captionText) => {
-                  setEditedImageData(editedImageData);
-                  setImageEditState(editState);
-                  if (captionText) {
-                    setImageCaption(captionText);
-                  }
-                  fetch(editedImageData)
-                    .then(res => res.blob())
-                    .then(blob => {
-                      const file = new File([blob], `edited-${Date.now()}.jpg`, { type: 'image/jpeg' });
-                      setSelectedFile(file);
-                      setFilePreview({ 
-                        type: 'image', 
-                        url: editedImageData, 
-                        name: file.name, 
-                        size: file.size
-                      });
-                      setShowImageEditor(false);
-                    });
-                }}
-                onCancel={() => {
-                  setShowImageEditor(false);
-                  setImageToEdit(null);
-                  setImageCaption('');
-                  setEditedImageData(null);
-                  setImageEditState(null);
-                }}
-              />
-=======
               <div className="fixed inset-0 bg-white dark:bg-gray-900 z-[100] flex flex-col md:flex-row">
                 <BlogImageEditor
                   imageUrl={imageToEdit}
@@ -3312,7 +3264,6 @@ const ChatNew = () => {
                   }}
                 />
               </div>
->>>>>>> 75a58b9 (fix chat issue)
             )}
 
             {/* Camera Modal */}
@@ -3396,357 +3347,331 @@ const ChatNew = () => {
 
             {/* File Preview Modal */}
             {filePreview && (
-<<<<<<< HEAD
               <div className="sticky bottom-0 p-4 border-t border-gray-200 bg-white">
-=======
-              <div className="p-4 border-t border-gray-200 bg-white z-50">
->>>>>>> 75a58b9 (fix chat issue)
-                <div className="space-y-3">
-                  {/* Image Preview */}
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={handleCancelFile}
-                      className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                    >
-                      <FiX className="w-6 h-6 text-gray-600" />
-                    </button>
+                <div className="p-4 border-t border-gray-200 bg-white z-50">
+                  <div className="space-y-3">
+                    {/* Image Preview */}
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleCancelFile}
+                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                      >
+                        <FiX className="w-6 h-6 text-gray-600" />
+                      </button>
 
-                    <div
-                      className="flex-1 flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
-                      onClick={() => {
-                        if (filePreview.type === 'image') {
-                          setImageToEdit(editedImageData || filePreview.url);
-                          setShowImageEditor(true);
-                        }
-                      }}
-                    >
-                      {filePreview.type === 'image' ? (
-                        <img src={filePreview.url} alt="Preview" className="w-16 h-16 object-cover rounded" />
-                      ) : (
-                        <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-2xl">
-                          📄
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{filePreview.name}</p>
-                        <p className="text-xs text-gray-500">
-                          {(filePreview.size / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                        {filePreview.type === 'image' && (
-                          <p className="text-xs text-blue-600 mt-1">Click to edit</p>
+                      <div
+                        className="flex-1 flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                        onClick={() => {
+                          if (filePreview.type === 'image') {
+                            setImageToEdit(editedImageData || filePreview.url);
+                            setShowImageEditor(true);
+                          }
+                        }}
+                      >
+                        {filePreview.type === 'image' ? (
+                          <img src={filePreview.url} alt="Preview" className="w-16 h-16 object-cover rounded" />
+                        ) : (
+                          <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-2xl">
+                            📄
+                          </div>
                         )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{filePreview.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {(filePreview.size / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                          {filePreview.type === 'image' && (
+                            <p className="text-xs text-blue-600 mt-1">Click to edit</p>
+                          )}
+                        </div>
                       </div>
+
+                      <button
+                        onClick={handleSendFile}
+                        disabled={uploadingFile}
+                        className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
+                      >
+                        {uploadingFile ? (
+                          <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <FiSend className="w-6 h-6" />
+                        )}
+                      </button>
                     </div>
 
-                    <button
-                      onClick={handleSendFile}
-                      disabled={uploadingFile}
-                      className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
-                    >
-                      {uploadingFile ? (
-                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <FiSend className="w-6 h-6" />
-                      )}
-                    </button>
+                    {/* Caption Input */}
+                    {filePreview.type === 'image' && (
+                      <input
+                        type="text"
+                        value={imageCaption}
+                        onChange={(e) => setImageCaption(e.target.value)}
+                        placeholder="Add a caption..."
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        maxLength={200}
+                      />
+                    )}
                   </div>
-
-                  {/* Caption Input */}
-                  {filePreview.type === 'image' && (
-                    <input
-                      type="text"
-                      value={imageCaption}
-                      onChange={(e) => setImageCaption(e.target.value)}
-                      placeholder="Add a caption..."
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      maxLength={200}
-                    />
-                  )}
                 </div>
               </div>
             )}
 
-            {/* Voice Recorder */}
-            {showVoiceRecorder && (
-              <VoiceRecorder
-                onSend={handleSendVoiceMessage}
-                onCancel={() => setShowVoiceRecorder(false)}
+                {/* Voice Recorder */}
+                {showVoiceRecorder && (
+                  <VoiceRecorder
+                    onSend={handleSendVoiceMessage}
+                    onCancel={() => setShowVoiceRecorder(false)}
+                  />
+                )}
+
+                {/* Message Input - Fixed to bottom */}
+                {!showVoiceRecorder && !filePreview && !showImageEditor && (
+                  <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative z-50">
+                    <div className="p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 z-50">
+                      {/* Quick Chat & Enhance Text Links */}
+                      <div className="flex gap-3 mb-0.5">
+                        <button
+                          onClick={() => setShowQuickChatModal(true)}
+                          className="flex items-center gap-1.5 text-xs sm:text-sm text-purple-600 hover:text-purple-700 transition-colors bg-transparent"
+                        >
+                          <FiZap className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          <span className="font-medium">{t('Quick Chat')}</span>
+                        </button>
+                        <button
+                          onClick={() => setShowEnhanceModal(true)}
+                          disabled={!newMessage.trim()}
+                          className="flex items-center gap-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-transparent"
+                        >
+                          <FiEdit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          <span className="font-medium">{t('Enhance')}</span>
+                        </button>
+                      </div>
+
+                      {/* Reply Preview */}
+                      {replyingTo && (
+                        <div className="mb-2 bg-gray-100 rounded-lg p-3 flex items-start justify-between gap-2">
+                          <div className="flex-1 flex items-center gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <FiCornerUpLeft className="w-4 h-4 text-gray-600" />
+                                <p className="text-xs font-medium text-gray-700">
+                                  {t('Replying to')} {getUserDisplayName(replyingTo.sender)}
+                                </p>
+                              </div>
+                              <p className="text-sm text-gray-600 truncate">
+                                {replyingTo.type === 'image' ? '📷 Photo' : replyingTo.content.length > 60 ? replyingTo.content.substring(0, 60) + '...' : replyingTo.content}
+                              </p>
+                            </div>
+                            {replyingTo.type === 'image' && replyingTo.fileUrl && (
+                              <img
+                                src={replyingTo.fileUrl}
+                                alt="Reply preview"
+                                className="w-12 h-12 rounded object-cover flex-shrink-0"
+                              />
+                            )}
+                          </div>
+                          <button
+                            onClick={() => setReplyingTo(null)}
+                            className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+                          >
+                            <FiX className="w-5 h-5" />
+                          </button>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <input
+                          ref={imageInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleFileSelect}
+                          className="hidden"
+                        />
+                        <input
+                          ref={cameraInputRef}
+                          type="file"
+                          accept="image/*"
+                          capture="user"
+                          onChange={handleFileSelect}
+                          className="hidden"
+                        />
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx,.zip,.rar"
+                          onChange={handleFileSelect}
+                          className="hidden"
+                        />
+
+                        <div className="relative" ref={attachMenuRef}>
+                          <button
+                            onClick={() => setShowAttachMenu(!showAttachMenu)}
+                            disabled={uploadingFile}
+                            className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors disabled:opacity-50"
+                            title="Attach"
+                          >
+                            {uploadingFile ? (
+                              <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <FiPaperclip className="w-5 h-5" />
+                            )}
+                          </button>
+
+                          {showAttachMenu && (
+                            <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 min-w-[160px] animate-slideUp z-50">
+                              <button
+                                onClick={() => imageInputRef.current?.click()}
+                                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                              >
+                                <FiImage className="w-5 h-5 text-purple-600" />
+                                <span className="text-sm font-medium text-gray-700">Photos</span>
+                              </button>
+                              <button
+                                onClick={openCamera}
+                                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                              >
+                                <FiCamera className="w-5 h-5 text-blue-600" />
+                                <span className="text-sm font-medium text-gray-700">Camera</span>
+                              </button>
+                              <button
+                                onClick={() => fileInputRef.current?.click()}
+                                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                              >
+                                <FiFile className="w-5 h-5 text-orange-600" />
+                                <span className="text-sm font-medium text-gray-700">Document</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setShowVoiceRecorder(true)}
+                          className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                          title="Voice message"
+                        >
+                          <FiMic className="w-5 h-5" />
+                        </button>
+                        <textarea
+                          value={newMessage}
+                          onChange={(e) => {
+                            handleTyping(e);
+                            e.target.style.height = 'auto';
+                            e.target.style.height = Math.min(e.target.scrollHeight, 72) + 'px';
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendMessage();
+                              e.target.style.height = 'auto';
+                            }
+                          }}
+                          placeholder={t('Write a message')}
+                          rows="1"
+                          className="flex-1 w-0 px-2 py-1.5 sm:px-4 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-full resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm overflow-hidden bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                          style={{ height: 'auto', maxHeight: '72px' }}
+                        />
+                        <button
+                          onClick={handleSendMessage}
+                          disabled={!newMessage.trim()}
+                          className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <FiSend className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                  </>
+                ) : (
+                <div className="flex-1 flex items-center justify-center text-gray-500">
+                  <div className="text-center">
+                    <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                      <FiSearch className="w-12 h-12 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">{t('Your Messages')}</h3>
+                    <p className="text-sm">{t('Select a conversation or search for someone to start messaging')}</p>
+                    <p className="text-xs text-gray-400 mt-4">💡 {t('Messages are automatically deleted after 30 days')}</p>
+                  </div>
+                </div>
+        )}
+              </div>
+
+      {/* Call Modals */}
+            {incomingCall && (
+              <IncomingCallModal
+                caller={incomingCall.caller}
+                callType={incomingCall.callType}
+                onAccept={acceptCall}
+                onReject={rejectCall}
               />
             )}
 
-            {/* Message Input - Fixed to bottom */}
-            {!showVoiceRecorder && !filePreview && !showImageEditor && (
-<<<<<<< HEAD
-<<<<<<< HEAD
-            <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative z-50">
-=======
-            <div className="p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 z-50">
->>>>>>> 75a58b9 (fix chat issue)
-              {/* Quick Chat & Enhance Text Links */}
-              <div className="flex gap-3 mb-0.5">
-                <button
-                  onClick={() => setShowQuickChatModal(true)}
-                  className="flex items-center gap-1.5 text-xs sm:text-sm text-purple-600 hover:text-purple-700 transition-colors bg-transparent"
-                >
-                  <FiZap className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="font-medium">{t('Quick Chat')}</span>
-                </button>
-                <button
-                  onClick={() => setShowEnhanceModal(true)}
-                  disabled={!newMessage.trim()}
-                  className="flex items-center gap-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-transparent"
-                >
-                  <FiEdit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span className="font-medium">{t('Enhance')}</span>
-                </button>
-              </div>
-=======
-              <div className="p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 z-50">
-                {/* Quick Chat & Enhance Text Links */}
-                <div className="flex gap-3 mb-0.5">
-                  <button
-                    onClick={() => setShowQuickChatModal(true)}
-                    className="flex items-center gap-1.5 text-xs sm:text-sm text-purple-600 hover:text-purple-700 transition-colors bg-transparent"
-                  >
-                    <FiZap className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="font-medium">{t('Quick Chat')}</span>
-                  </button>
-                  <button
-                    onClick={() => setShowEnhanceModal(true)}
-                    disabled={!newMessage.trim()}
-                    className="flex items-center gap-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-transparent"
-                  >
-                    <FiEdit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span className="font-medium">{t('Enhance')}</span>
-                  </button>
-                </div>
->>>>>>> 232a67a (add status post dynamically)
-
-                {/* Reply Preview */}
-                {replyingTo && (
-                  <div className="mb-2 bg-gray-100 rounded-lg p-3 flex items-start justify-between gap-2">
-                    <div className="flex-1 flex items-center gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <FiCornerUpLeft className="w-4 h-4 text-gray-600" />
-                          <p className="text-xs font-medium text-gray-700">
-                            {t('Replying to')} {getUserDisplayName(replyingTo.sender)}
-                          </p>
-                        </div>
-                        <p className="text-sm text-gray-600 truncate">
-                          {replyingTo.type === 'image' ? '📷 Photo' : replyingTo.content.length > 60 ? replyingTo.content.substring(0, 60) + '...' : replyingTo.content}
-                        </p>
-                      </div>
-                      {replyingTo.type === 'image' && replyingTo.fileUrl && (
-                        <img
-                          src={replyingTo.fileUrl}
-                          alt="Reply preview"
-                          className="w-12 h-12 rounded object-cover flex-shrink-0"
-                        />
-                      )}
-                    </div>
-                    <button
-                      onClick={() => setReplyingTo(null)}
-                      className="text-gray-400 hover:text-gray-600 flex-shrink-0"
-                    >
-                      <FiX className="w-5 h-5" />
-                    </button>
-                  </div>
-                )}
-                <div className="flex items-center gap-1 sm:gap-2">
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                  <input
-                    ref={cameraInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="user"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx,.zip,.rar"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-
-                  <div className="relative" ref={attachMenuRef}>
-                    <button
-                      onClick={() => setShowAttachMenu(!showAttachMenu)}
-                      disabled={uploadingFile}
-                      className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors disabled:opacity-50"
-                      title="Attach"
-                    >
-                      {uploadingFile ? (
-                        <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <FiPaperclip className="w-5 h-5" />
-                      )}
-                    </button>
-
-                    {showAttachMenu && (
-                      <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 min-w-[160px] animate-slideUp z-50">
-                        <button
-                          onClick={() => imageInputRef.current?.click()}
-                          className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
-                        >
-                          <FiImage className="w-5 h-5 text-purple-600" />
-                          <span className="text-sm font-medium text-gray-700">Photos</span>
-                        </button>
-                        <button
-                          onClick={openCamera}
-                          className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
-                        >
-                          <FiCamera className="w-5 h-5 text-blue-600" />
-                          <span className="text-sm font-medium text-gray-700">Camera</span>
-                        </button>
-                        <button
-                          onClick={() => fileInputRef.current?.click()}
-                          className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
-                        >
-                          <FiFile className="w-5 h-5 text-orange-600" />
-                          <span className="text-sm font-medium text-gray-700">Document</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setShowVoiceRecorder(true)}
-                    className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-                    title="Voice message"
-                  >
-                    <FiMic className="w-5 h-5" />
-                  </button>
-                  <textarea
-                    value={newMessage}
-                    onChange={(e) => {
-                      handleTyping(e);
-                      e.target.style.height = 'auto';
-                      e.target.style.height = Math.min(e.target.scrollHeight, 72) + 'px';
-                    }}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                        e.target.style.height = 'auto';
-                      }
-                    }}
-                    placeholder={t('Write a message')}
-                    rows="1"
-                    className="flex-1 w-0 px-2 py-1.5 sm:px-4 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-full resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm overflow-hidden bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                    style={{ height: 'auto', maxHeight: '72px' }}
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!newMessage.trim()}
-                    className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <FiSend className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+            {activeCall && (
+              <ActiveCallScreen
+                remoteUser={{
+                  fullName: activeCall.userName,
+                  profileImage: activeCall.userAvatar
+                }}
+                callType={activeCall.callType}
+                isMinimized={isCallMinimized}
+                isAudioEnabled={isAudioEnabled}
+                isVideoEnabled={isVideoEnabled}
+                isScreenSharing={isScreenSharing}
+                isRecording={isRecording}
+                startTime={activeCall.startTime}
+                callAccepted={activeCall.callAccepted}
+                onToggleMinimize={() => setIsCallMinimized(!isCallMinimized)}
+                onToggleAudio={toggleAudio}
+                onToggleVideo={toggleVideo}
+                onToggleScreenShare={toggleScreenShare}
+                onStartRecording={toggleRecording}
+                onStopRecording={toggleRecording}
+                onEndCall={endCall}
+                localStream={activeCall.stream}
+                remoteStream={activeCall.remoteStream}
+              />
             )}
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
-            <div className="text-center">
-              <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                <FiSearch className="w-12 h-12 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">{t('Your Messages')}</h3>
-              <p className="text-sm">{t('Select a conversation or search for someone to start messaging')}</p>
-              <p className="text-xs text-gray-400 mt-4">💡 {t('Messages are automatically deleted after 30 days')}</p>
-            </div>
+
+            {showCallHistory && (
+              <CallHistoryModal
+                callLogs={callLogs}
+                onClose={() => setShowCallHistory(false)}
+                onCallBack={handleCallBack}
+                getUserDisplayName={getUserDisplayName}
+                getUserAvatar={getUserAvatar}
+                currentUserId={user._id}
+                onDeleteLog={handleDeleteCallLog}
+              />
+            )}
+
+            {/* Create Group Modal */}
+            {showCreateGroup && (
+              <CreateGroupModal
+                onClose={() => setShowCreateGroup(false)}
+                onGroupCreated={(group) => {
+                  console.log('Group created:', group);
+                  setGroups(prev => [group, ...prev]);
+                }}
+              />
+            )}
+
+            {/* Group Info Panel */}
+            {showGroupInfo && selectedChat?.isGroup && (
+              <GroupInfoPanel
+                group={selectedChat}
+                currentUserId={user._id}
+                onClose={() => setShowGroupInfo(false)}
+                onUpdate={(updatedGroup) => {
+                  setSelectedChat({ ...updatedGroup, isGroup: true });
+                  setGroups(prev => prev.map(g => g._id === updatedGroup._id ? updatedGroup : g));
+                }}
+                onLeave={() => {
+                  setShowGroupInfo(false);
+                  setSelectedChat(null);
+                  setGroups(prev => prev.filter(g => g._id !== selectedChat._id));
+                  loadGroups();
+                }}
+              />
+            )}
           </div>
-        )}
-      </div>
-
-      {/* Call Modals */}
-      {incomingCall && (
-        <IncomingCallModal
-          caller={incomingCall.caller}
-          callType={incomingCall.callType}
-          onAccept={acceptCall}
-          onReject={rejectCall}
-        />
-      )}
-
-      {activeCall && (
-        <ActiveCallScreen
-          remoteUser={{
-            fullName: activeCall.userName,
-            profileImage: activeCall.userAvatar
-          }}
-          callType={activeCall.callType}
-          isMinimized={isCallMinimized}
-          isAudioEnabled={isAudioEnabled}
-          isVideoEnabled={isVideoEnabled}
-          isScreenSharing={isScreenSharing}
-          isRecording={isRecording}
-          startTime={activeCall.startTime}
-          callAccepted={activeCall.callAccepted}
-          onToggleMinimize={() => setIsCallMinimized(!isCallMinimized)}
-          onToggleAudio={toggleAudio}
-          onToggleVideo={toggleVideo}
-          onToggleScreenShare={toggleScreenShare}
-          onStartRecording={toggleRecording}
-          onStopRecording={toggleRecording}
-          onEndCall={endCall}
-          localStream={activeCall.stream}
-          remoteStream={activeCall.remoteStream}
-        />
-      )}
-
-      {showCallHistory && (
-        <CallHistoryModal
-          callLogs={callLogs}
-          onClose={() => setShowCallHistory(false)}
-          onCallBack={handleCallBack}
-          getUserDisplayName={getUserDisplayName}
-          getUserAvatar={getUserAvatar}
-          currentUserId={user._id}
-          onDeleteLog={handleDeleteCallLog}
-        />
-      )}
-
-      {/* Create Group Modal */}
-      {showCreateGroup && (
-        <CreateGroupModal
-          onClose={() => setShowCreateGroup(false)}
-          onGroupCreated={(group) => {
-            console.log('Group created:', group);
-            setGroups(prev => [group, ...prev]);
-          }}
-        />
-      )}
-
-      {/* Group Info Panel */}
-      {showGroupInfo && selectedChat?.isGroup && (
-        <GroupInfoPanel
-          group={selectedChat}
-          currentUserId={user._id}
-          onClose={() => setShowGroupInfo(false)}
-          onUpdate={(updatedGroup) => {
-            setSelectedChat({ ...updatedGroup, isGroup: true });
-            setGroups(prev => prev.map(g => g._id === updatedGroup._id ? updatedGroup : g));
-          }}
-          onLeave={() => {
-            setShowGroupInfo(false);
-            setSelectedChat(null);
-            setGroups(prev => prev.filter(g => g._id !== selectedChat._id));
-            loadGroups();
-          }}
-        />
-      )}
-    </div>
-  );
+        );
 };
 
-export default ChatNew;
+        export default ChatNew;

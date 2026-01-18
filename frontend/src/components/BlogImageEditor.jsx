@@ -62,15 +62,11 @@ const BlogImageEditor = ({ imageUrl, onSave, onCancel, caption, onCaptionChange,
 
   const showAccessories = (activeTool && hasAccessories(activeTool) && 
     !(activeTool === 'crop' && (!cropRect || Math.abs(cropRect.width) <= 10 || Math.abs(cropRect.height) <= 10)) &&
-<<<<<<< HEAD
     !cropDragging && !textDragging && !shapeDragging && !resizingShape && !resizingText) ||
     ((selectedText !== null || selectedShape !== null) && !textDragging && !shapeDragging && !resizingShape && !resizingText);
-=======
-    !cropDragging && !textDragging && !shapeDragging) ||
-    ((selectedText !== null || selectedShape !== null));
+    
   
   const showAccessoriesMobile = showAccessories && !resizingShape && !resizingText;
->>>>>>> 75a58b9 (fix chat issue)
   
   const effectiveTool = selectedText !== null ? 'text' : selectedShape !== null ? 'shape' : activeTool;
   
@@ -1075,11 +1071,8 @@ const BlogImageEditor = ({ imageUrl, onSave, onCancel, caption, onCaptionChange,
         </div>
 
         {/* Mobile Tool Panel - Slide from bottom */}
-<<<<<<< HEAD
         <div className={`md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-xl border-t border-gray-200 dark:border-gray-700 transition-transform duration-300 z-30 ${showAccessories ? 'translate-y-0' : 'translate-y-full'}`} style={{ height: '240px' }}>
-=======
         <div className={`md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-xl border-t border-gray-200 dark:border-gray-700 transition-transform duration-300 z-30 ${showAccessoriesMobile ? 'translate-y-0' : 'translate-y-full'}`} style={{ height: '240px' }}>
->>>>>>> 75a58b9 (fix chat issue)
           <div className="p-4 max-h-80 overflow-y-auto">
             {effectiveTool === 'adjust' && (
               <div className="space-y-4">
@@ -1448,6 +1441,8 @@ const BlogImageEditor = ({ imageUrl, onSave, onCancel, caption, onCaptionChange,
         </div>
       )}
     </div>
+    </div>
+
   );
 };
 

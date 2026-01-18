@@ -44,6 +44,7 @@ const BlogDetail = () => {
   const [editText, setEditText] = useState('');
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [showStatusViewer, setShowStatusViewer] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   useEffect(() => {
     fetchBlog();
@@ -503,7 +504,11 @@ const BlogDetail = () => {
                   <div 
                     onClick={() => {
                       if (blog.author?.hasActiveStatus && blog.author?.statuses?.length > 0) {
-                        setShowStatusViewer(true);
+                        if (user) {
+                          setShowStatusViewer(true);
+                        } else {
+                          setShowLoginModal(true);
+                        }
                       }
                     }}
                     className={blog.author?.hasActiveStatus ? 'cursor-pointer hover:opacity-80 transition' : ''}
@@ -798,6 +803,31 @@ const BlogDetail = () => {
             onClose={() => setShowStatusViewer(false)}
             userName={blog.author.username}
           />
+        )}
+
+        {/* Login Modal */}
+        {showLoginModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+              <div className="text-6xl mb-4">🔒</div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('Login Required')}</h2>
+              <p className="text-gray-600 mb-6">{t('Please login to view status posts.')}</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => navigate('/login', { state: { from: `/blog/${id}` } })}
+                  className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+                >
+                  {t('Login')}
+                </button>
+                <button
+                  onClick={() => setShowLoginModal(false)}
+                  className="flex-1 bg-gray-200 text-gray-700 px-6 py-3 rounded-lg font-semibold hover:bg-gray-300 transition"
+                >
+                  {t('Cancel')}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Image Lightbox */}

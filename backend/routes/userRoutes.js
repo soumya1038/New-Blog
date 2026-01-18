@@ -17,21 +17,13 @@ const {
   updateStatus,
   deleteStatus
 } = require('../controllers/userController');
-<<<<<<< HEAD
-const { protect } = require('../middleware/auth');
-=======
 const { protect, optionalAuth } = require('../middleware/auth');
->>>>>>> 75a58b9 (fix chat issue)
 const upload = require('../utils/fileUpload');
 const trackActivity = require('../middleware/trackActivity');
 
 const router = express.Router();
 
-<<<<<<< HEAD
 router.get('/profile/:id?', protect, getProfile);
-=======
-router.get('/profile/:id?', optionalAuth, getProfile);
->>>>>>> 75a58b9 (fix chat issue)
 router.put('/profile', protect, updateProfile);
 router.post('/profile/image', protect, upload.single('profileImage'), uploadProfileImage);
 router.delete('/profile/image', protect, removeProfileImage);
@@ -51,14 +43,14 @@ router.post('/contact', protect, async (req, res) => {
   try {
     const { issue, advice, userEmail, username } = req.body;
     const { sendContactEmail } = require('../utils/mailService');
-    
+
     await sendContactEmail({
       userEmail,
       username,
       issue,
       advice
     });
-    
+
     res.json({ success: true, message: 'Contact message sent successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

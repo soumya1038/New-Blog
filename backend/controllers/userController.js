@@ -10,29 +10,25 @@ const { sendPasswordChangeConfirmation, sendAccountDeletionConfirmation, sendPas
 // Get user profile
 exports.getProfile = async (req, res) => {
   try {
-<<<<<<< HEAD
-    const user = await User.findById(req.params.id || req.user._id)
-=======
     const targetUserId = req.params.id || req.user?._id;
-    
-    // If no user ID and not logged in
+
     if (!targetUserId) {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
-    
-    // If viewing someone else's profile and not logged in
-    if (req.params.id && !req.user) {
-      return res.status(401).json({ success: false, message: 'Please login to view profiles' });
-    }
-    
+
+    // Check if user exists first
     const user = await User.findById(targetUserId)
->>>>>>> 75a58b9 (fix chat issue)
       .select('-password')
       .populate('followers', 'username profileImage')
       .populate('following', 'username profileImage');
-    
+
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res.status(404).json({ success: false, message: 'User does not exist' });
+    }
+
+    // If viewing someone else's profile, require authentication
+    if (req.params.id && !req.user) {
+      return res.status(401).json({ success: false, message: 'Please login to view profiles' });
     }
 
     // Set default description if empty
@@ -42,7 +38,7 @@ exports.getProfile = async (req, res) => {
     }
 
     const blogCount = await Blog.countDocuments({ author: user._id, isDraft: false });
-    
+
     // Filter active statuses
     const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
     const hasActiveStatus = activeStatuses.length > 0;
@@ -59,6 +55,7 @@ exports.getProfile = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('Error in getProfile:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -67,7 +64,7 @@ exports.getProfile = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const { fullName, email, phone, dateOfBirth, address, bio, description, signature, socialMedia } = req.body;
-    
+
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { fullName, email, phone, dateOfBirth, address, bio, description, signature, socialMedia },
@@ -88,7 +85,7 @@ exports.uploadProfileImage = async (req, res) => {
     }
 
     const user = await User.findById(req.user._id);
-    
+
     // Delete old image from Cloudinary if exists
     if (user.profileImage && user.profileImage.includes('cloudinary')) {
       const publicId = user.profileImage.split('/').pop().split('.')[0];
@@ -130,7 +127,7 @@ exports.uploadProfileImage = async (req, res) => {
 exports.removeProfileImage = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    
+
     // Delete from Cloudinary if exists
     if (user.profileImage && user.profileImage.includes('cloudinary')) {
       const publicId = user.profileImage.split('/').pop().split('.')[0];
@@ -172,7 +169,7 @@ exports.requestPasswordChange = async (req, res) => {
 
     // Generate 6-digit code
     const confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     global.passwordChangeCodes = global.passwordChangeCodes || {};
     global.passwordChangeCodes[user._id.toString()] = {
       code: confirmationCode,
@@ -198,7 +195,7 @@ exports.confirmPasswordChange = async (req, res) => {
     }
 
     const storedData = global.passwordChangeCodes?.[req.user._id.toString()];
-    
+
     if (!storedData) {
       return res.status(400).json({ success: false, message: 'No password change request found' });
     }
@@ -249,7 +246,7 @@ exports.requestAccountDeletion = async (req, res) => {
 
     // Generate 6-digit code
     const confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     global.accountDeletionCodes = global.accountDeletionCodes || {};
     global.accountDeletionCodes[user._id.toString()] = {
       code: confirmationCode,
@@ -274,7 +271,7 @@ exports.confirmAccountDeletion = async (req, res) => {
     }
 
     const storedData = global.accountDeletionCodes?.[req.user._id.toString()];
-    
+
     if (!storedData) {
       return res.status(400).json({ success: false, message: 'No deletion request found' });
     }
@@ -292,10 +289,10 @@ exports.confirmAccountDeletion = async (req, res) => {
 
     // Delete user's blogs
     await Blog.deleteMany({ author: user._id });
-    
+
     // Delete user's notifications
     await Notification.deleteMany({ $or: [{ recipient: user._id }, { sender: user._id }] });
-    
+
     // Remove profile image from Cloudinary
     if (user.profileImage && user.profileImage.includes('cloudinary')) {
       const publicId = user.profileImage.split('/').pop().split('.')[0];
@@ -331,14 +328,14 @@ exports.confirmAccountDeletion = async (req, res) => {
 exports.generateApiKey = async (req, res) => {
   try {
     const { name } = req.body;
-    
+
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'API key name is required' });
     }
-    
+
     const apiKey = generateApiKey();
     const user = await User.findById(req.user._id);
-    
+
     user.apiKeys.push({ name: name.trim(), key: apiKey });
     await user.save();
 
@@ -363,7 +360,7 @@ exports.revokeApiKey = async (req, res) => {
   try {
     const { keyId } = req.params;
     const user = await User.findById(req.user._id);
-    
+
     user.apiKeys = user.apiKeys.filter(k => k._id.toString() !== keyId);
     await user.save();
 
@@ -377,7 +374,7 @@ exports.revokeApiKey = async (req, res) => {
 exports.updateUsername = async (req, res) => {
   try {
     const { username } = req.body;
-    
+
     if (!username || username.trim().length < 3) {
       return res.status(400).json({ success: false, message: 'Username must be at least 3 characters' });
     }

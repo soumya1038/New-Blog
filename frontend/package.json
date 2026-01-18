@@ -10,10 +10,7 @@
     "axios": "^1.6.2",
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",
-<<<<<<< HEAD
-=======
     "easymde": "^2.20.0",
->>>>>>> 75a58b9 (fix chat issue)
     "fabric": "^6.9.0",
     "i18next": "^25.6.0",
     "i18next-browser-languagedetector": "^8.2.0",
@@ -55,10 +52,6 @@
     "react-scripts": "^5.0.1",
     "tailwindcss": "^3.4.18",
     "typescript": "^5.0.0"
-<<<<<<< HEAD
-  }
-=======
   },
   "proxy": "http://localhost:5000"
->>>>>>> 75a58b9 (fix chat issue)
 }

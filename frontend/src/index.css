@@ -6,11 +6,11 @@
   html {
     @apply transition-colors duration-300;
   }
-  
+
   html.dark {
     @apply bg-gray-900;
   }
-  
+
   body {
     @apply bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300;
   }
@@ -20,23 +20,23 @@
   .bg-page {
     @apply bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800;
   }
-  
+
   .bg-card {
     @apply bg-white dark:bg-gray-800;
   }
-  
+
   .text-primary {
     @apply text-gray-900 dark:text-gray-100;
   }
-  
+
   .text-secondary {
     @apply text-gray-600 dark:text-gray-400;
   }
-  
+
   .border-default {
     @apply border-gray-200 dark:border-gray-700;
   }
-  
+
   .hover-card {
     @apply hover:shadow-lg dark:hover:shadow-gray-900/50;
   }
@@ -164,6 +164,7 @@ code {
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -179,6 +180,7 @@ code {
     opacity: 0;
     transform: scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -190,22 +192,19 @@ code {
 }
 
 
-<<<<<<< HEAD
+
 /* Animated rotating border for online status */
 @keyframes rotate-border {
-=======
-/* Animated rotating rainbow border for status */
-@keyframes rotate-rainbow {
->>>>>>> 75a58b9 (fix chat issue)
   0% {
     transform: rotate(0deg);
   }
+
   100% {
     transform: rotate(360deg);
   }
 }
 
-<<<<<<< HEAD
+
 .online-border {
   position: relative;
 }
@@ -222,10 +221,10 @@ code {
   mask-composite: exclude;
   animation: rotate-border 2s linear infinite;
   pointer-events: none;
-=======
+}
+
 .animate-spin-slow {
   animation: rotate-rainbow 3s linear infinite;
->>>>>>> 75a58b9 (fix chat issue)
 }
 
 /* Shimmer effect for View Status text */
@@ -312,14 +311,12 @@ code {
 }
 
 .animate-gradient {
-  background: linear-gradient(
-    90deg,
-    #9333ea 0%,
-    #ec4899 25%,
-    #10b981 50%,
-    #ec4899 75%,
-    #9333ea 100%
-  );
+  background: linear-gradient(90deg,
+      #9333ea 0%,
+      #ec4899 25%,
+      #10b981 50%,
+      #ec4899 75%,
+      #9333ea 100%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -331,15 +328,15 @@ code {
 @keyframes water-wave {
   0% {
     box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7),
-                0 0 0 0 rgba(34, 197, 94, 0.7);
+      0 0 0 0 rgba(34, 197, 94, 0.7);
   }
   50% {
     box-shadow: 0 0 0 10px rgba(34, 197, 94, 0),
-                0 0 0 20px rgba(34, 197, 94, 0);
+      0 0 0 20px rgba(34, 197, 94, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(34, 197, 94, 0),
-                0 0 0 0 rgba(34, 197, 94, 0);
+      0 0 0 0 rgba(34, 197, 94, 0);
   }
 }
 
