@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import md5 from 'crypto-js/md5';
 
-const Avatar = ({ user, size = 'md', className = '' }) => {
+const Avatar = ({ user, size = 'md', className = '', showStatusRing = false }) => {
   const [imageError, setImageError] = useState(false);
   const [gravatarError, setGravatarError] = useState(false);
 
@@ -32,13 +32,16 @@ const Avatar = ({ user, size = 'md', className = '' }) => {
     return colors[index];
   };
 
+  const hasActiveStatus = showStatusRing && user?.hasActiveStatus;
+  const ringClass = hasActiveStatus ? 'ring-2 ring-green-500 ring-offset-2' : '';
+
   // Priority: profileImage > Gravatar > Initials
   if (user?.profileImage && !imageError) {
     return (
       <img
         src={user.profileImage}
         alt={user.username}
-        className={`${sizes[size]} rounded-full object-cover ${className}`}
+        className={`${sizes[size]} rounded-full object-cover ${ringClass} ${className}`}
         onError={() => setImageError(true)}
       />
     );
@@ -50,7 +53,7 @@ const Avatar = ({ user, size = 'md', className = '' }) => {
       <img
         src={gravatarUrl}
         alt={user?.username}
-        className={`${sizes[size]} rounded-full object-cover ${className}`}
+        className={`${sizes[size]} rounded-full object-cover ${ringClass} ${className}`}
         onError={() => setGravatarError(true)}
       />
     );
@@ -59,7 +62,7 @@ const Avatar = ({ user, size = 'md', className = '' }) => {
   // Fallback to initials
   return (
     <div
-      className={`${sizes[size]} rounded-full ${getColorFromUsername(user?.username)} text-white font-bold flex items-center justify-center ${className}`}
+      className={`${sizes[size]} rounded-full ${getColorFromUsername(user?.username)} text-white font-bold flex items-center justify-center ${ringClass} ${className}`}
     >
       {getInitials(user?.username)}
     </div>

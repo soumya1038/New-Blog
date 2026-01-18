@@ -45,12 +45,14 @@ exports.getProfile = async (req, res) => {
     
     // Filter active statuses
     const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
+    const hasActiveStatus = activeStatuses.length > 0;
 
     res.json({
       success: true,
       user: {
         ...user.toObject(),
         statuses: activeStatuses,
+        hasActiveStatus,
         blogCount,
         followerCount: user.followers.length,
         followingCount: user.following.length

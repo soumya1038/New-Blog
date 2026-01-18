@@ -109,10 +109,23 @@ exports.getShorts = async (req, res) => {
     }
 
     const shorts = await Short.find(filter)
-      .populate('author', 'username profileImage')
+      .populate('author', 'username profileImage statuses')
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, shorts });
+    // Add hasActiveStatus to each short author
+    const shortsWithStatus = shorts.map(short => {
+      const shortObj = short.toObject();
+      if (shortObj.author && shortObj.author.statuses) {
+        const now = new Date();
+        shortObj.author.hasActiveStatus = shortObj.author.statuses.some(status => 
+          status.expiresAt && new Date(status.expiresAt) > now
+        );
+        delete shortObj.author.statuses;
+      }
+      return shortObj;
+    });
+
+    res.json({ success: true, shorts: shortsWithStatus });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -122,7 +135,7 @@ exports.getShorts = async (req, res) => {
 exports.getShort = async (req, res) => {
   try {
     const short = await Short.findById(req.params.id)
-      .populate('author', 'username profileImage fullName bio')
+      .populate('author', 'username profileImage fullName bio statuses')
       .populate('likes', 'username profileImage');
 
     if (!short) {
@@ -131,10 +144,20 @@ exports.getShort = async (req, res) => {
 
     const commentCount = await Comment.countDocuments({ short: short._id });
 
+    const shortObj = short.toObject();
+    if (shortObj.author && shortObj.author.statuses) {
+      const now = new Date();
+      const activeStatuses = shortObj.author.statuses.filter(status => 
+        status.expiresAt && new Date(status.expiresAt) > now
+      );
+      shortObj.author.hasActiveStatus = activeStatuses.length > 0;
+      shortObj.author.statuses = activeStatuses;
+    }
+
     res.json({
       success: true,
       short: {
-        ...short.toObject(),
+        ...shortObj,
         likeCount: short.likes.length,
         commentCount
       }

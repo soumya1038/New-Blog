@@ -119,10 +119,23 @@ exports.getBlogs = async (req, res) => {
     }
 
     const blogs = await Blog.find(filter)
-      .populate('author', 'username profileImage')
+      .populate('author', 'username profileImage statuses')
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, blogs });
+    // Add hasActiveStatus to each blog author
+    const blogsWithStatus = blogs.map(blog => {
+      const blogObj = blog.toObject();
+      if (blogObj.author && blogObj.author.statuses) {
+        const now = new Date();
+        blogObj.author.hasActiveStatus = blogObj.author.statuses.some(status => 
+          status.expiresAt && new Date(status.expiresAt) > now
+        );
+        delete blogObj.author.statuses; // Remove statuses array from response
+      }
+      return blogObj;
+    });
+
+    res.json({ success: true, blogs: blogsWithStatus });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -132,7 +145,7 @@ exports.getBlogs = async (req, res) => {
 exports.getBlog = async (req, res) => {
   try {
     const blog = await Blog.findById(req.params.id)
-      .populate('author', 'username profileImage fullName bio')
+      .populate('author', 'username profileImage fullName bio statuses')
       .populate('likes', 'username profileImage');
 
     if (!blog) {
@@ -141,10 +154,21 @@ exports.getBlog = async (req, res) => {
 
     const commentCount = await Comment.countDocuments({ blog: blog._id });
 
+    const blogObj = blog.toObject();
+    // Add hasActiveStatus to author and keep statuses for viewing
+    if (blogObj.author && blogObj.author.statuses) {
+      const now = new Date();
+      const activeStatuses = blogObj.author.statuses.filter(status => 
+        status.expiresAt && new Date(status.expiresAt) > now
+      );
+      blogObj.author.hasActiveStatus = activeStatuses.length > 0;
+      blogObj.author.statuses = activeStatuses; // Keep active statuses for viewing
+    }
+
     res.json({
       success: true,
       blog: {
-        ...blog.toObject(),
+        ...blogObj,
         likeCount: blog.likes.length,
         commentCount
       }

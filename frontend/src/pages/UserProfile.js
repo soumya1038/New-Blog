@@ -6,6 +6,7 @@ import api from '../services/api';
 import { FaCalendar, FaUsers, FaFileAlt, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaEnvelope, FaUserPlus, FaUserMinus } from 'react-icons/fa';
 import { UserProfileSkeleton } from '../components/SkeletonLoader';
 import Avatar from '../components/Avatar';
+import StatusViewer from '../components/StatusViewer';
 
 const UserProfile = () => {
   const { t } = useTranslation();
@@ -28,7 +29,11 @@ const UserProfile = () => {
 <<<<<<< HEAD
 =======
   const [error, setError] = useState(null);
+<<<<<<< HEAD
 >>>>>>> 75a58b9 (fix chat issue)
+=======
+  const [showStatusViewer, setShowStatusViewer] = useState(false);
+>>>>>>> 232a67a (add status post dynamically)
 
   useEffect(() => {
     fetchUserProfile();
@@ -390,15 +395,32 @@ const UserProfile = () => {
         <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 mb-6">
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
             <div 
-              onClick={() => profile.profileImage && setShowImageModal(true)}
-              className={`border-4 border-blue-500 rounded-full ${
-                profile.profileImage ? 'cursor-pointer hover:opacity-90 transition' : ''
+              onClick={() => {
+                if (profile.hasActiveStatus && profile.statuses?.length > 0) {
+                  setShowStatusViewer(true);
+                } else if (profile.profileImage) {
+                  setShowImageModal(true);
+                }
+              }}
+              className={`border-4 rounded-full ${
+                profile.hasActiveStatus ? 'border-green-500 cursor-pointer hover:opacity-90 transition' : 'border-blue-500'
+              } ${
+                profile.profileImage && !profile.hasActiveStatus ? 'cursor-pointer hover:opacity-90 transition' : ''
               }`}
             >
-              <Avatar user={profile} size="xl" />
+              <Avatar user={profile} size="xl" showStatusRing={false} />
             </div>
             <div className="flex-1 text-center sm:text-left">
-              <h1 className="text-3xl font-bold text-gray-800 mb-2">{profile.username}</h1>
+              <h1 
+                className={`text-3xl font-bold mb-2 ${
+                  profile.hasActiveStatus 
+                    ? 'animate-gradient cursor-pointer'
+                    : 'text-gray-800'
+                }`}
+                onClick={() => profile.hasActiveStatus && profile.statuses?.length > 0 && setShowStatusViewer(true)}
+              >
+                {profile.username}
+              </h1>
               {profile.fullName && <p className="text-lg text-gray-600 mb-3">{profile.fullName}</p>}
               {profile.description && <p className="text-gray-600 italic mb-3">{profile.description}</p>}
               {profile.bio && <p className="text-gray-700 mb-4">{profile.bio}</p>}
@@ -762,6 +784,15 @@ const UserProfile = () => {
               onClick={(e) => e.stopPropagation()}
             />
           </div>
+        )}
+
+        {/* Status Viewer */}
+        {showStatusViewer && profile.statuses?.length > 0 && (
+          <StatusViewer 
+            statuses={profile.statuses} 
+            onClose={() => setShowStatusViewer(false)}
+            userName={profile.username}
+          />
         )}
       </div>
     </div>

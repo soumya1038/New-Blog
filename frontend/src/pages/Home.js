@@ -404,7 +404,7 @@ const Home = () => {
                     onClick={(e) => e.stopPropagation()}
                     className="border-2 border-white rounded-full hover:opacity-80 transition"
                   >
-                    <Avatar user={blog.author} size="sm" />
+                    <Avatar user={blog.author} size="sm" showStatusRing={true} />
                   </Link>
                   <Link 
                     to={`/user/${blog.author?._id}`} 
@@ -516,7 +516,7 @@ const Home = () => {
                       onClick={(e) => e.stopPropagation()}
                       className="border-2 border-white rounded-full hover:opacity-80 transition"
                     >
-                      <Avatar user={blog.author} size="sm" />
+                      <Avatar user={blog.author} size="sm" showStatusRing={true} />
                     </Link>
                     <Link 
                       to={`/user/${blog.author?._id}`} 

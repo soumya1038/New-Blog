@@ -15,6 +15,7 @@ import Avatar from '../components/Avatar';
 import AudioControls from '../components/AudioControls';
 import ScrollToTop from '../components/ScrollToTop';
 import EnhancedComment from '../components/EnhancedComment';
+import StatusViewer from '../components/StatusViewer';
 
 const BlogDetail = () => {
   const { t } = useTranslation();
@@ -42,6 +43,7 @@ const BlogDetail = () => {
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState('');
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const [showStatusViewer, setShowStatusViewer] = useState(false);
 
   useEffect(() => {
     fetchBlog();
@@ -498,7 +500,16 @@ const BlogDetail = () => {
               <div className="flex-1 w-full">
                 <h1 className="text-4xl font-bold mb-4 text-gray-800">{blog.title}</h1>
                 <div className="flex items-center gap-3">
-                  <Avatar user={blog.author} size="md" />
+                  <div 
+                    onClick={() => {
+                      if (blog.author?.hasActiveStatus && blog.author?.statuses?.length > 0) {
+                        setShowStatusViewer(true);
+                      }
+                    }}
+                    className={blog.author?.hasActiveStatus ? 'cursor-pointer hover:opacity-80 transition' : ''}
+                  >
+                    <Avatar user={blog.author} size="md" showStatusRing={true} />
+                  </div>
                   <div className="flex-1">
                     <Link to={`/user/${blog.author?._id}`} className="font-semibold text-gray-800 hover:text-blue-600">
                       {blog.author?.username}
@@ -779,6 +790,15 @@ const BlogDetail = () => {
             </div>
           </div>
         </div>
+
+        {/* Status Viewer */}
+        {showStatusViewer && blog.author?.statuses?.length > 0 && (
+          <StatusViewer 
+            statuses={blog.author.statuses} 
+            onClose={() => setShowStatusViewer(false)}
+            userName={blog.author.username}
+          />
+        )}
 
         {/* Image Lightbox */}
         {showImageLightbox && blog.coverImage && (

@@ -1038,7 +1038,7 @@ const ShortBlogsViewer = () => {
 
                       <div className="flex items-center gap-3 mb-3">
                         <Link to={`/user/${blog.author._id}`}>
-                          <Avatar user={blog.author} size="md" className="border-2 border-white" />
+                          <Avatar user={blog.author} size="md" className="border-2 border-white" showStatusRing={true} />
                         </Link>
                         <div className="flex-1 flex items-center gap-2">
                           <Link
@@ -1152,7 +1152,7 @@ const ShortBlogsViewer = () => {
                       <span className="text-xs">Repost</span>
                     </button>
                     <button onClick={handleOwnerClick} className="w-12 h-12">
-                      <Avatar user={blog.author} size="md" className="border-2 border-white hover:scale-110 transition" />
+                      <Avatar user={blog.author} size="md" className="border-2 border-white hover:scale-110 transition" showStatusRing={true} />
                     </button>
                   </div>
                 )}
@@ -1403,7 +1403,7 @@ const ShortBlogsViewer = () => {
                               to={`/user/${currentBlog.author._id}`}
                               className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-lg transition"
                             >
-                              <Avatar user={currentBlog.author} size="md" />
+                              <Avatar user={currentBlog.author} size="md" showStatusRing={true} />
                               <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
                             </Link>
                           </div>
@@ -1546,7 +1546,7 @@ const ShortBlogsViewer = () => {
 
                     <div className="flex items-center gap-3 mb-3">
                       <Link to={`/user/${blog.author._id}`}>
-                        <Avatar user={blog.author} size="md" className="border-2 border-white" />
+                        <Avatar user={blog.author} size="md" className="border-2 border-white" showStatusRing={true} />
                       </Link>
                       <div className="flex-1 flex items-center gap-2">
                         <Link
@@ -1663,7 +1663,7 @@ const ShortBlogsViewer = () => {
                 </button>
 
                 <button onClick={handleOwnerClick} className="w-12 h-12 md:w-auto md:h-auto">
-                  <Avatar user={blogs[currentIndex].author} size={isMobile ? "md" : "md"} className="border-2 border-white hover:scale-110 transition" />
+                  <Avatar user={blogs[currentIndex].author} size={isMobile ? "md" : "md"} className="border-2 border-white hover:scale-110 transition" showStatusRing={true} />
                 </button>
               </div>
             )}
@@ -1916,7 +1916,7 @@ const ShortBlogsViewer = () => {
                         to={`/user/${currentBlog.author._id}`}
                         className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-lg transition"
                       >
-                        <Avatar user={currentBlog.author} size="md" />
+                        <Avatar user={currentBlog.author} size="md" showStatusRing={true} />
                         <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
                       </Link>
                     </div>
