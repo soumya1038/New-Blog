@@ -382,18 +382,16 @@ return (
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
           <div
             onClick={() => {
-              if (profile.hasActiveStatus && profile.statuses?.length > 0) {
-                if (currentUser) {
-                  setShowStatusViewer(true);
-                } else {
-                  setShowLoginModal(true);
-                }
+              // Only allow status viewing for own profile when clicking avatar
+              if (currentUser && currentUser._id === profile._id && profile.hasActiveStatus && profile.statuses?.length > 0) {
+                setShowStatusViewer(true);
               } else if (profile.profileImage) {
+                // Allow all users to view full-size profile image
                 setShowImageModal(true);
               }
             }}
-            className={`border-4 rounded-full ${profile.hasActiveStatus ? 'border-green-500 cursor-pointer hover:opacity-90 transition' : 'border-blue-500'
-              } ${profile.profileImage && !profile.hasActiveStatus ? 'cursor-pointer hover:opacity-90 transition' : ''
+            className={`border-4 rounded-full ${profile.hasActiveStatus ? 'border-green-500' : 'border-blue-500'
+              } ${profile.profileImage ? 'cursor-pointer hover:opacity-90 transition' : ''
               }`}
           >
             <Avatar user={profile} size="xl" showStatusRing={false} />
@@ -405,6 +403,7 @@ return (
                 : 'text-gray-800'
                 }`}
               onClick={() => {
+                // Allow status viewing for all logged-in users when clicking username
                 if (profile.hasActiveStatus && profile.statuses?.length > 0) {
                   if (currentUser) {
                     setShowStatusViewer(true);
