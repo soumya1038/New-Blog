@@ -14,6 +14,11 @@
   <noscript>You need to enable JavaScript to run this app.</noscript>
   <div id="root"></div>
   <script>
+<<<<<<< HEAD
+=======
+    // Service worker disabled for development - uncomment to enable
+    /*
+>>>>>>> 75a58b9 (fix chat issue)
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/service-worker.js')
@@ -21,6 +26,17 @@
           .catch(err => console.log('SW registration failed'));
       });
     }
+<<<<<<< HEAD
+=======
+    */
+    
+    // Unregister existing service workers
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        registrations.forEach(registration => registration.unregister());
+      });
+    }
+>>>>>>> 75a58b9 (fix chat issue)
   </script>
 </body>
 </html>

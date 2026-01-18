@@ -88,7 +88,17 @@ const Chat = () => {
   const loadConversations = async () => {
     try {
       const data = await getConversations();
+<<<<<<< HEAD
       setConversations(data.conversations);
+=======
+      // Sort by last message time (most recent first)
+      const sortedConversations = data.conversations.sort((a, b) => {
+        const timeA = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : new Date(0);
+        const timeB = b.lastMessage?.createdAt ? new Date(b.lastMessage.createdAt) : new Date(0);
+        return timeB - timeA;
+      });
+      setConversations(sortedConversations);
+>>>>>>> 75a58b9 (fix chat issue)
       
       // Fetch statuses for all users in conversations
       const userIds = data.conversations.map(c => c.user._id);
@@ -226,11 +236,19 @@ const Chat = () => {
                       anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
                     >
                       <Box
+<<<<<<< HEAD
+=======
+                        className={userStatuses[conv.user._id] ? 'animate-spin-slow' : ''}
+>>>>>>> 75a58b9 (fix chat issue)
                         sx={{
                           position: 'relative',
                           display: 'inline-block',
                           padding: userStatuses[conv.user._id] ? '3px' : '0',
+<<<<<<< HEAD
                           background: userStatuses[conv.user._id] ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent',
+=======
+                          background: userStatuses[conv.user._id] ? 'linear-gradient(135deg, #ef4444, #f59e0b, #10b981, #3b82f6, #8b5cf6)' : 'transparent',
+>>>>>>> 75a58b9 (fix chat issue)
                           borderRadius: '50%'
                         }}
                       >
@@ -325,11 +343,19 @@ const Chat = () => {
                   <ArrowBackIcon />
                 </IconButton>
                 <Box
+<<<<<<< HEAD
+=======
+                  className={userStatuses[selectedUser._id] ? 'animate-spin-slow' : ''}
+>>>>>>> 75a58b9 (fix chat issue)
                   sx={{
                     position: 'relative',
                     display: 'inline-block',
                     padding: userStatuses[selectedUser._id] ? '3px' : '0',
+<<<<<<< HEAD
                     background: userStatuses[selectedUser._id] ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent',
+=======
+                    background: userStatuses[selectedUser._id] ? 'linear-gradient(135deg, #ef4444, #f59e0b, #10b981, #3b82f6, #8b5cf6)' : 'transparent',
+>>>>>>> 75a58b9 (fix chat issue)
                     borderRadius: '50%',
                     zIndex: 1
                   }}

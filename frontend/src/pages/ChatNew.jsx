@@ -667,6 +667,20 @@ const ChatNew = () => {
     }
   };
 
+<<<<<<< HEAD
+=======
+  // Combined and sorted conversations + groups
+  const getCombinedChats = () => {
+    const groupChats = groups.map(g => ({ ...g, isGroup: true, lastMessageTime: g.lastMessage?.createdAt || g.createdAt }));
+    const userChats = conversations.map(c => ({ ...c, isGroup: false, lastMessageTime: c.lastMessage?.createdAt }));
+    return [...groupChats, ...userChats].sort((a, b) => {
+      const timeA = new Date(a.lastMessageTime || 0);
+      const timeB = new Date(b.lastMessageTime || 0);
+      return timeB - timeA;
+    });
+  };
+
+>>>>>>> 75a58b9 (fix chat issue)
   const loadBlockedUsers = async () => {
     try {
       const { data } = await api.get('/messages/blocked-users');
@@ -2243,6 +2257,7 @@ const ChatNew = () => {
               <p className="text-sm mt-2">{t('Search for users to start chatting')}</p>
             </div>
           ) : (
+<<<<<<< HEAD
             <>
             {/* Groups */}
             {groups.map(group => (
@@ -2398,6 +2413,153 @@ const ChatNew = () => {
               </div>
             ))}
             </>
+=======
+            getCombinedChats().map(chat => (
+              chat.isGroup ? (
+                <div
+                  key={`grp-${chat._id}`}
+                  className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === chat._id && selectedChat?.isGroup ? 'bg-blue-50 dark:bg-gray-700' : ''}`}
+                  onClick={() => {
+                    setSelectedChat({ ...chat, isGroup: true });
+                  }}
+                >
+                  <div className="flex items-center flex-1 min-w-0">
+                    <div className="relative">
+                      <img
+                        src={chat.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.name)}&background=0D8ABC&color=fff`}
+                        alt={chat.name}
+                        className="w-12 h-12 rounded-full object-cover"
+                      />
+                    </div>
+                    <div className="ml-3 flex-1 min-w-0">
+                      <div className="flex justify-between items-baseline">
+                        <div className="flex items-center gap-2">
+                          <FiUsers className="w-4 h-4 text-gray-500" />
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{chat.name}</p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                        {chat.members.length} members
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  key={chat.user._id}
+                  className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === chat.user._id ? 'bg-blue-50 dark:bg-gray-700' : ''}`}
+                  onClick={async () => {
+                    setConversations(prev => prev.map(c =>
+                      c.user._id === chat.user._id ? { ...c, unreadCount: 0 } : c
+                    ));
+                    setSelectedChat(chat.user);
+                    
+                    (async () => {
+                      try {
+                        const { data } = await api.get(`/users/profile/${chat.user._id}`);
+                        const activeStatuses = data.user.statuses?.filter(s => new Date() < new Date(s.expiresAt)) || [];
+                        setSelectedUserStatuses(activeStatuses);
+                        setCurrentStatusIndex(0);
+                        setStatusProgress(0);
+                      } catch (error) {
+                        console.error('Failed to fetch user statuses:', error);
+                        setSelectedUserStatuses([]);
+                      }
+                    })();
+                  }}
+                >
+                  <div className="flex items-center flex-1 min-w-0">
+                    <div className="relative">
+                      <div
+                        className="rounded-full"
+                        style={{
+                          padding: userStatuses[chat.user._id] && !viewedStatuses.has(chat.user._id) ? '3px' : '0',
+                          background: userStatuses[chat.user._id] && !viewedStatuses.has(chat.user._id) ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent'
+                        }}
+                      >
+                        <img
+                          src={getUserAvatar(chat.user)}
+                          alt={getUserDisplayName(chat.user)}
+                          className="w-12 h-12 rounded-full object-cover"
+                        />
+                      </div>
+                      {isOnline(chat.user._id) && (
+                        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
+                      )}
+                    </div>
+                    <div className="ml-3 flex-1 min-w-0">
+                      <div className="flex justify-between items-baseline">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{getUserDisplayName(chat.user)}</p>
+                          {blockedUsers.has(chat.user._id) && (
+                            <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{t('Blocked')}</span>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{formatDate(chat.lastMessage.createdAt)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {mutedUsers.has(chat.user._id) && (
+                          <FiBellOff className="text-gray-400 text-xs" />
+                        )}
+                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1">{chat.lastMessage.content}</p>
+                      </div>
+                    </div>
+                    {chat.unreadCount > 0 && (
+                      <span className="ml-2 bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded-full">
+                        {chat.unreadCount}
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowConvMenu(showConvMenu === chat.user._id ? null : chat.user._id);
+                      }}
+                      className="p-2 hover:bg-gray-200 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <FiMoreVertical className="text-gray-600" />
+                    </button>
+                    {showConvMenu === chat.user._id && (
+                      <div ref={convMenuRef} className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                        <button
+                          onClick={() => handleMuteUser(chat.user._id)}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                        >
+                          {mutedUsers.has(chat.user._id) ? (
+                            <><FiBell className="text-gray-600" /> {t('Unmute')}</>
+                          ) : (
+                            <><FiBellOff className="text-gray-600" /> {t('Mute notifications')}</>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteConversation(chat.user._id)}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                        >
+                          <FiTrash2 /> {t('Delete conversation')}
+                        </button>
+                        {blockedUsers.has(chat.user._id) ? (
+                          <button
+                            onClick={() => handleUnblockUser(chat.user._id)}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600 rounded-b-lg"
+                          >
+                            <FiUserX /> {t('Unblock user')}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleBlockUser(chat.user._id)}
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600 rounded-b-lg"
+                          >
+                            <FiUserX /> {t('Block user')}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            ))
+>>>>>>> 75a58b9 (fix chat issue)
           )}
         </div>
       </div>
@@ -2752,7 +2914,11 @@ const ChatNew = () => {
             <div 
               ref={messagesContainerRef} 
               onScroll={handleScroll} 
+<<<<<<< HEAD
               className="flex-1 overflow-y-auto overflow-x-hidden p-4 bg-gray-50 dark:bg-gray-900 max-w-full relative"
+=======
+              className="overflow-y-auto overflow-x-hidden p-4 pb-0 bg-gray-50 dark:bg-gray-900 max-w-full relative md:min-h-0"
+>>>>>>> 75a58b9 (fix chat issue)
               style={{
                 backgroundImage: 'url(/image/chat_background.png)',
                 backgroundSize: 'cover',
@@ -2761,8 +2927,14 @@ const ChatNew = () => {
                 backgroundRepeat: 'no-repeat'
               }}
             >
+<<<<<<< HEAD
               {/* Overlay for readability */}
               <div className="absolute inset-0 bg-white/90 dark:bg-gray-900/90 pointer-events-none" style={{ zIndex: 0 }} />
+=======
+              {/* Overlay for readability - only for messages area */}
+              {selectedChat && <div className="pointer-events-none" style={{ position: 'sticky', top: '-1rem', left: '-1rem', right: '-1rem', bottom: '-1rem', height: '100vh', width: 'calc(100% + 2rem)', marginLeft: '-1rem', marginTop: '-1rem', backgroundColor: 'rgba(255, 255, 255, 0.9)', zIndex: 0 }} />}
+              {selectedChat && <div className="pointer-events-none dark:block hidden" style={{ position: 'sticky', top: '-1rem', left: '-1rem', right: '-1rem', bottom: '-1rem', height: '100vh', width: 'calc(100% + 2rem)', marginLeft: '-1rem', marginTop: '-1rem', backgroundColor: 'rgba(17, 24, 39, 0.9)', zIndex: 0 }} />}
+>>>>>>> 75a58b9 (fix chat issue)
               <div className="relative" style={{ zIndex: 10 }}>
               {/* System Message - Auto-delete Warning */}
               <div className="flex justify-center my-6">
@@ -3065,6 +3237,7 @@ const ChatNew = () => {
 
             {/* Image Editor */}
             {showImageEditor && (
+<<<<<<< HEAD
               <BlogImageEditor
                 imageUrl={imageToEdit}
                 caption={imageCaption}
@@ -3098,6 +3271,43 @@ const ChatNew = () => {
                   setImageEditState(null);
                 }}
               />
+=======
+              <div className="fixed inset-0 bg-white dark:bg-gray-900 z-[100] flex flex-col md:flex-row">
+                <BlogImageEditor
+                  imageUrl={imageToEdit}
+                  caption={imageCaption}
+                  onCaptionChange={setImageCaption}
+                  initialState={imageEditState}
+                  onSave={(editedImageData, editState, captionText) => {
+                    setEditedImageData(editedImageData);
+                    setImageEditState(editState);
+                    if (captionText) {
+                      setImageCaption(captionText);
+                    }
+                    fetch(editedImageData)
+                      .then(res => res.blob())
+                      .then(blob => {
+                        const file = new File([blob], `edited-${Date.now()}.jpg`, { type: 'image/jpeg' });
+                        setSelectedFile(file);
+                        setFilePreview({ 
+                          type: 'image', 
+                          url: editedImageData, 
+                          name: file.name, 
+                          size: file.size
+                        });
+                        setShowImageEditor(false);
+                      });
+                  }}
+                  onCancel={() => {
+                    setShowImageEditor(false);
+                    setImageToEdit(null);
+                    setImageCaption('');
+                    setEditedImageData(null);
+                    setImageEditState(null);
+                  }}
+                />
+              </div>
+>>>>>>> 75a58b9 (fix chat issue)
             )}
 
             {/* Camera Modal */}
@@ -3182,7 +3392,11 @@ const ChatNew = () => {
 
             {/* File Preview Modal */}
             {filePreview && (
+<<<<<<< HEAD
               <div className="sticky bottom-0 p-4 border-t border-gray-200 bg-white">
+=======
+              <div className="p-4 border-t border-gray-200 bg-white z-50">
+>>>>>>> 75a58b9 (fix chat issue)
                 <div className="space-y-3">
                   {/* Image Preview */}
                   <div className="flex items-center gap-3">
@@ -3258,7 +3472,11 @@ const ChatNew = () => {
 
             {/* Message Input - Fixed to bottom */}
             {!showVoiceRecorder && !filePreview && !showImageEditor && (
+<<<<<<< HEAD
             <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative z-50">
+=======
+            <div className="p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 z-50">
+>>>>>>> 75a58b9 (fix chat issue)
               {/* Quick Chat & Enhance Text Links */}
               <div className="flex gap-3 mb-0.5">
                 <button

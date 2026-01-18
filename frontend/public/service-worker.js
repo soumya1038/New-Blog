@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 const CACHE_NAME = 'blog-app-v1';
+=======
+const CACHE_NAME = 'blog-app-v2';
+>>>>>>> 75a58b9 (fix chat issue)
 const urlsToCache = [
   '/',
   '/static/css/main.css',
@@ -14,6 +18,15 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+<<<<<<< HEAD
+=======
+  // Don't cache API requests
+  if (event.request.url.includes('/api/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
+>>>>>>> 75a58b9 (fix chat issue)
   event.respondWith(
     caches.match(event.request)
       .then((response) => {

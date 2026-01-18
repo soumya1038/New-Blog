@@ -180,9 +180,17 @@ function AppContent() {
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       <div className="min-h-screen">
         <Navbar />
+<<<<<<< HEAD
         <Suspense fallback={null}>
           <Chatbot />
         </Suspense>
+=======
+        {location.pathname !== '/chat' && (
+          <Suspense fallback={null}>
+            <Chatbot />
+          </Suspense>
+        )}
+>>>>>>> 75a58b9 (fix chat issue)
         {globalIncomingCall && (
           <IncomingCallModal
             caller={globalIncomingCall.caller}

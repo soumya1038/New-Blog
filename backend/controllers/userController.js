@@ -10,7 +10,23 @@ const { sendPasswordChangeConfirmation, sendAccountDeletionConfirmation, sendPas
 // Get user profile
 exports.getProfile = async (req, res) => {
   try {
+<<<<<<< HEAD
     const user = await User.findById(req.params.id || req.user._id)
+=======
+    const targetUserId = req.params.id || req.user?._id;
+    
+    // If no user ID and not logged in
+    if (!targetUserId) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    
+    // If viewing someone else's profile and not logged in
+    if (req.params.id && !req.user) {
+      return res.status(401).json({ success: false, message: 'Please login to view profiles' });
+    }
+    
+    const user = await User.findById(targetUserId)
+>>>>>>> 75a58b9 (fix chat issue)
       .select('-password')
       .populate('followers', 'username profileImage')
       .populate('following', 'username profileImage');

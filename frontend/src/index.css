@@ -190,8 +190,13 @@ code {
 }
 
 
+<<<<<<< HEAD
 /* Animated rotating border for online status */
 @keyframes rotate-border {
+=======
+/* Animated rotating rainbow border for status */
+@keyframes rotate-rainbow {
+>>>>>>> 75a58b9 (fix chat issue)
   0% {
     transform: rotate(0deg);
   }
@@ -200,6 +205,7 @@ code {
   }
 }
 
+<<<<<<< HEAD
 .online-border {
   position: relative;
 }
@@ -216,6 +222,10 @@ code {
   mask-composite: exclude;
   animation: rotate-border 2s linear infinite;
   pointer-events: none;
+=======
+.animate-spin-slow {
+  animation: rotate-rainbow 3s linear infinite;
+>>>>>>> 75a58b9 (fix chat issue)
 }
 
 /* Shimmer effect for View Status text */

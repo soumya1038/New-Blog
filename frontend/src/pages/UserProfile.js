@@ -25,6 +25,10 @@ const UserProfile = () => {
   const [showImageModal, setShowImageModal] = useState(false);
   const [shorts, setShorts] = useState([]);
   const [contentTab, setContentTab] = useState('posts');
+<<<<<<< HEAD
+=======
+  const [error, setError] = useState(null);
+>>>>>>> 75a58b9 (fix chat issue)
 
   useEffect(() => {
     fetchUserProfile();
@@ -47,6 +51,16 @@ const UserProfile = () => {
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
+<<<<<<< HEAD
+=======
+      if (error.response?.status === 404) {
+        setError('not_found');
+      } else if (error.response?.status === 401) {
+        setError('unauthorized');
+      } else {
+        setError('unknown');
+      }
+>>>>>>> 75a58b9 (fix chat issue)
     } finally {
       setLoading(false);
     }
@@ -301,9 +315,64 @@ const UserProfile = () => {
   }
 
   if (!profile) {
+<<<<<<< HEAD
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
         <p className="text-xl text-gray-600">{t('User not found')}</p>
+=======
+    // User not found
+    if (error === 'not_found') {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+            <div className="text-6xl mb-4">❌</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('User Not Found')}</h2>
+            <p className="text-gray-600 mb-6">{t('This user does not exist or has been removed.')}</p>
+            <button
+              onClick={() => navigate('/')}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+            >
+              {t('Go to Home')}
+            </button>
+          </div>
+        </div>
+      );
+    }
+    
+    // Unauthorized - need to login
+    if (error === 'unauthorized') {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
+          <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+            <div className="text-6xl mb-4">🔒</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('Login Required')}</h2>
+            <p className="text-gray-600 mb-6">{t('Please login to view user profiles.')}</p>
+            <button
+              onClick={() => navigate('/login', { state: { from: `/user/${id}` } })}
+              className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+            >
+              {t('Go to Login')}
+            </button>
+          </div>
+        </div>
+      );
+    }
+    
+    // Generic error
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
+        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
+          <div className="text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('Something Went Wrong')}</h2>
+          <p className="text-gray-600 mb-6">{t('Unable to load user profile.')}</p>
+          <button
+            onClick={() => navigate('/')}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+          >
+            {t('Go to Home')}
+          </button>
+        </div>
+>>>>>>> 75a58b9 (fix chat issue)
       </div>
     );
   }
