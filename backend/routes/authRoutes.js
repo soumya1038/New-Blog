@@ -13,7 +13,6 @@ router.post('/register', [
 
 router.post('/login', login);
 router.get('/me', protect, trackActivity, getMe);
-router.get('/me', protect, getMe);
 router.post('/send-verification-code', sendVerificationCode);
 router.post('/verify-code', verifyCode);
 router.post('/send-password-reset-code', sendPasswordResetCode);

@@ -62,10 +62,21 @@ exports.getStats = async (req, res) => {
         createdAt: { $gte: date, $lt: nextDate }
       });
       
-      // Active users count (based on lastActive)
-      const activeUsers = await User.countDocuments({
+      // Active users count (users who created blogs, shorts, comments, or had any activity)
+      const blogAuthors = await Blog.distinct('author', {
+        createdAt: { $gte: date, $lt: nextDate }
+      });
+      const shortAuthors = await Short.distinct('author', {
+        createdAt: { $gte: date, $lt: nextDate }
+      });
+      const commentAuthors = await Comment.distinct('author', {
+        createdAt: { $gte: date, $lt: nextDate }
+      });
+      const activeByTracking = await User.distinct('_id', {
         lastActive: { $gte: date, $lt: nextDate }
       });
+      const activeUserIds = new Set([...blogAuthors, ...shortAuthors, ...commentAuthors, ...activeByTracking]);
+      const activeUsers = activeUserIds.size;
       
       // Guest analytics
       const uniqueGuests = await GuestAnalytics.distinct('ipAddress', {
