@@ -66,7 +66,7 @@ exports.createBlog = async (req, res) => {
       scheduledPublishDate: isScheduled ? scheduledPublishDate : null
     });
 
-    const populatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage');
+    const populatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage isGuest role isVerified');
 
     res.status(201).json({ success: true, blog: populatedBlog });
   } catch (error) {
@@ -119,7 +119,7 @@ exports.getBlogs = async (req, res) => {
     }
 
     const blogs = await Blog.find(filter)
-      .populate('author', 'username profileImage statuses')
+      .populate('author', 'username profileImage isGuest role isVerified statuses')
       .sort({ createdAt: -1 });
 
     // Add hasActiveStatus to each blog author
@@ -145,7 +145,7 @@ exports.getBlogs = async (req, res) => {
 exports.getBlog = async (req, res) => {
   try {
     const blog = await Blog.findById(req.params.id)
-      .populate('author', 'username profileImage fullName bio statuses')
+      .populate('author', 'username profileImage fullName bio isGuest role isVerified statuses')
       .populate('likes', 'username profileImage');
 
     if (!blog) {
@@ -241,7 +241,7 @@ exports.updateBlog = async (req, res) => {
 
     await blog.save();
 
-    const updatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage');
+    const updatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage isGuest role isVerified');
 
     res.json({ success: true, blog: updatedBlog });
   } catch (error) {
@@ -325,7 +325,7 @@ exports.getShortBlogs = async (req, res) => {
 
     console.log('Fetching short blogs with filter:', filter);
     const shortBlogs = await Blog.find(filter)
-      .populate('author', 'username profileImage')
+      .populate('author', 'username profileImage isGuest role isVerified')
       .sort({ createdAt: -1 });
 
     console.log('Found short blogs:', shortBlogs.length);

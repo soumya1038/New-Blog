@@ -27,6 +27,14 @@ api.interceptors.response.use(
       
       // Only show session expired if user actually had a token (was logged in)
       if (token) {
+        // Check if guest session expired
+        if (error.response?.data?.guestExpired) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('rememberMe');
+          window.dispatchEvent(new CustomEvent('guestExpired'));
+          return Promise.reject(error);
+        }
+        
         // Clear auth data
         localStorage.removeItem('token');
         localStorage.removeItem('rememberMe');

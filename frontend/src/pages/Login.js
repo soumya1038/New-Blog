@@ -4,9 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import { VscEye, VscEyeClosed } from 'react-icons/vsc';
 import { FaCheckCircle, FaRedo } from 'react-icons/fa';
+import { FaGoogle, FaFacebook, FaTwitter, FaGithub, FaLinkedin } from 'react-icons/fa';
+import { TbBrandAmongUs } from 'react-icons/tb';
 import { SyncLoader, ScaleLoader } from 'react-spinners';
 import axios from 'axios';
 import IntroVideoModal from '../components/IntroVideoModal';
+import GuestUsernameModal from '../components/GuestUsernameModal';
+import GuestInfoModal from '../components/GuestInfoModal';
 
 const Login = () => {
   const { t } = useTranslation();
@@ -40,6 +44,14 @@ const Login = () => {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showIntroVideo, setShowIntroVideo] = useState(false);
+  
+  // Guest login states
+  const [showGuestModal, setShowGuestModal] = useState(false);
+  const [showGuestInfoModal, setShowGuestInfoModal] = useState(false);
+  const [guestUsername, setGuestUsername] = useState('');
+  
+  // Flash message state
+  const [flashMessage, setFlashMessage] = useState('');
   
   // Timer states for forgot password flow
   const [verifyTimer, setVerifyTimer] = useState(120);
@@ -103,9 +115,9 @@ const Login = () => {
     }
   }, []);
   
-  // Math timer countdown - only run if not verified
+  // Math timer countdown
   useEffect(() => {
-    if (mathTimer > 0 && !isMathVerified) {
+    if (mathTimer > 0) {
       const timer = setInterval(() => {
         setMathTimer(prev => {
           if (prev <= 1) {
@@ -117,7 +129,7 @@ const Login = () => {
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [mathTimer, isMathVerified]);
+  }, [mathTimer]);
   
   // Lockout countdown timer
   useEffect(() => {
@@ -200,6 +212,11 @@ const Login = () => {
       return () => clearInterval(timer);
     }
   }, [showFinalCodeModal, finalTimer]);
+
+  const handleSocialLogin = (provider) => {
+    setFlashMessage(`${provider} login is under development`);
+    setTimeout(() => setFlashMessage(''), 3000);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -360,8 +377,34 @@ const Login = () => {
     navigate('/login');
   };
 
+  const handleGuestContinue = (username) => {
+    setGuestUsername(username);
+    setShowGuestModal(false);
+    setShowGuestInfoModal(true);
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      const { data } = await axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/guest-login`, { username: guestUsername });
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('rememberMe', 'true');
+      setShowGuestInfoModal(false);
+      window.location.href = '/';
+    } catch (error) {
+      setError(error.response?.data?.message || 'Guest login failed');
+      setShowGuestInfoModal(false);
+    }
+  };
+
   return (
     <>
+      {/* Flash Message */}
+      {flashMessage && (
+        <div className="fixed top-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
+          {flashMessage}
+        </div>
+      )}
+
       {/* Intro Video Modal */}
       {showIntroVideo && (
         <IntroVideoModal
@@ -515,6 +558,69 @@ const Login = () => {
         <p className="text-center mt-4 text-gray-600 dark:text-gray-400">
           {t("Don't have an account?")} <Link to="/register" className="text-blue-600 dark:text-blue-400 hover:underline">{t('Sign Up')}</Link>
         </p>
+        
+        <div className="mt-6">
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-2 bg-white dark:bg-gray-800 text-gray-500">or</span>
+            </div>
+          </div>
+        </div>
+        
+        <div className="mt-4 space-y-3">
+          <div className="flex justify-center gap-4">
+            <button
+              type="button"
+              onClick={() => handleSocialLogin('Google')}
+              className="p-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition"
+              title="Continue with Google"
+            >
+              <FaGoogle className="text-red-500" size={24} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSocialLogin('Facebook')}
+              className="p-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition"
+              title="Continue with Facebook"
+            >
+              <FaFacebook className="text-blue-600" size={24} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSocialLogin('Twitter')}
+              className="p-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition"
+              title="Continue with Twitter"
+            >
+              <FaTwitter className="text-blue-400" size={24} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSocialLogin('GitHub')}
+              className="p-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition"
+              title="Continue with GitHub"
+            >
+              <FaGithub className="text-gray-800 dark:text-gray-200" size={24} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSocialLogin('LinkedIn')}
+              className="p-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition"
+              title="Continue with LinkedIn"
+            >
+              <FaLinkedin className="text-blue-700" size={24} />
+            </button>
+          </div>
+          <button
+            onClick={() => setShowGuestModal(true)}
+            className="w-full flex items-center justify-center gap-3 bg-purple-600 dark:bg-purple-500 text-white px-4 py-2.5 rounded-lg hover:bg-purple-700 dark:hover:bg-purple-600 transition font-semibold"
+          >
+            <TbBrandAmongUs size={20} />
+            {t('Continue as Guest')}
+          </button>
+        </div>
       </div>
 
       {/* Forgot Password Modal - Step 1: Enter Username and Email */}
@@ -757,6 +863,22 @@ const Login = () => {
             </button>
           </div>
         </div>
+      )}
+      
+      {/* Guest Username Modal */}
+      {showGuestModal && (
+        <GuestUsernameModal
+          onClose={() => setShowGuestModal(false)}
+          onContinue={handleGuestContinue}
+        />
+      )}
+      
+      {/* Guest Info Modal */}
+      {showGuestInfoModal && (
+        <GuestInfoModal
+          onContinue={handleGuestLogin}
+          onClose={() => setShowGuestInfoModal(false)}
+        />
       )}
     </div>
     </>

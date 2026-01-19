@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
+const { protect, optionalAuth } = require('../middleware/auth');
 const {
   createShort,
   getShorts,
@@ -12,7 +12,7 @@ const {
 } = require('../controllers/shortController');
 
 router.post('/', protect, createShort);
-router.get('/', getShorts);
+router.get('/', optionalAuth, getShorts);
 router.get('/:id', getShort);
 router.put('/:id', protect, updateShort);
 router.delete('/:id', protect, deleteShort);

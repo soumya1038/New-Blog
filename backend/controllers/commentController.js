@@ -29,7 +29,7 @@ exports.createComment = async (req, res) => {
     });
 
     const populatedComment = await Comment.findById(comment._id)
-      .populate('author', 'username profileImage')
+      .populate('author', 'username profileImage isGuest role isVerified')
       .populate('replyTo', 'username');
 
     // Create notification for post author
@@ -63,7 +63,7 @@ exports.getComments = async (req, res) => {
 
     const filter = isShort === 'true' ? { short: blogId, parentComment: null } : { blog: blogId, parentComment: null };
     const comments = await Comment.find(filter)
-      .populate('author', 'username profileImage')
+      .populate('author', 'username profileImage isGuest role isVerified')
       .populate('replyTo', 'username')
       .sort({ isPinned: -1, createdAt: -1 });
 
@@ -88,7 +88,7 @@ exports.getReplies = async (req, res) => {
     const { commentId } = req.params;
     
     const replies = await Comment.find({ parentComment: commentId })
-      .populate('author', 'username profileImage')
+      .populate('author', 'username profileImage isGuest role isVerified')
       .populate('replyTo', 'username')
       .sort({ createdAt: 1 });
 
@@ -182,7 +182,7 @@ exports.editComment = async (req, res) => {
     await comment.save();
 
     const populatedComment = await Comment.findById(comment._id)
-      .populate('author', 'username profileImage')
+      .populate('author', 'username profileImage isGuest role isVerified')
       .populate('replyTo', 'username');
 
     // Emit socket event for real-time updates

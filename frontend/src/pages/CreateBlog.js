@@ -336,7 +336,8 @@ const CreateBlog = () => {
 
       if (draftId) {
         // Update existing draft
-        await api.put(`/blogs/${draftId}`, { 
+        const endpoint = isShortMode ? `/shorts/${draftId}` : `/blogs/${draftId}`;
+        await api.put(endpoint, { 
           title, 
           content, 
           tags: tags.join(', '),
@@ -349,16 +350,19 @@ const CreateBlog = () => {
         });
       } else {
         // Check if draft with same title exists
-        const { data: existingDrafts } = await api.get('/blogs?draft=true');
-        const existingDraft = existingDrafts.blogs?.find(d => d.title === title);
+        const endpoint = isShortMode ? '/shorts?draft=true' : '/blogs?draft=true';
+        const { data: existingDrafts } = await api.get(endpoint);
+        const existingDraft = isShortMode ? existingDrafts.shorts?.find(d => d.title === title) : existingDrafts.blogs?.find(d => d.title === title);
         
         if (existingDraft) {
           // Delete old draft and create new one
-          await api.delete(`/blogs/${existingDraft._id}`);
+          const deleteEndpoint = isShortMode ? `/shorts/${existingDraft._id}` : `/blogs/${existingDraft._id}`;
+          await api.delete(deleteEndpoint);
         }
         
         // Create new draft
-        const { data } = await api.post('/blogs', { 
+        const createEndpoint = isShortMode ? '/shorts' : '/blogs';
+        const { data } = await api.post(createEndpoint, { 
           title, 
           content, 
           tags: tags.join(', '),
@@ -369,7 +373,7 @@ const CreateBlog = () => {
           metaDescription,
           isDraft: true
         });
-        setDraftId(data.blog._id);
+        setDraftId(isShortMode ? data.short._id : data.blog._id);
       }
       
       // Clear file after upload
@@ -381,8 +385,15 @@ const CreateBlog = () => {
       toast.success('Draft saved successfully!');
       setTimeout(() => navigate('/drafts'), 1000);
     } catch (err) {
-      toast.error('Failed to save draft');
-      setError('Failed to save draft');
+      console.error('Save draft error:', err);
+      if (err.response?.status === 401) {
+        toast.error('Session expired. Please login again.');
+        localStorage.removeItem('token');
+        navigate('/login');
+      } else {
+        toast.error(err.response?.data?.message || 'Failed to save draft');
+        setError(err.response?.data?.message || 'Failed to save draft');
+      }
     } finally {
       setLoading(false);
     }

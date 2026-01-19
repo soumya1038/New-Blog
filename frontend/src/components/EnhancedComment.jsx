@@ -6,6 +6,8 @@ import { BsPinAngle, BsPinAngleFill } from 'react-icons/bs';
 import { HiArrowUp, HiArrowDown } from 'react-icons/hi';
 import { BiDotsVerticalRounded } from 'react-icons/bi';
 import { MdEdit, MdDelete } from 'react-icons/md';
+import { GoVerified } from 'react-icons/go';
+import { TbBrandAmongUs } from 'react-icons/tb';
 import { AuthContext } from '../context/AuthContext';
 import Avatar from './Avatar';
 import api from '../services/api';
@@ -77,9 +79,16 @@ const EnhancedComment = ({
               <div className="flex-1">
                 <Link 
                   to={`/user/${comment.author._id}`}
-                  className="font-semibold text-sm text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400"
+                  className="font-semibold text-sm text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 inline-flex items-center gap-1"
                 >
                   {comment.author?.username}
+                  {(comment.author?.isGuest || comment.author?.role === 'guest') ? (
+                    <TbBrandAmongUs className="text-purple-500" size={14} title="Guest User" />
+                  ) : comment.author?.isVerified && (
+                    <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
+                      <GoVerified className="text-white flex-shrink-0" size={9} />
+                    </div>
+                  )}
                 </Link>
                 {editingComment === comment._id ? (
                   <div className="mt-2">

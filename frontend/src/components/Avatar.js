@@ -35,7 +35,7 @@ const Avatar = ({ user, size = 'md', className = '', showStatusRing = false }) =
   const hasActiveStatus = showStatusRing && user?.hasActiveStatus;
   const ringClass = hasActiveStatus ? 'ring-2 ring-green-500 ring-offset-2' : '';
 
-  // Priority: profileImage > Gravatar > Initials
+  // Priority 1: User uploaded profileImage
   if (user?.profileImage && !imageError) {
     return (
       <img
@@ -43,6 +43,17 @@ const Avatar = ({ user, size = 'md', className = '', showStatusRing = false }) =
         alt={user.username}
         className={`${sizes[size]} rounded-full object-cover ${ringClass} ${className}`}
         onError={() => setImageError(true)}
+      />
+    );
+  }
+
+  // Priority 2: Guest user without profileImage - show guest_image.png
+  if (user?.isGuest || user?.role === 'guest') {
+    return (
+      <img
+        src="/image/guest_image.png"
+        alt="Guest"
+        className={`${sizes[size]} rounded-full object-cover ${ringClass} ${className}`}
       />
     );
   }

@@ -4,6 +4,7 @@ import { AuthProvider, AuthContext } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import ErrorFallback from './components/ErrorFallback';
 import IncomingCallModal from './components/IncomingCallModal';
+import GuestExpiredModal from './components/GuestExpiredModal';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
 import soundManager from './utils/soundManager';
@@ -37,7 +38,7 @@ const LoadingFallback = () => (
 );
 
 function AppContent() {
-  const { user, sessionExpired } = useContext(AuthContext);
+  const { user, sessionExpired, guestExpired, setGuestExpired } = useContext(AuthContext);
   const location = useLocation();
   const navigate = useNavigate();
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
@@ -216,6 +217,9 @@ function AppContent() {
               </div>
             </div>
           </div>
+        )}
+        {guestExpired && (
+          <GuestExpiredModal onClose={() => setGuestExpired(false)} />
         )}
         <Suspense fallback={<LoadingFallback />}>
           <Routes>

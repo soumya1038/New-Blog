@@ -6,7 +6,9 @@ import api from '../services/api';
 import socketService from '../services/socket';
 import ReactMarkdown from 'react-markdown';
 import { FaHeart, FaComment, FaClock, FaEdit, FaTrash, FaArrowLeft, FaShare, FaRetweet, FaTimes, FaFacebook, FaTwitter, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink, FaUserPlus, FaUserCheck, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { GoVerified } from 'react-icons/go';
 import { BiMenuAltRight } from 'react-icons/bi';
+import { TbBrandAmongUs } from 'react-icons/tb';
 import { BlogDetailSkeleton } from '../components/SkeletonLoader';
 import soundNotification from '../utils/soundNotifications';
 import { BarLoader, ScaleLoader } from 'react-spinners';
@@ -516,8 +518,15 @@ const BlogDetail = () => {
                     <Avatar user={blog.author} size="md" showStatusRing={true} />
                   </div>
                   <div className="flex-1">
-                    <Link to={`/user/${blog.author?._id}`} className="font-semibold text-gray-800 hover:text-blue-600">
+                    <Link to={`/user/${blog.author?._id}`} className="font-semibold text-gray-800 hover:text-blue-600 flex items-center gap-1">
                       {blog.author?.username}
+                      {(blog.author?.isGuest || blog.author?.role === 'guest') ? (
+                        <TbBrandAmongUs className="text-purple-500" size={16} title="Guest User" />
+                      ) : blog.author?.isVerified && (
+                        <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
+                          <GoVerified className="text-white flex-shrink-0" size={12} />
+                        </div>
+                      )}
                     </Link>
                     <p className="text-sm text-gray-500">{new Date(blog.createdAt).toLocaleDateString()}</p>
                   </div>

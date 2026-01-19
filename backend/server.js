@@ -32,6 +32,7 @@ const { cleanupOldNotifications } = require('./controllers/socialController');
 const cleanupExpiredStatuses = require('./utils/statusCleanup');
 const cleanupExpiredMessages = require('./jobs/cleanupExpiredMessages');
 const publishScheduledContent = require('./jobs/publishScheduledContent');
+const cleanupExpiredGuests = require('./jobs/cleanupExpiredGuests');
 
 const app = express();
 const server = http.createServer(app);
@@ -153,6 +154,10 @@ mongoose.connect(process.env.MONGODB_URI)
       // Start scheduled content publish job
       publishScheduledContent(io);
       console.log('✅ Scheduled content publish job started');
+      
+      // Start guest user cleanup job
+      cleanupExpiredGuests();
+      console.log('✅ Guest user cleanup job started');
       
       // Start database size monitor
       startDatabaseMonitor();

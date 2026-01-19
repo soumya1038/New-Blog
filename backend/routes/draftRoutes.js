@@ -7,17 +7,16 @@ const Short = require('../models/Short');
 // Get all drafts (blogs + shorts combined)
 router.get('/', protect, async (req, res) => {
   try {
+    const isAdmin = req.user.role === 'admin';
+    const filter = isAdmin ? { isDraft: true } : { author: req.user._id, isDraft: true };
+
     // Fetch blog drafts
-    const blogDrafts = await Blog.find({
-      author: req.user._id,
-      isDraft: true
-    }).populate('author', 'username profileImage').sort({ updatedAt: -1 });
+    const blogDrafts = await Blog.find(filter)
+      .populate('author', 'username profileImage').sort({ updatedAt: -1 });
 
     // Fetch short drafts
-    const shortDrafts = await Short.find({
-      author: req.user._id,
-      isDraft: true
-    }).populate('author', 'username profileImage').sort({ updatedAt: -1 });
+    const shortDrafts = await Short.find(filter)
+      .populate('author', 'username profileImage').sort({ updatedAt: -1 });
 
     // Mark shorts with type
     const markedShorts = shortDrafts.map(short => ({

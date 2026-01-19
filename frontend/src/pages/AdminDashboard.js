@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { FaUsers, FaFileAlt, FaComments, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes } from 'react-icons/fa';
+import { GoVerified, GoUnverified } from 'react-icons/go';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { StatsCardSkeleton, TableRowSkeleton } from '../components/SkeletonLoader';
@@ -15,6 +16,7 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
+  const [guests, setGuests] = useState([]);
   const [blogs, setBlogs] = useState([]);
   const [shorts, setShorts] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
@@ -33,6 +35,7 @@ const AdminDashboard = () => {
   const [loadingStats, setLoadingStats] = useState(false);
   const [suspendLoading, setSuspendLoading] = useState(false);
   const [systemMetrics, setSystemMetrics] = useState(null);
+  const [verifyingUserId, setVerifyingUserId] = useState(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -45,15 +48,17 @@ const AdminDashboard = () => {
 
   const fetchData = async () => {
     try {
-      const [statsRes, usersRes, blogsRes, shortsRes, metricsRes] = await Promise.all([
+      const [statsRes, usersRes, guestsRes, blogsRes, shortsRes, metricsRes] = await Promise.all([
         api.get(`/admin/stats?days=${timeRange}`),
         api.get('/admin/users'),
+        api.get('/admin/guests'),
         api.get('/admin/blogs'),
         api.get('/admin/shorts'),
         api.get('/admin/metrics')
       ]);
       setStats(statsRes.data.stats);
       setUsers(usersRes.data.users);
+      setGuests(guestsRes.data.guests);
       setBlogs(blogsRes.data.blogs);
       setShorts(shortsRes.data.shorts);
       setSystemMetrics(metricsRes.data.metrics);
@@ -259,6 +264,19 @@ const AdminDashboard = () => {
     });
   };
 
+  const handleToggleVerification = async (userId, username, isVerified) => {
+    setVerifyingUserId(userId);
+    try {
+      await api.put(`/admin/users/${userId}/verify`);
+      await fetchData();
+      openModal({ type: 'success', title: t('Success!'), message: `${username} ${isVerified ? 'unverified' : 'verified'} successfully` });
+    } catch (error) {
+      openModal({ type: 'error', title: t('Error'), message: error.response?.data?.message || 'Failed to update verification' });
+    } finally {
+      setVerifyingUserId(null);
+    }
+  };
+
   if (loading || authLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 py-8">
@@ -315,6 +333,12 @@ const AdminDashboard = () => {
             className={`px-4 py-2 font-semibold ${activeTab === 'users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
           >
             {t('Users')}
+          </button>
+          <button
+            onClick={() => setActiveTab('guests')}
+            className={`px-4 py-2 font-semibold ${activeTab === 'guests' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+          >
+            {t('Guest Users')}
           </button>
           <button
             onClick={() => setActiveTab('blogs')}
@@ -496,7 +520,8 @@ const AdminDashboard = () => {
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Line type="monotone" dataKey="count" stroke="#10b981" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 7 }} />
+                    <Line type="monotone" dataKey="User" stroke="#10b981" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 7 }} name="Users" />
+                    <Line type="monotone" dataKey="Guest" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 5 }} activeDot={{ r: 7 }} name="Guests" />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -607,6 +632,77 @@ const AdminDashboard = () => {
           </div>
         )}
 
+        {/* Guests Tab */}
+        {activeTab === 'guests' && (
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div className="p-4 border-b">
+              <div className="relative">
+                <FaSearch className="absolute left-3 top-3 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder={t('Search guests...')}
+                  value={userSearch}
+                  onChange={(e) => setUserSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Users')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Blogs')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Shorts')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Joined')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Actions')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {guests.filter(g => 
+                    g.username.toLowerCase().includes(userSearch.toLowerCase())
+                  ).map(g => (
+                    <tr key={g._id}>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <img src={g.profileImage || 'https://via.placeholder.com/40'} alt={g.username} className="w-10 h-10 rounded-full" />
+                          <div>
+                            <p className="font-semibold">{g.username}</p>
+                            <span className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded">Guest</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm">{g.blogCount}</td>
+                      <td className="px-6 py-4 text-sm">{g.shortCount || 0}</td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{new Date(g.createdAt).toLocaleDateString()}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <Link
+                            to={`/user/${g._id}`}
+                            className="text-blue-600 hover:text-blue-800"
+                            title={t('View Profile')}
+                          >
+                            <FaEye size={18} />
+                          </Link>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteUser(g._id, g.username)}
+                              className="text-red-600 hover:text-red-800"
+                              title={t('Delete')}
+                            >
+                              <FaTrash size={18} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Users Tab */}
         {activeTab === 'users' && (
           <div className="bg-white rounded-xl shadow-lg overflow-hidden">
@@ -628,6 +724,7 @@ const AdminDashboard = () => {
                 <thead className="bg-gray-100">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Users')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Verify')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Email Address')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Blogs')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Shorts')}</th>
@@ -651,6 +748,26 @@ const AdminDashboard = () => {
                             {u.role === 'coAdmin' && <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">Co-Admin</span>}
                           </div>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleToggleVerification(u._id, u.username, u.isVerified)}
+                            className={`${u.isVerified ? 'text-blue-500' : 'text-gray-400'} hover:opacity-70 transition`}
+                            title={u.isVerified ? t('Verified - Click to unverify') : t('Not verified - Click to verify')}
+                            disabled={verifyingUserId === u._id}
+                          >
+                            {verifyingUserId === u._id ? (
+                              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
+                            ) : u.isVerified ? (
+                              <GoVerified size={24} />
+                            ) : (
+                              <GoUnverified size={24} />
+                            )}
+                          </button>
+                        )}
+                        {!isAdmin && u.isVerified && <GoVerified size={24} className="text-blue-500" />}
+                        {!isAdmin && !u.isVerified && <GoUnverified size={24} className="text-gray-400" />}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{u.email || 'N/A'}</td>
                       <td className="px-6 py-4 text-sm">{u.blogCount}</td>
@@ -804,9 +921,9 @@ const AdminDashboard = () => {
                       <td className="px-6 py-4">
                         <div className="flex gap-2">
                           <Link
-                            to={`/shorts/${short._id}`}
+                            to={short.isDraft ? `/edit/${short._id}` : `/shorts/${short._id}`}
                             className="text-blue-600 hover:text-blue-800"
-                            title={t('View Short')}
+                            title={short.isDraft ? t('View Draft') : t('View Short')}
                           >
                             <FaEye size={18} />
                           </Link>

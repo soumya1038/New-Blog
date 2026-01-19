@@ -563,3 +563,83 @@ exports.confirmAuthenticatedPasswordChange = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+// Check guest username availability
+exports.checkGuestUsername = async (req, res) => {
+  try {
+    const { username } = req.params;
+    
+    if (!username) {
+      return res.status(400).json({ success: false, message: 'Username is required' });
+    }
+
+    // Validate username format (letters, numbers, underscore only)
+    const usernameRegex = /^[a-zA-Z0-9_]+$/;
+    if (!usernameRegex.test(username)) {
+      return res.json({ success: true, available: false, message: 'Only letters, numbers, and underscores allowed' });
+    }
+
+    const existingUser = await User.findOne({ username });
+    
+    if (existingUser) {
+      return res.json({ success: true, available: false, message: 'Username already taken' });
+    }
+
+    res.json({ success: true, available: true, message: 'Username available' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Guest login
+exports.guestLogin = async (req, res) => {
+  try {
+    const { username } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ success: false, message: 'Username is required' });
+    }
+
+    // Validate username format
+    const usernameRegex = /^[a-zA-Z0-9_]+$/;
+    if (!usernameRegex.test(username)) {
+      return res.status(400).json({ success: false, message: 'Only letters, numbers, and underscores allowed' });
+    }
+
+    // Check if username exists
+    const existingUser = await User.findOne({ username });
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'Username already taken' });
+    }
+
+    // Create guest user (12 hours expiry)
+    const guestExpiresAt = new Date(Date.now() + 12 * 60 * 60 * 1000);
+    const guestUser = await User.create({
+      username,
+      password: crypto.randomBytes(32).toString('hex'), // Random password
+      role: 'guest',
+      isGuest: true,
+      guestExpiresAt,
+      isVerified: true
+    });
+
+    const token = generateToken(guestUser._id);
+
+    res.status(201).json({
+      success: true,
+      message: 'Guest login successful',
+      token,
+      user: {
+        id: guestUser._id,
+        username: guestUser.username,
+        role: guestUser.role,
+        isGuest: true,
+        guestExpiresAt
+      },
+      rememberMe: true // Auto remember for guests
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

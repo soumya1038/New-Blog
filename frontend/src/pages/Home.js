@@ -3,8 +3,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { FaHeart, FaComment, FaClock, FaSearch, FaTimes } from 'react-icons/fa';
+import { GoVerified } from 'react-icons/go';
 import { PiMonitorPlayDuotone } from 'react-icons/pi';
-import { TbBrandBlogger } from 'react-icons/tb';
+import { TbBrandBlogger, TbBrandAmongUs } from 'react-icons/tb';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { AuthContext } from '../context/AuthContext';
 import { BlogCardSkeleton } from '../components/SkeletonLoader';
@@ -408,10 +409,17 @@ const Home = () => {
                   </Link>
                   <Link 
                     to={`/user/${blog.author?._id}`} 
-                    className="text-sm font-medium hover:underline text-white"
+                    className="text-sm font-medium hover:underline text-white flex items-center gap-1"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {blog.author?.username}
+                    {(blog.author?.isGuest || blog.author?.role === 'guest') ? (
+                      <TbBrandAmongUs className="text-purple-300" size={14} title="Guest User" />
+                    ) : blog.author?.isVerified && (
+                      <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
+                        <GoVerified className="text-white flex-shrink-0" size={9} />
+                      </div>
+                    )}
                   </Link>
                   <span className="text-gray-300 text-sm">•</span>
                   <span className="text-sm text-gray-300">{new Date(blog.createdAt).toLocaleDateString()}</span>
@@ -520,10 +528,17 @@ const Home = () => {
                     </Link>
                     <Link 
                       to={`/user/${blog.author?._id}`} 
-                      className="text-sm font-medium hover:underline text-white"
+                      className="text-sm font-medium hover:underline text-white flex items-center gap-1"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {blog.author?.username}
+                      {(blog.author?.isGuest || blog.author?.role === 'guest') ? (
+                        <TbBrandAmongUs className="text-purple-300" size={14} title="Guest User" />
+                      ) : blog.author?.isVerified && (
+                        <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
+                          <GoVerified className="text-white flex-shrink-0" size={9} />
+                        </div>
+                      )}
                     </Link>
                     <span className="text-gray-300 text-sm">•</span>
                     <span className="text-sm text-gray-300">{new Date(blog.createdAt).toLocaleDateString()}</span>

@@ -4,9 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { FaCalendar, FaUsers, FaFileAlt, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaEnvelope, FaUserPlus, FaUserMinus } from 'react-icons/fa';
+import { GoVerified, GoUnverified } from 'react-icons/go';
 import { UserProfileSkeleton } from '../components/SkeletonLoader';
 import Avatar from '../components/Avatar';
 import StatusViewer from '../components/StatusViewer';
+import GuestBadge from '../components/GuestBadge';
 
 const UserProfile = () => {
   const { t } = useTranslation();
@@ -382,11 +384,8 @@ return (
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
           <div
             onClick={() => {
-              // Only allow status viewing for own profile when clicking avatar
-              if (currentUser && currentUser._id === profile._id && profile.hasActiveStatus && profile.statuses?.length > 0) {
-                setShowStatusViewer(true);
-              } else if (profile.profileImage) {
-                // Allow all users to view full-size profile image
+              // Only show full-size image when clicking avatar
+              if (profile.profileImage) {
                 setShowImageModal(true);
               }
             }}
@@ -398,7 +397,7 @@ return (
           </div>
           <div className="flex-1 text-center sm:text-left">
             <h1
-              className={`text-3xl font-bold mb-2 ${profile.hasActiveStatus
+              className={`text-3xl font-bold mb-2 flex items-center gap-2 ${profile.hasActiveStatus
                 ? 'animate-gradient cursor-pointer'
                 : 'text-gray-800'
                 }`}
@@ -414,6 +413,18 @@ return (
               }}
             >
               {profile.username}
+              {!profile.isGuest && profile.role !== 'guest' && (
+                profile.isVerified ? (
+                  <div className="bg-blue-600 rounded-full p-1 flex items-center justify-center" title="Verified">
+                    <GoVerified className="text-white" size={22} />
+                  </div>
+                ) : (
+                  currentUser && currentUser._id === profile._id && (
+                    <GoUnverified className="text-gray-400" size={24} title="Not Verified" />
+                  )
+                )
+              )}
+              {(profile.isGuest || profile.role === 'guest') && <GuestBadge size="lg" />}
             </h1>
             {profile.fullName && <p className="text-lg text-gray-600 mb-3">{profile.fullName}</p>}
             {profile.description && <p className="text-gray-600 italic mb-3">{profile.description}</p>}

@@ -1,6 +1,6 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { register, login, getMe, verifyEmail, sendVerificationCode, verifyCode, sendPasswordResetCode, resetPasswordWithCode, requestForgotPassword, verifyForgotPasswordCode, requestForgotPasswordChange, confirmForgotPasswordChange, requestAuthenticatedPasswordChange, confirmAuthenticatedPasswordChange } = require('../controllers/authController');
+const { register, login, getMe, verifyEmail, sendVerificationCode, verifyCode, sendPasswordResetCode, resetPasswordWithCode, requestForgotPassword, verifyForgotPasswordCode, requestForgotPasswordChange, confirmForgotPasswordChange, requestAuthenticatedPasswordChange, confirmAuthenticatedPasswordChange, checkGuestUsername, guestLogin } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const trackActivity = require('../middleware/trackActivity');
 
@@ -24,5 +24,7 @@ router.post('/forgot-password/confirm', confirmForgotPasswordChange);
 router.post('/forgot-password/change-authenticated', protect, requestAuthenticatedPasswordChange);
 router.post('/forgot-password/confirm-authenticated', protect, confirmAuthenticatedPasswordChange);
 router.get('/verify-email/:token', verifyEmail);
+router.get('/check-guest-username/:username', checkGuestUsername);
+router.post('/guest-login', guestLogin);
 
 module.exports = router;

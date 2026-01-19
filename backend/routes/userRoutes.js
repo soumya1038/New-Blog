@@ -15,7 +15,8 @@ const {
   createStatus,
   getStatuses,
   updateStatus,
-  deleteStatus
+  deleteStatus,
+  guestLogout
 } = require('../controllers/userController');
 const { protect, optionalAuth } = require('../middleware/auth');
 const upload = require('../utils/fileUpload');
@@ -39,6 +40,7 @@ router.post('/statuses', protect, trackActivity, upload.single('statusImage'), c
 router.get('/statuses', protect, getStatuses);
 router.put('/statuses/:statusId', protect, trackActivity, upload.single('statusImage'), updateStatus);
 router.delete('/statuses/:statusId', protect, trackActivity, deleteStatus);
+router.post('/guest-logout', protect, guestLogout);
 router.post('/contact', protect, async (req, res) => {
   try {
     const { issue, advice, userEmail, username } = req.body;

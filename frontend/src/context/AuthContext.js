@@ -8,6 +8,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [guestExpired, setGuestExpired] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -19,8 +20,18 @@ export const AuthProvider = ({ children }) => {
       setLoading(false);
     };
     
+    const handleGuestExpired = () => {
+      setUser(null);
+      setGuestExpired(true);
+      setLoading(false);
+    };
+    
     window.addEventListener('sessionExpired', handleSessionExpired);
-    return () => window.removeEventListener('sessionExpired', handleSessionExpired);
+    window.addEventListener('guestExpired', handleGuestExpired);
+    return () => {
+      window.removeEventListener('sessionExpired', handleSessionExpired);
+      window.removeEventListener('guestExpired', handleGuestExpired);
+    };
   }, []);
 
   const checkAuth = async () => {
@@ -63,7 +74,16 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // If guest user, call backend to delete data
+    if (user?.isGuest || user?.role === 'guest') {
+      try {
+        await api.post('/users/guest-logout');
+      } catch (error) {
+        console.error('Guest logout error:', error);
+      }
+    }
+    
     localStorage.removeItem('token');
     localStorage.removeItem('rememberMe');
     setUser(null);
@@ -71,7 +91,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, sessionExpired, login, register, logout, setUser }}>
+    <AuthContext.Provider value={{ user, loading, sessionExpired, guestExpired, setGuestExpired, login, register, logout, setUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -35,10 +35,14 @@ const userSchema = new mongoose.Schema({
     key: String, 
     createdAt: { type: Date, default: Date.now } 
   }],
-  role: { type: String, enum: ['user', 'admin', 'coAdmin'], default: 'user' },
+  role: { type: String, enum: ['user', 'admin', 'coAdmin', 'guest'], default: 'user' },
+  isGuest: { type: Boolean, default: false },
+  guestExpiresAt: { type: Date, default: null },
   isActive: { type: Boolean, default: true },
   suspendedUntil: { type: Date, default: null },
   isVerified: { type: Boolean, default: false },
+  verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  verifiedAt: { type: Date, default: null },
   verificationToken: { type: String, default: null },
   createdAt: { type: Date, default: Date.now }
 }, { timestamps: true });

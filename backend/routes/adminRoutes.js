@@ -12,7 +12,9 @@ const {
   deleteShort,
   makeAdmin,
   makeCoAdmin,
-  removeCoAdmin
+  removeCoAdmin,
+  toggleVerification,
+  getGuestUsers
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -35,12 +37,14 @@ router.get('/metrics', adminOrCoAdminAuth, (req, res) => {
 // Read-only routes (admin or coAdmin)
 router.get('/stats', adminOrCoAdminAuth, getStats);
 router.get('/users', adminOrCoAdminAuth, getUsers);
+router.get('/guests', adminOrCoAdminAuth, getGuestUsers);
 router.get('/blogs', adminOrCoAdminAuth, getAllBlogs);
 router.get('/shorts', adminOrCoAdminAuth, getAllShorts);
 
 // Write routes (admin only)
 router.delete('/users/:id', adminAuth, deleteUser);
 router.put('/users/:id/suspend', adminAuth, suspendUser);
+router.put('/users/:id/verify', adminAuth, toggleVerification);
 router.put('/users/:id/make-admin', adminAuth, makeAdmin);
 router.put('/users/:id/make-coadmin', adminAuth, makeCoAdmin);
 router.put('/users/:id/remove-coadmin', adminAuth, removeCoAdmin);

@@ -109,7 +109,7 @@ exports.getShorts = async (req, res) => {
     }
 
     const shorts = await Short.find(filter)
-      .populate('author', 'username profileImage statuses')
+      .populate('author', 'username profileImage isGuest role isVerified statuses')
       .sort({ createdAt: -1 });
 
     // Add hasActiveStatus to each short author

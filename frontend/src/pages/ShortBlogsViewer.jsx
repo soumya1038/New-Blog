@@ -15,6 +15,8 @@ import { VscSaveAs } from 'react-icons/vsc';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { PiMonitorPlayDuotone } from 'react-icons/pi';
 import { BsFillPlayFill } from 'react-icons/bs';
+import { GoVerified } from 'react-icons/go';
+import { TbBrandAmongUs } from 'react-icons/tb';
 import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 import { AuthContext } from '../context/AuthContext';
@@ -287,7 +289,7 @@ const ShortBlogsViewer = () => {
 
       if (user) {
         const followStatus = {};
-        data.blogs.forEach(blog => {
+        data.shorts.forEach(blog => {
           followStatus[blog.author._id] = user.following?.includes(blog.author._id);
         });
         setFollowing(followStatus);
@@ -1043,9 +1045,16 @@ const ShortBlogsViewer = () => {
                         <div className="flex-1 flex items-center gap-2">
                           <Link
                             to={`/user/${blog.author._id}`}
-                            className="text-white font-semibold hover:underline"
+                            className="text-white font-semibold hover:underline flex items-center gap-1"
                           >
                             {blog.author?.username}
+                            {(blog.author?.isGuest || blog.author?.role === 'guest') ? (
+                              <TbBrandAmongUs className="text-purple-300" size={14} title="Guest User" />
+                            ) : blog.author?.isVerified && (
+                              <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
+                                <GoVerified className="text-white flex-shrink-0" size={11} />
+                              </div>
+                            )}
                           </Link>
                           {user && user._id !== blog.author._id && (
                             <button
@@ -1404,7 +1413,16 @@ const ShortBlogsViewer = () => {
                               className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-lg transition"
                             >
                               <Avatar user={currentBlog.author} size="md" showStatusRing={true} />
-                              <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
+                              <div className="flex items-center gap-1">
+                                <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
+                                {(currentBlog.author?.isGuest || currentBlog.author?.role === 'guest') ? (
+                                  <TbBrandAmongUs className="text-purple-500" size={14} title="Guest User" />
+                                ) : currentBlog.author?.isVerified && (
+                                  <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
+                                    <GoVerified className="text-white flex-shrink-0" size={11} />
+                                  </div>
+                                )}
+                              </div>
                             </Link>
                           </div>
                           <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -1551,9 +1569,16 @@ const ShortBlogsViewer = () => {
                       <div className="flex-1 flex items-center gap-2">
                         <Link
                           to={`/user/${blog.author._id}`}
-                          className="text-white font-semibold hover:underline"
+                          className="text-white font-semibold hover:underline flex items-center gap-1"
                         >
                           {blog.author?.username}
+                          {(blog.author?.isGuest || blog.author?.role === 'guest') ? (
+                            <TbBrandAmongUs className="text-purple-300" size={14} title="Guest User" />
+                          ) : blog.author?.isVerified && (
+                            <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
+                              <GoVerified className="text-white flex-shrink-0" size={11} />
+                            </div>
+                          )}
                         </Link>
                         {user && user._id !== blog.author._id && (
                           <button
@@ -1917,7 +1942,16 @@ const ShortBlogsViewer = () => {
                         className="flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 p-2 rounded-lg transition"
                       >
                         <Avatar user={currentBlog.author} size="md" showStatusRing={true} />
-                        <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="font-semibold text-gray-900 dark:text-white">{currentBlog.author.username}</span>
+                          {(currentBlog.author?.isGuest || currentBlog.author?.role === 'guest') ? (
+                            <TbBrandAmongUs className="text-purple-500" size={14} title="Guest User" />
+                          ) : currentBlog.author?.isVerified && (
+                            <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
+                              <GoVerified className="text-white flex-shrink-0" size={11} />
+                            </div>
+                          )}
+                        </div>
                       </Link>
                     </div>
 

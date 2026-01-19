@@ -20,10 +20,15 @@ exports.getStats = async (req, res) => {
     today.setHours(0, 0, 0, 0);
     const activeUsersToday = await User.countDocuments({ lastActive: { $gte: today } });
     
-    // Guest users today
-    const guestToday = await GuestAnalytics.distinct('ipAddress', {
+    // Guest users today (both visitors and logged-in guests)
+    const guestVisitorsToday = await GuestAnalytics.distinct('ipAddress', {
       createdAt: { $gte: today }
     });
+    const guestUsersToday = await User.countDocuments({
+      isGuest: true,
+      createdAt: { $gte: today }
+    });
+    const guestToday = guestVisitorsToday.length + guestUsersToday;
     
     // Generate data for selected time range
     const blogsPerDay = [];
@@ -54,7 +59,14 @@ exports.getStats = async (req, res) => {
       
       // User registrations count
       const userCount = await User.countDocuments({
-        createdAt: { $gte: date, $lt: nextDate }
+        createdAt: { $gte: date, $lt: nextDate },
+        isGuest: { $ne: true }
+      });
+      
+      // Guest registrations count
+      const guestCount = await User.countDocuments({
+        createdAt: { $gte: date, $lt: nextDate },
+        isGuest: true
       });
       
       // Comments count
@@ -78,14 +90,23 @@ exports.getStats = async (req, res) => {
       const activeUserIds = new Set([...blogAuthors, ...shortAuthors, ...commentAuthors, ...activeByTracking]);
       const activeUsers = activeUserIds.size;
       
-      // Guest analytics
-      const uniqueGuests = await GuestAnalytics.distinct('ipAddress', {
+      // Guest analytics (both visitors and logged-in guests)
+      const uniqueGuestVisitors = await GuestAnalytics.distinct('ipAddress', {
         createdAt: { $gte: date, $lt: nextDate }
       });
-      const totalPageViews = await GuestAnalytics.aggregate([
-        { $match: { createdAt: { $gte: date, $lt: nextDate } } },
-        { $group: { _id: null, total: { $sum: '$pageViews' } } }
+      const guestUsersCount = await User.countDocuments({
+        isGuest: true,
+        createdAt: { $gte: date, $lt: nextDate }
+      });
+      const totalGuestsForDay = uniqueGuestVisitors.length + guestUsersCount;
+      
+      // Count page views from pages array timestamps
+      const pageViewsData = await GuestAnalytics.aggregate([
+        { $unwind: '$pages' },
+        { $match: { 'pages.timestamp': { $gte: date, $lt: nextDate } } },
+        { $count: 'total' }
       ]);
+      const totalPageViews = pageViewsData[0]?.total || 0;
       
       const dateLabel = numDays <= 31 
         ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -94,12 +115,12 @@ exports.getStats = async (req, res) => {
       blogsPerDay.push({ date: dateLabel, count: blogCount });
       shortsPerDay.push({ date: dateLabel, count: shortCount });
       commentsPerDay.push({ date: dateLabel, count: commentCount });
-      userRegistrations.push({ date: dateLabel, count: userCount });
+      userRegistrations.push({ date: dateLabel, User: userCount, Guest: totalGuestsForDay });
       activeUsersPerDay.push({ date: dateLabel, count: activeUsers });
       guestAnalytics.push({ 
         date: dateLabel, 
-        uniqueVisitors: uniqueGuests.length,
-        pageViews: totalPageViews[0]?.total || 0
+        uniqueVisitors: uniqueGuestVisitors.length + guestUsersCount,
+        pageViews: totalPageViews
       });
     }
 
@@ -111,7 +132,7 @@ exports.getStats = async (req, res) => {
         totalShorts,
         totalComments,
         activeUsersToday,
-        guestToday: guestToday.length,
+        guestToday,
         blogsPerDay,
         shortsPerDay,
         commentsPerDay,
@@ -125,10 +146,10 @@ exports.getStats = async (req, res) => {
   }
 };
 
-// Get all users
+// Get all users (excluding guests)
 exports.getUsers = async (req, res) => {
   try {
-    const users = await User.find()
+    const users = await User.find({ isGuest: { $ne: true } })
       .select('-password -apiKeys')
       .sort({ createdAt: -1 });
     
@@ -413,6 +434,61 @@ exports.deleteBlog = async (req, res) => {
     await Blog.findByIdAndDelete(blog._id);
 
     res.json({ success: true, message: 'Blog deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Toggle user verification
+exports.toggleVerification = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    user.isVerified = !user.isVerified;
+    if (user.isVerified) {
+      user.verifiedBy = req.user._id;
+      user.verifiedAt = new Date();
+    } else {
+      user.verifiedBy = null;
+      user.verifiedAt = null;
+    }
+    await user.save();
+
+    res.json({ 
+      success: true, 
+      message: user.isVerified ? 'User verified successfully' : 'User unverified successfully',
+      user: {
+        id: user._id,
+        isVerified: user.isVerified
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get guest users
+exports.getGuestUsers = async (req, res) => {
+  try {
+    const guests = await User.find({ isGuest: true })
+      .select('-password -apiKeys')
+      .sort({ createdAt: -1 });
+    
+    const guestsWithStats = await Promise.all(guests.map(async (guest) => {
+      const blogCount = await Blog.countDocuments({ author: guest._id, isDraft: false });
+      const shortCount = await Short.countDocuments({ author: guest._id, isDraft: false });
+      return {
+        ...guest.toObject(),
+        blogCount,
+        shortCount
+      };
+    }));
+
+    res.json({ success: true, guests: guestsWithStats });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

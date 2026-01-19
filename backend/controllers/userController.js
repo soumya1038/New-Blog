@@ -569,3 +569,36 @@ exports.deleteStatus = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+
+// Guest logout - delete all data
+exports.guestLogout = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const user = await User.findById(userId);
+
+    if (!user || !user.isGuest) {
+      return res.status(400).json({ success: false, message: 'Not a guest user' });
+    }
+
+    const Blog = require('../models/Blog');
+    const Short = require('../models/Short');
+    const Comment = require('../models/Comment');
+    const Notification = require('../models/Notification');
+    const Message = require('../models/Message');
+
+    // Delete all guest data
+    await Promise.all([
+      Blog.deleteMany({ author: userId }),
+      Short.deleteMany({ author: userId }),
+      Comment.deleteMany({ author: userId }),
+      Notification.deleteMany({ $or: [{ user: userId }, { sender: userId }] }),
+      Message.deleteMany({ $or: [{ sender: userId }, { receiver: userId }] }),
+      User.findByIdAndDelete(userId)
+    ]);
+
+    res.json({ success: true, message: 'Guest account and all data deleted' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

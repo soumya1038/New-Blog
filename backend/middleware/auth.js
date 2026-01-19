@@ -20,6 +20,11 @@ exports.protect = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'User not found' });
     }
 
+    // Check if guest user expired
+    if (req.user.isGuest && req.user.guestExpiresAt && new Date() >= req.user.guestExpiresAt) {
+      return res.status(401).json({ success: false, message: 'Guest session expired', guestExpired: true });
+    }
+
     next();
   } catch (error) {
     res.status(401).json({ success: false, message: 'Not authorized' });

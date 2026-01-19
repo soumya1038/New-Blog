@@ -4,8 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaArrowRight, FaTimes } from 'react-icons/fa';
+import { GoVerified, GoUnverified } from 'react-icons/go';
 import AIBioGenerator from '../components/AIBioGenerator';
 import Avatar from '../components/Avatar';
+import GuestBadge from '../components/GuestBadge';
 import { ScaleLoader, SyncLoader, BeatLoader, PulseLoader, HashLoader } from 'react-spinners';
 import ScrollToTop from '../components/ScrollToTop';
 
@@ -831,6 +833,16 @@ const Profile = () => {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{user?.username}</h2>
+                {!user?.isGuest && user?.role !== 'guest' && (
+                  user?.isVerified ? (
+                    <div className="bg-blue-600 rounded-full p-1 flex items-center justify-center" title="Verified">
+                      <GoVerified className="text-white" size={18} />
+                    </div>
+                  ) : (
+                    <GoUnverified className="text-gray-400" size={20} title="Not Verified" />
+                  )
+                )}
+                {(user?.isGuest || user?.role === 'guest') && <GuestBadge size="lg" />}
                 <button
                   onClick={() => {
                     setNewUsername(user?.username || '');
@@ -1521,6 +1533,8 @@ const Profile = () => {
             )}
           </div>
 
+          {/* Danger Zone - Hide for guest users */}
+          {!user?.isGuest && user?.role !== 'guest' && (
           <div className="border-t border-gray-200 dark:border-gray-700 pt-6 mt-6">
             <h3 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">{t('Danger Zone')}</h3>
             <p className="text-sm text-gray-600 mb-4">{t('Once you delete your account, there is no going back. All your data will be permanently deleted.')}</p>
@@ -1531,6 +1545,7 @@ const Profile = () => {
               <FaTrash /> {t('Delete Account')}
             </button>
           </div>
+          )}
         </div>
       </div>
       

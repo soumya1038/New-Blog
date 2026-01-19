@@ -5,7 +5,7 @@ import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { FaEdit, FaTrash, FaClock, FaCheckCircle, FaArrowLeft, FaCalendarAlt } from 'react-icons/fa';
 import { TbBrandBlogger } from 'react-icons/tb';
-import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
+import { MdOutlineSwitchAccessShortcutAdd, MdOutlineAutoDelete } from 'react-icons/md';
 import { BsFillCalendarRangeFill } from 'react-icons/bs';
 import { BeatLoader, BarLoader, GridLoader, ScaleLoader } from 'react-spinners';
 import toast, { Toaster } from 'react-hot-toast';
@@ -107,7 +107,12 @@ const Drafts = () => {
       await fetchDrafts();
       toast.success('Draft published successfully!');
     } catch (error) {
-      toast.error('Failed to publish draft');
+      console.error('Publish error:', error);
+      if (error.response?.status === 401) {
+        toast.error('Session expired. Please login again.');
+      } else {
+        toast.error(error.response?.data?.message || 'Failed to publish draft');
+      }
     } finally {
       setActionLoading(false);
     }
@@ -138,6 +143,39 @@ const Drafts = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const DeletionTimer = ({ updatedAt }) => {
+    const [timeLeft, setTimeLeft] = useState('');
+
+    useEffect(() => {
+      const calculateTimeLeft = () => {
+        const updated = new Date(updatedAt);
+        const deleteTime = new Date(updated.getTime() + 42 * 60 * 60 * 1000);
+        const now = new Date();
+        const diff = deleteTime - now;
+
+        if (diff <= 0) {
+          setTimeLeft('Deleting...');
+          return;
+        }
+
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+        setTimeLeft(`${hours}h ${minutes}m`);
+      };
+
+      calculateTimeLeft();
+      const interval = setInterval(calculateTimeLeft, 60000);
+      return () => clearInterval(interval);
+    }, [updatedAt]);
+
+    return (
+      <span className="text-red-600 dark:text-red-400 font-semibold">
+        {timeLeft}
+      </span>
+    );
   };
 
   const CountdownTimer = ({ scheduledDate }) => {
@@ -299,6 +337,11 @@ const Drafts = () => {
                         <span className="flex items-center gap-1">
                           <FaClock /> {new Date(draft.updatedAt).toLocaleDateString()}
                         </span>
+                        {!draft.isScheduled && (
+                          <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
+                            <MdOutlineAutoDelete className="w-4 h-4" /> <DeletionTimer updatedAt={draft.updatedAt} />
+                          </span>
+                        )}
                         <span>{draft.wordCount} words</span>
                         {draft.tags?.length > 0 && (
                           <span className="text-blue-600">
