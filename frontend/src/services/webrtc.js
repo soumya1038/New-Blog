@@ -44,9 +44,23 @@ class WebRTCService {
 
   async startCall(withVideo = false) {
     try {
-      this.localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: withVideo
+      const constraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        },
+        video: withVideo ? {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'user'
+        } : false
+      };
+      
+      this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('✅ Local stream obtained:', {
+        audio: this.localStream.getAudioTracks().length,
+        video: this.localStream.getVideoTracks().length
       });
       return this.localStream;
     } catch (error) {
@@ -60,11 +74,12 @@ class WebRTCService {
       this.peerConnection = new RTCPeerConnection(this.configuration);
       
       this.localStream.getTracks().forEach(track => {
+        console.log('➕ Adding local track:', track.kind, track.enabled);
         this.peerConnection.addTrack(track, this.localStream);
       });
 
       this.peerConnection.ontrack = (event) => {
-        console.log('📹 Received remote track');
+        console.log('📹 Received remote track:', event.track.kind);
         this.remoteStream = event.streams[0];
         if (this.onRemoteStreamCallback) {
           this.onRemoteStreamCallback(this.remoteStream);
@@ -80,10 +95,17 @@ class WebRTCService {
         }
       };
 
-      const offer = await this.peerConnection.createOffer();
-      await this.peerConnection.setLocalDescription(offer);
+      this.peerConnection.oniceconnectionstatechange = () => {
+        console.log('🧊 ICE connection state:', this.peerConnection.iceConnectionState);
+      };
 
-      // Drain queued remote ICE candidates (if any) after local description is set
+      const offer = await this.peerConnection.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true
+      });
+      await this.peerConnection.setLocalDescription(offer);
+      console.log('✅ Offer created and set as local description');
+
       if (this._remoteCandidateQueue.length && this.peerConnection) {
         for (const c of this._remoteCandidateQueue) {
           try {
@@ -109,7 +131,6 @@ class WebRTCService {
     try {
       this.peerConnection = new RTCPeerConnection(this.configuration);
       
-      // Set up ICE candidate handler FIRST
       this.peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
           this.socket.emit('call:ice-candidate', {
@@ -119,24 +140,26 @@ class WebRTCService {
         }
       };
       
-      // Add local tracks
       this.localStream.getTracks().forEach(track => {
+        console.log('➕ Adding local track:', track.kind, track.enabled);
         this.peerConnection.addTrack(track, this.localStream);
       });
 
-      // Set up remote track handler
       this.peerConnection.ontrack = (event) => {
-        console.log('📹 Received remote track');
+        console.log('📹 Received remote track:', event.track.kind);
         this.remoteStream = event.streams[0];
         if (this.onRemoteStreamCallback) {
           this.onRemoteStreamCallback(this.remoteStream);
         }
       };
 
-      // Set remote description
-      await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      this.peerConnection.oniceconnectionstatechange = () => {
+        console.log('🧊 ICE connection state:', this.peerConnection.iceConnectionState);
+      };
 
-      // Drain any queued ICE candidates that arrived before PeerConnection creation
+      await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      console.log('✅ Remote description set from offer');
+
       if (this._remoteCandidateQueue.length) {
         for (const c of this._remoteCandidateQueue) {
           try {
@@ -155,8 +178,12 @@ class WebRTCService {
 
   async createAnswer(callerId) {
     try {
-      const answer = await this.peerConnection.createAnswer();
+      const answer = await this.peerConnection.createAnswer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true
+      });
       await this.peerConnection.setLocalDescription(answer);
+      console.log('✅ Answer created and set as local description');
 
       this.socket.emit('call:answer', {
         callerId,
@@ -214,16 +241,21 @@ class WebRTCService {
 
   async endCall() {
     if (this.localStream) {
-      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('🛑 Stopped local track:', track.kind);
+      });
       this.localStream = null;
     }
     
     if (this.peerConnection) {
       this.peerConnection.close();
       this.peerConnection = null;
+      console.log('🛑 Peer connection closed');
     }
     
     this.remoteStream = null;
+    this._remoteCandidateQueue = [];
   }
 }
 
