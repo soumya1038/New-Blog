@@ -63,6 +63,8 @@ exports.getConversations = async (req, res) => {
       return res.status(401).json({ message: 'User not authenticated' });
     }
 
+    const CallLog = require('../models/CallLog');
+
     const messages = await Message.aggregate([
       {
         $match: {
@@ -128,15 +130,42 @@ exports.getConversations = async (req, res) => {
       }
     ]);
 
-    const decryptedConversations = messages.map(conv => ({
-      ...conv,
-      lastMessage: {
-        ...conv.lastMessage,
-        content: conv.lastMessage.encrypted ? decrypt(conv.lastMessage.content) : conv.lastMessage.content
+    // For each conversation, check if there's a more recent call log
+    const conversationsWithCalls = await Promise.all(messages.map(async (conv) => {
+      const lastCall = await CallLog.findOne({
+        $or: [
+          { caller: req.user._id, receiver: conv.user._id },
+          { caller: conv.user._id, receiver: req.user._id }
+        ]
+      }).sort({ createdAt: -1 }).limit(1);
+
+      // Compare timestamps and use the most recent
+      if (lastCall && new Date(lastCall.createdAt) > new Date(conv.lastMessage.createdAt)) {
+        const isOutgoing = lastCall.caller.toString() === req.user._id.toString();
+        return {
+          ...conv,
+          lastMessage: {
+            type: 'call',
+            callType: lastCall.type,
+            status: lastCall.status,
+            duration: lastCall.duration,
+            createdAt: lastCall.createdAt,
+            isOutgoing: isOutgoing,
+            content: lastCall.status === 'missed' ? 'Missed call' : (isOutgoing ? 'Outgoing call' : 'Incoming call')
+          }
+        };
       }
+
+      return {
+        ...conv,
+        lastMessage: {
+          ...conv.lastMessage,
+          content: conv.lastMessage.encrypted ? decrypt(conv.lastMessage.content) : conv.lastMessage.content
+        }
+      };
     }));
 
-    res.json({ conversations: decryptedConversations });
+    res.json({ conversations: conversationsWithCalls });
   } catch (error) {
     console.error('GetConversations error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });

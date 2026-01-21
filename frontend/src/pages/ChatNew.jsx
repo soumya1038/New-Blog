@@ -44,6 +44,8 @@ const ChatNew = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
   const [typingUsers, setTypingUsers] = useState(new Set());
+  const [typingInConversations, setTypingInConversations] = useState(new Map());
+  const typingSoundIntervalRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
@@ -301,12 +303,24 @@ const ChatNew = () => {
     socket.current.on('typing:status', ({ userId, typing }) => {
       console.log('⌨️ Typing status received:', { userId, typing });
 
+      // Update typing in conversations list
+      setTypingInConversations(prev => {
+        const newMap = new Map(prev);
+        if (typing) {
+          newMap.set(userId, true);
+        } else {
+          newMap.delete(userId);
+        }
+        return newMap;
+      });
+
       // Use ref to get current value
       const currentChat = selectedChatRef.current;
       console.log('Current selectedChat (from ref):', currentChat?._id);
+      console.log('Checking if userId matches selectedChat._id:', userId, '===', currentChat?._id, '?', userId === currentChat?._id);
 
       // Only update if it's from the current chat
-      if (currentChat && userId === currentChat._id) {
+      if (currentChat && !currentChat.isGroup && userId === currentChat._id) {
         setTypingUsers(prev => {
           const newSet = new Set(prev);
           if (typing) {
@@ -320,7 +334,7 @@ const ChatNew = () => {
           return newSet;
         });
       } else {
-        console.log('⚠️ Typing status from different chat, ignoring');
+        console.log('⚠️ Typing status ignored - not from current individual chat');
       }
     });
 
@@ -647,6 +661,56 @@ const ChatNew = () => {
     }
   }, [conversations]);
 
+  // Typing sound effect
+  useEffect(() => {
+    if (typingUsers.size > 0 && selectedChat && !selectedChat.isGroup) {
+      // Start typing sound
+      const playTypingSound = () => {
+        try {
+          // Try different file extensions
+          const soundPath = '/sound/bubble_typing.mp3';
+          console.log('🔊 Attempting to play typing sound:', soundPath);
+          const audio = new Audio(soundPath);
+          audio.playbackRate = 1.25;
+          audio.volume = 0.5;
+          let playCount = 0;
+          
+          const playNext = () => {
+            if (playCount < 3) {
+              audio.currentTime = 0;
+              audio.play()
+                .then(() => console.log('✅ Audio playing, count:', playCount + 1))
+                .catch(err => console.log('❌ Audio play failed:', err.message));
+              playCount++;
+            }
+          };
+          
+          audio.onended = playNext;
+          audio.onerror = (e) => console.log('❌ Audio error:', e);
+          playNext();
+        } catch (err) {
+          console.log('❌ Audio exception:', err);
+        }
+      };
+
+      playTypingSound();
+      typingSoundIntervalRef.current = setInterval(playTypingSound, 4000);
+
+      return () => {
+        if (typingSoundIntervalRef.current) {
+          clearInterval(typingSoundIntervalRef.current);
+          typingSoundIntervalRef.current = null;
+        }
+      };
+    } else {
+      // Stop typing sound
+      if (typingSoundIntervalRef.current) {
+        clearInterval(typingSoundIntervalRef.current);
+        typingSoundIntervalRef.current = null;
+      }
+    }
+  }, [typingUsers.size, selectedChat]);
+
   const loadConversations = async () => {
     try {
       const { data } = await api.get('/messages/conversations');
@@ -670,8 +734,18 @@ const ChatNew = () => {
 
   // Combined and sorted conversations + groups
   const getCombinedChats = () => {
-    const groupChats = groups.map(g => ({ ...g, isGroup: true, lastMessageTime: g.lastMessage?.createdAt || g.createdAt }));
-    const userChats = conversations.map(c => ({ ...c, isGroup: false, lastMessageTime: c.lastMessage?.createdAt }));
+    const groupChats = groups.map(g => ({ 
+      ...g, 
+      isGroup: true, 
+      lastMessageTime: g.lastMessage?.createdAt || g.createdAt 
+    }));
+    const userChats = conversations.map(c => ({ 
+      ...c, 
+      isGroup: false, 
+      lastMessageTime: c.lastMessage?.createdAt 
+    }));
+    
+    // Combine and sort by lastMessageTime
     return [...groupChats, ...userChats].sort((a, b) => {
       const timeA = new Date(a.lastMessageTime || 0);
       const timeB = new Date(b.lastMessageTime || 0);
@@ -703,7 +777,31 @@ const ChatNew = () => {
     try {
       const endpoint = isGroup ? `/messages/group/${chatId}` : `/messages/${chatId}`;
       const { data } = await api.get(endpoint);
-      setMessages(data.messages);
+      
+      // Load call history for individual chats
+      let callHistory = [];
+      if (!isGroup) {
+        try {
+          const { data: callData } = await api.get(`/calls/history/${chatId}`);
+          callHistory = callData.callLogs || [];
+        } catch (error) {
+          console.error('Failed to load call history:', error);
+        }
+      }
+      
+      // Merge messages and call logs, then sort by time
+      const messagesWithCalls = [
+        ...data.messages,
+        ...callHistory.map(call => ({
+          _id: `call-${call._id}`,
+          type: 'call',
+          callData: call,
+          createdAt: call.createdAt,
+          sender: { _id: call.caller._id || call.caller }
+        }))
+      ].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      
+      setMessages(messagesWithCalls);
 
       if (!isGroup) {
         // Mark all messages from this user as read
@@ -1192,8 +1290,9 @@ const ChatNew = () => {
   const handleTyping = (e) => {
     setNewMessage(e.target.value);
 
-    if (!selectedChat) return;
+    if (!selectedChat || selectedChat.isGroup) return;
 
+    console.log('⌨️ User typing, emitting typing:start to:', selectedChat._id);
     socket.current.emit('typing:start', selectedChat._id);
 
     if (typingTimeoutRef.current) {
@@ -1201,6 +1300,7 @@ const ChatNew = () => {
     }
 
     typingTimeoutRef.current = setTimeout(() => {
+      console.log('⌨️ Typing stopped, emitting typing:stop to:', selectedChat._id);
       socket.current.emit('typing:stop', selectedChat._id);
     }, 1000);
   };
@@ -2255,165 +2355,7 @@ const ChatNew = () => {
               <p className="text-sm mt-2">{t('Search for users to start chatting')}</p>
             </div>
           ) : (
-            <>
-              {/* Groups */}
-              {groups.map(group => (
-                <div
-                  key={`grp-${group._id}`}
-                  className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === group._id && selectedChat?.isGroup ? 'bg-blue-50 dark:bg-gray-700' : ''}`}
-                  onClick={() => {
-                    setSelectedChat({ ...group, isGroup: true });
-                  }}
-                >
-                  <div className="flex items-center flex-1 min-w-0">
-                    <div className="relative">
-                      <img
-                        src={group.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(group.name)}&background=0D8ABC&color=fff`}
-                        alt={group.name}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                    </div>
-                    <div className="ml-3 flex-1 min-w-0">
-                      <div className="flex justify-between items-baseline">
-                        <div className="flex items-center gap-2">
-                          <FiUsers className="w-4 h-4 text-gray-500" />
-                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{group.name}</p>
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
-                        {group.members.length} members
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Individual Conversations */}
-              {conversations.map(conv => (
-                <div
-                  key={conv.user._id}
-                  className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === conv.user._id ? 'bg-blue-50 dark:bg-gray-700' : ''
-                    }`}
-                  onClick={async () => {
-                    // Clear unread count immediately for better UX
-                    setConversations(prev => prev.map(c =>
-                      c.user._id === conv.user._id ? { ...c, unreadCount: 0 } : c
-                    ));
-                    console.log('Conversation user selected:', conv.user);
-                    setSelectedChat(conv.user);
-
-                    // Fetch user's statuses
-                    (async () => {
-                      try {
-                        const { data } = await api.get(`/users/profile/${conv.user._id}`);
-                        console.log('Fetched user profile:', data);
-                        const activeStatuses = data.user.statuses?.filter(s => new Date() < new Date(s.expiresAt)) || [];
-                        console.log('Active statuses:', activeStatuses);
-                        setSelectedUserStatuses(activeStatuses);
-                        setCurrentStatusIndex(0);
-                        setStatusProgress(0);
-                      } catch (error) {
-                        console.error('Failed to fetch user statuses:', error);
-                        setSelectedUserStatuses([]);
-                      }
-                    })();
-                  }}
-                >
-                  <div className="flex items-center flex-1 min-w-0">
-                    <div className="relative">
-                      <div
-                        className="rounded-full"
-                        style={{
-                          padding: userStatuses[conv.user._id] && !viewedStatuses.has(conv.user._id) ? '3px' : '0',
-                          background: userStatuses[conv.user._id] && !viewedStatuses.has(conv.user._id) ? 'linear-gradient(45deg, #4caf50, #81c784)' : 'transparent'
-                        }}
-                      >
-                        <img
-                          src={getUserAvatar(conv.user)}
-                          alt={getUserDisplayName(conv.user)}
-                          className="w-12 h-12 rounded-full object-cover"
-                        />
-                      </div>
-                      {isOnline(conv.user._id) && (
-                        <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></span>
-                      )}
-                    </div>
-                    <div className="ml-3 flex-1 min-w-0">
-                      <div className="flex justify-between items-baseline">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{getUserDisplayName(conv.user)}</p>
-                          {blockedUsers.has(conv.user._id) && (
-                            <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{t('Blocked')}</span>
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{formatDate(conv.lastMessage.createdAt)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {mutedUsers.has(conv.user._id) && (
-                          <FiBellOff className="text-gray-400 text-xs" />
-                        )}
-                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1">{conv.lastMessage.content}</p>
-                      </div>
-                    </div>
-                    {conv.unreadCount > 0 && (
-                      <span className="ml-2 bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded-full">
-                        {conv.unreadCount}
-                      </span>
-                    )}
-                  </div>
-                  <div className="relative">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowConvMenu(showConvMenu === conv.user._id ? null : conv.user._id);
-                      }}
-                      className="p-2 hover:bg-gray-200 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <FiMoreVertical className="text-gray-600" />
-                    </button>
-                    {showConvMenu === conv.user._id && (
-                      <div ref={convMenuRef} className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
-                        <button
-                          onClick={() => handleMuteUser(conv.user._id)}
-                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
-                        >
-                          {mutedUsers.has(conv.user._id) ? (
-                            <><FiBell className="text-gray-600" /> {t('Unmute')}</>
-                          ) : (
-                            <><FiBellOff className="text-gray-600" /> {t('Mute notifications')}</>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteConversation(conv.user._id)}
-                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
-                        >
-                          <FiTrash2 /> {t('Delete conversation')}
-                        </button>
-                        {blockedUsers.has(conv.user._id) ? (
-                          <button
-                            onClick={() => handleUnblockUser(conv.user._id)}
-                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600 rounded-b-lg"
-                          >
-                            <FiUserX /> {t('Unblock user')}
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => handleBlockUser(conv.user._id)}
-                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600 rounded-b-lg"
-                          >
-                            <FiUserX /> {t('Block user')}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
-          {/* Combined Chats (for example purposes) */}
-          {conversations.length === 0 && groups.length === 0 &&
-            getCombinedChats().map(chat => (
+            getCombinedChats().map(chat => 
               chat.isGroup ? (
                 <div
                   key={`grp-${chat._id}`}
@@ -2446,17 +2388,23 @@ const ChatNew = () => {
               ) : (
                 <div
                   key={chat.user._id}
-                  className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === chat.user._id ? 'bg-blue-50 dark:bg-gray-700' : ''}`}
+                  className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === chat.user._id ? 'bg-blue-50 dark:bg-gray-700' : ''
+                    }`}
                   onClick={async () => {
+                    // Clear unread count immediately for better UX
                     setConversations(prev => prev.map(c =>
                       c.user._id === chat.user._id ? { ...c, unreadCount: 0 } : c
                     ));
+                    console.log('Conversation user selected:', chat.user);
                     setSelectedChat(chat.user);
 
+                    // Fetch user's statuses
                     (async () => {
                       try {
                         const { data } = await api.get(`/users/profile/${chat.user._id}`);
+                        console.log('Fetched user profile:', data);
                         const activeStatuses = data.user.statuses?.filter(s => new Date() < new Date(s.expiresAt)) || [];
+                        console.log('Active statuses:', activeStatuses);
                         setSelectedUserStatuses(activeStatuses);
                         setCurrentStatusIndex(0);
                         setStatusProgress(0);
@@ -2500,7 +2448,32 @@ const ChatNew = () => {
                         {mutedUsers.has(chat.user._id) && (
                           <FiBellOff className="text-gray-400 text-xs" />
                         )}
-                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1">{chat.lastMessage.content}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1">
+                          {typingInConversations.has(chat.user._id) ? (
+                            <span className="text-green-600 dark:text-green-400 italic flex items-center gap-1">
+                              <span className="flex gap-0.5">
+                                <span className="w-1 h-1 bg-green-600 dark:bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></span>
+                                <span className="w-1 h-1 bg-green-600 dark:bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></span>
+                                <span className="w-1 h-1 bg-green-600 dark:bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></span>
+                              </span>
+                              {t('typing...')}
+                            </span>
+                          ) : chat.lastMessage.type === 'call' ? (
+                            <span className="flex items-center gap-1">
+                              {chat.lastMessage.callType === 'video' ? <FiVideo className="w-3 h-3" /> : <FiPhone className="w-3 h-3" />}
+                              {chat.lastMessage.status === 'missed' 
+                                ? t('Missed call') 
+                                : chat.lastMessage.isOutgoing 
+                                  ? t('Outgoing call') 
+                                  : t('Incoming call')}
+                            </span>
+                          ) : chat.lastMessage.type === 'image' ? (
+                            <span className="flex items-center gap-1">
+                              <FiImage className="w-3 h-3" />
+                              {t('Photo')}
+                            </span>
+                          ) : chat.lastMessage.content}
+                        </p>
                       </div>
                     </div>
                     {chat.unreadCount > 0 && (
@@ -2557,8 +2530,8 @@ const ChatNew = () => {
                   </div>
                 </div>
               )
-            ))
-}
+            )
+          )}
         </div>
       </div>
 
@@ -2944,6 +2917,48 @@ const ChatNew = () => {
                 </div>
 
                 {messages.map((msg, index) => {
+                  // Handle call logs
+                  if (msg.type === 'call') {
+                    const call = msg.callData;
+                    const isOutgoing = call.caller._id === user._id || call.caller === user._id;
+                    const showDate = index === 0 || formatDate(messages[index - 1].createdAt) !== formatDate(msg.createdAt);
+                    
+                    return (
+                      <div key={msg._id}>
+                        {showDate && (
+                          <div className="flex justify-center my-4">
+                            <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full">
+                              {formatDate(msg.createdAt)}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex justify-center my-2">
+                          <div className="bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-2 flex items-center gap-2 text-sm">
+                            {call.type === 'video' ? (
+                              <FiVideo className={`w-4 h-4 ${call.status === 'missed' ? 'text-red-500' : 'text-green-500'}`} />
+                            ) : (
+                              <FiPhone className={`w-4 h-4 ${call.status === 'missed' ? 'text-red-500' : 'text-green-500'}`} />
+                            )}
+                            <span className="text-gray-700 dark:text-gray-300">
+                              {isOutgoing ? (
+                                call.status === 'missed' ? t('Missed call') : t('Outgoing call')
+                              ) : (
+                                call.status === 'missed' ? t('Missed call') : t('Incoming call')
+                              )}
+                            </span>
+                            {call.duration > 0 && (
+                              <span className="text-gray-500 dark:text-gray-400 text-xs">
+                                {Math.floor(call.duration / 60)}:{(call.duration % 60).toString().padStart(2, '0')}
+                              </span>
+                            )}
+                            <span className="text-gray-400 text-xs">{formatTime(call.createdAt)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  // Regular message rendering
                   const isOwn = msg.sender._id === user._id;
                   const showDate = index === 0 || formatDate(messages[index - 1].createdAt) !== formatDate(msg.createdAt);
                   const userReaction = msg.reactions?.find(r => r.user._id === user._id || r.user === user._id);

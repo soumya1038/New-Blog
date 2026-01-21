@@ -181,9 +181,6 @@ function AppContent() {
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       <div className="min-h-screen">
         <Navbar />
-        <Suspense fallback={null}>
-          <Chatbot />
-        </Suspense>
         {location.pathname !== '/chat' && (
           <Suspense fallback={null}>
             <Chatbot />
