@@ -118,9 +118,9 @@ const ActiveCallScreen = ({
           className="w-full h-full object-cover"
         />
         
-        {/* Local Video */}
-        {callType === 'video' && (
-          <div className="absolute top-20 right-4 w-32 h-40 bg-gray-800 rounded-lg overflow-hidden shadow-lg">
+        {/* Local Video - Responsive - Show when call type is video */}
+        {callType === 'video' && localStream && (
+          <div className="absolute top-16 sm:top-20 right-2 sm:right-4 w-24 h-32 sm:w-32 sm:h-40 bg-gray-800 rounded-lg overflow-hidden shadow-lg border-2 border-gray-700">
             <video
               ref={localVideoRef}
               autoPlay
@@ -147,42 +147,42 @@ const ActiveCallScreen = ({
         )}
       </div>
 
-      {/* Controls */}
-      <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/50 to-transparent">
-        <div className="flex justify-center gap-4">
+      {/* Controls - Responsive */}
+      <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6 bg-gradient-to-t from-black/70 to-transparent">
+        <div className="flex justify-center gap-3 sm:gap-4">
           <button
             onClick={onToggleAudio}
-            className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
+            className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-colors ${
               isAudioEnabled ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-500 hover:bg-red-600'
             }`}
           >
             {isAudioEnabled ? (
-              <FiMic className="w-6 h-6 text-white" />
+              <FiMic className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             ) : (
-              <FiMicOff className="w-6 h-6 text-white" />
+              <FiMicOff className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             )}
           </button>
           
           {callType === 'video' && (
             <button
               onClick={onToggleVideo}
-              className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${
+              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-colors ${
                 isVideoEnabled ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-500 hover:bg-red-600'
               }`}
             >
               {isVideoEnabled ? (
-                <FiVideo className="w-6 h-6 text-white" />
+                <FiVideo className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               ) : (
-                <FiVideoOff className="w-6 h-6 text-white" />
+                <FiVideoOff className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               )}
             </button>
           )}
           
           <button
             onClick={onEndCall}
-            className="w-14 h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors"
+            className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-red-500 hover:bg-red-600 flex items-center justify-center transition-colors"
           >
-            <FiPhoneOff className="w-6 h-6 text-white" />
+            <FiPhoneOff className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </button>
         </div>
       </div>
