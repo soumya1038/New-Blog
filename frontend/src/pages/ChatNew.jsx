@@ -150,27 +150,36 @@ const ChatNew = () => {
     socket.current = socketService.connect(user._id);
     webrtcService.setSocket(socket.current);
 
-    // Set callback for remote stream
     webrtcService.setOnRemoteStream((stream) => {
       console.log('📹 Remote stream received in ChatNew');
       setActiveCall(prev => prev ? { ...prev, remoteStream: stream } : prev);
     });
 
-    // Notify backend that user is on /chat route
     console.log('🔔 Sending route:change to /chat');
     socketService.updateRoute('/chat');
 
     socket.current.on('users:online', (userIds) => {
+      console.log('🟢 Online users updated:', userIds.length);
       setOnlineUsers(new Set(userIds));
     });
 
     socket.current.on('user:status', ({ userId, status }) => {
+      console.log(`🔵 User status: ${userId} is ${status}`);
       setOnlineUsers(prev => {
         const newSet = new Set(prev);
         if (status === 'online') newSet.add(userId);
         else newSet.delete(userId);
         return newSet;
       });
+    });
+
+    socket.current.on('call:error', ({ error }) => {
+      console.error('❌ Call error:', error);
+      soundManager.stop('callRing');
+      soundManager.stop('incomingCall');
+      showAlertModal('Call Error', error);
+      setActiveCall(null);
+      setIncomingCall(null);
     });
 
     const messageReceiveHandler = (message) => {

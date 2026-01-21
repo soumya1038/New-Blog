@@ -12,7 +12,8 @@ module.exports = (io, onlineUsers = new Map()) => {
       socket.userId = userId;
       socket.join(`user:${userId}`);
       
-      // Update last seen
+      console.log(`✅ User ${userId} online, socket: ${socket.id}`);
+      
       await User.findByIdAndUpdate(userId, { lastSeen: new Date() });
       
       io.emit('user:status', { userId, status: 'online' });
@@ -20,7 +21,6 @@ module.exports = (io, onlineUsers = new Map()) => {
       const onlineUserIds = Array.from(onlineUsers.keys());
       socket.emit('users:online', onlineUserIds);
       
-      // Update delivery status for pending messages
       try {
         const pendingMessages = await Message.find({
           receiver: userId,
@@ -31,7 +31,6 @@ module.exports = (io, onlineUsers = new Map()) => {
           msg.delivered = true;
           await msg.save();
 
-          // Notify sender that message is now delivered
           const senderData = onlineUsers.get(msg.sender.toString());
           if (senderData && senderData.socketId) {
             io.to(senderData.socketId).emit('message:status', {
@@ -429,12 +428,18 @@ module.exports = (io, onlineUsers = new Map()) => {
         const { receiverId, type, callLogId } = data;
         const callerId = socket.userId;
         
-        console.log('📞 Call initiate received:', { receiverId, type, callerId });
+        if (!callerId) {
+          console.error('❌ Call initiate: socket.userId not set');
+          socket.emit('call:error', { error: 'Not authenticated' });
+          return;
+        }
+        
+        console.log('📞 Call initiate:', { receiverId, type, callerId });
         
         const receiverData = onlineUsers.get(receiverId);
         if (receiverData) {
           const caller = await User.findById(callerId).select('fullName username profileImage');
-          console.log('✅ Emitting call:incoming to receiver:', receiverData.socketId);
+          console.log('✅ Emitting call:incoming to:', receiverData.socketId);
           io.to(receiverData.socketId).emit('call:incoming', {
             callerId,
             caller,
@@ -443,19 +448,27 @@ module.exports = (io, onlineUsers = new Map()) => {
           });
         } else {
           console.log('❌ Receiver not online:', receiverId);
+          socket.emit('call:error', { error: 'User is offline' });
         }
       } catch (error) {
         console.error('Call initiate error:', error);
+        socket.emit('call:error', { error: 'Failed to initiate call' });
       }
     });
 
     socket.on('call:accept', (data) => {
       const { callerId } = data;
+      const receiverId = socket.userId;
+      
+      if (!receiverId) {
+        console.error('❌ Call accept: socket.userId not set');
+        return;
+      }
+      
       const callerData = onlineUsers.get(callerId);
       if (callerData) {
-        io.to(callerData.socketId).emit('call:accepted', {
-          receiverId: socket.userId
-        });
+        console.log('✅ Call accepted, notifying caller:', callerId);
+        io.to(callerData.socketId).emit('call:accepted', { receiverId });
       }
     });
 
@@ -479,23 +492,37 @@ module.exports = (io, onlineUsers = new Map()) => {
 
     socket.on('call:offer', (data) => {
       const { receiverId, offer } = data;
+      const callerId = socket.userId;
+      
+      if (!callerId) {
+        console.error('❌ Call offer: socket.userId not set');
+        return;
+      }
+      
       const receiverData = onlineUsers.get(receiverId);
       if (receiverData) {
-        io.to(receiverData.socketId).emit('call:offer', {
-          callerId: socket.userId,
-          offer
-        });
+        console.log('📞 Forwarding offer from', callerId, 'to', receiverId);
+        io.to(receiverData.socketId).emit('call:offer', { callerId, offer });
+      } else {
+        console.error('❌ Receiver not found for offer:', receiverId);
       }
     });
 
     socket.on('call:answer', (data) => {
       const { callerId, answer } = data;
+      const receiverId = socket.userId;
+      
+      if (!receiverId) {
+        console.error('❌ Call answer: socket.userId not set');
+        return;
+      }
+      
       const callerData = onlineUsers.get(callerId);
       if (callerData) {
-        io.to(callerData.socketId).emit('call:answer', {
-          receiverId: socket.userId,
-          answer
-        });
+        console.log('📞 Forwarding answer from', receiverId, 'to', callerId);
+        io.to(callerData.socketId).emit('call:answer', { receiverId, answer });
+      } else {
+        console.error('❌ Caller not found for answer:', callerId);
       }
     });
 
@@ -511,12 +538,12 @@ module.exports = (io, onlineUsers = new Map()) => {
 
     socket.on('disconnect', async () => {
       if (socket.userId) {
-        // Update last seen on disconnect
         await User.findByIdAndUpdate(socket.userId, { lastSeen: new Date() });
         onlineUsers.delete(socket.userId);
         io.emit('user:status', { userId: socket.userId, status: 'offline' });
+        console.log(`🔴 User ${socket.userId} disconnected`);
       }
-      console.log('User disconnected:', socket.id);
+      console.log('Socket disconnected:', socket.id);
     });
   });
 };

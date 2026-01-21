@@ -11,22 +11,36 @@ class SocketService {
   connect(userId) {
     this.userId = userId;
     if (!this.socket) {
-      // Allow Socket.IO to select best transport (polling/websocket) and enable reconnection
       this.socket = io(SOCKET_URL, {
-        reconnection: true
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: Infinity,
+        transports: ['websocket', 'polling']
       });
 
       this.socket.on('connect', () => {
-        console.log('Socket connected');
-        this.socket.emit('user:online', userId);
-        // Send current route after connection
+        console.log('✅ Socket connected:', this.socket.id);
+        this.socket.emit('user:online', this.userId);
         if (this.currentRoute) {
           this.socket.emit('route:change', this.currentRoute);
         }
       });
 
-      this.socket.on('disconnect', () => {
-        console.log('Socket disconnected');
+      this.socket.on('disconnect', (reason) => {
+        console.log('❌ Socket disconnected:', reason);
+      });
+
+      this.socket.on('reconnect', (attemptNumber) => {
+        console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+        this.socket.emit('user:online', this.userId);
+        if (this.currentRoute) {
+          this.socket.emit('route:change', this.currentRoute);
+        }
+      });
+
+      this.socket.on('reconnect_error', (error) => {
+        console.error('🔴 Reconnection error:', error.message);
       });
     }
     return this.socket;
