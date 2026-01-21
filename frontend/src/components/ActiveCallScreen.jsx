@@ -18,6 +18,7 @@ const ActiveCallScreen = ({
 }) => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const [callDuration, setCallDuration] = useState(0);
 
   useEffect(() => {
@@ -30,11 +31,20 @@ const ActiveCallScreen = ({
   }, [localStream]);
 
   useEffect(() => {
-    if (remoteStream && remoteVideoRef.current) {
-      console.log('📹 Setting remote stream to video element');
+    console.log('🔄 ActiveCallScreen remoteStream prop changed:', remoteStream ? 'HAS STREAM' : 'NO STREAM');
+    if (remoteStream) {
+      console.log('📹 Setting remote stream to media elements');
       console.log('Remote stream tracks:', remoteStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
-      remoteVideoRef.current.srcObject = remoteStream;
-      remoteVideoRef.current.play().catch(e => console.error('Remote video play error:', e));
+      
+      // Set to BOTH elements - browser will handle audio/video appropriately
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play().catch(e => console.error('Remote audio play error:', e));
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.play().catch(e => console.error('Remote video play error:', e));
+      }
     }
   }, [remoteStream]);
 
@@ -112,12 +122,19 @@ const ActiveCallScreen = ({
 
       {/* Video Container */}
       <div className="flex-1 relative">
-        {/* Remote Video */}
+        {/* Remote Video - for video calls */}
         <video
           ref={remoteVideoRef}
           autoPlay
           playsInline
           className="w-full h-full object-cover"
+          style={{ display: callType === 'video' ? 'block' : 'none' }}
+        />
+        
+        {/* Remote Audio - ALWAYS rendered, plays for both audio and video calls */}
+        <audio
+          ref={remoteAudioRef}
+          autoPlay
         />
         
         {/* Local Video - Responsive - Show when call type is video */}

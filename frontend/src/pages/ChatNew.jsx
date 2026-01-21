@@ -134,6 +134,7 @@ const ChatNew = () => {
   const socket = useRef(null);
   const selectedChatRef = useRef(null);
   const mutedUsersRef = useRef(new Set());
+  const pendingRemoteStreamRef = useRef(null);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -151,8 +152,17 @@ const ChatNew = () => {
     webrtcService.setSocket(socket.current);
 
     webrtcService.setOnRemoteStream((stream) => {
-      console.log('📹 Remote stream received in ChatNew');
-      setActiveCall(prev => prev ? { ...prev, remoteStream: stream } : prev);
+      console.log('📹 Remote stream received in ChatNew, stream ID:', stream?.id);
+      setActiveCall(prev => {
+        if (prev) {
+          console.log('📹 activeCall exists, updating with remote stream');
+          return { ...prev, remoteStream: stream };
+        } else {
+          console.log('📹 activeCall is null, storing stream in ref');
+          pendingRemoteStreamRef.current = stream;
+          return null;
+        }
+      });
     });
 
     console.log('🔔 Sending route:change to /chat');
@@ -1675,11 +1685,12 @@ const ChatNew = () => {
         userAvatar: getUserAvatar(caller),
         callType,
         stream,
-        remoteStream: null,
+        remoteStream: pendingRemoteStreamRef.current,
         callLogId,
         callAccepted: true,
         startTime
       });
+      pendingRemoteStreamRef.current = null;
       setIsVideoEnabled(callType === 'video');
       setIsAudioEnabled(true);
       console.log('✅ Call accepted, video enabled:', callType === 'video', 'audio enabled: true');
@@ -3631,6 +3642,7 @@ const ChatNew = () => {
 
             {activeCall && (
               <ActiveCallScreen
+                key={activeCall.remoteStream ? 'with-stream' : 'no-stream'}
                 remoteUser={{
                   fullName: activeCall.userName,
                   profileImage: activeCall.userAvatar
