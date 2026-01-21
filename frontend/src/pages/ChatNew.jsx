@@ -1681,7 +1681,9 @@ const ChatNew = () => {
         startTime
       });
       setIsVideoEnabled(callType === 'video');
-      console.log('✅ Call accepted, timer started at:', startTime);
+      setIsAudioEnabled(true);
+      console.log('✅ Call accepted, video enabled:', callType === 'video', 'audio enabled: true');
+      console.log('✅ Local stream tracks:', stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
     } catch (error) {
       console.error('❌ Failed to accept call:', error);
       let errorMsg = 'Failed to accept call.';

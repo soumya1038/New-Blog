@@ -73,12 +73,17 @@ class WebRTCService {
     try {
       this.peerConnection = new RTCPeerConnection(this.configuration);
       
-      // Set up ontrack BEFORE adding local tracks
+      // Set up ontrack BEFORE adding local tracks - CRITICAL for receiving remote tracks
       this.peerConnection.ontrack = (event) => {
-        console.log('📹 Caller received remote track:', event.track.kind);
-        this.remoteStream = event.streams[0];
-        if (this.onRemoteStreamCallback) {
-          this.onRemoteStreamCallback(this.remoteStream);
+        console.log('📹 Caller received remote track:', event.track.kind, 'enabled:', event.track.enabled);
+        console.log('Remote stream:', event.streams[0]);
+        console.log('Remote stream tracks:', event.streams[0].getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
+        
+        if (!this.remoteStream) {
+          this.remoteStream = event.streams[0];
+          if (this.onRemoteStreamCallback) {
+            this.onRemoteStreamCallback(this.remoteStream);
+          }
         }
       };
 
@@ -95,9 +100,9 @@ class WebRTCService {
         console.log('🧊 ICE connection state:', this.peerConnection.iceConnectionState);
       };
 
-      // Add local tracks
+      // Add local tracks AFTER setting up ontrack handler
       this.localStream.getTracks().forEach(track => {
-        console.log('➕ Adding local track:', track.kind, track.enabled);
+        console.log('➕ Caller adding local track:', track.kind, 'enabled:', track.enabled);
         this.peerConnection.addTrack(track, this.localStream);
       });
 
@@ -133,12 +138,17 @@ class WebRTCService {
     try {
       this.peerConnection = new RTCPeerConnection(this.configuration);
       
-      // Set up ontrack FIRST
+      // Set up ontrack FIRST - CRITICAL for receiving remote tracks
       this.peerConnection.ontrack = (event) => {
-        console.log('📹 Receiver received remote track:', event.track.kind);
-        this.remoteStream = event.streams[0];
-        if (this.onRemoteStreamCallback) {
-          this.onRemoteStreamCallback(this.remoteStream);
+        console.log('📹 Receiver received remote track:', event.track.kind, 'enabled:', event.track.enabled);
+        console.log('Remote stream:', event.streams[0]);
+        console.log('Remote stream tracks:', event.streams[0].getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
+        
+        if (!this.remoteStream) {
+          this.remoteStream = event.streams[0];
+          if (this.onRemoteStreamCallback) {
+            this.onRemoteStreamCallback(this.remoteStream);
+          }
         }
       };
       
@@ -155,9 +165,9 @@ class WebRTCService {
         console.log('🧊 ICE connection state:', this.peerConnection.iceConnectionState);
       };
       
-      // Add local tracks
+      // Add local tracks AFTER setting up ontrack handler
       this.localStream.getTracks().forEach(track => {
-        console.log('➕ Adding local track:', track.kind, track.enabled);
+        console.log('➕ Receiver adding local track:', track.kind, 'enabled:', track.enabled);
         this.peerConnection.addTrack(track, this.localStream);
       });
 

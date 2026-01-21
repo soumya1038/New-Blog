@@ -23,6 +23,7 @@ const ActiveCallScreen = ({
   useEffect(() => {
     if (localStream && localVideoRef.current) {
       console.log('📹 Setting local stream to video element');
+      console.log('Local stream tracks:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
       localVideoRef.current.srcObject = localStream;
       localVideoRef.current.play().catch(e => console.error('Local video play error:', e));
     }
@@ -31,6 +32,7 @@ const ActiveCallScreen = ({
   useEffect(() => {
     if (remoteStream && remoteVideoRef.current) {
       console.log('📹 Setting remote stream to video element');
+      console.log('Remote stream tracks:', remoteStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
       remoteVideoRef.current.srcObject = remoteStream;
       remoteVideoRef.current.play().catch(e => console.error('Remote video play error:', e));
     }
