@@ -41,7 +41,9 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://192.168.0.101:3000',
-  process.env.FRONTEND_URL
+  'http://localhost:5000',
+  process.env.FRONTEND_URL,
+  process.env.FRONTEND_URL_PROD
 ].filter(Boolean);
 
 const io = new Server(server, {

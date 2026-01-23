@@ -168,7 +168,11 @@ const ActiveCallScreen = ({
               {callAccepted ? formatDuration(callDuration) : 'Calling...'}
             </p>
           </div>
-          <button onClick={onToggleMinimize} className="text-white hover:text-gray-300">
+          <button 
+            onClick={onToggleMinimize} 
+            className="text-white hover:text-gray-300 bg-black/30 hover:bg-black/50 rounded-full p-2 transition-colors"
+            title="Minimize"
+          >
             <FiMinimize2 className="w-6 h-6" />
           </button>
         </div>

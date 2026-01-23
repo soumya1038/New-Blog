@@ -8,6 +8,11 @@ module.exports = (io, onlineUsers = new Map()) => {
     console.log('User connected:', socket.id);
 
     socket.on('user:online', async (userId) => {
+      if (!userId) {
+        console.error('❌ user:online called without userId');
+        return;
+      }
+      
       onlineUsers.set(userId, { socketId: socket.id, currentRoute: null });
       socket.userId = userId;
       socket.join(`user:${userId}`);
@@ -49,8 +54,14 @@ module.exports = (io, onlineUsers = new Map()) => {
         const { groupId, content, type = 'text' } = data;
         const senderId = socket.userId;
 
-        if (!senderId || !groupId) {
-          socket.emit('message:error', { error: 'Invalid sender or group' });
+        if (!senderId) {
+          console.error('❌ message:send:group: socket.userId not set');
+          socket.emit('message:error', { error: 'Not authenticated' });
+          return;
+        }
+
+        if (!groupId) {
+          socket.emit('message:error', { error: 'Invalid group' });
           return;
         }
 
@@ -118,8 +129,14 @@ module.exports = (io, onlineUsers = new Map()) => {
         const { receiverId, content, replyTo } = data;
         const senderId = socket.userId;
 
-        if (!senderId || !receiverId) {
-          socket.emit('message:error', { error: 'Invalid sender or receiver' });
+        if (!senderId) {
+          console.error('❌ message:send: socket.userId not set');
+          socket.emit('message:error', { error: 'Not authenticated' });
+          return;
+        }
+
+        if (!receiverId) {
+          socket.emit('message:error', { error: 'Invalid receiver' });
           return;
         }
 

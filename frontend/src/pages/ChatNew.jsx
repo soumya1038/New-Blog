@@ -14,6 +14,8 @@ import soundManager from '../utils/soundManager';
 import IncomingCallModal from '../components/IncomingCallModal';
 import ActiveCallScreen from '../components/ActiveCallScreen';
 import ActiveCallBanner from '../components/ActiveCallBanner';
+import FloatingCallBanner from '../components/FloatingCallBanner';
+import { saveCallState, getCallState, clearCallState } from '../utils/callStateManager';
 import CallHistoryModal from '../components/CallHistoryModal';
 import VoiceRecorder from '../components/VoiceRecorder';
 import VoiceMessagePlayer from '../components/VoiceMessagePlayer';
@@ -90,6 +92,8 @@ const ChatNew = () => {
   const [callLogs, setCallLogs] = useState([]);
   const [incomingCall, setIncomingCall] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
+  const [showCallBanner, setShowCallBanner] = useState(false);
+  const [savedCallState, setSavedCallState] = useState(null);
   const [isCallMinimized, setIsCallMinimized] = useState(false);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
@@ -156,6 +160,44 @@ const ChatNew = () => {
     groupCallInvitationRef.current = groupCallInvitation;
   }, [groupCallInvitation]);
 
+  // Restore call state on mount
+  useEffect(() => {
+    const savedState = getCallState('one-to-one');
+    if (savedState && savedState.callAccepted) {
+      console.log('📞 Restoring call state:', savedState);
+      setIsCallMinimized(true);
+      setActiveCall({
+        userId: savedState.remoteUser.id,
+        userName: savedState.remoteUser.fullName,
+        userAvatar: savedState.remoteUser.profileImage,
+        callType: savedState.callType,
+        startTime: savedState.startTime,
+        callAccepted: true,
+        stream: webrtcService.localStream,
+        remoteStream: webrtcService.remoteStream
+      });
+      setIsAudioEnabled(savedState.isAudioEnabled !== false);
+      setIsVideoEnabled(savedState.callType === 'video');
+    }
+  }, []);
+
+  // Listen for open call from global banner
+  useEffect(() => {
+    const handleOpenCall = () => {
+      setIsCallMinimized(false);
+      // Restore streams if they exist in webrtc service
+      if (activeCall && webrtcService.localStream) {
+        setActiveCall(prev => ({
+          ...prev,
+          stream: webrtcService.localStream,
+          remoteStream: webrtcService.remoteStream
+        }));
+      }
+    };
+    window.addEventListener('openCallFromGlobal', handleOpenCall);
+    return () => window.removeEventListener('openCallFromGlobal', handleOpenCall);
+  }, [activeCall]);
+
   useEffect(() => {
     if (!user) return;
 
@@ -201,6 +243,7 @@ const ChatNew = () => {
       showAlertModal('Call Error', error);
       setActiveCall(null);
       setIncomingCall(null);
+    clearCallState('one-to-one');
     });
 
     const messageReceiveHandler = (message) => {
@@ -444,6 +487,7 @@ const ChatNew = () => {
       await webrtcService.endCall();
       setActiveCall(null);
       setIncomingCall(null);
+    clearCallState('one-to-one');
       setIsCallMinimized(false);
       setIsAudioEnabled(true);
       setIsVideoEnabled(true);
@@ -615,6 +659,29 @@ const ChatNew = () => {
     }
   }, [loading, location.state]);
 
+  // Save call state on page unload (don't end call)
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (activeCall && activeCall.callAccepted) {
+        console.log('📞 Page unloading, saving call state');
+        saveCallState({
+          type: 'one-to-one',
+          remoteUser: { 
+            id: activeCall.userId, 
+            fullName: activeCall.userName, 
+            profileImage: activeCall.userAvatar 
+          },
+          callType: activeCall.callType,
+          startTime: activeCall.startTime,
+          callAccepted: true
+        });
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [activeCall]);
+
   // Listen for global call end events
   useEffect(() => {
     const handleGlobalCallEnd = async () => {
@@ -622,6 +689,7 @@ const ChatNew = () => {
       await webrtcService.endCall();
       setActiveCall(null);
       setIncomingCall(null);
+    clearCallState('one-to-one');
       setIsCallMinimized(false);
       setIsAudioEnabled(true);
       setIsVideoEnabled(true);
@@ -1791,6 +1859,15 @@ const ChatNew = () => {
         callAccepted: true,
         startTime
       });
+      
+      // Save call state for persistence
+      saveCallState({
+        type: 'one-to-one',
+        remoteUser: { id: callerId, fullName: getUserDisplayName(caller), profileImage: getUserAvatar(caller) },
+        callType,
+        startTime,
+        callAccepted: true
+      });
       pendingRemoteStreamRef.current = null;
       setIsVideoEnabled(callType === 'video');
       setIsAudioEnabled(true);
@@ -1830,6 +1907,36 @@ const ChatNew = () => {
     }
   };
 
+  const toggleMinimize = () => {
+    const newMinimizedState = !isCallMinimized;
+    setIsCallMinimized(newMinimizedState);
+    
+    if (newMinimizedState && activeCall && activeCall.callAccepted) {
+      // CRITICAL: Keep audio tracks enabled when minimizing
+      if (webrtcService.localStream) {
+        webrtcService.localStream.getAudioTracks().forEach(track => {
+          track.enabled = isAudioEnabled;
+          console.log('🔊 Audio track enabled on minimize:', track.enabled);
+        });
+      }
+      
+      const callState = {
+        type: 'one-to-one',
+        remoteUser: { 
+          id: activeCall.userId, 
+          fullName: activeCall.userName, 
+          profileImage: activeCall.userAvatar 
+        },
+        callType: activeCall.callType,
+        startTime: activeCall.startTime,
+        callAccepted: true,
+        isAudioEnabled
+      };
+      saveCallState(callState);
+      window.dispatchEvent(new CustomEvent('callStateUpdate', { detail: callState }));
+    }
+  };
+
   const endCall = async () => {
     if (!activeCall) return;
 
@@ -1854,6 +1961,7 @@ const ChatNew = () => {
 
     setActiveCall(null);
     setIncomingCall(null);
+    clearCallState('one-to-one');
     setIsCallMinimized(false);
     setIsAudioEnabled(true);
     setIsVideoEnabled(true);
@@ -1862,8 +1970,33 @@ const ChatNew = () => {
   };
 
   const toggleAudio = () => {
-    webrtcService.toggleAudio();
-    setIsAudioEnabled(prev => !prev);
+    if (!webrtcService.localStream) return;
+    
+    const audioTrack = webrtcService.localStream.getAudioTracks()[0];
+    if (!audioTrack) return;
+    
+    const newAudioState = !audioTrack.enabled;
+    audioTrack.enabled = newAudioState;
+    setIsAudioEnabled(newAudioState);
+    
+    console.log('🔊 Audio toggled:', newAudioState);
+    
+    if (activeCall && activeCall.callAccepted) {
+      const callState = {
+        type: 'one-to-one',
+        remoteUser: { 
+          id: activeCall.userId, 
+          fullName: activeCall.userName, 
+          profileImage: activeCall.userAvatar 
+        },
+        callType: activeCall.callType,
+        startTime: activeCall.startTime,
+        callAccepted: true,
+        isAudioEnabled: newAudioState
+      };
+      saveCallState(callState);
+      window.dispatchEvent(new CustomEvent('callStateUpdate', { detail: callState }));
+    }
   };
 
   const toggleVideo = async () => {
@@ -3090,6 +3223,8 @@ const ChatNew = () => {
                         participantName: getUserDisplayName(user),
                         groupId: activeCallInfo.group
                       });
+
+
                     }}
                     className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium shadow-sm transition-colors flex items-center gap-2"
                   >
@@ -3892,6 +4027,23 @@ const ChatNew = () => {
         )}
               </div>
 
+      {/* Floating Call Banner - Shows when call is active but minimized */}
+      {activeCall && isCallMinimized && (
+        <FloatingCallBanner
+          remoteUser={{
+            fullName: activeCall.userName,
+            profileImage: activeCall.userAvatar
+          }}
+          callType={activeCall.callType}
+          startTime={activeCall.startTime}
+          remoteStream={activeCall.remoteStream}
+          isAudioEnabled={isAudioEnabled}
+          onOpen={() => setIsCallMinimized(false)}
+          onEnd={endCall}
+          onToggleAudio={toggleAudio}
+        />
+      )}
+
       {/* Call Modals */}
             {incomingCall && (
               <IncomingCallModal
@@ -3902,7 +4054,7 @@ const ChatNew = () => {
               />
             )}
 
-            {activeCall && (
+            {activeCall && !isCallMinimized && (
               <ActiveCallScreen
                 key={activeCall.remoteStream ? 'with-stream' : 'no-stream'}
                 remoteUser={{
@@ -3917,7 +4069,7 @@ const ChatNew = () => {
                 isRecording={isRecording}
                 startTime={activeCall.startTime}
                 callAccepted={activeCall.callAccepted}
-                onToggleMinimize={() => setIsCallMinimized(!isCallMinimized)}
+                onToggleMinimize={toggleMinimize}
                 onToggleAudio={toggleAudio}
                 onToggleVideo={toggleVideo}
                 onToggleScreenShare={toggleScreenShare}
@@ -4031,4 +4183,11 @@ const ChatNew = () => {
 };
 
         export default ChatNew;
+
+
+
+
+
+
+
 

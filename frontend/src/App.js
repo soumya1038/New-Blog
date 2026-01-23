@@ -5,12 +5,14 @@ import Navbar from './components/Navbar';
 import ErrorFallback from './components/ErrorFallback';
 import IncomingCallModal from './components/IncomingCallModal';
 import GuestExpiredModal from './components/GuestExpiredModal';
+import FloatingCallBanner from './components/FloatingCallBanner';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
 import soundManager from './utils/soundManager';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useRouteTracker } from './hooks/useRouteTracker';
 import guestTracker from './services/guestTracking';
+import { getCallState, clearCallState } from './utils/callStateManager';
 
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
@@ -43,8 +45,30 @@ function AppContent() {
   const navigate = useNavigate();
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
+  const [globalCallState, setGlobalCallState] = useState(null);
   
   useRouteTracker();
+
+  useEffect(() => {
+    const savedState = getCallState('one-to-one');
+    if (savedState && savedState.callAccepted) {
+      setGlobalCallState(savedState);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleCallStateUpdate = (e) => setGlobalCallState(e.detail);
+    const handleCallEnd = () => {
+      setGlobalCallState(null);
+      clearCallState('one-to-one');
+    };
+    window.addEventListener('callStateUpdate', handleCallStateUpdate);
+    window.addEventListener('callEnded', handleCallEnd);
+    return () => {
+      window.removeEventListener('callStateUpdate', handleCallStateUpdate);
+      window.removeEventListener('callEnded', handleCallEnd);
+    };
+  }, []);
   
   useEffect(() => {
     guestTracker.startTracking();
@@ -177,6 +201,36 @@ function AppContent() {
     setGlobalIncomingCall(null);
   };
 
+  const handleGlobalCallOpen = () => {
+    navigate('/chat');
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('openCallFromGlobal'));
+    }, 100);
+  };
+
+  const handleGlobalCallEnd = () => {
+    const socket = socketService.getSocket();
+    if (socket && globalCallState) {
+      socket.emit('call:end', { userId: globalCallState.remoteUser.id });
+    }
+    webrtcService.endCall();
+    setGlobalCallState(null);
+    clearCallState('one-to-one');
+    window.dispatchEvent(new CustomEvent('callEnded'));
+  };
+
+  const handleGlobalToggleAudio = () => {
+    if (!webrtcService.localStream) return;
+    
+    const audioTrack = webrtcService.localStream.getAudioTracks()[0];
+    if (!audioTrack) return;
+    
+    audioTrack.enabled = !audioTrack.enabled;
+    setGlobalCallState(prev => prev ? { ...prev, isAudioEnabled: audioTrack.enabled } : null);
+    
+    console.log('🔊 Global audio toggled:', audioTrack.enabled);
+  };
+
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       <div className="min-h-screen">
@@ -217,6 +271,21 @@ function AppContent() {
         )}
         {guestExpired && (
           <GuestExpiredModal onClose={() => setGuestExpired(false)} />
+        )}
+        {globalCallState && location.pathname !== '/chat' && (
+          <FloatingCallBanner
+            remoteUser={{
+              fullName: globalCallState.remoteUser.fullName,
+              profileImage: globalCallState.remoteUser.profileImage
+            }}
+            callType={globalCallState.callType}
+            startTime={globalCallState.startTime}
+            remoteStream={webrtcService.remoteStream}
+            isAudioEnabled={globalCallState.isAudioEnabled !== false}
+            onOpen={handleGlobalCallOpen}
+            onEnd={handleGlobalCallEnd}
+            onToggleAudio={handleGlobalToggleAudio}
+          />
         )}
         <Suspense fallback={<LoadingFallback />}>
           <Routes>
