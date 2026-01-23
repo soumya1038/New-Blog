@@ -536,6 +536,234 @@ module.exports = (io, onlineUsers = new Map()) => {
       }
     });
 
+    // Group Call Events
+    socket.on('groupcall:start', async (data) => {
+      try {
+        const { groupId, roomName } = data;
+        const initiatorId = socket.userId;
+        
+        console.log('🎥 Group call start received:', { groupId, initiatorId });
+        
+        const Group = require('../models/Group');
+        const GroupCall = require('../models/GroupCall');
+        const { RoomServiceClient } = require('livekit-server-sdk');
+        
+        const group = await Group.findById(groupId).populate('members', 'fullName profileImage');
+        
+        if (!group) {
+          console.log('❌ Group not found:', groupId);
+          return;
+        }
+        
+        const initiator = await User.findById(initiatorId).select('fullName profileImage');
+        
+        // Get current participants in LiveKit room
+        let joinedUsers = [];
+        const call = await GroupCall.findOne({ group: groupId, status: 'active' });
+        if (call) {
+          const roomService = new RoomServiceClient(
+            process.env.LIVEKIT_WS_URL.replace('wss://', 'https://').replace('ws://', 'http://'),
+            process.env.LIVEKIT_API_KEY,
+            process.env.LIVEKIT_API_SECRET
+          );
+          
+          try {
+            const participants = await roomService.listParticipants(roomName);
+            const participantIds = participants.map(p => p.identity);
+            
+            // Get user details for participants
+            const users = await User.find({ _id: { $in: participantIds } }).select('fullName profileImage');
+            joinedUsers = users.map(u => ({
+              _id: u._id,
+              fullName: u.fullName,
+              profileImage: u.profileImage
+            }));
+          } catch (err) {
+            console.log('No participants yet');
+          }
+        }
+        
+        console.log(`📡 Broadcasting to ${group.members.length} members`);
+        
+        // Notify all online group members except initiator
+        let notifiedCount = 0;
+        group.members.forEach(member => {
+          const memberId = member._id.toString();
+          if (memberId !== initiatorId) {
+            const memberData = onlineUsers.get(memberId);
+            if (memberData) {
+              console.log(`📨 Sending invitation to ${memberId}`);
+              io.to(memberData.socketId).emit('groupcall:invitation', {
+                groupId,
+                groupName: group.name,
+                roomName,
+                initiator: {
+                  _id: initiatorId,
+                  fullName: initiator.fullName,
+                  profileImage: initiator.profileImage
+                },
+                joinedUsers
+              });
+              notifiedCount++;
+            } else {
+              console.log(`❌ Member ${memberId} not online`);
+            }
+          }
+        });
+        console.log(`✅ Notified ${notifiedCount} members`);
+      } catch (error) {
+        console.error('Group call start error:', error);
+      }
+    });
+
+    socket.on('groupcall:join', async (data) => {
+      try {
+        const { groupId, roomName } = data;
+        const userId = socket.userId;
+        
+        const Group = require('../models/Group');
+        const group = await Group.findById(groupId);
+        
+        if (!group) return;
+        
+        const user = await User.findById(userId).select('fullName profileImage');
+        
+        // Notify all group members that someone joined
+        group.members.forEach(memberId => {
+          const memberIdStr = memberId.toString();
+          const memberData = onlineUsers.get(memberIdStr);
+          if (memberData) {
+            io.to(memberData.socketId).emit('groupcall:user-joined', {
+              groupId,
+              roomName,
+              user: {
+                _id: userId,
+                fullName: user.fullName,
+                profileImage: user.profileImage
+              }
+            });
+          }
+        });
+      } catch (error) {
+        console.error('Group call join error:', error);
+      }
+    });
+
+    socket.on('groupcall:leave', async (data) => {
+      try {
+        const { groupId, roomName } = data;
+        const userId = socket.userId;
+        
+        console.log(`🚪 User ${userId} leaving call for group ${groupId}`);
+        
+        const Group = require('../models/Group');
+        const GroupCall = require('../models/GroupCall');
+        const { RoomServiceClient } = require('livekit-server-sdk');
+        
+        const group = await Group.findById(groupId);
+        if (!group) return;
+        
+        const call = await GroupCall.findOne({ group: groupId, status: 'active' });
+        if (!call) return;
+        
+        // Check if anyone is still in the LiveKit room
+        const roomService = new RoomServiceClient(
+          process.env.LIVEKIT_WS_URL.replace('wss://', 'https://').replace('ws://', 'http://'),
+          process.env.LIVEKIT_API_KEY,
+          process.env.LIVEKIT_API_SECRET
+        );
+        
+        let participantCount = 0;
+        try {
+          const participants = await roomService.listParticipants(roomName);
+          participantCount = participants.length;
+          console.log(`📊 Participants in room: ${participantCount}`);
+        } catch (err) {
+          console.log('❌ Room not found or empty');
+          participantCount = 0;
+        }
+        
+        // If no one in room, end the call
+        if (participantCount === 0) {
+          console.log('🔚 No participants left, ending call');
+          
+          call.status = 'ended';
+          call.endedAt = new Date();
+          call.duration = Math.floor((call.endedAt - call.startedAt) / 1000);
+          await call.save();
+          
+          // Create history message
+          const Message = require('../models/Message');
+          await call.populate('participants.user', 'fullName profileImage');
+          
+          // Get unique users (remove duplicates)
+          const uniqueUserMap = new Map();
+          call.participants.forEach(p => {
+            if (p.user && p.user._id) {
+              uniqueUserMap.set(p.user._id.toString(), {
+                _id: p.user._id,
+                fullName: p.user.fullName,
+                profileImage: p.user.profileImage
+              });
+            }
+          });
+          
+          const joinedUsers = Array.from(uniqueUserMap.values());
+          const joinedCount = joinedUsers.length;
+          
+          console.log('💾 Saving call history:', { duration: call.duration, joinedCount, joinedUsers });
+          
+          const historyMsg = await Message.create({
+            group: groupId,
+            sender: call.initiator,
+            content: 'Video call',
+            type: 'groupcall',
+            callData: {
+              duration: call.duration,
+              joinedCount: joinedCount,
+              joinedUsers: joinedUsers
+            }
+          });
+          
+          await historyMsg.populate('sender', 'fullName profileImage');
+          
+          console.log('📡 Broadcasting groupcall:ended');
+          // Notify all members
+          group.members.forEach(memberId => {
+            const memberIdStr = memberId.toString();
+            const memberData = onlineUsers.get(memberIdStr);
+            if (memberData) {
+              io.to(memberData.socketId).emit('groupcall:ended', { groupId });
+            }
+          });
+          
+          // Broadcast history message
+          group.members.forEach(memberId => {
+            const memberIdStr = memberId.toString();
+            const memberData = onlineUsers.get(memberIdStr);
+            if (memberData) {
+              io.to(memberData.socketId).emit('message:receive:group', historyMsg);
+            }
+          });
+        } else {
+          // Notify members someone left
+          group.members.forEach(memberId => {
+            const memberIdStr = memberId.toString();
+            const memberData = onlineUsers.get(memberIdStr);
+            if (memberData) {
+              io.to(memberData.socketId).emit('groupcall:user-left', {
+                groupId,
+                roomName,
+                userId
+              });
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Group call leave error:', error);
+      }
+    });
+
     socket.on('disconnect', async () => {
       if (socket.userId) {
         await User.findByIdAndUpdate(socket.userId, { lastSeen: new Date() });

@@ -32,6 +32,7 @@ A full-stack blog application built with React, Node.js, Express, and MongoDB.
 ### Messaging & Calls
 - ✅ Real-time messaging with Socket.IO
 - ✅ Audio/Video calls with WebRTC
+- ✅ **Group video calls with LiveKit** 🆕
 - ✅ Voice messages
 - ✅ File sharing
 - ✅ Group chats
@@ -68,6 +69,7 @@ A full-stack blog application built with React, Node.js, Express, and MongoDB.
 ### Prerequisites
 - Node.js (v14 or higher)
 - MongoDB (local or Atlas)
+- **LiveKit account** (free at https://cloud.livekit.io) - for group video calls
 
 ### Backend Setup
 
@@ -88,7 +90,16 @@ MONGODB_URI=mongodb://localhost:27017/modern-blog
 JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
 JWT_EXPIRE=7d
 NODE_ENV=development
+
+# LiveKit Configuration (for group video calls)
+LIVEKIT_API_KEY=your_livekit_api_key
+LIVEKIT_API_SECRET=your_livekit_api_secret
+LIVEKIT_WS_URL=wss://your-project.livekit.cloud
 ```
+
+**📚 For detailed LiveKit setup, see [LIVEKIT_COMPLETE_GUIDE.md](LIVEKIT_COMPLETE_GUIDE.md)**
+
+**Quick check**: Run `npm run check-livekit` to verify your LiveKit configuration
 
 4. Start MongoDB (if running locally):
 ```bash
@@ -129,8 +140,9 @@ Frontend will run on `http://localhost:3000`
 4. Follow users to see their content
 5. Chat with other users in real-time
 6. Make audio/video calls
-7. Manage your profile and settings
-8. Generate API keys for external access
+7. **Start group video calls** (requires LiveKit setup)
+8. Manage your profile and settings
+9. Generate API keys for external access
 
 ## Security Features
 

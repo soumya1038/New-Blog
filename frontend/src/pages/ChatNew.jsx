@@ -19,6 +19,8 @@ import VoiceMessagePlayer from '../components/VoiceMessagePlayer';
 import FileMessage from '../components/FileMessage';
 import CreateGroupModal from '../components/CreateGroupModal';
 import GroupInfoPanel from '../components/GroupInfoPanel';
+import GroupCallInvitation from '../components/GroupCallInvitation';
+import GroupCallRoom from '../components/GroupCallRoom';
 import webrtcService from '../services/webrtc';
 // Translation support - Import useTranslation hook from react-i18next
 // This enables multi-language support for the chat interface
@@ -115,6 +117,9 @@ const ChatNew = () => {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [activeGroupCall, setActiveGroupCall] = useState(null);
+  const [groupCallInvitation, setGroupCallInvitation] = useState(null);
+  const [activeCallInfo, setActiveCallInfo] = useState(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -135,6 +140,7 @@ const ChatNew = () => {
   const selectedChatRef = useRef(null);
   const mutedUsersRef = useRef(new Set());
   const pendingRemoteStreamRef = useRef(null);
+  const groupCallInvitationRef = useRef(null);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -144,6 +150,10 @@ const ChatNew = () => {
   useEffect(() => {
     mutedUsersRef.current = mutedUsers;
   }, [mutedUsers]);
+  
+  useEffect(() => {
+    groupCallInvitationRef.current = groupCallInvitation;
+  }, [groupCallInvitation]);
 
   useEffect(() => {
     if (!user) return;
@@ -470,6 +480,81 @@ const ChatNew = () => {
       await webrtcService.handleIceCandidate(candidate);
     });
 
+    socket.current.on('groupcall:invitation', (data) => {
+      console.log('📨 Received groupcall:invitation:', data);
+      
+      // Don't show if already showing invitation for this group
+      if (groupCallInvitationRef.current && groupCallInvitationRef.current.groupId === data.groupId) {
+        console.log('❌ Invitation already showing for this group');
+        return;
+      }
+      
+      // Don't show invitation if already in call or already declined
+      const declinedCalls = JSON.parse(localStorage.getItem('declinedCalls') || '{}');
+      if (declinedCalls[data.groupId] && Date.now() - declinedCalls[data.groupId] < 300000) {
+        console.log('❌ Declined recently, ignoring invitation');
+        // But still fetch active call info to show banner
+        if (selectedChatRef.current?.isGroup && selectedChatRef.current._id === data.groupId) {
+          api.get(`/livekit/active/${data.groupId}`)
+            .then(({ data: response }) => {
+              if (response.call) {
+                setActiveCallInfo(response.call);
+              }
+            })
+            .catch(() => {});
+        }
+        return;
+      }
+      if (!activeGroupCall || activeGroupCall.groupId !== data.groupId) {
+        console.log('✅ Showing invitation popup');
+        setGroupCallInvitation(data);
+      } else {
+        console.log('❌ Already in call, ignoring invitation');
+      }
+    });
+
+    socket.current.on('groupcall:user-joined', (data) => {
+      console.log('👤 User joined call:', data);
+      // Refresh active call info for this group
+      api.get(`/livekit/active/${data.groupId}`)
+        .then(({ data: response }) => {
+          if (response.call) {
+            setActiveCallInfo(response.call);
+          }
+        })
+        .catch(() => {});
+      soundManager.play('joinVideoCall');
+    });
+
+    socket.current.on('groupcall:user-left', (data) => {
+      console.log('👤 User left call:', data);
+      // Refresh active call info for this group
+      api.get(`/livekit/active/${data.groupId}`)
+        .then(({ data: response }) => {
+          if (response.call) {
+            setActiveCallInfo(response.call);
+          } else {
+            setActiveCallInfo(null);
+          }
+        })
+        .catch(() => {});
+    });
+
+    socket.current.on('groupcall:ended', (data) => {
+      console.log('📞 Group call ended event received:', data);
+      // Clear active call info immediately
+      setActiveCallInfo(null);
+      // Close invitation popup if open
+      setGroupCallInvitation(null);
+      if (activeGroupCall?.groupId === data.groupId) {
+        setActiveGroupCall(null);
+      }
+      // Reload messages if viewing this group
+      if (selectedChat?.isGroup && selectedChat._id === data.groupId) {
+        loadMessages(data.groupId, true);
+      }
+    });
+
     loadConversations();
     loadGroups();
     loadBlockedUsers();
@@ -506,6 +591,10 @@ const ChatNew = () => {
         socket.current.off('call:ice-candidate');
         socket.current.off('users:online');
         socket.current.off('user:status');
+        socket.current.off('groupcall:invitation');
+        socket.current.off('groupcall:user-joined');
+        socket.current.off('groupcall:user-left');
+        socket.current.off('groupcall:ended');
       }
 
       console.log('Leaving /chat');
@@ -581,6 +670,17 @@ const ChatNew = () => {
   useEffect(() => {
     if (selectedChat) {
       loadMessages(selectedChat._id, selectedChat.isGroup);
+      
+      // Load active call for group
+      if (selectedChat.isGroup) {
+        api.get(`/livekit/active/${selectedChat._id}`)
+          .then(({ data }) => {
+            if (data.call) {
+              setActiveCallInfo(data.call);
+            }
+          })
+          .catch(() => {});
+      }
       if (!selectedChat.isGroup) {
         loadPinnedMessages();
         // Load full user details if description is missing
@@ -2658,16 +2758,60 @@ const ChatNew = () => {
                       ) : (isOnline(selectedChat._id) ? t('Active now') : getLastSeenText(selectedChat.lastSeen))}
                     </p>
                   </div>
-                  {!selectedChat.isGroup && (
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => initiateCall('audio')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                        <FiPhone className="w-5 h-5 text-gray-600" />
-                      </button>
-                      <button onClick={() => initiateCall('video')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <div className="flex items-center gap-2">
+                    {selectedChat.isGroup ? (
+                      <button 
+                        onClick={async () => {
+                          const roomName = `group-${selectedChat._id}`;
+                          
+                          console.log('🎥 Starting group call for:', selectedChat._id);
+                          console.log('🔌 Socket connected:', socket.current?.connected);
+                          
+                          try {
+                            // Check if call already active
+                            const { data: activeCheck } = await api.get(`/livekit/active/${selectedChat._id}`);
+                            
+                            if (!activeCheck.call) {
+                              // Start new call and broadcast
+                              const { data: newCall } = await api.post('/livekit/start', {
+                                groupId: selectedChat._id,
+                                roomName
+                              });
+                              console.log('📡 Emitting groupcall:start');
+                              socket.current.emit('groupcall:start', {
+                                groupId: selectedChat._id,
+                                roomName
+                              });
+                            } else {
+                              console.log('📞 Joining existing call');
+                            }
+                            
+                            // Join call (new or existing)
+                            setActiveGroupCall({
+                              roomName,
+                              participantName: getUserDisplayName(user),
+                              groupId: selectedChat._id
+                            });
+                          } catch (error) {
+                            console.error('Failed to start call:', error);
+                          }
+                        }} 
+                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        title="Start Group Call"
+                      >
                         <FiVideo className="w-5 h-5 text-gray-600" />
                       </button>
-                    </div>
-                  )}
+                    ) : (
+                      <>
+                        <button onClick={() => initiateCall('audio')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                          <FiPhone className="w-5 h-5 text-gray-600" />
+                        </button>
+                        <button onClick={() => initiateCall('video')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                          <FiVideo className="w-5 h-5 text-gray-600" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2902,6 +3046,59 @@ const ChatNew = () => {
               </div>
             )}
 
+            {/* Active Call Banner */}
+            {activeCallInfo && selectedChat?.isGroup && selectedChat._id === activeCallInfo.group && (
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-b border-green-200 dark:border-green-700 px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="relative">
+                      <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                      <div className="absolute inset-0 w-3 h-3 bg-green-500 rounded-full animate-ping"></div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {activeCallInfo.participants && activeCallInfo.participants.length > 0 && (
+                        <div className="flex -space-x-2">
+                          {activeCallInfo.participants.slice(0, 3).map((participant, i) => (
+                            <img
+                              key={i}
+                              src={participant.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(participant.fullName)}&background=0D8ABC&color=fff`}
+                              alt={participant.fullName}
+                              className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-800 object-cover"
+                              title={participant.fullName}
+                            />
+                          ))}
+                          {activeCallInfo.participants.length > 3 && (
+                            <div className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-800 bg-green-500 flex items-center justify-center text-xs font-semibold text-white">
+                              +{activeCallInfo.participants.length - 3}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-sm font-semibold text-green-800 dark:text-green-300">Video call in progress</p>
+                        <p className="text-xs text-green-600 dark:text-green-400">
+                          {activeCallInfo.participants?.length || 0} participant{activeCallInfo.participants?.length > 1 ? 's' : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setActiveGroupCall({
+                        roomName: activeCallInfo.roomName,
+                        participantName: getUserDisplayName(user),
+                        groupId: activeCallInfo.group
+                      });
+                    }}
+                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium shadow-sm transition-colors flex items-center gap-2"
+                  >
+                    <FiVideo className="w-4 h-4" />
+                    Join Call
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Messages */}
             <div
               ref={messagesContainerRef}
@@ -2974,6 +3171,70 @@ const ChatNew = () => {
                               </span>
                             )}
                             <span className="text-gray-400 text-xs">{formatTime(call.createdAt)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  // Handle group call history
+                  if (msg.type === 'groupcall') {
+                    const showDate = index === 0 || formatDate(messages[index - 1].createdAt) !== formatDate(msg.createdAt);
+                    const isOwn = msg.sender._id === user._id;
+                    const duration = msg.callData?.duration || 0;
+                    const joinedCount = msg.callData?.joinedCount || 0;
+                    const joinedUsers = msg.callData?.joinedUsers || [];
+                    
+                    return (
+                      <div key={msg._id}>
+                        {showDate && (
+                          <div className="flex justify-center my-4">
+                            <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full">
+                              {formatDate(msg.createdAt)}
+                            </span>
+                          </div>
+                        )}
+                        <div className={`flex ${isOwn ? 'justify-end' : 'justify-start'} mb-2`}>
+                          <div className={`flex items-start gap-2 max-w-sm ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
+                            <img
+                              src={getUserAvatar(msg.sender)}
+                              alt={getUserDisplayName(msg.sender)}
+                              className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                            />
+                            <div className={`${isOwn ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-gray-100 dark:bg-gray-700'} rounded-2xl px-4 py-3 shadow-sm`}>
+                              <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
+                                  <FiVideo className="w-5 h-5 text-white" />
+                                </div>
+                                <div className="flex-1">
+                                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">Video call</p>
+                                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                                    <span>{Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')}</span>
+                                    <span>•</span>
+                                    <span>{joinedCount} joined</span>
+                                  </div>
+                                  {joinedUsers.length > 0 && (
+                                    <div className="flex items-center mt-2 -space-x-2">
+                                      {joinedUsers.slice(0, 3).map((u, i) => (
+                                        <img
+                                          key={i}
+                                          src={u.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.fullName)}&background=0D8ABC&color=fff`}
+                                          alt={u.fullName}
+                                          className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-800 object-cover"
+                                          title={u.fullName}
+                                        />
+                                      ))}
+                                      {joinedUsers.length > 3 && (
+                                        <div className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-800 bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-[10px] font-semibold text-gray-700 dark:text-gray-200">
+                                          +{joinedUsers.length - 3}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-2">{formatTime(msg.createdAt)}</p>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -3705,6 +3966,62 @@ const ChatNew = () => {
                   setSelectedChat(null);
                   setGroups(prev => prev.filter(g => g._id !== selectedChat._id));
                   loadGroups();
+                }}
+              />
+            )}
+
+            {/* Group Call Room */}
+            {activeGroupCall && (
+              <GroupCallRoom
+                roomName={activeGroupCall.roomName}
+                participantName={activeGroupCall.participantName}
+                groupId={activeGroupCall.groupId}
+                onLeave={() => setActiveGroupCall(null)}
+              />
+            )}
+
+            {/* Group Call Invitation */}
+            {groupCallInvitation && (
+              <GroupCallInvitation
+                groupName={groupCallInvitation.groupName}
+                initiatorName={groupCallInvitation.initiator.fullName}
+                initiatorImage={groupCallInvitation.initiator.profileImage}
+                joinedUsers={groupCallInvitation.joinedUsers || []}
+                onJoin={() => {
+                  setActiveGroupCall({
+                    roomName: groupCallInvitation.roomName,
+                    participantName: getUserDisplayName(user),
+                    groupId: groupCallInvitation.groupId
+                  });
+                  setGroupCallInvitation(null);
+                  // Clear declined status
+                  const declinedCalls = JSON.parse(localStorage.getItem('declinedCalls') || '{}');
+                  delete declinedCalls[groupCallInvitation.groupId];
+                  localStorage.setItem('declinedCalls', JSON.stringify(declinedCalls));
+                  // Fetch active call info to show banner
+                  api.get(`/livekit/active/${groupCallInvitation.groupId}`)
+                    .then(({ data }) => {
+                      if (data.call) {
+                        setActiveCallInfo(data.call);
+                      }
+                    })
+                    .catch(() => {});
+                }}
+                onDecline={() => {
+                  const groupId = groupCallInvitation.groupId;
+                  // Mark as declined
+                  const declinedCalls = JSON.parse(localStorage.getItem('declinedCalls') || '{}');
+                  declinedCalls[groupId] = Date.now();
+                  localStorage.setItem('declinedCalls', JSON.stringify(declinedCalls));
+                  setGroupCallInvitation(null);
+                  // Fetch active call info to show banner
+                  api.get(`/livekit/active/${groupId}`)
+                    .then(({ data }) => {
+                      if (data.call) {
+                        setActiveCallInfo(data.call);
+                      }
+                    })
+                    .catch(() => {});
                 }}
               />
             )}

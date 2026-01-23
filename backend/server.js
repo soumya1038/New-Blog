@@ -22,6 +22,7 @@ const voiceRoutes = require('./routes/voiceRoutes');
 const fileRoutes = require('./routes/fileRoutes');
 const groupRoutes = require('./routes/groupRoutes');
 const callRoutes = require('./routes/callRoutes');
+const livekitRoutes = require('./routes/livekit');
 const zohoAuthRoutes = require('./routes/zohoAuth');
 const draftRoutes = require('./routes/draftRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
@@ -94,6 +95,7 @@ app.use('/api/voice', voiceRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/groups', groupRoutes);
 app.use('/api/calls', callRoutes);
+app.use('/api/livekit', livekitRoutes);
 app.use('/api/auth/zoho', zohoAuthRoutes);
 app.use('/api/drafts', draftRoutes);
 

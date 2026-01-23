@@ -22,7 +22,7 @@ const messageSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['text', 'voice', 'file', 'image', 'document'],
+    enum: ['text', 'voice', 'file', 'image', 'document', 'groupcall'],
     default: 'text'
   },
   voiceUrl: {
@@ -45,6 +45,9 @@ const messageSchema = new mongoose.Schema({
   },
   caption: {
     type: String
+  },
+  callData: {
+    type: mongoose.Schema.Types.Mixed
   },
   cloudinaryPublicId: {
     type: String

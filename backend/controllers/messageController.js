@@ -809,6 +809,18 @@ exports.getGroupMessages = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit);
 
+    // Populate callData fields for groupcall messages
+    for (const msg of messages) {
+      if (msg.type === 'groupcall' && msg.callData) {
+        if (msg.callData.initiator) {
+          await msg.populate('callData.initiator', 'fullName profileImage');
+        }
+        if (msg.callData.joinedUsers && msg.callData.joinedUsers.length > 0) {
+          await msg.populate('callData.joinedUsers', 'fullName profileImage');
+        }
+      }
+    }
+
     const decryptedMessages = messages.reverse().map(msg => ({
       _id: msg._id,
       sender: msg.sender,
@@ -822,6 +834,7 @@ exports.getGroupMessages = async (req, res) => {
       fileSize: msg.fileSize,
       mimeType: msg.mimeType,
       caption: msg.caption,
+      callData: msg.callData,
       reactions: msg.reactions,
       replyTo: msg.replyTo,
       createdAt: msg.createdAt,
