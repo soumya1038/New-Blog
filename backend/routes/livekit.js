@@ -31,6 +31,8 @@ router.post('/token', protect, async (req, res) => {
       roomJoin: true,
       canPublish: true,
       canSubscribe: true,
+      canPublishData: true,
+      canUpdateOwnMetadata: true
     });
 
     const token = await at.toJwt();

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LiveKitRoom, VideoConference } from '@livekit/components-react';
 import '@livekit/components-styles';
 import { FiX } from 'react-icons/fi';
+import { Room, RoomOptions, VideoPresets } from 'livekit-client';
 import api from '../services/api';
 import socketService from '../services/socket';
 
@@ -85,6 +86,24 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId }) => {
         audio={true}
         video={true}
         onDisconnected={handleLeave}
+        options={{
+          adaptiveStream: true,
+          dynacast: true,
+          videoCaptureDefaults: {
+            resolution: VideoPresets.h720.resolution,
+            facingMode: 'user'
+          },
+          publishDefaults: {
+            videoSimulcastLayers: [
+              VideoPresets.h180,
+              VideoPresets.h360,
+              VideoPresets.h720
+            ],
+            videoEncoding: VideoPresets.h720,
+            dtx: true,
+            red: true
+          }
+        }}
       >
         <VideoConference />
       </LiveKitRoom>
