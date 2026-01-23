@@ -21,6 +21,7 @@ const ActiveCallScreen = ({
   const remoteAudioRef = useRef(null);
   const [callDuration, setCallDuration] = useState(0);
   const [facingMode, setFacingMode] = useState('user');
+  const [isSwapped, setIsSwapped] = useState(false);
 
   const rotateCamera = async () => {
     if (!localStream) return;
@@ -62,10 +63,18 @@ const ActiveCallScreen = ({
     if (localStream && localVideoRef.current) {
       console.log('📹 Setting local stream to video element');
       console.log('Local stream tracks:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
-      localVideoRef.current.srcObject = localStream;
-      localVideoRef.current.play().catch(e => console.error('Local video play error:', e));
+      
+      // Only set if different
+      if (localVideoRef.current.srcObject !== localStream) {
+        localVideoRef.current.srcObject = localStream;
+        localVideoRef.current.play().catch(e => {
+          if (e.name !== 'AbortError') {
+            console.error('Local video play error:', e);
+          }
+        });
+      }
     }
-  }, [localStream]);
+  }, [localStream, isSwapped]);
 
   useEffect(() => {
     console.log('🔄 ActiveCallScreen remoteStream prop changed:', remoteStream ? 'HAS STREAM' : 'NO STREAM');
@@ -74,16 +83,24 @@ const ActiveCallScreen = ({
       console.log('Remote stream tracks:', remoteStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
       
       // Set to BOTH elements - browser will handle audio/video appropriately
-      if (remoteAudioRef.current) {
+      if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== remoteStream) {
         remoteAudioRef.current.srcObject = remoteStream;
-        remoteAudioRef.current.play().catch(e => console.error('Remote audio play error:', e));
+        remoteAudioRef.current.play().catch(e => {
+          if (e.name !== 'AbortError') {
+            console.error('Remote audio play error:', e);
+          }
+        });
       }
-      if (remoteVideoRef.current) {
+      if (remoteVideoRef.current && remoteVideoRef.current.srcObject !== remoteStream) {
         remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.play().catch(e => console.error('Remote video play error:', e));
+        remoteVideoRef.current.play().catch(e => {
+          if (e.name !== 'AbortError') {
+            console.error('Remote video play error:', e);
+          }
+        });
       }
     }
-  }, [remoteStream]);
+  }, [remoteStream, isSwapped]);
 
   useEffect(() => {
     if (!callAccepted || !startTime) return;
@@ -159,11 +176,12 @@ const ActiveCallScreen = ({
 
       {/* Video Container */}
       <div className="flex-1 relative">
-        {/* Remote Video - for video calls */}
+        {/* Main Video (swappable) */}
         <video
-          ref={remoteVideoRef}
+          ref={isSwapped ? localVideoRef : remoteVideoRef}
           autoPlay
           playsInline
+          muted={isSwapped}
           className="w-full h-full object-cover"
           style={{ display: callType === 'video' ? 'block' : 'none' }}
         />
@@ -174,14 +192,18 @@ const ActiveCallScreen = ({
           autoPlay
         />
         
-        {/* Local Video - Responsive - Show when call type is video */}
+        {/* Small Video (swappable) - Show when call type is video */}
         {callType === 'video' && localStream && (
-          <div className="absolute top-16 sm:top-20 right-2 sm:right-4 w-24 h-32 sm:w-32 sm:h-40 bg-gray-800 rounded-lg overflow-hidden shadow-lg border-2 border-gray-700">
+          <div 
+            onClick={() => setIsSwapped(!isSwapped)}
+            className="absolute top-16 sm:top-20 right-2 sm:right-4 w-24 h-32 sm:w-32 sm:h-40 bg-gray-800 rounded-lg overflow-hidden shadow-lg border-2 border-gray-700 cursor-pointer hover:border-blue-500 transition-colors"
+            title="Click to swap videos"
+          >
             <video
-              ref={localVideoRef}
+              ref={isSwapped ? remoteVideoRef : localVideoRef}
               autoPlay
               playsInline
-              muted
+              muted={!isSwapped}
               className="w-full h-full object-cover"
             />
           </div>

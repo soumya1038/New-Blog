@@ -13,6 +13,7 @@ import soundNotification from '../utils/soundNotifications';
 import soundManager from '../utils/soundManager';
 import IncomingCallModal from '../components/IncomingCallModal';
 import ActiveCallScreen from '../components/ActiveCallScreen';
+import ActiveCallBanner from '../components/ActiveCallBanner';
 import CallHistoryModal from '../components/CallHistoryModal';
 import VoiceRecorder from '../components/VoiceRecorder';
 import VoiceMessagePlayer from '../components/VoiceMessagePlayer';
@@ -4030,3 +4031,4 @@ const ChatNew = () => {
 };
 
         export default ChatNew;
+
