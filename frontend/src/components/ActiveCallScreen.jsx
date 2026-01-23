@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiMinimize2, FiMaximize2 } from 'react-icons/fi';
+import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiMinimize2, FiMaximize2, FiRotateCw } from 'react-icons/fi';
 
 const ActiveCallScreen = ({
   remoteUser,
@@ -20,6 +20,43 @@ const ActiveCallScreen = ({
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
   const [callDuration, setCallDuration] = useState(0);
+  const [facingMode, setFacingMode] = useState('user');
+
+  const rotateCamera = async () => {
+    if (!localStream) return;
+    
+    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+    
+    try {
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.stop();
+      }
+      
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: newFacingMode },
+        audio: false
+      });
+      
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      const sender = window.peerConnection?.getSenders().find(s => s.track?.kind === 'video');
+      
+      if (sender) {
+        await sender.replaceTrack(newVideoTrack);
+      }
+      
+      localStream.removeTrack(videoTrack);
+      localStream.addTrack(newVideoTrack);
+      
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStream;
+      }
+      
+      setFacingMode(newFacingMode);
+    } catch (error) {
+      console.error('Failed to rotate camera:', error);
+    }
+  };
 
   useEffect(() => {
     if (localStream && localVideoRef.current) {
@@ -183,18 +220,28 @@ const ActiveCallScreen = ({
           </button>
           
           {callType === 'video' && (
-            <button
-              onClick={onToggleVideo}
-              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-colors ${
-                isVideoEnabled ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-500 hover:bg-red-600'
-              }`}
-            >
-              {isVideoEnabled ? (
-                <FiVideo className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-              ) : (
-                <FiVideoOff className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-              )}
-            </button>
+            <>
+              <button
+                onClick={onToggleVideo}
+                className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-colors ${
+                  isVideoEnabled ? 'bg-gray-700 hover:bg-gray-600' : 'bg-red-500 hover:bg-red-600'
+                }`}
+              >
+                {isVideoEnabled ? (
+                  <FiVideo className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                ) : (
+                  <FiVideoOff className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                )}
+              </button>
+              
+              <button
+                onClick={rotateCamera}
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gray-700 hover:bg-gray-600 flex items-center justify-center transition-colors"
+                title="Rotate Camera"
+              >
+                <FiRotateCw className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+              </button>
+            </>
           )}
           
           <button
