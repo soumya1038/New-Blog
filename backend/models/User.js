@@ -37,7 +37,7 @@ const userSchema = new mongoose.Schema({
   }],
   role: { type: String, enum: ['user', 'admin', 'coAdmin', 'guest'], default: 'user' },
   isGuest: { type: Boolean, default: false },
-  guestExpiresAt: { type: Date, default: null },
+  guestExpiresAt: { type: Date, default: null, index: true },
   isActive: { type: Boolean, default: true },
   suspendedUntil: { type: Date, default: null },
   isVerified: { type: Boolean, default: false },
@@ -58,5 +58,14 @@ userSchema.pre('save', async function(next) {
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
+
+// TTL index for auto-deleting expired guests
+userSchema.index(
+  { guestExpiresAt: 1 },
+  { 
+    expireAfterSeconds: 0,
+    partialFilterExpression: { isGuest: true, guestExpiresAt: { $exists: true } }
+  }
+);
 
 module.exports = mongoose.model('User', userSchema);

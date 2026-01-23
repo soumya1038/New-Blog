@@ -7,8 +7,8 @@ const Notification = require('../models/Notification');
 const Message = require('../models/Message');
 
 const cleanupExpiredGuests = () => {
-  // Run every hour
-  cron.schedule('0 * * * *', async () => {
+  // Cleanup function
+  const runCleanup = async () => {
     try {
       console.log('🧹 Running guest user cleanup...');
       
@@ -39,7 +39,13 @@ const cleanupExpiredGuests = () => {
     } catch (error) {
       console.error('❌ Guest cleanup error:', error);
     }
-  });
+  };
+  
+  // Run immediately on startup
+  runCleanup();
+  
+  // Schedule to run every hour
+  cron.schedule('0 * * * *', runCleanup);
 
   console.log('✅ Guest cleanup cron job scheduled (runs every hour)');
 };

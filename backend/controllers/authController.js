@@ -106,6 +106,12 @@ exports.login = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
+    // Check if guest expired and delete
+    if (user.isGuest && user.guestExpiresAt && new Date() >= user.guestExpiresAt) {
+      await User.findByIdAndDelete(user._id);
+      return res.status(401).json({ success: false, message: 'Guest account expired' });
+    }
+
     // Check if user is suspended and auto-reactivate if suspension expired
     if (user.suspendedUntil && new Date() >= user.suspendedUntil) {
       user.suspendedUntil = null;
