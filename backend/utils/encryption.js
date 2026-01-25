@@ -3,12 +3,24 @@ const CryptoJS = require('crypto-js');
 const SECRET_KEY = process.env.ENCRYPTION_KEY || 'your-secret-encryption-key-change-in-production';
 
 const encrypt = (text) => {
-  return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();
+  if (!text) return text;
+  try {
+    return CryptoJS.AES.encrypt(text, SECRET_KEY).toString();
+  } catch (error) {
+    console.error('Encryption error:', error);
+    return text;
+  }
 };
 
 const decrypt = (ciphertext) => {
-  const bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
-  return bytes.toString(CryptoJS.enc.Utf8);
+  if (!ciphertext) return ciphertext;
+  try {
+    const bytes = CryptoJS.AES.decrypt(ciphertext, SECRET_KEY);
+    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+    return decrypted || ciphertext;
+  } catch (error) {
+    return ciphertext;
+  }
 };
 
 module.exports = { encrypt, decrypt };

@@ -22,8 +22,7 @@ import VoiceMessagePlayer from '../components/VoiceMessagePlayer';
 import FileMessage from '../components/FileMessage';
 import CreateGroupModal from '../components/CreateGroupModal';
 import GroupInfoPanel from '../components/GroupInfoPanel';
-import GroupCallInvitation from '../components/GroupCallInvitation';
-import GroupCallRoom from '../components/GroupCallRoom';
+
 import webrtcService from '../services/webrtc';
 // Translation support - Import useTranslation hook from react-i18next
 // This enables multi-language support for the chat interface
@@ -52,6 +51,7 @@ const ChatNew = () => {
   const [typingInConversations, setTypingInConversations] = useState(new Map());
   const typingSoundIntervalRef = useRef(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
   const [pinnedMessages, setPinnedMessages] = useState([]);
@@ -122,9 +122,6 @@ const ChatNew = () => {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
-  const [activeGroupCall, setActiveGroupCall] = useState(null);
-  const [groupCallInvitation, setGroupCallInvitation] = useState(null);
-  const [activeCallInfo, setActiveCallInfo] = useState(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -145,7 +142,6 @@ const ChatNew = () => {
   const selectedChatRef = useRef(null);
   const mutedUsersRef = useRef(new Set());
   const pendingRemoteStreamRef = useRef(null);
-  const groupCallInvitationRef = useRef(null);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -155,10 +151,8 @@ const ChatNew = () => {
   useEffect(() => {
     mutedUsersRef.current = mutedUsers;
   }, [mutedUsers]);
-  
-  useEffect(() => {
-    groupCallInvitationRef.current = groupCallInvitation;
-  }, [groupCallInvitation]);
+
+
 
   // Restore call state on mount
   useEffect(() => {
@@ -179,7 +173,9 @@ const ChatNew = () => {
       setIsAudioEnabled(savedState.isAudioEnabled !== false);
       setIsVideoEnabled(savedState.callType === 'video');
     }
-  }, []);
+
+
+  }, [user]);
 
   // Listen for open call from global banner
   useEffect(() => {
@@ -194,9 +190,12 @@ const ChatNew = () => {
         }));
       }
     };
+
     window.addEventListener('openCallFromGlobal', handleOpenCall);
-    return () => window.removeEventListener('openCallFromGlobal', handleOpenCall);
-  }, [activeCall]);
+    return () => {
+      window.removeEventListener('openCallFromGlobal', handleOpenCall);
+    };
+  }, [activeCall, user]);
 
   useEffect(() => {
     if (!user) return;
@@ -243,7 +242,7 @@ const ChatNew = () => {
       showAlertModal('Call Error', error);
       setActiveCall(null);
       setIncomingCall(null);
-    clearCallState('one-to-one');
+      clearCallState('one-to-one');
     });
 
     const messageReceiveHandler = (message) => {
@@ -487,7 +486,7 @@ const ChatNew = () => {
       await webrtcService.endCall();
       setActiveCall(null);
       setIncomingCall(null);
-    clearCallState('one-to-one');
+      clearCallState('one-to-one');
       setIsCallMinimized(false);
       setIsAudioEnabled(true);
       setIsVideoEnabled(true);
@@ -525,80 +524,7 @@ const ChatNew = () => {
       await webrtcService.handleIceCandidate(candidate);
     });
 
-    socket.current.on('groupcall:invitation', (data) => {
-      console.log('📨 Received groupcall:invitation:', data);
-      
-      // Don't show if already showing invitation for this group
-      if (groupCallInvitationRef.current && groupCallInvitationRef.current.groupId === data.groupId) {
-        console.log('❌ Invitation already showing for this group');
-        return;
-      }
-      
-      // Don't show invitation if already in call or already declined
-      const declinedCalls = JSON.parse(localStorage.getItem('declinedCalls') || '{}');
-      if (declinedCalls[data.groupId] && Date.now() - declinedCalls[data.groupId] < 300000) {
-        console.log('❌ Declined recently, ignoring invitation');
-        // But still fetch active call info to show banner
-        if (selectedChatRef.current?.isGroup && selectedChatRef.current._id === data.groupId) {
-          api.get(`/livekit/active/${data.groupId}`)
-            .then(({ data: response }) => {
-              if (response.call) {
-                setActiveCallInfo(response.call);
-              }
-            })
-            .catch(() => {});
-        }
-        return;
-      }
-      if (!activeGroupCall || activeGroupCall.groupId !== data.groupId) {
-        console.log('✅ Showing invitation popup');
-        setGroupCallInvitation(data);
-      } else {
-        console.log('❌ Already in call, ignoring invitation');
-      }
-    });
 
-    socket.current.on('groupcall:user-joined', (data) => {
-      console.log('👤 User joined call:', data);
-      // Refresh active call info for this group
-      api.get(`/livekit/active/${data.groupId}`)
-        .then(({ data: response }) => {
-          if (response.call) {
-            setActiveCallInfo(response.call);
-          }
-        })
-        .catch(() => {});
-      soundManager.play('joinVideoCall');
-    });
-
-    socket.current.on('groupcall:user-left', (data) => {
-      console.log('👤 User left call:', data);
-      // Refresh active call info for this group
-      api.get(`/livekit/active/${data.groupId}`)
-        .then(({ data: response }) => {
-          if (response.call) {
-            setActiveCallInfo(response.call);
-          } else {
-            setActiveCallInfo(null);
-          }
-        })
-        .catch(() => {});
-    });
-
-    socket.current.on('groupcall:ended', (data) => {
-      console.log('📞 Group call ended event received:', data);
-      // Clear active call info immediately
-      setActiveCallInfo(null);
-      // Close invitation popup if open
-      setGroupCallInvitation(null);
-      if (activeGroupCall?.groupId === data.groupId) {
-        setActiveGroupCall(null);
-      }
-      // Reload messages if viewing this group
-      if (selectedChat?.isGroup && selectedChat._id === data.groupId) {
-        loadMessages(data.groupId, true);
-      }
-    });
 
     loadConversations();
     loadGroups();
@@ -636,10 +562,7 @@ const ChatNew = () => {
         socket.current.off('call:ice-candidate');
         socket.current.off('users:online');
         socket.current.off('user:status');
-        socket.current.off('groupcall:invitation');
-        socket.current.off('groupcall:user-joined');
-        socket.current.off('groupcall:user-left');
-        socket.current.off('groupcall:ended');
+
       }
 
       console.log('Leaving /chat');
@@ -657,6 +580,7 @@ const ChatNew = () => {
       // Clear the state
       window.history.replaceState({}, document.title);
     }
+
   }, [loading, location.state]);
 
   // Save call state on page unload (don't end call)
@@ -666,10 +590,10 @@ const ChatNew = () => {
         console.log('📞 Page unloading, saving call state');
         saveCallState({
           type: 'one-to-one',
-          remoteUser: { 
-            id: activeCall.userId, 
-            fullName: activeCall.userName, 
-            profileImage: activeCall.userAvatar 
+          remoteUser: {
+            id: activeCall.userId,
+            fullName: activeCall.userName,
+            profileImage: activeCall.userAvatar
           },
           callType: activeCall.callType,
           startTime: activeCall.startTime,
@@ -689,7 +613,7 @@ const ChatNew = () => {
       await webrtcService.endCall();
       setActiveCall(null);
       setIncomingCall(null);
-    clearCallState('one-to-one');
+      clearCallState('one-to-one');
       setIsCallMinimized(false);
       setIsAudioEnabled(true);
       setIsVideoEnabled(true);
@@ -739,17 +663,8 @@ const ChatNew = () => {
   useEffect(() => {
     if (selectedChat) {
       loadMessages(selectedChat._id, selectedChat.isGroup);
-      
-      // Load active call for group
-      if (selectedChat.isGroup) {
-        api.get(`/livekit/active/${selectedChat._id}`)
-          .then(({ data }) => {
-            if (data.call) {
-              setActiveCallInfo(data.call);
-            }
-          })
-          .catch(() => {});
-      }
+
+
       if (!selectedChat.isGroup) {
         loadPinnedMessages();
         // Load full user details if description is missing
@@ -862,7 +777,7 @@ const ChatNew = () => {
           audio.playbackRate = 1.25;
           audio.volume = 0.5;
           let playCount = 0;
-          
+
           const playNext = () => {
             if (playCount < 3) {
               audio.currentTime = 0;
@@ -872,7 +787,7 @@ const ChatNew = () => {
               playCount++;
             }
           };
-          
+
           audio.onended = playNext;
           audio.onerror = (e) => console.log('❌ Audio error:', e);
           playNext();
@@ -922,17 +837,17 @@ const ChatNew = () => {
 
   // Combined and sorted conversations + groups
   const getCombinedChats = () => {
-    const groupChats = groups.map(g => ({ 
-      ...g, 
-      isGroup: true, 
-      lastMessageTime: g.lastMessage?.createdAt || g.createdAt 
+    const groupChats = groups.map(g => ({
+      ...g,
+      isGroup: true,
+      lastMessageTime: g.lastMessage?.createdAt || g.createdAt
     }));
-    const userChats = conversations.map(c => ({ 
-      ...c, 
-      isGroup: false, 
-      lastMessageTime: c.lastMessage?.createdAt 
+    const userChats = conversations.map(c => ({
+      ...c,
+      isGroup: false,
+      lastMessageTime: c.lastMessage?.createdAt
     }));
-    
+
     // Combine and sort by lastMessageTime
     return [...groupChats, ...userChats].sort((a, b) => {
       const timeA = new Date(a.lastMessageTime || 0);
@@ -962,10 +877,11 @@ const ChatNew = () => {
   };
 
   const loadMessages = async (chatId, isGroup = false) => {
+    setLoadingMessages(true);
     try {
       const endpoint = isGroup ? `/messages/group/${chatId}` : `/messages/${chatId}`;
       const { data } = await api.get(endpoint);
-      
+
       // Load call history for individual chats
       let callHistory = [];
       if (!isGroup) {
@@ -976,7 +892,7 @@ const ChatNew = () => {
           console.error('Failed to load call history:', error);
         }
       }
-      
+
       // Merge messages and call logs, then sort by time
       const messagesWithCalls = [
         ...data.messages,
@@ -988,7 +904,7 @@ const ChatNew = () => {
           sender: { _id: call.caller._id || call.caller }
         }))
       ].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
-      
+
       setMessages(messagesWithCalls);
 
       if (!isGroup) {
@@ -1008,6 +924,8 @@ const ChatNew = () => {
       }, 200);
     } catch (error) {
       console.error('Failed to load messages:', error);
+    } finally {
+      setLoadingMessages(false);
     }
   };
 
@@ -1859,7 +1777,7 @@ const ChatNew = () => {
         callAccepted: true,
         startTime
       });
-      
+
       // Save call state for persistence
       saveCallState({
         type: 'one-to-one',
@@ -1910,7 +1828,7 @@ const ChatNew = () => {
   const toggleMinimize = () => {
     const newMinimizedState = !isCallMinimized;
     setIsCallMinimized(newMinimizedState);
-    
+
     if (newMinimizedState && activeCall && activeCall.callAccepted) {
       // CRITICAL: Keep audio tracks enabled when minimizing
       if (webrtcService.localStream) {
@@ -1919,13 +1837,13 @@ const ChatNew = () => {
           console.log('🔊 Audio track enabled on minimize:', track.enabled);
         });
       }
-      
+
       const callState = {
         type: 'one-to-one',
-        remoteUser: { 
-          id: activeCall.userId, 
-          fullName: activeCall.userName, 
-          profileImage: activeCall.userAvatar 
+        remoteUser: {
+          id: activeCall.userId,
+          fullName: activeCall.userName,
+          profileImage: activeCall.userAvatar
         },
         callType: activeCall.callType,
         startTime: activeCall.startTime,
@@ -1971,23 +1889,23 @@ const ChatNew = () => {
 
   const toggleAudio = () => {
     if (!webrtcService.localStream) return;
-    
+
     const audioTrack = webrtcService.localStream.getAudioTracks()[0];
     if (!audioTrack) return;
-    
+
     const newAudioState = !audioTrack.enabled;
     audioTrack.enabled = newAudioState;
     setIsAudioEnabled(newAudioState);
-    
+
     console.log('🔊 Audio toggled:', newAudioState);
-    
+
     if (activeCall && activeCall.callAccepted) {
       const callState = {
         type: 'one-to-one',
-        remoteUser: { 
-          id: activeCall.userId, 
-          fullName: activeCall.userName, 
-          profileImage: activeCall.userAvatar 
+        remoteUser: {
+          id: activeCall.userId,
+          fullName: activeCall.userName,
+          profileImage: activeCall.userAvatar
         },
         callType: activeCall.callType,
         startTime: activeCall.startTime,
@@ -2611,7 +2529,7 @@ const ChatNew = () => {
               <p className="text-sm mt-2">{t('Search for users to start chatting')}</p>
             </div>
           ) : (
-            getCombinedChats().map(chat => 
+            getCombinedChats().map(chat =>
               chat.isGroup ? (
                 <div
                   key={`grp-${chat._id}`}
@@ -2717,10 +2635,10 @@ const ChatNew = () => {
                           ) : chat.lastMessage.type === 'call' ? (
                             <span className="flex items-center gap-1">
                               {chat.lastMessage.callType === 'video' ? <FiVideo className="w-3 h-3" /> : <FiPhone className="w-3 h-3" />}
-                              {chat.lastMessage.status === 'missed' 
-                                ? t('Missed call') 
-                                : chat.lastMessage.isOutgoing 
-                                  ? t('Outgoing call') 
+                              {chat.lastMessage.status === 'missed'
+                                ? t('Missed call')
+                                : chat.lastMessage.isOutgoing
+                                  ? t('Outgoing call')
                                   : t('Incoming call')}
                             </span>
                           ) : chat.lastMessage.type === 'image' ? (
@@ -2793,7 +2711,7 @@ const ChatNew = () => {
 
       {/* Chat Area */}
       <div className={`flex-1 flex flex-col bg-white dark:bg-gray-800 relative max-w-full overflow-hidden ${selectedChat ? 'flex' : 'hidden md:flex'}`}>
-        {/* Dismissible Warning Banner */}
+        {/* Dismissible Warning Banner - Fixed at top */}
         {showWarningBanner && (
           <div className="bg-yellow-50 dark:bg-yellow-900/30 border-b border-yellow-200 dark:border-yellow-700 px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-300">
@@ -2892,60 +2810,16 @@ const ChatNew = () => {
                       ) : (isOnline(selectedChat._id) ? t('Active now') : getLastSeenText(selectedChat.lastSeen))}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {selectedChat.isGroup ? (
-                      <button 
-                        onClick={async () => {
-                          const roomName = `group-${selectedChat._id}`;
-                          
-                          console.log('🎥 Starting group call for:', selectedChat._id);
-                          console.log('🔌 Socket connected:', socket.current?.connected);
-                          
-                          try {
-                            // Check if call already active
-                            const { data: activeCheck } = await api.get(`/livekit/active/${selectedChat._id}`);
-                            
-                            if (!activeCheck.call) {
-                              // Start new call and broadcast
-                              const { data: newCall } = await api.post('/livekit/start', {
-                                groupId: selectedChat._id,
-                                roomName
-                              });
-                              console.log('📡 Emitting groupcall:start');
-                              socket.current.emit('groupcall:start', {
-                                groupId: selectedChat._id,
-                                roomName
-                              });
-                            } else {
-                              console.log('📞 Joining existing call');
-                            }
-                            
-                            // Join call (new or existing)
-                            setActiveGroupCall({
-                              roomName,
-                              participantName: getUserDisplayName(user),
-                              groupId: selectedChat._id
-                            });
-                          } catch (error) {
-                            console.error('Failed to start call:', error);
-                          }
-                        }} 
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                        title="Start Group Call"
-                      >
+                  {!selectedChat.isGroup && (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => initiateCall('audio')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                        <FiPhone className="w-5 h-5 text-gray-600" />
+                      </button>
+                      <button onClick={() => initiateCall('video')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                         <FiVideo className="w-5 h-5 text-gray-600" />
                       </button>
-                    ) : (
-                      <>
-                        <button onClick={() => initiateCall('audio')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                          <FiPhone className="w-5 h-5 text-gray-600" />
-                        </button>
-                        <button onClick={() => initiateCall('video')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                          <FiVideo className="w-5 h-5 text-gray-600" />
-                        </button>
-                      </>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3180,84 +3054,44 @@ const ChatNew = () => {
               </div>
             )}
 
-            {/* Active Call Banner */}
-            {activeCallInfo && selectedChat?.isGroup && selectedChat._id === activeCallInfo.group && (
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-b border-green-200 dark:border-green-700 px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                      <div className="absolute inset-0 w-3 h-3 bg-green-500 rounded-full animate-ping"></div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {activeCallInfo.participants && activeCallInfo.participants.length > 0 && (
-                        <div className="flex -space-x-2">
-                          {activeCallInfo.participants.slice(0, 3).map((participant, i) => (
-                            <img
-                              key={i}
-                              src={participant.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(participant.fullName)}&background=0D8ABC&color=fff`}
-                              alt={participant.fullName}
-                              className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-800 object-cover"
-                              title={participant.fullName}
-                            />
-                          ))}
-                          {activeCallInfo.participants.length > 3 && (
-                            <div className="w-8 h-8 rounded-full border-2 border-white dark:border-gray-800 bg-green-500 flex items-center justify-center text-xs font-semibold text-white">
-                              +{activeCallInfo.participants.length - 3}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-sm font-semibold text-green-800 dark:text-green-300">Video call in progress</p>
-                        <p className="text-xs text-green-600 dark:text-green-400">
-                          {activeCallInfo.participants?.length || 0} participant{activeCallInfo.participants?.length > 1 ? 's' : ''}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setActiveGroupCall({
-                        roomName: activeCallInfo.roomName,
-                        participantName: getUserDisplayName(user),
-                        groupId: activeCallInfo.group
-                      });
 
-
-                    }}
-                    className="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm font-medium shadow-sm transition-colors flex items-center gap-2"
-                  >
-                    <FiVideo className="w-4 h-4" />
-                    Join Call
-                  </button>
-                </div>
-              </div>
-            )}
 
             {/* Messages */}
             <div
               ref={messagesContainerRef}
               onScroll={handleScroll}
-              className="overflow-y-auto overflow-x-hidden p-4 pb-0 bg-gray-50 dark:bg-gray-900 max-w-full relative md:min-h-0"
+              className="overflow-y-auto overflow-x-hidden p-4 pb-0 max-w-full relative md:min-h-0"
               style={{
-                backgroundImage: 'url(/image/chat_background.png)',
+                backgroundImage: `url(${process.env.PUBLIC_URL}/image/chat_light_background.png)`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
-                backgroundAttachment: 'fixed',
                 backgroundRepeat: 'no-repeat'
               }}
             >
+              <style>{`
+                @media (prefers-color-scheme: dark) {
+                  .dark div[style*="chat_light_background"] {
+                    background-image: url(${process.env.PUBLIC_URL}/image/chat_dark_background.png) !important;
+                  }
+                }
+              `}</style>
+              <div className="relative">
+                {/* Loading Messages */}
+                {loadingMessages && (
+                  <div className="flex justify-center my-8">
+                    <div className="flex flex-col items-center gap-3">
+                      <svg className="animate-spin h-10 w-10 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 100 100">
+                        <path fill="currentColor" d="M50 10 L50 0 L60 15 L50 10 Z M50 90 L50 100 L40 85 L50 90 Z M10 50 L0 50 L15 40 L10 50 Z M90 50 L100 50 L85 60 L90 50 Z" />
+                        <circle cx="50" cy="50" r="35" stroke="currentColor" strokeWidth="8" fill="none" opacity="0.25" />
+                        <path d="M50 15 A35 35 0 0 1 85 50" stroke="currentColor" strokeWidth="8" fill="none" strokeLinecap="round" />
+                      </svg>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Loading messages...</p>
+                    </div>
+                  </div>
+                )}
 
-              {/* Overlay for readability */}
-              <div className="absolute inset-0 bg-white/90 dark:bg-gray-900/90 pointer-events-none" style={{ zIndex: 0 }} />
-
-              {/* Overlay for readability - only for messages area */}
-              {selectedChat && <div className="pointer-events-none" style={{ position: 'sticky', top: '-1rem', left: '-1rem', right: '-1rem', bottom: '-1rem', height: '100vh', width: 'calc(100% + 2rem)', marginLeft: '-1rem', marginTop: '-1rem', backgroundColor: 'rgba(255, 255, 255, 0.9)', zIndex: 0 }} />}
-              {selectedChat && <div className="pointer-events-none dark:block hidden" style={{ position: 'sticky', top: '-1rem', left: '-1rem', right: '-1rem', bottom: '-1rem', height: '100vh', width: 'calc(100% + 2rem)', marginLeft: '-1rem', marginTop: '-1rem', backgroundColor: 'rgba(17, 24, 39, 0.9)', zIndex: 0 }} />}
-              <div className="relative" style={{ zIndex: 10 }}>
                 {/* System Message - Auto-delete Warning */}
-                <div className="flex justify-center my-6">
+                {!loadingMessages && (
                   <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg px-4 py-3 max-w-md shadow-sm">
                     <div className="flex items-start gap-2">
                       <FiAlertCircle className="text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
@@ -3269,15 +3103,15 @@ const ChatNew = () => {
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {messages.map((msg, index) => {
+                {!loadingMessages && messages.map((msg, index) => {
                   // Handle call logs
                   if (msg.type === 'call') {
                     const call = msg.callData;
                     const isOutgoing = call.caller._id === user._id || call.caller === user._id;
                     const showDate = index === 0 || formatDate(messages[index - 1].createdAt) !== formatDate(msg.createdAt);
-                    
+
                     return (
                       <div key={msg._id}>
                         {showDate && (
@@ -3312,7 +3146,7 @@ const ChatNew = () => {
                       </div>
                     );
                   }
-                  
+
                   // Handle group call history
                   if (msg.type === 'groupcall') {
                     const showDate = index === 0 || formatDate(messages[index - 1].createdAt) !== formatDate(msg.createdAt);
@@ -3320,7 +3154,7 @@ const ChatNew = () => {
                     const duration = msg.callData?.duration || 0;
                     const joinedCount = msg.callData?.joinedCount || 0;
                     const joinedUsers = msg.callData?.joinedUsers || [];
-                    
+
                     return (
                       <div key={msg._id}>
                         {showDate && (
@@ -3376,7 +3210,7 @@ const ChatNew = () => {
                       </div>
                     );
                   }
-                  
+
                   // Regular message rendering
                   const isOwn = msg.sender._id === user._id;
                   const showDate = index === 0 || formatDate(messages[index - 1].createdAt) !== formatDate(msg.createdAt);
@@ -3548,9 +3382,6 @@ const ChatNew = () => {
                                 </div>
                               )}
                             </div>
-
-
-
                           </div>
 
                           {/* Message Menu Button - opposite side of message */}
@@ -3849,183 +3680,183 @@ const ChatNew = () => {
               </div>
             )}
 
-                {/* Voice Recorder */}
-                {showVoiceRecorder && (
-                  <VoiceRecorder
-                    onSend={handleSendVoiceMessage}
-                    onCancel={() => setShowVoiceRecorder(false)}
-                  />
-                )}
+            {/* Voice Recorder */}
+            {showVoiceRecorder && (
+              <VoiceRecorder
+                onSend={handleSendVoiceMessage}
+                onCancel={() => setShowVoiceRecorder(false)}
+              />
+            )}
 
-                {/* Message Input - Fixed to bottom */}
-                {!showVoiceRecorder && !filePreview && !showImageEditor && (
-                  <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative z-50">
-                    <div className="p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 z-50">
-                      {/* Quick Chat & Enhance Text Links */}
-                      <div className="flex gap-3 mb-0.5">
-                        <button
-                          onClick={() => setShowQuickChatModal(true)}
-                          className="flex items-center gap-1.5 text-xs sm:text-sm text-purple-600 hover:text-purple-700 transition-colors bg-transparent"
-                        >
-                          <FiZap className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                          <span className="font-medium">{t('Quick Chat')}</span>
-                        </button>
-                        <button
-                          onClick={() => setShowEnhanceModal(true)}
-                          disabled={!newMessage.trim()}
-                          className="flex items-center gap-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-transparent"
-                        >
-                          <FiEdit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                          <span className="font-medium">{t('Enhance')}</span>
-                        </button>
-                      </div>
+            {/* Message Input - Fixed to bottom */}
+            {!showVoiceRecorder && !filePreview && !showImageEditor && (
+              <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative z-50">
+                <div className="p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 z-50">
+                  {/* Quick Chat & Enhance Text Links */}
+                  <div className="flex gap-3 mb-0.5">
+                    <button
+                      onClick={() => setShowQuickChatModal(true)}
+                      className="flex items-center gap-1.5 text-xs sm:text-sm text-purple-600 hover:text-purple-700 transition-colors bg-transparent"
+                    >
+                      <FiZap className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      <span className="font-medium">{t('Quick Chat')}</span>
+                    </button>
+                    <button
+                      onClick={() => setShowEnhanceModal(true)}
+                      disabled={!newMessage.trim()}
+                      className="flex items-center gap-1.5 text-xs sm:text-sm text-blue-600 hover:text-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-transparent"
+                    >
+                      <FiEdit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      <span className="font-medium">{t('Enhance')}</span>
+                    </button>
+                  </div>
 
-                      {/* Reply Preview */}
-                      {replyingTo && (
-                        <div className="mb-2 bg-gray-100 rounded-lg p-3 flex items-start justify-between gap-2">
-                          <div className="flex-1 flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <FiCornerUpLeft className="w-4 h-4 text-gray-600" />
-                                <p className="text-xs font-medium text-gray-700">
-                                  {t('Replying to')} {getUserDisplayName(replyingTo.sender)}
-                                </p>
-                              </div>
-                              <p className="text-sm text-gray-600 truncate">
-                                {replyingTo.type === 'image' ? '📷 Photo' : replyingTo.content.length > 60 ? replyingTo.content.substring(0, 60) + '...' : replyingTo.content}
-                              </p>
-                            </div>
-                            {replyingTo.type === 'image' && replyingTo.fileUrl && (
-                              <img
-                                src={replyingTo.fileUrl}
-                                alt="Reply preview"
-                                className="w-12 h-12 rounded object-cover flex-shrink-0"
-                              />
-                            )}
+                  {/* Reply Preview */}
+                  {replyingTo && (
+                    <div className="mb-2 bg-gray-100 rounded-lg p-3 flex items-start justify-between gap-2">
+                      <div className="flex-1 flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <FiCornerUpLeft className="w-4 h-4 text-gray-600" />
+                            <p className="text-xs font-medium text-gray-700">
+                              {t('Replying to')} {getUserDisplayName(replyingTo.sender)}
+                            </p>
                           </div>
+                          <p className="text-sm text-gray-600 truncate">
+                            {replyingTo.type === 'image' ? '📷 Photo' : replyingTo.content.length > 60 ? replyingTo.content.substring(0, 60) + '...' : replyingTo.content}
+                          </p>
+                        </div>
+                        {replyingTo.type === 'image' && replyingTo.fileUrl && (
+                          <img
+                            src={replyingTo.fileUrl}
+                            alt="Reply preview"
+                            className="w-12 h-12 rounded object-cover flex-shrink-0"
+                          />
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setReplyingTo(null)}
+                        className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+                      >
+                        <FiX className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1 sm:gap-2">
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="user"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx,.zip,.rar"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+
+                    <div className="relative" ref={attachMenuRef}>
+                      <button
+                        onClick={() => setShowAttachMenu(!showAttachMenu)}
+                        disabled={uploadingFile}
+                        className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors disabled:opacity-50"
+                        title="Attach"
+                      >
+                        {uploadingFile ? (
+                          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <FiPaperclip className="w-5 h-5" />
+                        )}
+                      </button>
+
+                      {showAttachMenu && (
+                        <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 min-w-[160px] animate-slideUp z-50">
                           <button
-                            onClick={() => setReplyingTo(null)}
-                            className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+                            onClick={() => imageInputRef.current?.click()}
+                            className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
                           >
-                            <FiX className="w-5 h-5" />
+                            <FiImage className="w-5 h-5 text-purple-600" />
+                            <span className="text-sm font-medium text-gray-700">Photos</span>
+                          </button>
+                          <button
+                            onClick={openCamera}
+                            className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                          >
+                            <FiCamera className="w-5 h-5 text-blue-600" />
+                            <span className="text-sm font-medium text-gray-700">Camera</span>
+                          </button>
+                          <button
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                          >
+                            <FiFile className="w-5 h-5 text-orange-600" />
+                            <span className="text-sm font-medium text-gray-700">Document</span>
                           </button>
                         </div>
                       )}
-                      <div className="flex items-center gap-1 sm:gap-2">
-                        <input
-                          ref={imageInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleFileSelect}
-                          className="hidden"
-                        />
-                        <input
-                          ref={cameraInputRef}
-                          type="file"
-                          accept="image/*"
-                          capture="user"
-                          onChange={handleFileSelect}
-                          className="hidden"
-                        />
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx,.zip,.rar"
-                          onChange={handleFileSelect}
-                          className="hidden"
-                        />
-
-                        <div className="relative" ref={attachMenuRef}>
-                          <button
-                            onClick={() => setShowAttachMenu(!showAttachMenu)}
-                            disabled={uploadingFile}
-                            className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors disabled:opacity-50"
-                            title="Attach"
-                          >
-                            {uploadingFile ? (
-                              <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                            ) : (
-                              <FiPaperclip className="w-5 h-5" />
-                            )}
-                          </button>
-
-                          {showAttachMenu && (
-                            <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 min-w-[160px] animate-slideUp z-50">
-                              <button
-                                onClick={() => imageInputRef.current?.click()}
-                                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
-                              >
-                                <FiImage className="w-5 h-5 text-purple-600" />
-                                <span className="text-sm font-medium text-gray-700">Photos</span>
-                              </button>
-                              <button
-                                onClick={openCamera}
-                                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
-                              >
-                                <FiCamera className="w-5 h-5 text-blue-600" />
-                                <span className="text-sm font-medium text-gray-700">Camera</span>
-                              </button>
-                              <button
-                                onClick={() => fileInputRef.current?.click()}
-                                className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
-                              >
-                                <FiFile className="w-5 h-5 text-orange-600" />
-                                <span className="text-sm font-medium text-gray-700">Document</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => setShowVoiceRecorder(true)}
-                          className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-                          title="Voice message"
-                        >
-                          <FiMic className="w-5 h-5" />
-                        </button>
-                        <textarea
-                          value={newMessage}
-                          onChange={(e) => {
-                            handleTyping(e);
-                            e.target.style.height = 'auto';
-                            e.target.style.height = Math.min(e.target.scrollHeight, 72) + 'px';
-                          }}
-                          onKeyPress={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              handleSendMessage();
-                              e.target.style.height = 'auto';
-                            }
-                          }}
-                          placeholder={t('Write a message')}
-                          rows="1"
-                          className="flex-1 w-0 px-2 py-1.5 sm:px-4 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-full resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm overflow-hidden bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                          style={{ height: 'auto', maxHeight: '72px' }}
-                        />
-                        <button
-                          onClick={handleSendMessage}
-                          disabled={!newMessage.trim()}
-                          className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                        >
-                          <FiSend className="w-4 h-4" />
-                        </button>
-                      </div>
                     </div>
-                  </div>
-                )}
-                  </>
-                ) : (
-                <div className="flex-1 flex items-center justify-center text-gray-500">
-                  <div className="text-center">
-                    <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                      <FiSearch className="w-12 h-12 text-gray-400" />
-                    </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">{t('Your Messages')}</h3>
-                    <p className="text-sm">{t('Select a conversation or search for someone to start messaging')}</p>
-                    <p className="text-xs text-gray-400 mt-4">💡 {t('Messages are automatically deleted after 30 days')}</p>
+                    <button
+                      onClick={() => setShowVoiceRecorder(true)}
+                      className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                      title="Voice message"
+                    >
+                      <FiMic className="w-5 h-5" />
+                    </button>
+                    <textarea
+                      value={newMessage}
+                      onChange={(e) => {
+                        handleTyping(e);
+                        e.target.style.height = 'auto';
+                        e.target.style.height = Math.min(e.target.scrollHeight, 72) + 'px';
+                      }}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendMessage();
+                          e.target.style.height = 'auto';
+                        }
+                      }}
+                      placeholder={t('Write a message')}
+                      rows="1"
+                      className="flex-1 w-0 px-2 py-1.5 sm:px-4 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-full resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm overflow-hidden bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      style={{ height: 'auto', maxHeight: '72px' }}
+                    />
+                    <button
+                      onClick={handleSendMessage}
+                      disabled={!newMessage.trim()}
+                      className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <FiSend className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-        )}
               </div>
+            )}
+          </>
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-gray-500">
+            <div className="text-center">
+              <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                <FiSearch className="w-12 h-12 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">{t('Your Messages')}</h3>
+              <p className="text-sm">{t('Select a conversation or search for someone to start messaging')}</p>
+              <p className="text-xs text-gray-400 mt-4">💡 {t('Messages are automatically deleted after 30 days')}</p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Floating Call Banner - Shows when call is active but minimized */}
       {activeCall && isCallMinimized && (
@@ -4044,145 +3875,94 @@ const ChatNew = () => {
         />
       )}
 
+
+
       {/* Call Modals */}
-            {incomingCall && (
-              <IncomingCallModal
-                caller={incomingCall.caller}
-                callType={incomingCall.callType}
-                onAccept={acceptCall}
-                onReject={rejectCall}
-              />
-            )}
+      {incomingCall && (
+        <IncomingCallModal
+          caller={incomingCall.caller}
+          callType={incomingCall.callType}
+          onAccept={acceptCall}
+          onReject={rejectCall}
+        />
+      )}
 
-            {activeCall && !isCallMinimized && (
-              <ActiveCallScreen
-                key={activeCall.remoteStream ? 'with-stream' : 'no-stream'}
-                remoteUser={{
-                  fullName: activeCall.userName,
-                  profileImage: activeCall.userAvatar
-                }}
-                callType={activeCall.callType}
-                isMinimized={isCallMinimized}
-                isAudioEnabled={isAudioEnabled}
-                isVideoEnabled={isVideoEnabled}
-                isScreenSharing={isScreenSharing}
-                isRecording={isRecording}
-                startTime={activeCall.startTime}
-                callAccepted={activeCall.callAccepted}
-                onToggleMinimize={toggleMinimize}
-                onToggleAudio={toggleAudio}
-                onToggleVideo={toggleVideo}
-                onToggleScreenShare={toggleScreenShare}
-                onStartRecording={toggleRecording}
-                onStopRecording={toggleRecording}
-                onEndCall={endCall}
-                localStream={activeCall.stream}
-                remoteStream={activeCall.remoteStream}
-              />
-            )}
+      {activeCall && !isCallMinimized && (
+        <ActiveCallScreen
+          key={activeCall.remoteStream ? 'with-stream' : 'no-stream'}
+          remoteUser={{
+            fullName: activeCall.userName,
+            profileImage: activeCall.userAvatar
+          }}
+          callType={activeCall.callType}
+          isMinimized={isCallMinimized}
+          isAudioEnabled={isAudioEnabled}
+          isVideoEnabled={isVideoEnabled}
+          isScreenSharing={isScreenSharing}
+          isRecording={isRecording}
+          startTime={activeCall.startTime}
+          callAccepted={activeCall.callAccepted}
+          onToggleMinimize={toggleMinimize}
+          onToggleAudio={toggleAudio}
+          onToggleVideo={toggleVideo}
+          onToggleScreenShare={toggleScreenShare}
+          onStartRecording={toggleRecording}
+          onStopRecording={toggleRecording}
+          onEndCall={endCall}
+          localStream={activeCall.stream}
+          remoteStream={activeCall.remoteStream}
+        />
+      )}
 
-            {showCallHistory && (
-              <CallHistoryModal
-                callLogs={callLogs}
-                onClose={() => setShowCallHistory(false)}
-                onCallBack={handleCallBack}
-                getUserDisplayName={getUserDisplayName}
-                getUserAvatar={getUserAvatar}
-                currentUserId={user._id}
-                onDeleteLog={handleDeleteCallLog}
-              />
-            )}
+      {showCallHistory && (
+        <CallHistoryModal
+          callLogs={callLogs}
+          onClose={() => setShowCallHistory(false)}
+          onCallBack={handleCallBack}
+          getUserDisplayName={getUserDisplayName}
+          getUserAvatar={getUserAvatar}
+          currentUserId={user._id}
+          onDeleteLog={handleDeleteCallLog}
+        />
+      )}
 
-            {/* Create Group Modal */}
-            {showCreateGroup && (
-              <CreateGroupModal
-                onClose={() => setShowCreateGroup(false)}
-                onGroupCreated={(group) => {
-                  console.log('Group created:', group);
-                  setGroups(prev => [group, ...prev]);
-                }}
-              />
-            )}
+      {/* Create Group Modal */}
+      {showCreateGroup && (
+        <CreateGroupModal
+          onClose={() => setShowCreateGroup(false)}
+          onGroupCreated={(group) => {
+            console.log('Group created:', group);
+            setGroups(prev => [group, ...prev]);
+          }}
+        />
+      )}
 
-            {/* Group Info Panel */}
-            {showGroupInfo && selectedChat?.isGroup && (
-              <GroupInfoPanel
-                group={selectedChat}
-                currentUserId={user._id}
-                onClose={() => setShowGroupInfo(false)}
-                onUpdate={(updatedGroup) => {
-                  setSelectedChat({ ...updatedGroup, isGroup: true });
-                  setGroups(prev => prev.map(g => g._id === updatedGroup._id ? updatedGroup : g));
-                }}
-                onLeave={() => {
-                  setShowGroupInfo(false);
-                  setSelectedChat(null);
-                  setGroups(prev => prev.filter(g => g._id !== selectedChat._id));
-                  loadGroups();
-                }}
-              />
-            )}
+      {/* Group Info Panel */}
+      {showGroupInfo && selectedChat?.isGroup && (
+        <GroupInfoPanel
+          group={selectedChat}
+          currentUserId={user._id}
+          onClose={() => setShowGroupInfo(false)}
+          onUpdate={(updatedGroup) => {
+            setSelectedChat({ ...updatedGroup, isGroup: true });
+            setGroups(prev => prev.map(g => g._id === updatedGroup._id ? updatedGroup : g));
+          }}
+          onLeave={() => {
+            setShowGroupInfo(false);
+            setSelectedChat(null);
+            setGroups(prev => prev.filter(g => g._id !== selectedChat._id));
+            loadGroups();
+          }}
+        />
+      )}
 
-            {/* Group Call Room */}
-            {activeGroupCall && (
-              <GroupCallRoom
-                roomName={activeGroupCall.roomName}
-                participantName={activeGroupCall.participantName}
-                groupId={activeGroupCall.groupId}
-                onLeave={() => setActiveGroupCall(null)}
-              />
-            )}
 
-            {/* Group Call Invitation */}
-            {groupCallInvitation && (
-              <GroupCallInvitation
-                groupName={groupCallInvitation.groupName}
-                initiatorName={groupCallInvitation.initiator.fullName}
-                initiatorImage={groupCallInvitation.initiator.profileImage}
-                joinedUsers={groupCallInvitation.joinedUsers || []}
-                onJoin={() => {
-                  setActiveGroupCall({
-                    roomName: groupCallInvitation.roomName,
-                    participantName: getUserDisplayName(user),
-                    groupId: groupCallInvitation.groupId
-                  });
-                  setGroupCallInvitation(null);
-                  // Clear declined status
-                  const declinedCalls = JSON.parse(localStorage.getItem('declinedCalls') || '{}');
-                  delete declinedCalls[groupCallInvitation.groupId];
-                  localStorage.setItem('declinedCalls', JSON.stringify(declinedCalls));
-                  // Fetch active call info to show banner
-                  api.get(`/livekit/active/${groupCallInvitation.groupId}`)
-                    .then(({ data }) => {
-                      if (data.call) {
-                        setActiveCallInfo(data.call);
-                      }
-                    })
-                    .catch(() => {});
-                }}
-                onDecline={() => {
-                  const groupId = groupCallInvitation.groupId;
-                  // Mark as declined
-                  const declinedCalls = JSON.parse(localStorage.getItem('declinedCalls') || '{}');
-                  declinedCalls[groupId] = Date.now();
-                  localStorage.setItem('declinedCalls', JSON.stringify(declinedCalls));
-                  setGroupCallInvitation(null);
-                  // Fetch active call info to show banner
-                  api.get(`/livekit/active/${groupId}`)
-                    .then(({ data }) => {
-                      if (data.call) {
-                        setActiveCallInfo(data.call);
-                      }
-                    })
-                    .catch(() => {});
-                }}
-              />
-            )}
-          </div>
-        );
+    </div>
+  );
 };
 
-        export default ChatNew;
+export default ChatNew;
+
 
 
 

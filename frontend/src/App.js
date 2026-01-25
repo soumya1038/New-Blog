@@ -6,6 +6,8 @@ import ErrorFallback from './components/ErrorFallback';
 import IncomingCallModal from './components/IncomingCallModal';
 import GuestExpiredModal from './components/GuestExpiredModal';
 import FloatingCallBanner from './components/FloatingCallBanner';
+import FloatingGroupCallBanner from './components/FloatingGroupCallBanner';
+import GlobalGroupCallListener from './components/GlobalGroupCallListener';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
 import soundManager from './utils/soundManager';
@@ -46,6 +48,7 @@ function AppContent() {
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   const [globalCallState, setGlobalCallState] = useState(null);
+  const [globalGroupCallState, setGlobalGroupCallState] = useState(null);
   
   useRouteTracker();
 
@@ -53,6 +56,10 @@ function AppContent() {
     const savedState = getCallState('one-to-one');
     if (savedState && savedState.callAccepted) {
       setGlobalCallState(savedState);
+    }
+    const savedGroupState = getCallState('group');
+    if (savedGroupState) {
+      setGlobalGroupCallState(savedGroupState);
     }
   }, []);
 
@@ -62,11 +69,20 @@ function AppContent() {
       setGlobalCallState(null);
       clearCallState('one-to-one');
     };
+    const handleGroupCallStateUpdate = (e) => setGlobalGroupCallState(e.detail);
+    const handleGroupCallEnd = () => {
+      setGlobalGroupCallState(null);
+      clearCallState('group');
+    };
     window.addEventListener('callStateUpdate', handleCallStateUpdate);
     window.addEventListener('callEnded', handleCallEnd);
+    window.addEventListener('groupCallStateUpdate', handleGroupCallStateUpdate);
+    window.addEventListener('groupCallEnded', handleGroupCallEnd);
     return () => {
       window.removeEventListener('callStateUpdate', handleCallStateUpdate);
       window.removeEventListener('callEnded', handleCallEnd);
+      window.removeEventListener('groupCallStateUpdate', handleGroupCallStateUpdate);
+      window.removeEventListener('groupCallEnded', handleGroupCallEnd);
     };
   }, []);
   
@@ -231,10 +247,24 @@ function AppContent() {
     console.log('🔊 Global audio toggled:', audioTrack.enabled);
   };
 
+  const handleGlobalRotateCamera = async () => {
+    if (!webrtcService.localStream) return;
+    const videoTrack = webrtcService.localStream.getVideoTracks()[0];
+    if (!videoTrack) return;
+    try {
+      const constraints = videoTrack.getConstraints();
+      const newFacingMode = constraints.facingMode === 'user' ? 'environment' : 'user';
+      await videoTrack.applyConstraints({ facingMode: newFacingMode });
+    } catch (err) {
+      console.error('Failed to rotate camera:', err);
+    }
+  };
+
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
       <div className="min-h-screen">
         <Navbar />
+        {user && <GlobalGroupCallListener />}
         {location.pathname !== '/chat' && (
           <Suspense fallback={null}>
             <Chatbot />
@@ -285,6 +315,25 @@ function AppContent() {
             onOpen={handleGlobalCallOpen}
             onEnd={handleGlobalCallEnd}
             onToggleAudio={handleGlobalToggleAudio}
+            onRotateCamera={handleGlobalRotateCamera}
+          />
+        )}
+        {globalGroupCallState && (
+          <FloatingGroupCallBanner
+            token={globalGroupCallState.token}
+            wsUrl={globalGroupCallState.wsUrl}
+            callType={globalGroupCallState.callType || 'video'}
+            onOpen={() => {
+              navigate('/chat');
+              setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('openGroupCallFromGlobal'));
+              }, 100);
+            }}
+            onEnd={() => {
+              clearCallState('group');
+              setGlobalGroupCallState(null);
+              window.dispatchEvent(new CustomEvent('groupCallEnded'));
+            }}
           />
         )}
         <Suspense fallback={<LoadingFallback />}>

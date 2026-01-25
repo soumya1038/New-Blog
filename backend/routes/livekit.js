@@ -67,11 +67,12 @@ router.post('/token', protect, async (req, res) => {
 // Start group call
 router.post('/start', protect, async (req, res) => {
   try {
-    const { groupId, roomName } = req.body;
+    const { groupId, roomName, callType = 'video' } = req.body;
     
     const call = await GroupCall.create({
       group: groupId,
       roomName,
+      callType,
       initiator: req.user.id,
       participants: [{ user: req.user.id }]
     });
@@ -99,12 +100,14 @@ router.post('/end/:callId', protect, async (req, res) => {
 
     // Create call history message
     const Message = require('../models/Message');
+    const callTypeText = call.callType === 'audio' ? 'Audio call' : 'Video call';
     const historyMsg = await Message.create({
       group: call.group,
       sender: call.initiator._id,
-      content: `Video call ended - ${call.participants.length} participant(s) - ${Math.floor(call.duration / 60)}:${(call.duration % 60).toString().padStart(2, '0')}`,
+      content: `${callTypeText} ended - ${call.participants.length} participant(s) - ${Math.floor(call.duration / 60)}:${(call.duration % 60).toString().padStart(2, '0')}`,
       type: 'groupcall',
       callData: {
+        callType: call.callType,
         initiator: call.initiator,
         participants: call.participants,
         duration: call.duration
@@ -159,6 +162,7 @@ router.get('/active/:groupId', protect, async (req, res) => {
         _id: call._id,
         group: call.group.toString(),
         roomName: call.roomName,
+        callType: call.callType || 'video',
         initiator: call.initiator,
         status: call.status,
         startedAt: call.startedAt,

@@ -10,6 +10,11 @@ const groupCallSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  callType: {
+    type: String,
+    enum: ['audio', 'video'],
+    default: 'video'
+  },
   initiator: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

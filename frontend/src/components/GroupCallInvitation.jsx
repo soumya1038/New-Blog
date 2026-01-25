@@ -1,8 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { FiVideo, FiX } from 'react-icons/fi';
+import { FiVideo, FiX, FiPhone } from 'react-icons/fi';
 import soundManager from '../utils/soundManager';
 
-const GroupCallInvitation = ({ groupName, initiatorName, initiatorImage, joinedUsers = [], onJoin, onDecline }) => {
+const GroupCallInvitation = ({ groupName, initiatorName, initiatorImage, joinedUsers = [], callType = 'video', onJoin, onDecline }) => {
   const onDeclineRef = useRef(onDecline);
   
   useEffect(() => {
@@ -39,15 +39,21 @@ const GroupCallInvitation = ({ groupName, initiatorName, initiatorImage, joinedU
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden animate-slideUp">
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-6 text-center">
           <div className="w-20 h-20 bg-white rounded-full mx-auto mb-4 flex items-center justify-center animate-pulse">
-            <FiVideo className="w-10 h-10 text-blue-600" />
+            {callType === 'audio' ? (
+              <FiPhone className="w-10 h-10 text-blue-600" />
+            ) : (
+              <FiVideo className="w-10 h-10 text-blue-600" />
+            )}
           </div>
-          <h3 className="text-xl font-bold text-white mb-2">Group Video Call</h3>
+          <h3 className="text-xl font-bold text-white mb-2">
+            {callType === 'audio' ? '🎵 Audio Call' : '📹 Video Call'}
+          </h3>
           <p className="text-blue-100 text-sm">{groupName}</p>
         </div>
 
         <div className="p-6">
           <p className="text-gray-700 dark:text-gray-300 text-center mb-4">
-            <span className="font-semibold">{initiatorName}</span> started a video call
+            <span className="font-semibold">{initiatorName}</span> started a group {callType === 'audio' ? 'audio' : 'video'} call
           </p>
 
           {joinedUsers.length > 0 && (
@@ -93,7 +99,7 @@ const GroupCallInvitation = ({ groupName, initiatorName, initiatorImage, joinedU
               }}
               className="flex-1 px-6 py-3 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors font-medium flex items-center justify-center gap-2"
             >
-              <FiVideo className="w-5 h-5" />
+              {callType === 'audio' ? <FiPhone className="w-5 h-5" /> : <FiVideo className="w-5 h-5" />}
               Join
             </button>
           </div>

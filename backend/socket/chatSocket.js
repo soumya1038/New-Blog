@@ -556,7 +556,7 @@ module.exports = (io, onlineUsers = new Map()) => {
     // Group Call Events
     socket.on('groupcall:start', async (data) => {
       try {
-        const { groupId, roomName } = data;
+        const { groupId, roomName, callType = 'video' } = data;
         const initiatorId = socket.userId;
         
         console.log('🎥 Group call start received:', { groupId, initiatorId });
@@ -614,6 +614,7 @@ module.exports = (io, onlineUsers = new Map()) => {
                 groupId,
                 groupName: group.name,
                 roomName,
+                callType,
                 initiator: {
                   _id: initiatorId,
                   fullName: initiator.fullName,
@@ -728,17 +729,18 @@ module.exports = (io, onlineUsers = new Map()) => {
           const joinedUsers = Array.from(uniqueUserMap.values());
           const joinedCount = joinedUsers.length;
           
-          console.log('💾 Saving call history:', { duration: call.duration, joinedCount, joinedUsers });
+          console.log('💾 Saving call history:', { duration: call.duration, joinedCount, joinedUsers, callType: call.callType });
           
           const historyMsg = await Message.create({
             group: groupId,
             sender: call.initiator,
-            content: 'Video call',
+            content: call.callType === 'audio' ? 'Audio call' : 'Video call',
             type: 'groupcall',
             callData: {
               duration: call.duration,
               joinedCount: joinedCount,
-              joinedUsers: joinedUsers
+              joinedUsers: joinedUsers,
+              callType: call.callType
             }
           });
           

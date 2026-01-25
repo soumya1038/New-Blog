@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Message = require('../models/Message');
 const User = require('../models/User');
 const Group = require('../models/Group');
@@ -36,7 +37,8 @@ exports.sendMessage = async (req, res) => {
     const message = await Message.create({
       sender: req.user._id,
       receiver: receiverId,
-      content
+      content: encrypt(content),
+      encrypted: true
     });
 
     await message.populate('sender', 'username profileImage');
@@ -795,12 +797,21 @@ exports.getGroupMessages = async (req, res) => {
     const { groupId } = req.params;
     const limit = parseInt(req.query.limit) || 50;
 
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      return res.status(400).json({ message: 'Invalid group ID format' });
+    }
+
     const group = await Group.findById(groupId);
     if (!group) {
       return res.status(404).json({ message: 'Group not found' });
     }
 
-    if (!group.members.includes(req.user._id)) {
+    if (!group.members || !Array.isArray(group.members) || group.members.length === 0) {
+      return res.status(400).json({ message: 'Invalid group data' });
+    }
+
+    const isMember = group.members.some(m => m.toString() === req.user._id.toString());
+    if (!isMember) {
       return res.status(403).json({ message: 'Not a member of this group' });
     }
 
@@ -809,23 +820,11 @@ exports.getGroupMessages = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(limit);
 
-    // Populate callData fields for groupcall messages
-    for (const msg of messages) {
-      if (msg.type === 'groupcall' && msg.callData) {
-        if (msg.callData.initiator) {
-          await msg.populate('callData.initiator', 'fullName profileImage');
-        }
-        if (msg.callData.joinedUsers && msg.callData.joinedUsers.length > 0) {
-          await msg.populate('callData.joinedUsers', 'fullName profileImage');
-        }
-      }
-    }
-
     const decryptedMessages = messages.reverse().map(msg => ({
       _id: msg._id,
       sender: msg.sender,
       group: msg.group,
-      content: msg.encrypted ? decrypt(msg.content) : msg.content,
+      content: msg.content,
       type: msg.type,
       voiceUrl: msg.voiceUrl,
       voiceDuration: msg.voiceDuration,
@@ -843,6 +842,7 @@ exports.getGroupMessages = async (req, res) => {
 
     res.json({ messages: decryptedMessages });
   } catch (error) {
+    console.error('getGroupMessages error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -861,11 +861,14 @@ exports.sendGroupMessage = async (req, res) => {
       return res.status(404).json({ message: 'Group not found' });
     }
 
-    if (!group.members.includes(req.user._id)) {
+    // Fix: Convert ObjectId to string for comparison
+    const isMember = group.members.some(memberId => memberId.toString() === req.user._id.toString());
+    if (!isMember) {
       return res.status(403).json({ message: 'Not a member of this group' });
     }
 
-    if (group.settings.onlyAdminsCanSend && !group.admins.includes(req.user._id)) {
+    const isAdmin = group.admins.some(adminId => adminId.toString() === req.user._id.toString());
+    if (group.settings.onlyAdminsCanSend && !isAdmin) {
       return res.status(403).json({ message: 'Only admins can send messages in this group' });
     }
 
@@ -881,6 +884,7 @@ exports.sendGroupMessage = async (req, res) => {
 
     res.status(201).json({ success: true, message: 'Message sent', data: message });
   } catch (error) {
+    console.error('sendGroupMessage error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

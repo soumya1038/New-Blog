@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FiPhone, FiVideo, FiX, FiMaximize2, FiMic, FiMicOff } from 'react-icons/fi';
+import { FiPhone, FiVideo, FiX, FiMaximize2, FiMic, FiMicOff, FiRotateCw } from 'react-icons/fi';
 
 const FloatingCallBanner = ({ 
   remoteUser, 
@@ -9,7 +9,8 @@ const FloatingCallBanner = ({
   isAudioEnabled,
   onOpen, 
   onEnd,
-  onToggleAudio
+  onToggleAudio,
+  onRotateCamera
 }) => {
   const [duration, setDuration] = useState(0);
   const [showOptions, setShowOptions] = useState(false);
@@ -190,6 +191,18 @@ const FloatingCallBanner = ({
             >
               {isAudioEnabled ? <FiMic className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <FiMicOff className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
             </button>
+            {callType === 'video' && onRotateCamera && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRotateCamera();
+                }}
+                className="p-0.5 sm:p-1 hover:bg-white/20 rounded-full transition-colors"
+                title="Rotate camera"
+              >
+                <FiRotateCw className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+              </button>
+            )}
             <div className="text-white/80">
               <svg 
                 className={`w-3 h-3 sm:w-3.5 sm:h-3.5 transition-transform ${showOptions ? 'rotate-180' : ''}`} 

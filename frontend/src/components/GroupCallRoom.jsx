@@ -1,18 +1,99 @@
 import React, { useState, useEffect } from 'react';
-import { LiveKitRoom, VideoConference, RoomAudioRenderer, ControlBar, useTracks } from '@livekit/components-react';
+import { LiveKitRoom, VideoConference, RoomAudioRenderer, useParticipants, useLocalParticipant } from '@livekit/components-react';
 import '@livekit/components-styles';
-import { FiX, FiUsers } from 'react-icons/fi';
-import { Room, RoomOptions, VideoPresets, Track } from 'livekit-client';
+import { FiUsers, FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiMessageSquare, FiMonitor, FiMoreVertical } from 'react-icons/fi';
 import api from '../services/api';
 import socketService from '../services/socket';
 import { saveCallState, clearCallState } from '../utils/callStateManager';
 
-const GroupCallRoom = ({ roomName, participantName, onLeave, groupId }) => {
+const CustomControls = ({ onLeave, callType }) => {
+  const { isMicrophoneEnabled, isCameraEnabled, localParticipant } = useLocalParticipant();
+  const [showMore, setShowMore] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+
+  const toggleMic = async () => {
+    if (!localParticipant) return;
+    await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+  };
+
+  const toggleCamera = async () => {
+    if (!localParticipant) return;
+    await localParticipant.setCameraEnabled(!isCameraEnabled);
+  };
+
+  const toggleScreenShare = async () => {
+    if (!localParticipant) return;
+    try {
+      if (isScreenSharing) {
+        await localParticipant.setScreenShareEnabled(false);
+        setIsScreenSharing(false);
+      } else {
+        await localParticipant.setScreenShareEnabled(true);
+        setIsScreenSharing(true);
+      }
+      setShowMore(false);
+    } catch (error) {
+      console.error('Screen share error:', error);
+      alert('Failed to share screen. Please check permissions.');
+    }
+  };
+
+  return (
+    <>
+      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50">
+        <div className="bg-gray-900/95 backdrop-blur-xl rounded-2xl shadow-2xl px-3 py-2 border border-gray-700">
+          <div className="flex items-center gap-2">
+            <button onClick={toggleMic} className={`p-2 rounded-xl transition-all duration-200 transform hover:scale-110 ${!isMicrophoneEnabled ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/50' : 'bg-gray-700 hover:bg-gray-600 shadow-lg'}`} title={isMicrophoneEnabled ? 'Mute' : 'Unmute'}>
+              {!isMicrophoneEnabled ? <FiMicOff className="w-5 h-5 text-white" /> : <FiMic className="w-5 h-5 text-white" />}
+            </button>
+            <button onClick={toggleCamera} className={`p-2 rounded-xl transition-all duration-200 transform hover:scale-110 ${!isCameraEnabled ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/50' : 'bg-gray-700 hover:bg-gray-600 shadow-lg'}`} title={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}>
+              {!isCameraEnabled ? <FiVideoOff className="w-5 h-5 text-white" /> : <FiVideo className="w-5 h-5 text-white" />}
+            </button>
+            <button onClick={() => setShowMore(!showMore)} className="p-2 rounded-xl bg-gray-700 hover:bg-gray-600 shadow-lg transition-all duration-200 transform hover:scale-110" title="Chat">
+              <FiMessageSquare className="w-5 h-5 text-white" />
+            </button>
+            <button onClick={() => setShowMore(!showMore)} className="p-2 rounded-xl bg-gray-700 hover:bg-gray-600 shadow-lg transition-all duration-200 transform hover:scale-110" title="More options">
+              <FiMoreVertical className="w-5 h-5 text-white" />
+            </button>
+            <button onClick={onLeave} className="p-2 px-4 rounded-xl bg-red-500 hover:bg-red-600 transition-all duration-200 transform hover:scale-110 shadow-lg shadow-red-500/50" title="Leave call">
+              <FiPhoneOff className="w-5 h-5 text-white" />
+            </button>
+          </div>
+        </div>
+      </div>
+      {showMore && (
+        <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-50">
+          <div className="bg-gray-900/95 backdrop-blur-xl rounded-xl shadow-2xl p-2 border border-gray-700 min-w-[200px]">
+            <button onClick={toggleScreenShare} className="w-full flex items-center gap-3 px-4 py-2 text-white hover:bg-gray-700 rounded-lg transition-colors">
+              <FiMonitor className="w-5 h-5" />
+              <span>{isScreenSharing ? 'Stop Sharing' : 'Share Screen'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+const ParticipantCount = () => {
+  const participants = useParticipants();
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg">
+        <FiUsers className="w-5 h-5 text-white" />
+      </div>
+      <div>
+        <h3 className="text-white text-lg font-semibold">Group Call</h3>
+        <p className="text-gray-300 text-sm">{participants.length} participant{participants.length !== 1 ? 's' : ''}</p>
+      </div>
+    </div>
+  );
+};
+
+const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType = 'video', onMinimize }) => {
   const [token, setToken] = useState('');
   const [wsUrl, setWsUrl] = useState('');
   const [error, setError] = useState('');
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [participantCount, setParticipantCount] = useState(1);
 
   useEffect(() => {
     const getToken = async () => {
@@ -25,14 +106,14 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId }) => {
         setToken(data.token);
         setWsUrl(data.wsUrl);
         
-        // Save call state
         saveCallState({
           type: 'group',
           roomName,
           participantName,
           groupId: groupId || roomName.replace('group-', ''),
           token: data.token,
-          wsUrl: data.wsUrl
+          wsUrl: data.wsUrl,
+          callType
         });
         
         socketService.socket?.emit('groupcall:join', {
@@ -48,12 +129,12 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId }) => {
     getToken();
     
     return () => {
-      clearCallState();
+      // Cleanup on unmount
     };
-  }, [roomName, participantName, groupId]);
+  }, [roomName, participantName, groupId, callType]);
 
   const handleLeave = () => {
-    clearCallState();
+    clearCallState('group');
     socketService.socket?.emit('groupcall:leave', {
       groupId: groupId || roomName.replace('group-', ''),
       roomName
@@ -61,35 +142,22 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId }) => {
     onLeave();
   };
 
-  if (isMinimized) {
-    return (
-      <div className="fixed bottom-4 right-4 bg-gray-900 rounded-lg shadow-2xl p-4 z-[60] w-72">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-              <FiUsers className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="text-white text-sm font-medium">Group Call</p>
-              <p className="text-gray-400 text-xs">{participantCount} participants</p>
-            </div>
-          </div>
-          <button 
-            onClick={() => setIsMinimized(false)} 
-            className="text-white hover:text-gray-300 text-sm px-3 py-1 bg-blue-600 rounded"
-          >
-            Open
-          </button>
-        </div>
-        <button
-          onClick={handleLeave}
-          className="w-full py-2 rounded bg-red-500 hover:bg-red-600 text-white text-sm font-medium"
-        >
-          Leave Call
-        </button>
-      </div>
-    );
-  }
+  const handleMinimize = () => {
+    saveCallState({
+      type: 'group',
+      roomName,
+      participantName,
+      groupId,
+      callType,
+      token,
+      wsUrl
+    });
+    if (onMinimize) {
+      onMinimize();
+    } else {
+      onLeave();
+    }
+  };
 
   if (error) {
     return (
@@ -97,10 +165,7 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId }) => {
         <div className="bg-white rounded-lg p-6 max-w-md">
           <h3 className="text-lg font-semibold text-red-600 mb-2">Error</h3>
           <p className="text-gray-700 mb-4">{error}</p>
-          <button
-            onClick={onLeave}
-            className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
+          <button onClick={onLeave} className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
             Close
           </button>
         </div>
@@ -120,70 +185,77 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId }) => {
   }
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-black z-[60]">
-      {/* Header with gradient */}
-      <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent z-10">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-              <FiUsers className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-white text-lg font-semibold">Group Video Call</h3>
-              <p className="text-gray-300 text-sm">{participantCount} participants</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setIsMinimized(true)} 
-              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white text-sm font-medium transition-colors"
-            >
-              Minimize
-            </button>
-            <button
-              onClick={handleLeave}
-              className="p-2 bg-red-500 hover:bg-red-600 rounded-lg text-white transition-colors"
-            >
-              <FiX className="w-6 h-6" />
-            </button>
+    <div className="fixed inset-0 bg-gradient-to-br from-gray-900 via-gray-800 to-black z-[60] flex flex-col">
+      <LiveKitRoom
+        token={token}
+        serverUrl={wsUrl}
+        connect={true}
+        audio={true}
+        video={callType === 'video'}
+        onDisconnected={handleLeave}
+        options={{
+          adaptiveStream: true,
+          dynacast: true,
+          videoCaptureDefaults: {
+            resolution: { width: 1280, height: 720 },
+            facingMode: 'user'
+          },
+          publishDefaults: {
+            videoEnabled: callType === 'video'
+          }
+        }}
+      >
+        <div className="flex items-center justify-between p-3 md:p-4 bg-black/40 backdrop-blur-sm">
+          <ParticipantCount />
+          <button onClick={handleMinimize} className="px-3 py-1.5 md:px-4 md:py-2 bg-gray-700/50 hover:bg-gray-600/50 rounded-lg text-white text-xs md:text-sm font-medium transition-all backdrop-blur-sm">
+            Minimize
+          </button>
+        </div>
+        <div className="flex-1 overflow-hidden p-2 md:p-4">
+          <div className="h-full">
+            <VideoConference />
+            <RoomAudioRenderer />
+            <CustomControls onLeave={handleLeave} callType={callType} />
           </div>
         </div>
-      </div>
-      
-      {/* LiveKit Room with custom styling */}
-      <div className="h-full pt-20">
-        <LiveKitRoom
-          token={token}
-          serverUrl={wsUrl}
-          connect={true}
-          audio={true}
-          video={true}
-          onDisconnected={handleLeave}
-          onParticipantConnected={() => setParticipantCount(prev => prev + 1)}
-          onParticipantDisconnected={() => setParticipantCount(prev => Math.max(1, prev - 1))}
-          options={{
-            adaptiveStream: true,
-            dynacast: true,
-            videoCaptureDefaults: {
-              resolution: VideoPresets.h720.resolution,
-              facingMode: 'user'
-            },
-            publishDefaults: {
-              videoSimulcastLayers: [
-                VideoPresets.h180,
-                VideoPresets.h360,
-                VideoPresets.h720
-              ],
-              videoEncoding: VideoPresets.h720,
-              dtx: true,
-              red: true
-            }
-          }}
-        >
-          <VideoConference />
-          <RoomAudioRenderer />
-        </LiveKitRoom>
-      </div>
+      </LiveKitRoom>
+      <style>{`
+        .lk-participant-tile {
+          border: 2px solid rgba(59, 130, 246, 0.5) !important;
+          border-radius: 12px !important;
+          overflow: hidden !important;
+          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
+        }
+        .lk-participant-tile.lk-speaking {
+          border-color: rgba(34, 197, 94, 0.8) !important;
+          box-shadow: 0 0 20px rgba(34, 197, 94, 0.4) !important;
+        }
+        .lk-grid-layout {
+          gap: 12px !important;
+          padding: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          display: grid !important;
+        }
+        .lk-grid-layout > * {
+          width: 100% !important;
+          height: 100% !important;
+          min-width: 0 !important;
+          min-height: 0 !important;
+        }
+        @media (max-width: 768px) {
+          .lk-grid-layout {
+            gap: 8px !important;
+            padding: 4px !important;
+          }
+          .lk-participant-tile {
+            border-width: 1.5px !important;
+          }
+        }
+        .lk-control-bar {
+          display: none !important;
+        }
+      `}</style>
     </div>
   );
 };

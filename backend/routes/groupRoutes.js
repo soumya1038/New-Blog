@@ -175,7 +175,8 @@ router.post('/:groupId/members', protect, async (req, res) => {
     }
 
     memberIds.forEach(id => {
-      if (!group.members.includes(id)) {
+      const isMember = group.members.some(memberId => memberId.toString() === id.toString());
+      if (!isMember) {
         group.members.push(id);
       }
     });
@@ -238,7 +239,8 @@ router.post('/:groupId/co-admins/:memberId', protect, async (req, res) => {
 
     if (!group.coAdmins) group.coAdmins = [];
     
-    if (!group.coAdmins.includes(req.params.memberId)) {
+    const isCoAdmin = group.coAdmins?.some(coAdminId => coAdminId.toString() === req.params.memberId.toString());
+    if (!isCoAdmin) {
       group.coAdmins.push(req.params.memberId);
       await group.save();
     }
@@ -287,7 +289,8 @@ router.post('/join/:inviteCode', protect, async (req, res) => {
       return res.status(404).json({ message: 'Invalid invite link' });
     }
 
-    if (group.members.includes(req.user._id)) {
+    const isMember = group.members.some(memberId => memberId.toString() === req.user._id.toString());
+    if (isMember) {
       return res.status(400).json({ message: 'You are already a member of this group' });
     }
 
