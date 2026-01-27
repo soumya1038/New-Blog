@@ -1,15 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { LiveKitRoom, VideoConference, RoomAudioRenderer, useParticipants, useLocalParticipant } from '@livekit/components-react';
 import '@livekit/components-styles';
-import { FiUsers, FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiMessageSquare, FiMonitor, FiMoreVertical } from 'react-icons/fi';
+import { FiUsers, FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiMessageSquare, FiMonitor, FiRotateCw, FiMinimize2 } from 'react-icons/fi';
 import api from '../services/api';
 import socketService from '../services/socket';
+import soundManager from '../utils/soundManager';
 import { saveCallState, clearCallState } from '../utils/callStateManager';
 
-const CustomControls = ({ onLeave, callType }) => {
+const CustomControls = ({ onLeave, callType, onMinimize }) => {
   const { isMicrophoneEnabled, isCameraEnabled, localParticipant } = useLocalParticipant();
-  const [showMore, setShowMore] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [showRotate, setShowRotate] = useState(false);
+
+  useEffect(() => {
+    const checkCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cameras = devices.filter(d => d.kind === 'videoinput');
+        setShowRotate(cameras.length > 1 && isCameraEnabled);
+      } catch (err) {
+        console.error('Failed to enumerate devices:', err);
+      }
+    };
+    checkCameras();
+  }, [isCameraEnabled]);
 
   const toggleMic = async () => {
     if (!localParticipant) return;
@@ -31,47 +45,52 @@ const CustomControls = ({ onLeave, callType }) => {
         await localParticipant.setScreenShareEnabled(true);
         setIsScreenSharing(true);
       }
-      setShowMore(false);
     } catch (error) {
       console.error('Screen share error:', error);
       alert('Failed to share screen. Please check permissions.');
     }
   };
 
+  const rotateCamera = async () => {
+    if (!localParticipant) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter(d => d.kind === 'videoinput');
+      if (cameras.length > 1) {
+        await localParticipant.setCameraEnabled(false);
+        setTimeout(async () => {
+          await localParticipant.setCameraEnabled(true);
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Camera rotation error:', error);
+    }
+  };
+
   return (
-    <>
-      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50">
-        <div className="bg-gray-900/95 backdrop-blur-xl rounded-2xl shadow-2xl px-3 py-2 border border-gray-700">
-          <div className="flex items-center gap-2">
-            <button onClick={toggleMic} className={`p-2 rounded-xl transition-all duration-200 transform hover:scale-110 ${!isMicrophoneEnabled ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/50' : 'bg-gray-700 hover:bg-gray-600 shadow-lg'}`} title={isMicrophoneEnabled ? 'Mute' : 'Unmute'}>
-              {!isMicrophoneEnabled ? <FiMicOff className="w-5 h-5 text-white" /> : <FiMic className="w-5 h-5 text-white" />}
+    <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50">
+      <div className="bg-gray-900/95 backdrop-blur-xl rounded-2xl shadow-2xl px-3 py-2 border border-gray-700">
+        <div className="flex items-center gap-2">
+          <button onClick={toggleMic} className={`p-2 sm:p-3 rounded-xl transition-all duration-200 transform hover:scale-110 ${!isMicrophoneEnabled ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/50' : 'bg-gray-700 hover:bg-gray-600 shadow-lg'}`} title={isMicrophoneEnabled ? 'Mute' : 'Unmute'}>
+            {!isMicrophoneEnabled ? <FiMicOff className="w-4 h-4 sm:w-5 sm:h-5 text-white" /> : <FiMic className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
+          </button>
+          <button onClick={toggleCamera} className={`p-2 sm:p-3 rounded-xl transition-all duration-200 transform hover:scale-110 ${!isCameraEnabled ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/50' : 'bg-gray-700 hover:bg-gray-600 shadow-lg'}`} title={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}>
+            {!isCameraEnabled ? <FiVideoOff className="w-4 h-4 sm:w-5 sm:h-5 text-white" /> : <FiVideo className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
+          </button>
+          {showRotate && (
+            <button onClick={rotateCamera} className="p-2 sm:p-3 rounded-xl bg-gray-700 hover:bg-gray-600 shadow-lg transition-all duration-200 transform hover:scale-110" title="Rotate camera">
+              <FiRotateCw className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </button>
-            <button onClick={toggleCamera} className={`p-2 rounded-xl transition-all duration-200 transform hover:scale-110 ${!isCameraEnabled ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/50' : 'bg-gray-700 hover:bg-gray-600 shadow-lg'}`} title={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}>
-              {!isCameraEnabled ? <FiVideoOff className="w-5 h-5 text-white" /> : <FiVideo className="w-5 h-5 text-white" />}
-            </button>
-            <button onClick={() => setShowMore(!showMore)} className="p-2 rounded-xl bg-gray-700 hover:bg-gray-600 shadow-lg transition-all duration-200 transform hover:scale-110" title="Chat">
-              <FiMessageSquare className="w-5 h-5 text-white" />
-            </button>
-            <button onClick={() => setShowMore(!showMore)} className="p-2 rounded-xl bg-gray-700 hover:bg-gray-600 shadow-lg transition-all duration-200 transform hover:scale-110" title="More options">
-              <FiMoreVertical className="w-5 h-5 text-white" />
-            </button>
-            <button onClick={onLeave} className="p-2 px-4 rounded-xl bg-red-500 hover:bg-red-600 transition-all duration-200 transform hover:scale-110 shadow-lg shadow-red-500/50" title="Leave call">
-              <FiPhoneOff className="w-5 h-5 text-white" />
-            </button>
-          </div>
+          )}
+          <button onClick={toggleScreenShare} className={`p-2 sm:p-3 rounded-xl transition-all duration-200 transform hover:scale-110 ${isScreenSharing ? 'bg-blue-500 hover:bg-blue-600 shadow-lg shadow-blue-500/50' : 'bg-gray-700 hover:bg-gray-600 shadow-lg'}`} title={isScreenSharing ? 'Stop sharing' : 'Share screen'}>
+            <FiMonitor className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+          </button>
+          <button onClick={onLeave} className="p-2 sm:p-3 px-3 sm:px-4 rounded-xl bg-red-500 hover:bg-red-600 transition-all duration-200 transform hover:scale-110 shadow-lg shadow-red-500/50" title="Leave call">
+            <FiPhoneOff className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+          </button>
         </div>
       </div>
-      {showMore && (
-        <div className="absolute bottom-24 left-1/2 transform -translate-x-1/2 z-50">
-          <div className="bg-gray-900/95 backdrop-blur-xl rounded-xl shadow-2xl p-2 border border-gray-700 min-w-[200px]">
-            <button onClick={toggleScreenShare} className="w-full flex items-center gap-3 px-4 py-2 text-white hover:bg-gray-700 rounded-lg transition-colors">
-              <FiMonitor className="w-5 h-5" />
-              <span>{isScreenSharing ? 'Stop Sharing' : 'Share Screen'}</span>
-            </button>
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 };
 
@@ -120,6 +139,8 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
           groupId: groupId || roomName.replace('group-', ''),
           roomName
         });
+        
+        soundManager.play('joinCall');
       } catch (err) {
         console.error('Failed to get LiveKit token:', err);
         setError('Failed to join call. Please try again.');
@@ -134,6 +155,7 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
   }, [roomName, participantName, groupId, callType]);
 
   const handleLeave = () => {
+    soundManager.play('leaveCall');
     clearCallState('group');
     socketService.socket?.emit('groupcall:leave', {
       groupId: groupId || roomName.replace('group-', ''),
@@ -201,21 +223,23 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
             facingMode: 'user'
           },
           publishDefaults: {
-            videoEnabled: callType === 'video'
+            videoEnabled: callType === 'video',
+            audioEnabled: true
           }
         }}
       >
         <div className="flex items-center justify-between p-3 md:p-4 bg-black/40 backdrop-blur-sm">
           <ParticipantCount />
-          <button onClick={handleMinimize} className="px-3 py-1.5 md:px-4 md:py-2 bg-gray-700/50 hover:bg-gray-600/50 rounded-lg text-white text-xs md:text-sm font-medium transition-all backdrop-blur-sm">
-            Minimize
+          <button onClick={handleMinimize} className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 bg-gray-700/50 hover:bg-gray-600/50 rounded-lg text-white text-xs md:text-sm font-medium transition-all backdrop-blur-sm">
+            <FiMinimize2 className="w-4 h-4" />
+            <span className="hidden sm:inline">Minimize</span>
           </button>
         </div>
         <div className="flex-1 overflow-hidden p-2 md:p-4">
           <div className="h-full">
             <VideoConference />
             <RoomAudioRenderer />
-            <CustomControls onLeave={handleLeave} callType={callType} />
+            <CustomControls onLeave={handleLeave} callType={callType} onMinimize={handleMinimize} />
           </div>
         </div>
       </LiveKitRoom>

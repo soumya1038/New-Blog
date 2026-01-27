@@ -22,6 +22,10 @@ import VoiceMessagePlayer from '../components/VoiceMessagePlayer';
 import FileMessage from '../components/FileMessage';
 import CreateGroupModal from '../components/CreateGroupModal';
 import GroupInfoPanel from '../components/GroupInfoPanel';
+import GroupCallInvitationModal from '../components/GroupCallInvitationModal';
+import ActiveGroupCallBanner from '../components/ActiveGroupCallBanner';
+import GroupCallRoom from '../components/GroupCallRoom';
+import MinimizedGroupCall from '../components/MinimizedGroupCall';
 
 import webrtcService from '../services/webrtc';
 // Translation support - Import useTranslation hook from react-i18next
@@ -122,6 +126,10 @@ const ChatNew = () => {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [groupCallInvitation, setGroupCallInvitation] = useState(null);
+  const [activeGroupCall, setActiveGroupCall] = useState(null);
+  const [showGroupCallRoom, setShowGroupCallRoom] = useState(false);
+  const [isGroupCallMinimized, setIsGroupCallMinimized] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -196,6 +204,8 @@ const ChatNew = () => {
       window.removeEventListener('openCallFromGlobal', handleOpenCall);
     };
   }, [activeCall, user]);
+
+
 
   useEffect(() => {
     if (!user) return;
@@ -524,7 +534,39 @@ const ChatNew = () => {
       await webrtcService.handleIceCandidate(candidate);
     });
 
+    socket.current.on('groupcall:ended', ({ groupId }) => {
+      console.log('📞 Group call ended:', groupId);
+      soundManager.stop('incomingCall');
+      setGroupCallInvitation(null);
+      setActiveGroupCall(null);
+      setShowGroupCallRoom(false);
+      setIsGroupCallMinimized(false);
+      clearCallState('group');
+    });
 
+    socket.current.on('groupcall:user-joined', ({ groupId, user }) => {
+      console.log('📞 User joined:', user.fullName);
+      soundManager.play('joinCall');
+      if (activeGroupCall?.groupId === groupId) {
+        setActiveGroupCall(prev => ({
+          ...prev,
+          participantCount: prev.participantCount + 1,
+          participants: [...(prev.participants || []), user]
+        }));
+      }
+    });
+
+    socket.current.on('groupcall:user-left', ({ groupId, userId }) => {
+      console.log('📞 User left:', userId);
+      soundManager.play('leaveCall');
+      if (activeGroupCall?.groupId === groupId) {
+        setActiveGroupCall(prev => ({
+          ...prev,
+          participantCount: Math.max(0, prev.participantCount - 1),
+          participants: (prev.participants || []).filter(p => p._id !== userId)
+        }));
+      }
+    });
 
     loadConversations();
     loadGroups();
@@ -562,7 +604,10 @@ const ChatNew = () => {
         socket.current.off('call:ice-candidate');
         socket.current.off('users:online');
         socket.current.off('user:status');
-
+        socket.current.off('groupcall:invitation');
+        socket.current.off('groupcall:ended');
+        socket.current.off('groupcall:user-joined');
+        socket.current.off('groupcall:user-left');
       }
 
       console.log('Leaving /chat');
@@ -571,17 +616,60 @@ const ChatNew = () => {
   }, [user]);
 
   useEffect(() => {
+    console.log('📞 ChatNew: location.state changed:', location.state);
+    console.log('📞 ChatNew: loading status:', loading);
+    console.log('📞 ChatNew: groups count:', groups.length);
+    
     if (!loading && location.state?.selectedUser) {
+      console.log('📞 ChatNew: Setting selectedUser:', location.state.selectedUser);
       setSelectedChat(location.state.selectedUser);
     }
     // Handle incoming call from global modal
     if (!loading && location.state?.incomingCall) {
+      console.log('📞 ChatNew: Setting incomingCall:', location.state.incomingCall);
       setIncomingCall(location.state.incomingCall);
-      // Clear the state
       window.history.replaceState({}, document.title);
     }
-
-  }, [loading, location.state]);
+    // Handle group call join from GlobalGroupCallListener
+    if (!loading && location.state?.joinGroupCall) {
+      console.log('📞 ChatNew: Received joinGroupCall:', location.state.joinGroupCall);
+      const { groupId, roomName, callType, joinedUsers } = location.state.joinGroupCall;
+      console.log('📞 ChatNew: Opening group call room for groupId:', groupId);
+      setShowGroupCallRoom(true);
+      setActiveGroupCall({
+        groupId,
+        roomName,
+        callType,
+        participantCount: (joinedUsers || []).length + 1,
+        participants: joinedUsers || []
+      });
+      console.log('📞 ChatNew: activeGroupCall set, showGroupCallRoom=true');
+      window.history.replaceState({}, document.title);
+    }
+    // Handle declined group call from GlobalGroupCallListener
+    if (!loading && location.state?.declinedGroupCall) {
+      console.log('📞 ChatNew: Received declinedGroupCall:', location.state.declinedGroupCall);
+      const { groupId, roomName, callType, joinedUsers } = location.state.declinedGroupCall;
+      setActiveGroupCall({
+        groupId,
+        roomName,
+        callType,
+        participantCount: (joinedUsers || []).length,
+        participants: joinedUsers || []
+      });
+      console.log('📞 ChatNew: activeGroupCall set for declined call, groupId:', groupId);
+      // Auto-select the group chat to show banner
+      const group = groups.find(g => g._id === groupId);
+      console.log('📞 ChatNew: Found group:', group);
+      if (group) {
+        console.log('📞 ChatNew: Auto-selecting group chat:', group.name);
+        setSelectedChat({ ...group, isGroup: true });
+      } else {
+        console.log('⚠️ ChatNew: Group not found in groups list!');
+      }
+      window.history.replaceState({}, document.title);
+    }
+  }, [loading, location.state, groups]);
 
   // Save call state on page unload (don't end call)
   useEffect(() => {
@@ -1972,6 +2060,143 @@ const ChatNew = () => {
     setShowCallHistory(false);
   };
 
+  const initiateGroupCall = async (callType) => {
+    if (!selectedChat?.isGroup) return;
+    
+    try {
+      const roomName = `group-${selectedChat._id}-${Date.now()}`;
+      
+      console.log('📞 Starting group call:', { roomName, callType });
+      
+      // Create room on backend first
+      await api.post('/livekit/start', {
+        groupId: selectedChat._id,
+        roomName,
+        callType
+      });
+      
+      socket.current.emit('groupcall:start', {
+        groupId: selectedChat._id,
+        roomName,
+        callType
+      });
+      
+      setShowGroupCallRoom(true);
+      setActiveGroupCall({
+        groupId: selectedChat._id,
+        roomName,
+        callType,
+        participantCount: 1,
+        participants: [user]
+      });
+      
+    } catch (error) {
+      console.error('Failed to start group call:', error);
+      showAlertModal('Error', 'Failed to start call');
+    }
+  };
+
+  const acceptGroupCall = () => {
+    console.log('📞 ChatNew: acceptGroupCall called');
+    console.log('📞 ChatNew: groupCallInvitation:', groupCallInvitation);
+    if (!groupCallInvitation) return;
+    
+    soundManager.stop('incomingCall');
+    setGroupCallInvitation(null);
+    
+    console.log('📞 ChatNew: Opening group call room');
+    setShowGroupCallRoom(true);
+    setActiveGroupCall({
+      groupId: groupCallInvitation.groupId,
+      roomName: groupCallInvitation.roomName,
+      callType: groupCallInvitation.callType,
+      participantCount: (groupCallInvitation.joinedUsers || []).length + 1,
+      participants: groupCallInvitation.joinedUsers || []
+    });
+    console.log('📞 ChatNew: activeGroupCall set, showGroupCallRoom=true');
+  };
+
+  const rejectGroupCall = () => {
+    console.log('📞 ChatNew: rejectGroupCall called');
+    console.log('📞 ChatNew: groupCallInvitation:', groupCallInvitation);
+    soundManager.stop('incomingCall');
+    const invitation = groupCallInvitation;
+    setGroupCallInvitation(null);
+    
+    if (invitation) {
+      console.log('📞 ChatNew: Setting activeGroupCall for rejected call');
+      setActiveGroupCall({
+        groupId: invitation.groupId,
+        roomName: invitation.roomName,
+        callType: invitation.callType,
+        participantCount: (invitation.joinedUsers || []).length,
+        participants: invitation.joinedUsers || []
+      });
+      console.log('📞 ChatNew: activeGroupCall set:', {
+        groupId: invitation.groupId,
+        participantCount: (invitation.joinedUsers || []).length
+      });
+    }
+  };
+
+  const leaveGroupCall = () => {
+    console.log('📞 ChatNew: leaveGroupCall called');
+    console.log('📞 ChatNew: activeGroupCall:', activeGroupCall);
+    setShowGroupCallRoom(false);
+    setIsGroupCallMinimized(false);
+    setActiveGroupCall(null);
+    clearCallState('group');
+    console.log('📞 ChatNew: Cleared all group call states');
+    
+    if (activeGroupCall) {
+      console.log('📞 ChatNew: Emitting groupcall:leave to server');
+      socketService.socket?.emit('groupcall:leave', {
+        groupId: activeGroupCall.groupId,
+        roomName: activeGroupCall.roomName
+      });
+    }
+  };
+
+  const handleGroupCallMinimize = () => {
+    setShowGroupCallRoom(false);
+    setIsGroupCallMinimized(true);
+  };
+
+  const handleGroupCallOpen = () => {
+    setShowGroupCallRoom(true);
+    setIsGroupCallMinimized(false);
+  };
+
+  useEffect(() => {
+    if (showGroupCallRoom && activeGroupCall) {
+      const callState = getCallState('group');
+      if (callState) {
+        window.dispatchEvent(new CustomEvent('groupCallStateUpdate', { detail: callState }));
+      }
+    }
+  }, [showGroupCallRoom, activeGroupCall]);
+
+  useEffect(() => {
+    const handleOpenFromGlobal = () => {
+      if (activeGroupCall) {
+        setShowGroupCallRoom(true);
+        setIsGroupCallMinimized(false);
+      }
+    };
+    window.addEventListener('openGroupCallFromGlobal', handleOpenFromGlobal);
+    return () => window.removeEventListener('openGroupCallFromGlobal', handleOpenFromGlobal);
+  }, [activeGroupCall]);
+
+  useEffect(() => {
+    const handleGroupCallEnded = () => {
+      setActiveGroupCall(null);
+      setShowGroupCallRoom(false);
+      setIsGroupCallMinimized(false);
+    };
+    window.addEventListener('groupCallEnded', handleGroupCallEnded);
+    return () => window.removeEventListener('groupCallEnded', handleGroupCallEnded);
+  }, []);
+
   if (loading) {
     return <ChatSkeleton />;
   }
@@ -2810,16 +3035,30 @@ const ChatNew = () => {
                       ) : (isOnline(selectedChat._id) ? t('Active now') : getLastSeenText(selectedChat.lastSeen))}
                     </p>
                   </div>
-                  {!selectedChat.isGroup && (
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => initiateCall('audio')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                        <FiPhone className="w-5 h-5 text-gray-600" />
-                      </button>
-                      <button onClick={() => initiateCall('video')} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                        <FiVideo className="w-5 h-5 text-gray-600" />
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {!selectedChat.isGroup ? (
+                      <>
+                        <button onClick={() => initiateCall('audio')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
+                          <FiPhone className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                        </button>
+                        <button onClick={() => initiateCall('video')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
+                          <FiVideo className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => initiateGroupCall('audio')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
+                          <FiPhone className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                        </button>
+                        <button onClick={() => initiateGroupCall('video')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
+                          <FiVideo className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => setShowChatMenu(!showChatMenu)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
+                      <FiMoreVertical className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -2980,6 +3219,19 @@ const ChatNew = () => {
                 </div>
               )}
             </div>
+
+            {/* Active Group Call Banner */}
+            {selectedChat?.isGroup && activeGroupCall && activeGroupCall.groupId === selectedChat._id && !showGroupCallRoom && !isGroupCallMinimized && (
+              <ActiveGroupCallBanner
+                participantCount={activeGroupCall.participantCount}
+                callType={activeGroupCall.callType}
+                participants={activeGroupCall.participants || []}
+                onJoin={() => {
+                  setShowGroupCallRoom(true);
+                  setIsGroupCallMinimized(false);
+                }}
+              />
+            )}
 
             {/* Pinned Messages Banner */}
             {!selectedChat.isGroup && pinnedMessages.length > 0 && (
@@ -3174,10 +3426,10 @@ const ChatNew = () => {
                             <div className={`${isOwn ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-gray-100 dark:bg-gray-700'} rounded-2xl px-4 py-3 shadow-sm`}>
                               <div className="flex items-start gap-3">
                                 <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
-                                  <FiVideo className="w-5 h-5 text-white" />
+                                  {msg.callData?.callType === 'audio' ? <FiPhone className="w-5 h-5 text-white" /> : <FiVideo className="w-5 h-5 text-white" />}
                                 </div>
                                 <div className="flex-1">
-                                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">Video call</p>
+                                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">{msg.callData?.callType === 'audio' ? 'Audio call' : 'Video call'}</p>
                                   <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
                                     <span>{Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')}</span>
                                     <span>•</span>
@@ -3956,6 +4208,39 @@ const ChatNew = () => {
         />
       )}
 
+      {/* Group Call Invitation Modal */}
+      {groupCallInvitation && (
+        <GroupCallInvitationModal
+          groupName={groupCallInvitation.groupName}
+          initiator={groupCallInvitation.initiator}
+          callType={groupCallInvitation.callType}
+          onAccept={acceptGroupCall}
+          onReject={rejectGroupCall}
+        />
+      )}
+
+      {/* Group Call Room */}
+      {showGroupCallRoom && activeGroupCall && (
+        <GroupCallRoom
+          roomName={activeGroupCall.roomName}
+          participantName={user.fullName}
+          groupId={activeGroupCall.groupId}
+          callType={activeGroupCall.callType}
+          onLeave={leaveGroupCall}
+          onMinimize={handleGroupCallMinimize}
+        />
+      )}
+
+      {/* Minimized Group Call */}
+      {isGroupCallMinimized && activeGroupCall && (
+        <MinimizedGroupCall
+          token={getCallState('group')?.token}
+          wsUrl={getCallState('group')?.wsUrl}
+          callType={activeGroupCall.callType}
+          onOpen={handleGroupCallOpen}
+          onEnd={leaveGroupCall}
+        />
+      )}
 
     </div>
   );

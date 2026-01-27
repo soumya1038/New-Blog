@@ -24,7 +24,9 @@ class SoundManager {
       startRecord: '/sounds/start-record.mp3',
       endRecord: '/sounds/end-record.mp3',
       bubbleTyping: '/sounds/bubble_typing.mp3',
-      joinVideoCall: '/sounds/join_video_call.mp3'
+      joinVideoCall: '/sounds/join_video_call.mp3',
+      joinCall: '/sounds/start-record.mp3',
+      leaveCall: '/sounds/success complite publish notification.mp3'
     };
 
     if (!soundPaths[soundName]) return;

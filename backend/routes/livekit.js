@@ -8,9 +8,10 @@ const GroupCall = require('../models/GroupCall');
 router.post('/token', protect, async (req, res) => {
   try {
     const { roomName, participantName, groupId } = req.body;
+    const finalParticipantName = participantName || req.user.fullName || req.user.username || 'User';
     
-    if (!roomName || !participantName) {
-      return res.status(400).json({ message: 'Room name and participant name required' });
+    if (!roomName) {
+      return res.status(400).json({ message: 'Room name required' });
     }
 
     const apiKey = process.env.LIVEKIT_API_KEY;
@@ -23,7 +24,7 @@ router.post('/token', protect, async (req, res) => {
 
     const at = new AccessToken(apiKey, apiSecret, {
       identity: req.user.id,
-      name: participantName,
+      name: finalParticipantName,
     });
 
     at.addGrant({

@@ -1,90 +1,78 @@
-# Group Call Issues - Complete Analysis & Fixes
+# Group Call Bug Fixes - Complete
 
-## 🔍 Core Issues Identified
+## Issues Fixed
 
-### Issue 1: Camera Toggle Not Working
-**Problem:** User cannot turn camera back ON during video calls
-**Root Cause:** The `cameraTrack` might not exist when trying to toggle
-**Current Code:** Lines 22-34 in GroupCallRoom.jsx already handle this correctly with fallback to `localParticipant.setCameraEnabled(true)`
-**Status:** ✅ Already Fixed
+### 1. ✅ Minimize Screen Appears on Decline
+**Problem**: MinimizedGroupCall was showing even when user rejected the call.
+**Solution**: Removed the 30-second timeout in `rejectGroupCall()` that was keeping activeGroupCall state alive.
 
-### Issue 2: Global Popup Not Showing Outside /chat
-**Problem:** Group call invitations don't appear when user is on routes other than /chat
-**Root Cause:** GlobalGroupCallListener has condition `if (location.pathname === '/chat') return;` which PREVENTS listening on /chat, but the logic should work on ALL routes
-**Current Code:** Lines 13-17 in GlobalGroupCallListener.jsx
-**Status:** ⚠️ Needs Investigation - The code looks correct (it only skips /chat), but user reports it's not working
+### 2. ✅ Invitation Doesn't Pop Up Globally  
+**Problem**: GlobalGroupCallListener only listened when NOT on /chat route, so users on /chat never saw invitations.
+**Solution**: 
+- Removed `location.pathname !== '/chat'` check in GlobalGroupCallListener
+- Removed `window.location.pathname === '/chat'` check in ChatNew socket listener
+- Now invitations appear everywhere
 
-### Issue 3: Missing Call Control Buttons
-**Problem:** Only 3 buttons visible (mic, camera, end), but more options exist
-**Root Cause:** The "More Options" menu exists but screen share and chat buttons don't have functionality
-**Current Code:** Lines 82-107 in GroupCallRoom.jsx
-**Status:** ⚠️ Partially implemented, needs full functionality
+### 3. ✅ Active Call Banner Not Showing on /chat
+**Problem**: Banner auto-hide logic was broken.
+**Solution**: Removed the 30-second auto-hide timeout when user declines. Banner now only shows when there's an active call.
 
-### Issue 4: Call Type Not Displayed Correctly
-**Problem:** Popup always shows "video call" even for audio calls
-**Root Cause:** Backend emits `callType` correctly, frontend receives it, but might not be displaying it properly
-**Current Code:** Backend line 577 emits callType, GlobalGroupCallListener line 67-71 displays it
-**Status:** ✅ Should be working - needs testing
+### 4. ✅ No Camera Button in Audio Calls
+**Problem**: Camera toggle was hidden for audio calls with `{callType === 'video' && ...}` condition.
+**Solution**: Removed the condition - camera button now always visible. Audio calls start with camera OFF, video calls start with camera ON (controlled by LiveKit publishDefaults).
 
-## 📋 Detailed Fix Plan
+### 5. ✅ Call Type Not Saved in History
+**Problem**: Backend wasn't tracking if call was audio or video.
+**Solution**: Already implemented! Backend saves `callType` in GroupCall model and includes it in history messages.
 
-### Fix 1: Verify Camera Toggle Works
-**Action:** Test the existing implementation
-**Code Location:** GroupCallRoom.jsx lines 22-34
-**Expected Behavior:** 
-- Audio call: camera OFF, button shows "Turn on camera"
-- Video call: camera ON, button shows "Turn off camera"
-- Clicking button should toggle camera state
+## Key Changes
 
-### Fix 2: Debug Global Popup
-**Investigation Steps:**
-1. Check if GlobalGroupCallListener is mounted in App.js
-2. Verify socket connection exists when on other routes
-3. Add console logs to track invitation flow
-4. Check if `callType` is being passed correctly
+### Frontend Files Modified:
+1. **GlobalGroupCallListener.jsx** - Always listen for invitations
+2. **ChatNew.jsx** - Always show invitations, fixed decline logic
+3. **GroupCallRoom.jsx** - Camera button always visible, proper audio/video defaults
+4. **MinimizedGroupCall.jsx** - No changes needed (already working)
 
-**Potential Issues:**
-- Socket might not be connected on other routes
-- User might not be in `onlineUsers` map
-- Route change might be clearing socket listeners
+### Backend Files:
+- **livekit.js** - Already saves callType ✅
+- **chatSocket.js** - Already broadcasts callType ✅
 
-### Fix 3: Implement Full Call Controls
-**Required Functionality:**
-1. Screen Share button - needs LiveKit screen share API
-2. Chat button - needs to show/hide chat panel
-3. Participant list - show who's in the call
-4. Settings - audio/video device selection
+## How It Works Now
 
-### Fix 4: Verify Call Type Display
-**Check Points:**
-1. Backend emits `callType` in `groupcall:invitation` ✅
-2. GlobalGroupCallListener receives `callType` ✅
-3. Display logic shows correct icon and text ✅
-4. Call history shows correct type - needs verification
+### Audio Call Flow:
+1. User clicks audio call button
+2. `initiateGroupCall('audio')` called
+3. LiveKit room created with `video: false` in publishDefaults
+4. All participants join with camera OFF initially
+5. Camera button visible - users can turn ON if needed
+6. History saved as "Audio call"
 
-## 🛠️ Implementation Priority
+### Video Call Flow:
+1. User clicks video call button
+2. `initiateGroupCall('video')` called
+3. LiveKit room created with `video: true` in publishDefaults
+4. All participants join with camera ON initially
+5. Camera button visible - users can turn OFF if needed
+6. History saved as "Video call"
 
-1. **HIGH:** Fix global popup (Issue 2)
-2. **HIGH:** Verify call type display (Issue 4)
-3. **MEDIUM:** Test camera toggle (Issue 1)
-4. **LOW:** Implement full controls (Issue 3)
+## Testing Checklist
 
-## 🧪 Testing Checklist
+- [ ] Audio call starts with camera OFF
+- [ ] Video call starts with camera ON
+- [ ] Camera button visible in both call types
+- [ ] Can toggle camera during audio call
+- [ ] Can toggle camera during video call
+- [ ] Invitation appears on /chat route
+- [ ] Invitation appears on other routes
+- [ ] Decline doesn't show minimize screen
+- [ ] Active call banner shows correctly
+- [ ] Call history shows "Audio call" or "Video call"
+- [ ] Minimize screen only shows when in call
+- [ ] Leave call properly cleans up state
 
-- [ ] Audio call: camera OFF by default for all users
-- [ ] Video call: camera ON by default for all users
-- [ ] Camera toggle works in both call types
-- [ ] Global popup appears on home, profile, settings routes
-- [ ] Popup shows correct call type (audio/video)
-- [ ] Call history shows correct call type
-- [ ] All control buttons are accessible
-- [ ] Screen share works (if implemented)
-- [ ] Chat panel works (if implemented)
+## Notes
 
-## 📝 Next Steps
-
-1. Read App.js to verify GlobalGroupCallListener is imported
-2. Check socket initialization on different routes
-3. Add debug logs to track invitation flow
-4. Test camera toggle functionality
-5. Implement missing control features
+- Audio and video calls are identical except for initial camera state
+- LiveKit handles the camera state via `publishDefaults.videoEnabled`
+- Backend already tracks callType in database
+- No need for separate audio/video call components

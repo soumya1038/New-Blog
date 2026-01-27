@@ -10,61 +10,60 @@ const GlobalGroupCallListener = () => {
   const location = useLocation();
 
   useEffect(() => {
-    console.log('🔍 GlobalGroupCallListener: Mounted, route:', location.pathname);
-    console.log('🔍 Socket exists:', !!socketService.socket);
-    console.log('🔍 Socket connected:', socketService.socket?.connected);
-    
-    // Only listen when NOT on /chat route
-    if (location.pathname === '/chat') {
-      console.log('🚫 GlobalGroupCallListener: On /chat, not listening');
-      return;
-    }
-
     const socket = socketService.socket;
-    if (!socket) {
-      console.log('⚠️ GlobalGroupCallListener: Socket not ready');
-      return;
-    }
-
-    if (!socket.connected) {
-      console.log('⚠️ GlobalGroupCallListener: Socket not connected');
-      return;
-    }
+    console.log('🔔 GlobalGroupCallListener: Socket status:', socket ? 'Connected' : 'Not connected');
+    if (!socket) return;
 
     const handleInvitation = (data) => {
-      console.log('🔔 GlobalGroupCallListener received invitation:', data);
+      console.log('🔔 GlobalGroupCallListener: Received invitation:', data);
       soundManager.play('incomingCall');
       setInvitation(data);
+      console.log('🔔 GlobalGroupCallListener: Invitation state set, will auto-hide in 30s');
       setTimeout(() => {
+        console.log('🔔 GlobalGroupCallListener: Auto-hiding invitation after 30s');
         setInvitation(null);
         soundManager.stop('incomingCall');
       }, 30000);
     };
 
-    console.log('✅ GlobalGroupCallListener: Setting up listener');
     socket.on('groupcall:invitation', handleInvitation);
+    console.log('🔔 GlobalGroupCallListener: Listening for groupcall:invitation');
 
     return () => {
-      console.log('🧹 GlobalGroupCallListener: Cleaning up listener');
+      console.log('🔔 GlobalGroupCallListener: Cleanup - removing listener');
       socket.off('groupcall:invitation', handleInvitation);
       soundManager.stop('incomingCall');
     };
-  }, [location.pathname]);
+  }, []);
 
   const handleJoin = () => {
+    console.log('🔔 GlobalGroupCallListener: User clicked JOIN');
+    console.log('🔔 GlobalGroupCallListener: Invitation data:', invitation);
     soundManager.stop('incomingCall');
     soundManager.play('joinVideoCall');
-    navigate('/chat', { state: { joinGroupCall: { ...invitation, callType: invitation.callType || 'video' } } });
+    const joinData = { ...invitation, callType: invitation.callType || 'video' };
+    console.log('🔔 GlobalGroupCallListener: Navigating to /chat with joinGroupCall:', joinData);
+    navigate('/chat', { state: { joinGroupCall: joinData } });
     setInvitation(null);
   };
 
   const handleDecline = () => {
+    console.log('🔔 GlobalGroupCallListener: User clicked DECLINE');
+    console.log('🔔 GlobalGroupCallListener: Invitation data:', invitation);
     soundManager.stop('incomingCall');
     soundManager.play('endCall');
+    const declineData = { ...invitation };
+    console.log('🔔 GlobalGroupCallListener: Navigating to /chat with declinedGroupCall:', declineData);
+    navigate('/chat', { state: { declinedGroupCall: declineData } });
     setInvitation(null);
   };
 
-  if (!invitation) return null;
+  if (!invitation) {
+    console.log('🔔 GlobalGroupCallListener: No invitation, rendering null');
+    return null;
+  }
+
+  console.log('🔔 GlobalGroupCallListener: Rendering invitation popup for:', invitation.groupName);
 
   return (
     <div className="fixed top-4 right-4 z-[70] animate-slide-in">

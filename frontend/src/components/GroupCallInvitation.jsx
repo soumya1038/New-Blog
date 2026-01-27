@@ -4,35 +4,31 @@ import soundManager from '../utils/soundManager';
 
 const GroupCallInvitation = ({ groupName, initiatorName, initiatorImage, joinedUsers = [], callType = 'video', onJoin, onDecline }) => {
   const onDeclineRef = useRef(onDecline);
+  const onJoinRef = useRef(onJoin);
   
   useEffect(() => {
     onDeclineRef.current = onDecline;
-  }, [onDecline]);
+    onJoinRef.current = onJoin;
+  }, [onDecline, onJoin]);
 
   useEffect(() => {
-    console.log('⏰ Starting 30s timeout for invitation');
-    // Play immediately
     soundManager.play('bubbleTyping');
     
-    // Play 2 more times at 10s intervals
     const interval1 = setTimeout(() => soundManager.play('bubbleTyping'), 10000);
     const interval2 = setTimeout(() => soundManager.play('bubbleTyping'), 20000);
 
-    // Auto-decline after 30 seconds
     const timeout = setTimeout(() => {
-      console.log('⏰ 30s timeout reached, auto-declining');
       soundManager.stop('bubbleTyping');
       onDeclineRef.current();
     }, 30000);
 
     return () => {
-      console.log('🧹 Cleaning up invitation timers');
       soundManager.stop('bubbleTyping');
       clearTimeout(interval1);
       clearTimeout(interval2);
       clearTimeout(timeout);
     };
-  }, []); // Empty deps - only run once
+  }, []);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
