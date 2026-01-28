@@ -563,7 +563,6 @@ module.exports = (io, onlineUsers = new Map()) => {
         
         const Group = require('../models/Group');
         const GroupCall = require('../models/GroupCall');
-        const { RoomServiceClient } = require('livekit-server-sdk');
         
         const group = await Group.findById(groupId).populate('members', 'fullName profileImage');
         
@@ -572,33 +571,15 @@ module.exports = (io, onlineUsers = new Map()) => {
           return;
         }
         
-        const initiator = await User.findById(initiatorId).select('fullName profileImage');
-        
-        // Get current participants in LiveKit room
-        let joinedUsers = [];
-        const call = await GroupCall.findOne({ group: groupId, status: 'active' });
-        if (call) {
-          const roomService = new RoomServiceClient(
-            process.env.LIVEKIT_WS_URL.replace('wss://', 'https://').replace('ws://', 'http://'),
-            process.env.LIVEKIT_API_KEY,
-            process.env.LIVEKIT_API_SECRET
-          );
-          
-          try {
-            const participants = await roomService.listParticipants(roomName);
-            const participantIds = participants.map(p => p.identity);
-            
-            // Get user details for participants
-            const users = await User.find({ _id: { $in: participantIds } }).select('fullName profileImage');
-            joinedUsers = users.map(u => ({
-              _id: u._id,
-              fullName: u.fullName,
-              profileImage: u.profileImage
-            }));
-          } catch (err) {
-            console.log('No participants yet');
-          }
+        // Check if there's already an active call
+        const existingCall = await GroupCall.findOne({ group: groupId, status: 'active' });
+        if (existingCall) {
+          console.log('⚠️ Call already active for group:', groupId);
+          socket.emit('groupcall:error', { error: 'A call is already active in this group' });
+          return;
         }
+        
+        const initiator = await User.findById(initiatorId).select('fullName profileImage');
         
         console.log(`📡 Broadcasting to ${group.members.length} members`);
         
@@ -619,12 +600,9 @@ module.exports = (io, onlineUsers = new Map()) => {
                   _id: initiatorId,
                   fullName: initiator.fullName,
                   profileImage: initiator.profileImage
-                },
-                joinedUsers
+                }
               });
               notifiedCount++;
-            } else {
-              console.log(`❌ Member ${memberId} not online`);
             }
           }
         });
@@ -640,9 +618,19 @@ module.exports = (io, onlineUsers = new Map()) => {
         const userId = socket.userId;
         
         const Group = require('../models/Group');
-        const group = await Group.findById(groupId);
+        const GroupCall = require('../models/GroupCall');
         
+        const group = await Group.findById(groupId);
         if (!group) return;
+        
+        const call = await GroupCall.findOne({ group: groupId, status: 'active' });
+        if (call) {
+          const alreadyJoined = call.participants.some(p => p.user.toString() === userId);
+          if (!alreadyJoined) {
+            call.participants.push({ user: userId });
+            await call.save();
+          }
+        }
         
         const user = await User.findById(userId).select('fullName profileImage');
         
@@ -684,6 +672,26 @@ module.exports = (io, onlineUsers = new Map()) => {
         const call = await GroupCall.findOne({ group: groupId, status: 'active' });
         if (!call) return;
         
+        // Update participant left time
+        const participant = call.participants.find(p => p.user.toString() === userId);
+        if (participant && !participant.leftAt) {
+          participant.leftAt = new Date();
+          await call.save();
+        }
+        
+        // Notify members someone left
+        group.members.forEach(memberId => {
+          const memberIdStr = memberId.toString();
+          const memberData = onlineUsers.get(memberIdStr);
+          if (memberData) {
+            io.to(memberData.socketId).emit('groupcall:user-left', {
+              groupId,
+              roomName,
+              userId
+            });
+          }
+        });
+        
         // Check if anyone is still in the LiveKit room
         const roomService = new RoomServiceClient(
           process.env.LIVEKIT_WS_URL.replace('wss://', 'https://').replace('ws://', 'http://'),
@@ -714,7 +722,7 @@ module.exports = (io, onlineUsers = new Map()) => {
           const Message = require('../models/Message');
           await call.populate('participants.user', 'fullName profileImage');
           
-          // Get unique users (remove duplicates)
+          // Get unique users who actually joined
           const uniqueUserMap = new Map();
           call.participants.forEach(p => {
             if (p.user && p.user._id) {
@@ -729,17 +737,23 @@ module.exports = (io, onlineUsers = new Map()) => {
           const joinedUsers = Array.from(uniqueUserMap.values());
           const joinedCount = joinedUsers.length;
           
-          console.log('💾 Saving call history:', { duration: call.duration, joinedCount, joinedUsers, callType: call.callType });
+          // Format duration
+          const minutes = Math.floor(call.duration / 60);
+          const seconds = call.duration % 60;
+          const durationText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+          
+          console.log('💾 Saving call history:', { duration: call.duration, joinedCount, callType: call.callType });
           
           const historyMsg = await Message.create({
             group: groupId,
             sender: call.initiator,
-            content: call.callType === 'audio' ? 'Audio call' : 'Video call',
+            content: `${call.callType === 'audio' ? 'Audio' : 'Video'} call ended`,
             type: 'groupcall',
             callData: {
               duration: call.duration,
-              joinedCount: joinedCount,
-              joinedUsers: joinedUsers,
+              durationText,
+              joinedCount,
+              joinedUsers,
               callType: call.callType
             }
           });
@@ -753,28 +767,7 @@ module.exports = (io, onlineUsers = new Map()) => {
             const memberData = onlineUsers.get(memberIdStr);
             if (memberData) {
               io.to(memberData.socketId).emit('groupcall:ended', { groupId });
-            }
-          });
-          
-          // Broadcast history message
-          group.members.forEach(memberId => {
-            const memberIdStr = memberId.toString();
-            const memberData = onlineUsers.get(memberIdStr);
-            if (memberData) {
               io.to(memberData.socketId).emit('message:receive:group', historyMsg);
-            }
-          });
-        } else {
-          // Notify members someone left
-          group.members.forEach(memberId => {
-            const memberIdStr = memberId.toString();
-            const memberData = onlineUsers.get(memberIdStr);
-            if (memberData) {
-              io.to(memberData.socketId).emit('groupcall:user-left', {
-                groupId,
-                roomName,
-                userId
-              });
             }
           });
         }

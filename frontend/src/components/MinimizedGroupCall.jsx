@@ -1,130 +1,240 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiMaximize2, FiX, FiUsers, FiRotateCw, FiChevronDown } from 'react-icons/fi';
-import { LiveKitRoom, useParticipants, useLocalParticipant, useTracks, RoomAudioRenderer } from '@livekit/components-react';
+import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiMaximize2, FiX, FiUsers, FiRotateCw, FiMove, FiMonitor } from 'react-icons/fi';
+import { LiveKitRoom, useParticipants, useLocalParticipant, useTracks, RoomAudioRenderer, VideoTrack } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 
 const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRotate, onToggleAudio, onToggleVideo, onRotateCamera }) => {
-  const [showOptions, setShowOptions] = useState(false);
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
+  const [activeSpeaker, setActiveSpeaker] = useState(null);
+  const [isPiPActive, setIsPiPActive] = useState(false);
+  const allTracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
   const videoRef = useRef(null);
   
-  const tracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
-
+  // Track speaking state
   useEffect(() => {
-    if (videoRef.current && tracks.length > 0) {
-      const track = tracks[0]?.publication?.track;
-      if (track) {
-        track.attach(videoRef.current);
-        return () => track.detach();
+    participants.forEach(p => {
+      if (p.identity !== localParticipant?.identity) {
+        p.on('isSpeakingChanged', (speaking) => {
+          if (speaking) setActiveSpeaker(p);
+        });
       }
+    });
+  }, [participants, localParticipant]);
+
+  // Get remote participant to display (active speaker or first remote)
+  const displayParticipant = activeSpeaker || participants.find(p => p.identity !== localParticipant?.identity);
+  const localCameraTrack = allTracks.find(t => t.participant.identity === localParticipant?.identity);
+  const remoteCameraTrack = displayParticipant ? allTracks.find(t => t.participant.identity === displayParticipant.identity) : null;
+
+  // Attach track to video element for PiP
+  useEffect(() => {
+    if (videoRef.current && remoteCameraTrack?.publication?.track) {
+      remoteCameraTrack.publication.track.attach(videoRef.current);
+      return () => remoteCameraTrack.publication.track.detach();
     }
-  }, [tracks]);
+  }, [remoteCameraTrack]);
+
+  // Monitor PiP state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleEnterPiP = () => setIsPiPActive(true);
+    const handleLeavePiP = () => setIsPiPActive(false);
+
+    video.addEventListener('enterpictureinpicture', handleEnterPiP);
+    video.addEventListener('leavepictureinpicture', handleLeavePiP);
+
+    return () => {
+      video.removeEventListener('enterpictureinpicture', handleEnterPiP);
+      video.removeEventListener('leavepictureinpicture', handleLeavePiP);
+    };
+  }, []);
+
+  // Auto-trigger PiP on tab switch
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      const video = videoRef.current;
+      if (document.hidden && video && remoteCameraTrack && !document.pictureInPictureElement && video.readyState >= 2) {
+        try {
+          await video.requestPictureInPicture();
+        } catch (err) {
+          console.log('Auto PiP failed:', err);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [remoteCameraTrack]);
+
+  const togglePiP = async () => {
+    try {
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture();
+      } else if (videoRef.current && remoteCameraTrack) {
+        await videoRef.current.requestPictureInPicture();
+      }
+    } catch (err) {
+      console.error('PiP error:', err);
+    }
+  };
 
   return (
-    <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-2xl overflow-hidden w-[200px]">
+    <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-2xl overflow-hidden w-[220px] md:w-[240px]">
       <RoomAudioRenderer />
-      {/* Video Preview */}
-      <div className="relative w-full h-[140px] bg-black">
-        <video
-          ref={videoRef}
-          className="w-full h-full object-cover"
-          autoPlay
-          playsInline
-          muted
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+      
+      {/* Drag Handle */}
+      <div className="bg-black/20 px-3 py-1 flex items-center justify-between cursor-move">
+        <div className="flex items-center gap-1.5 text-white/80">
+          <FiMove className="w-3 h-3" />
+          <span className="text-xs font-medium">Drag to move</span>
+        </div>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEnd();
+          }}
+          className="p-1 hover:bg-white/20 rounded transition-colors"
+          title="End call"
+        >
+          <FiX className="w-4 h-4 text-white" />
+        </button>
       </div>
 
-      {/* Controls */}
-      <div 
-        className="px-3 py-2 cursor-pointer"
-        onClick={(e) => { e.stopPropagation(); setShowOptions(!showOptions); }}
-      >
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-            <div className="absolute inset-0 w-2 h-2 bg-white rounded-full animate-ping" />
+      {/* Video Preview - Active Speaker or Remote Participant */}
+      <div className="relative w-full h-[160px] bg-black">
+        {remoteCameraTrack ? (
+          <>
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              autoPlay
+              playsInline
+            />
+            <VideoTrack
+              trackRef={remoteCameraTrack}
+              className="w-full h-full object-cover absolute inset-0"
+              style={{ display: isPiPActive ? 'none' : 'block' }}
+            />
+          </>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-gray-800">
+            <FiUsers className="w-12 h-12 text-gray-600" />
           </div>
-          
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-xs text-white truncate">Group Call</p>
-            <div className="flex items-center gap-1 text-[10px] text-white/90">
-              <FiUsers className="w-2.5 h-2.5" />
-              <span>{participants.length}</span>
-            </div>
+        )}
+        
+        {/* Self View - Picture in Picture */}
+        {localCameraTrack && (
+          <div className="absolute bottom-2 right-2 w-16 h-16 rounded-lg overflow-hidden border-2 border-white/50 shadow-lg">
+            <VideoTrack
+              trackRef={localCameraTrack}
+              className="w-full h-full object-cover"
+            />
           </div>
-
-          <div className="flex items-center gap-1">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleAudio();
-              }}
-              className="p-1 hover:bg-white/20 rounded-full transition-colors"
-              title={isMicEnabled ? 'Mute' : 'Unmute'}
-            >
-              {isMicEnabled ? <FiMic className="w-3 h-3 text-white" /> : <FiMicOff className="w-3 h-3 text-white" />}
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleVideo();
-              }}
-              className="p-1 hover:bg-white/20 rounded-full transition-colors"
-              title={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
-            >
-              {isCameraEnabled ? <FiVideo className="w-3 h-3 text-white" /> : <FiVideoOff className="w-3 h-3 text-white" />}
-            </button>
-            {showRotate && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRotateCamera();
-                }}
-                className="p-1 hover:bg-white/20 rounded-full transition-colors"
-                title="Rotate camera"
-              >
-                <FiRotateCw className="w-3 h-3 text-white" />
-              </button>
-            )}
-            <FiChevronDown className={`w-3 h-3 text-white/80 transition-transform ${showOptions ? 'rotate-180' : ''}`} />
-          </div>
+        )}
+        
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+        
+        {/* Participant Count Overlay */}
+        <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-full flex items-center gap-1">
+          <FiUsers className="w-3 h-3 text-white" />
+          <span className="text-xs text-white font-medium">{participants.length}</span>
         </div>
       </div>
 
-      {/* Options Menu */}
-      {showOptions && (
-        <div className="border-t border-white/20 bg-black/10 backdrop-blur-sm">
+      {/* Controls */}
+      <div className="px-3 py-2.5">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+            </div>
+            <p className="font-semibold text-sm text-white">Group Call</p>
+          </div>
+          
           <button
             onClick={(e) => {
               e.stopPropagation();
               onOpen();
-              setShowOptions(false);
             }}
-            className="w-full px-3 py-2 text-left hover:bg-white/10 transition-colors flex items-center gap-2 text-xs font-medium text-white"
+            className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
+            title="Maximize"
           >
-            <FiMaximize2 className="w-3 h-3" />
-            <span>Open</span>
+            <FiMaximize2 className="w-4 h-4 text-white" />
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleAudio();
+            }}
+            className={`flex-1 p-2 rounded-lg transition-all ${
+              isMicEnabled 
+                ? 'bg-white/20 hover:bg-white/30' 
+                : 'bg-red-500 hover:bg-red-600'
+            }`}
+            title={isMicEnabled ? 'Mute' : 'Unmute'}
+          >
+            {isMicEnabled ? <FiMic className="w-4 h-4 text-white mx-auto" /> : <FiMicOff className="w-4 h-4 text-white mx-auto" />}
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onEnd();
+              onToggleVideo();
             }}
-            className="w-full px-3 py-2 text-left hover:bg-red-500/20 transition-colors flex items-center gap-2 text-xs font-medium text-red-100"
+            className={`flex-1 p-2 rounded-lg transition-all ${
+              isCameraEnabled 
+                ? 'bg-white/20 hover:bg-white/30' 
+                : 'bg-red-500 hover:bg-red-600'
+            }`}
+            title={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
           >
-            <FiX className="w-3 h-3" />
-            <span>End</span>
+            {isCameraEnabled ? <FiVideo className="w-4 h-4 text-white mx-auto" /> : <FiVideoOff className="w-4 h-4 text-white mx-auto" />}
           </button>
+          {remoteCameraTrack && document.pictureInPictureEnabled && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePiP();
+              }}
+              className={`flex-1 p-2 rounded-lg transition-all ${
+                isPiPActive ? 'bg-blue-500 hover:bg-blue-600' : 'bg-white/20 hover:bg-white/30'
+              }`}
+              title={isPiPActive ? 'Exit Picture-in-Picture' : 'Picture-in-Picture'}
+            >
+              <FiMonitor className="w-4 h-4 text-white mx-auto" />
+            </button>
+          )}
+          {showRotate && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRotateCamera();
+              }}
+              className="flex-1 p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-all"
+              title="Rotate camera"
+            >
+              <FiRotateCw className="w-4 h-4 text-white mx-auto" />
+            </button>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
 
 const MinimizedGroupCall = ({ token, wsUrl, callType, onOpen, onEnd }) => {
-  const [position, setPosition] = useState({ x: window.innerWidth - 220, y: window.innerHeight - 200 });
+  const [position, setPosition] = useState(() => {
+    const isMobile = window.innerWidth < 768;
+    return {
+      x: isMobile ? 10 : window.innerWidth - 260,
+      y: isMobile ? 10 : window.innerHeight - 280
+    };
+  });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [showRotate, setShowRotate] = useState(false);
@@ -144,33 +254,49 @@ const MinimizedGroupCall = ({ token, wsUrl, callType, onOpen, onEnd }) => {
   }, []);
 
   useEffect(() => {
-    const handleMouseMove = (e) => {
+    const handleMove = (e) => {
       if (!isDragging) return;
-      const newX = e.clientX - dragOffset.x;
-      const newY = e.clientY - dragOffset.y;
+      
+      const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+      const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+      
+      const newX = clientX - dragOffset.x;
+      const newY = clientY - dragOffset.y;
+      
+      const maxX = window.innerWidth - (bannerRef.current?.offsetWidth || 240);
+      const maxY = window.innerHeight - (bannerRef.current?.offsetHeight || 280);
+      
       setPosition({
-        x: Math.max(0, Math.min(newX, window.innerWidth - 200)),
-        y: Math.max(0, Math.min(newY, window.innerHeight - 200))
+        x: Math.max(0, Math.min(newX, maxX)),
+        y: Math.max(0, Math.min(newY, maxY))
       });
     };
 
-    const handleMouseUp = () => setIsDragging(false);
+    const handleEnd = () => setIsDragging(false);
 
     if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener('mousemove', handleMove);
+      document.addEventListener('mouseup', handleEnd);
+      document.addEventListener('touchmove', handleMove);
+      document.addEventListener('touchend', handleEnd);
     }
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleEnd);
+      document.removeEventListener('touchmove', handleMove);
+      document.removeEventListener('touchend', handleEnd);
     };
   }, [isDragging, dragOffset]);
 
-  const handleMouseDown = (e) => {
-    if (e.target.closest('button')) return;
+  const handleStart = (e) => {
+    if (e.target.closest('button') && !e.target.closest('.cursor-move')) return;
+    
+    const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+    const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+    
     const rect = bannerRef.current.getBoundingClientRect();
-    setDragOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    setDragOffset({ x: clientX - rect.left, y: clientY - rect.top });
     setIsDragging(true);
   };
 
@@ -178,8 +304,14 @@ const MinimizedGroupCall = ({ token, wsUrl, callType, onOpen, onEnd }) => {
     <div
       ref={bannerRef}
       className="fixed z-[9999] animate-slideUp"
-      style={{ left: `${position.x}px`, top: `${position.y}px`, cursor: isDragging ? 'grabbing' : 'grab' }}
-      onMouseDown={handleMouseDown}
+      style={{ 
+        left: `${position.x}px`, 
+        top: `${position.y}px`, 
+        cursor: isDragging ? 'grabbing' : 'grab',
+        touchAction: 'none'
+      }}
+      onMouseDown={handleStart}
+      onTouchStart={handleStart}
     >
       <LiveKitRoom
         token={token}

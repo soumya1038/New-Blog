@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LiveKitRoom, VideoConference, RoomAudioRenderer, useParticipants, useLocalParticipant } from '@livekit/components-react';
 import '@livekit/components-styles';
 import { FiUsers, FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiMessageSquare, FiMonitor, FiRotateCw, FiMinimize2 } from 'react-icons/fi';
@@ -113,6 +113,39 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
   const [token, setToken] = useState('');
   const [wsUrl, setWsUrl] = useState('');
   const [error, setError] = useState('');
+  const videoContainerRef = useRef(null);
+
+  // Auto-trigger PiP on tab switch
+  useEffect(() => {
+    if (!token) return;
+
+    const handleVisibilityChange = async () => {
+      if (document.hidden && !document.pictureInPictureElement) {
+        setTimeout(async () => {
+          // Find participant tiles (remote participants)
+          const participantTiles = document.querySelectorAll('.lk-participant-tile');
+          console.log('Found participant tiles:', participantTiles.length);
+          
+          for (const tile of participantTiles) {
+            const video = tile.querySelector('video');
+            if (video && video.readyState >= 2) {
+              console.log('Trying video:', { readyState: video.readyState, paused: video.paused });
+              try {
+                await video.requestPictureInPicture();
+                console.log('PiP activated');
+                break;
+              } catch (err) {
+                console.log('PiP failed:', err.message);
+              }
+            }
+          }
+        }, 300);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [token]);
 
   useEffect(() => {
     const getToken = async () => {
@@ -235,7 +268,7 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
             <span className="hidden sm:inline">Minimize</span>
           </button>
         </div>
-        <div className="flex-1 overflow-hidden p-2 md:p-4">
+        <div className="flex-1 overflow-hidden p-2 md:p-4" ref={videoContainerRef}>
           <div className="h-full">
             <VideoConference />
             <RoomAudioRenderer />

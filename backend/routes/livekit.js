@@ -25,6 +25,9 @@ router.post('/token', protect, async (req, res) => {
     const at = new AccessToken(apiKey, apiSecret, {
       identity: req.user.id,
       name: finalParticipantName,
+      metadata: JSON.stringify({
+        avatar: req.user.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(finalParticipantName)}&background=0D8ABC&color=fff`
+      })
     });
 
     at.addGrant({

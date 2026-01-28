@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { FiPhone, FiVideo, FiX } from 'react-icons/fi';
+import { FiPhone, FiVideo, FiX, FiAlertCircle } from 'react-icons/fi';
 
-const GroupCallInvitationModal = ({ groupName, initiator, callType, onAccept, onReject }) => {
+const GroupCallInvitationModal = ({ groupName, initiator, callType, onAccept, onReject, hasActiveCall }) => {
   const [timeLeft, setTimeLeft] = useState(30);
 
   useEffect(() => {
@@ -36,13 +36,24 @@ const GroupCallInvitationModal = ({ groupName, initiator, callType, onAccept, on
           <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
             {groupName}
           </p>
-          <div className="flex items-center justify-center gap-2 text-gray-600 dark:text-gray-400 mb-6">
+          <div className="flex items-center justify-center gap-2 text-gray-600 dark:text-gray-400 mb-4">
             {callType === 'video' ? (
               <><FiVideo className="w-5 h-5" /> <span>Video call</span></>
             ) : (
               <><FiPhone className="w-5 h-5" /> <span>Audio call</span></>
             )}
           </div>
+          
+          {hasActiveCall && (
+            <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+              <div className="flex items-start gap-2">
+                <FiAlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                  You're already in a call. Accepting will end your current call.
+                </p>
+              </div>
+            </div>
+          )}
           
           <div className="mb-6">
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">

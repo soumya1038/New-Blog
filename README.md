@@ -32,7 +32,12 @@ A full-stack blog application built with React, Node.js, Express, and MongoDB.
 ### Messaging & Calls
 - ✅ Real-time messaging with Socket.IO
 - ✅ Audio/Video calls with WebRTC
-- ✅ **Group video calls with LiveKit** 🆕
+- ✅ **Refined group video calls with LiveKit** 🆕
+  - Global state management
+  - Call switching with warnings
+  - Real-time participant tracking
+  - Mobile-friendly drag & drop
+  - Comprehensive call history
 - ✅ Voice messages
 - ✅ File sharing
 - ✅ Group chats
@@ -97,7 +102,14 @@ LIVEKIT_API_SECRET=your_livekit_api_secret
 LIVEKIT_WS_URL=wss://your-project.livekit.cloud
 ```
 
-**📚 For detailed LiveKit setup, see [LIVEKIT_COMPLETE_GUIDE.md](LIVEKIT_COMPLETE_GUIDE.md)**
+**📚 For complete group call documentation, see [Documentation Index](GROUP_CALL_DOCUMENTATION_INDEX.md)**
+
+**🚀 Quick links:**
+- [Quick Start Guide](GROUP_CALL_QUICK_START.md) - Get started in 5 minutes
+- [Complete Implementation](GROUP_CALL_REFINED_IMPLEMENTATION.md) - Full technical docs
+- [Migration Guide](GROUP_CALL_MIGRATION_GUIDE.md) - Integration guide
+- [Flow Diagrams](GROUP_CALL_FLOW_DIAGRAMS.md) - Visual architecture
+- [Refinement Summary](GROUP_CALL_REFINEMENT_SUMMARY.md) - Overview of improvements
 
 **Quick check**: Run `npm run check-livekit` to verify your LiveKit configuration
 

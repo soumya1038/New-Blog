@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
+import { useGroupCall } from '../context/GroupCallContext';
 import { ChatSkeleton } from '../components/SkeletonLoader';
 import api from '../services/api';
 import socketService from '../services/socket';
@@ -40,9 +41,16 @@ const ChatNew = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
-  // Initialize translation hook - t() function is used to translate text
-  // Language is automatically detected from localStorage or browser settings
-  // To add more languages: Update src/i18n.js with new translation keys
+  const { 
+    currentCall: groupCallState, 
+    isMinimized: isGroupCallMinimized, 
+    activeCallsByGroup, 
+    startCall: startGroupCall, 
+    endCall: endGroupCall, 
+    toggleMinimize: toggleGroupCallMinimize,
+    fetchActiveCall,
+    joinActiveCall 
+  } = useGroupCall();
   const { t } = useTranslation();
   const [conversations, setConversations] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
@@ -126,10 +134,6 @@ const ChatNew = () => {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [groups, setGroups] = useState([]);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
-  const [groupCallInvitation, setGroupCallInvitation] = useState(null);
-  const [activeGroupCall, setActiveGroupCall] = useState(null);
-  const [showGroupCallRoom, setShowGroupCallRoom] = useState(false);
-  const [isGroupCallMinimized, setIsGroupCallMinimized] = useState(false);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -535,38 +539,13 @@ const ChatNew = () => {
     });
 
     socket.current.on('groupcall:ended', ({ groupId }) => {
-      console.log('📞 Group call ended:', groupId);
+      console.log('❌ ChatNew: groupcall:ended received for groupId:', groupId);
       soundManager.stop('incomingCall');
-      setGroupCallInvitation(null);
-      setActiveGroupCall(null);
-      setShowGroupCallRoom(false);
-      setIsGroupCallMinimized(false);
-      clearCallState('group');
     });
 
-    socket.current.on('groupcall:user-joined', ({ groupId, user }) => {
-      console.log('📞 User joined:', user.fullName);
-      soundManager.play('joinCall');
-      if (activeGroupCall?.groupId === groupId) {
-        setActiveGroupCall(prev => ({
-          ...prev,
-          participantCount: prev.participantCount + 1,
-          participants: [...(prev.participants || []), user]
-        }));
-      }
-    });
 
-    socket.current.on('groupcall:user-left', ({ groupId, userId }) => {
-      console.log('📞 User left:', userId);
-      soundManager.play('leaveCall');
-      if (activeGroupCall?.groupId === groupId) {
-        setActiveGroupCall(prev => ({
-          ...prev,
-          participantCount: Math.max(0, prev.participantCount - 1),
-          participants: (prev.participants || []).filter(p => p._id !== userId)
-        }));
-      }
-    });
+
+
 
     loadConversations();
     loadGroups();
@@ -604,7 +583,6 @@ const ChatNew = () => {
         socket.current.off('call:ice-candidate');
         socket.current.off('users:online');
         socket.current.off('user:status');
-        socket.current.off('groupcall:invitation');
         socket.current.off('groupcall:ended');
         socket.current.off('groupcall:user-joined');
         socket.current.off('groupcall:user-left');
@@ -747,6 +725,12 @@ const ChatNew = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (selectedChat?.isGroup) {
+      fetchActiveCall(selectedChat._id);
+    }
+  }, [selectedChat, fetchActiveCall]);
 
   useEffect(() => {
     if (selectedChat) {
@@ -2062,140 +2046,24 @@ const ChatNew = () => {
 
   const initiateGroupCall = async (callType) => {
     if (!selectedChat?.isGroup) return;
-    
-    try {
-      const roomName = `group-${selectedChat._id}-${Date.now()}`;
-      
-      console.log('📞 Starting group call:', { roomName, callType });
-      
-      // Create room on backend first
-      await api.post('/livekit/start', {
-        groupId: selectedChat._id,
-        roomName,
-        callType
-      });
-      
-      socket.current.emit('groupcall:start', {
-        groupId: selectedChat._id,
-        roomName,
-        callType
-      });
-      
-      setShowGroupCallRoom(true);
-      setActiveGroupCall({
-        groupId: selectedChat._id,
-        roomName,
-        callType,
-        participantCount: 1,
-        participants: [user]
-      });
-      
-    } catch (error) {
-      console.error('Failed to start group call:', error);
-      showAlertModal('Error', 'Failed to start call');
-    }
+    await startGroupCall(selectedChat._id, selectedChat.name, callType);
   };
 
-  const acceptGroupCall = () => {
-    console.log('📞 ChatNew: acceptGroupCall called');
-    console.log('📞 ChatNew: groupCallInvitation:', groupCallInvitation);
-    if (!groupCallInvitation) return;
-    
-    soundManager.stop('incomingCall');
-    setGroupCallInvitation(null);
-    
-    console.log('📞 ChatNew: Opening group call room');
-    setShowGroupCallRoom(true);
-    setActiveGroupCall({
-      groupId: groupCallInvitation.groupId,
-      roomName: groupCallInvitation.roomName,
-      callType: groupCallInvitation.callType,
-      participantCount: (groupCallInvitation.joinedUsers || []).length + 1,
-      participants: groupCallInvitation.joinedUsers || []
-    });
-    console.log('📞 ChatNew: activeGroupCall set, showGroupCallRoom=true');
-  };
 
-  const rejectGroupCall = () => {
-    console.log('📞 ChatNew: rejectGroupCall called');
-    console.log('📞 ChatNew: groupCallInvitation:', groupCallInvitation);
-    soundManager.stop('incomingCall');
-    const invitation = groupCallInvitation;
-    setGroupCallInvitation(null);
-    
-    if (invitation) {
-      console.log('📞 ChatNew: Setting activeGroupCall for rejected call');
-      setActiveGroupCall({
-        groupId: invitation.groupId,
-        roomName: invitation.roomName,
-        callType: invitation.callType,
-        participantCount: (invitation.joinedUsers || []).length,
-        participants: invitation.joinedUsers || []
-      });
-      console.log('📞 ChatNew: activeGroupCall set:', {
-        groupId: invitation.groupId,
-        participantCount: (invitation.joinedUsers || []).length
-      });
-    }
-  };
 
-  const leaveGroupCall = () => {
-    console.log('📞 ChatNew: leaveGroupCall called');
-    console.log('📞 ChatNew: activeGroupCall:', activeGroupCall);
-    setShowGroupCallRoom(false);
-    setIsGroupCallMinimized(false);
-    setActiveGroupCall(null);
-    clearCallState('group');
-    console.log('📞 ChatNew: Cleared all group call states');
-    
-    if (activeGroupCall) {
-      console.log('📞 ChatNew: Emitting groupcall:leave to server');
-      socketService.socket?.emit('groupcall:leave', {
-        groupId: activeGroupCall.groupId,
-        roomName: activeGroupCall.roomName
-      });
-    }
-  };
 
-  const handleGroupCallMinimize = () => {
-    setShowGroupCallRoom(false);
-    setIsGroupCallMinimized(true);
-  };
 
-  const handleGroupCallOpen = () => {
-    setShowGroupCallRoom(true);
-    setIsGroupCallMinimized(false);
-  };
 
-  useEffect(() => {
-    if (showGroupCallRoom && activeGroupCall) {
-      const callState = getCallState('group');
-      if (callState) {
-        window.dispatchEvent(new CustomEvent('groupCallStateUpdate', { detail: callState }));
-      }
-    }
-  }, [showGroupCallRoom, activeGroupCall]);
 
-  useEffect(() => {
-    const handleOpenFromGlobal = () => {
-      if (activeGroupCall) {
-        setShowGroupCallRoom(true);
-        setIsGroupCallMinimized(false);
-      }
-    };
-    window.addEventListener('openGroupCallFromGlobal', handleOpenFromGlobal);
-    return () => window.removeEventListener('openGroupCallFromGlobal', handleOpenFromGlobal);
-  }, [activeGroupCall]);
 
-  useEffect(() => {
-    const handleGroupCallEnded = () => {
-      setActiveGroupCall(null);
-      setShowGroupCallRoom(false);
-      setIsGroupCallMinimized(false);
-    };
-    window.addEventListener('groupCallEnded', handleGroupCallEnded);
-    return () => window.removeEventListener('groupCallEnded', handleGroupCallEnded);
-  }, []);
+
+
+
+
+
+
+
+
 
   if (loading) {
     return <ChatSkeleton />;
@@ -3221,17 +3089,18 @@ const ChatNew = () => {
             </div>
 
             {/* Active Group Call Banner */}
-            {selectedChat?.isGroup && activeGroupCall && activeGroupCall.groupId === selectedChat._id && !showGroupCallRoom && !isGroupCallMinimized && (
-              <ActiveGroupCallBanner
-                participantCount={activeGroupCall.participantCount}
-                callType={activeGroupCall.callType}
-                participants={activeGroupCall.participants || []}
-                onJoin={() => {
-                  setShowGroupCallRoom(true);
-                  setIsGroupCallMinimized(false);
-                }}
-              />
-            )}
+            {(() => {
+              const activeCall = selectedChat?.isGroup ? activeCallsByGroup[selectedChat._id] : null;
+              const shouldShow = activeCall && !groupCallState;
+              return shouldShow ? (
+                <ActiveGroupCallBanner
+                  participantCount={activeCall.participants?.length || 0}
+                  callType={activeCall.callType}
+                  participants={activeCall.participants || []}
+                  onJoin={() => joinActiveCall(selectedChat._id)}
+                />
+              ) : null;
+            })()}
 
             {/* Pinned Messages Banner */}
             {!selectedChat.isGroup && pinnedMessages.length > 0 && (
@@ -4208,37 +4077,26 @@ const ChatNew = () => {
         />
       )}
 
-      {/* Group Call Invitation Modal */}
-      {groupCallInvitation && (
-        <GroupCallInvitationModal
-          groupName={groupCallInvitation.groupName}
-          initiator={groupCallInvitation.initiator}
-          callType={groupCallInvitation.callType}
-          onAccept={acceptGroupCall}
-          onReject={rejectGroupCall}
-        />
-      )}
-
       {/* Group Call Room */}
-      {showGroupCallRoom && activeGroupCall && (
+      {groupCallState && !isGroupCallMinimized && (
         <GroupCallRoom
-          roomName={activeGroupCall.roomName}
+          roomName={groupCallState.roomName}
           participantName={user.fullName}
-          groupId={activeGroupCall.groupId}
-          callType={activeGroupCall.callType}
-          onLeave={leaveGroupCall}
-          onMinimize={handleGroupCallMinimize}
+          groupId={groupCallState.groupId}
+          callType={groupCallState.callType}
+          onLeave={endGroupCall}
+          onMinimize={toggleGroupCallMinimize}
         />
       )}
 
       {/* Minimized Group Call */}
-      {isGroupCallMinimized && activeGroupCall && (
+      {groupCallState && isGroupCallMinimized && (
         <MinimizedGroupCall
-          token={getCallState('group')?.token}
-          wsUrl={getCallState('group')?.wsUrl}
-          callType={activeGroupCall.callType}
-          onOpen={handleGroupCallOpen}
-          onEnd={leaveGroupCall}
+          token={groupCallState.token}
+          wsUrl={groupCallState.wsUrl}
+          callType={groupCallState.callType}
+          onOpen={toggleGroupCallMinimize}
+          onEnd={endGroupCall}
         />
       )}
 

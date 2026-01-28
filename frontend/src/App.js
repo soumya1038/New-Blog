@@ -1,13 +1,14 @@
 import React, { useEffect, useContext, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
+import { GroupCallProvider } from './context/GroupCallContext';
 import Navbar from './components/Navbar';
 import ErrorFallback from './components/ErrorFallback';
 import IncomingCallModal from './components/IncomingCallModal';
 import GuestExpiredModal from './components/GuestExpiredModal';
 import FloatingCallBanner from './components/FloatingCallBanner';
-import FloatingGroupCallBanner from './components/FloatingGroupCallBanner';
 import GlobalGroupCallListener from './components/GlobalGroupCallListener';
+import MinimizedGroupCall from './components/MinimizedGroupCall';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
 import soundManager from './utils/soundManager';
@@ -15,6 +16,7 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { useRouteTracker } from './hooks/useRouteTracker';
 import guestTracker from './services/guestTracking';
 import { getCallState, clearCallState } from './utils/callStateManager';
+import { useGroupCall } from './context/GroupCallContext';
 
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
@@ -43,12 +45,12 @@ const LoadingFallback = () => (
 
 function AppContent() {
   const { user, sessionExpired, guestExpired, setGuestExpired } = useContext(AuthContext);
+  const { currentCall, isMinimized, endCall, toggleMinimize } = useGroupCall();
   const location = useLocation();
   const navigate = useNavigate();
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   const [globalCallState, setGlobalCallState] = useState(null);
-  const [globalGroupCallState, setGlobalGroupCallState] = useState(null);
   
   useRouteTracker();
 
@@ -56,10 +58,6 @@ function AppContent() {
     const savedState = getCallState('one-to-one');
     if (savedState && savedState.callAccepted) {
       setGlobalCallState(savedState);
-    }
-    const savedGroupState = getCallState('group');
-    if (savedGroupState) {
-      setGlobalGroupCallState(savedGroupState);
     }
   }, []);
 
@@ -69,20 +67,11 @@ function AppContent() {
       setGlobalCallState(null);
       clearCallState('one-to-one');
     };
-    const handleGroupCallStateUpdate = (e) => setGlobalGroupCallState(e.detail);
-    const handleGroupCallEnd = () => {
-      setGlobalGroupCallState(null);
-      clearCallState('group');
-    };
     window.addEventListener('callStateUpdate', handleCallStateUpdate);
     window.addEventListener('callEnded', handleCallEnd);
-    window.addEventListener('groupCallStateUpdate', handleGroupCallStateUpdate);
-    window.addEventListener('groupCallEnded', handleGroupCallEnd);
     return () => {
       window.removeEventListener('callStateUpdate', handleCallStateUpdate);
       window.removeEventListener('callEnded', handleCallEnd);
-      window.removeEventListener('groupCallStateUpdate', handleGroupCallStateUpdate);
-      window.removeEventListener('groupCallEnded', handleGroupCallEnd);
     };
   }, []);
   
@@ -318,22 +307,16 @@ function AppContent() {
             onRotateCamera={handleGlobalRotateCamera}
           />
         )}
-        {globalGroupCallState && (
-          <FloatingGroupCallBanner
-            token={globalGroupCallState.token}
-            wsUrl={globalGroupCallState.wsUrl}
-            callType={globalGroupCallState.callType || 'video'}
+        {currentCall && isMinimized && location.pathname !== '/chat' && (
+          <MinimizedGroupCall
+            token={currentCall.token}
+            wsUrl={currentCall.wsUrl}
+            callType={currentCall.callType}
             onOpen={() => {
+              toggleMinimize();
               navigate('/chat');
-              setTimeout(() => {
-                window.dispatchEvent(new CustomEvent('openGroupCallFromGlobal'));
-              }, 100);
             }}
-            onEnd={() => {
-              clearCallState('group');
-              setGlobalGroupCallState(null);
-              window.dispatchEvent(new CustomEvent('groupCallEnded'));
-            }}
+            onEnd={endCall}
           />
         )}
         <Suspense fallback={<LoadingFallback />}>
@@ -369,7 +352,9 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <AppContent />
+        <GroupCallProvider>
+          <AppContent />
+        </GroupCallProvider>
       </Router>
     </AuthProvider>
   );

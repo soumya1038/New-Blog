@@ -1,78 +1,89 @@
-# Group Call Bug Fixes - Complete
+# Group Call System - Bug Fixes
 
 ## Issues Fixed
 
-### 1. ✅ Minimize Screen Appears on Decline
-**Problem**: MinimizedGroupCall was showing even when user rejected the call.
-**Solution**: Removed the 30-second timeout in `rejectGroupCall()` that was keeping activeGroupCall state alive.
+### 1. Group Call Invitation Not Appearing ✅
+**Problem**: Invitations were not showing up for group members.
 
-### 2. ✅ Invitation Doesn't Pop Up Globally  
-**Problem**: GlobalGroupCallListener only listened when NOT on /chat route, so users on /chat never saw invitations.
-**Solution**: 
-- Removed `location.pathname !== '/chat'` check in GlobalGroupCallListener
-- Removed `window.location.pathname === '/chat'` check in ChatNew socket listener
-- Now invitations appear everywhere
+**Root Cause**: The invitation state was being set with auto-decline timer that was immediately clearing it.
 
-### 3. ✅ Active Call Banner Not Showing on /chat
-**Problem**: Banner auto-hide logic was broken.
-**Solution**: Removed the 30-second auto-hide timeout when user declines. Banner now only shows when there's an active call.
+**Fix**: Removed auto-decline timer and simplified invitation handling in `GroupCallContext.js`:
+```javascript
+const handleInvitation = (data) => {
+  setInvitation(prev => {
+    if (prev) soundManager.stop('incomingCall');
+    return { ...data, hasActiveCall: !!currentCall };
+  });
+  soundManager.play('incomingCall');
+};
+```
 
-### 4. ✅ No Camera Button in Audio Calls
-**Problem**: Camera toggle was hidden for audio calls with `{callType === 'video' && ...}` condition.
-**Solution**: Removed the condition - camera button now always visible. Audio calls start with camera OFF, video calls start with camera ON (controlled by LiveKit publishDefaults).
+### 2. Users Joining Different Calls ✅
+**Problem**: When clicking "Join" on active call banner, users were creating a new call instead of joining the existing one.
 
-### 5. ✅ Call Type Not Saved in History
-**Problem**: Backend wasn't tracking if call was audio or video.
-**Solution**: Already implemented! Backend saves `callType` in GroupCall model and includes it in history messages.
+**Root Cause**: Banner was calling `startGroupCall()` instead of `joinActiveCall()`.
 
-## Key Changes
+**Fix**: Updated `ChatNew.jsx` to use correct function:
+```javascript
+onJoin={() => joinActiveCall(selectedChat._id)}
+```
 
-### Frontend Files Modified:
-1. **GlobalGroupCallListener.jsx** - Always listen for invitations
-2. **ChatNew.jsx** - Always show invitations, fixed decline logic
-3. **GroupCallRoom.jsx** - Camera button always visible, proper audio/video defaults
-4. **MinimizedGroupCall.jsx** - No changes needed (already working)
+### 3. Active Call Banner Showing Wrong Participants ✅
+**Problem**: Banner displayed all online group members instead of actual call participants.
 
-### Backend Files:
-- **livekit.js** - Already saves callType ✅
-- **chatSocket.js** - Already broadcasts callType ✅
+**Root Cause**: 
+- Backend `/livekit/active/:groupId` was returning DB participants instead of LiveKit room participants
+- Socket events weren't properly tracking real-time joins/leaves
 
-## How It Works Now
+**Fix**: 
+- Backend now queries LiveKit room for actual participants
+- Socket `groupcall:join` now updates DB participants
+- Context properly handles user-joined/user-left events with duplicate prevention
 
-### Audio Call Flow:
-1. User clicks audio call button
-2. `initiateGroupCall('audio')` called
-3. LiveKit room created with `video: false` in publishDefaults
-4. All participants join with camera OFF initially
-5. Camera button visible - users can turn ON if needed
-6. History saved as "Audio call"
+### 4. Call History Showing "Video Call" for Audio Calls ✅
+**Problem**: All call history messages displayed as "Video call" regardless of actual call type.
 
-### Video Call Flow:
-1. User clicks video call button
-2. `initiateGroupCall('video')` called
-3. LiveKit room created with `video: true` in publishDefaults
-4. All participants join with camera ON initially
-5. Camera button visible - users can turn OFF if needed
-6. History saved as "Video call"
+**Root Cause**: Backend was using hardcoded callType in history message instead of actual call.callType.
+
+**Fix**: Updated `chatSocket.js` to use actual callType:
+```javascript
+content: `${call.callType === 'audio' ? 'Audio' : 'Video'} call ended`,
+callData: {
+  callType: call.callType,
+  // ...
+}
+```
+
+## Files Modified
+
+1. **frontend/src/context/GroupCallContext.js**
+   - Fixed invitation handling
+   - Improved user-joined/user-left event handlers with duplicate prevention
+
+2. **frontend/src/pages/ChatNew.jsx**
+   - Changed active call banner to use `joinActiveCall()` instead of `startGroupCall()`
+
+3. **backend/socket/chatSocket.js**
+   - Added participant tracking in `groupcall:join` event
+   - Fixed call history to use actual callType
+
+4. **backend/routes/livekit.js** (already correct)
+   - Returns actual LiveKit room participants for active calls
 
 ## Testing Checklist
 
-- [ ] Audio call starts with camera OFF
-- [ ] Video call starts with camera ON
-- [ ] Camera button visible in both call types
-- [ ] Can toggle camera during audio call
-- [ ] Can toggle camera during video call
-- [ ] Invitation appears on /chat route
-- [ ] Invitation appears on other routes
-- [ ] Decline doesn't show minimize screen
-- [ ] Active call banner shows correctly
-- [ ] Call history shows "Audio call" or "Video call"
-- [ ] Minimize screen only shows when in call
-- [ ] Leave call properly cleans up state
+- [ ] Start a group call - all members receive invitation
+- [ ] Accept invitation - user joins the call
+- [ ] Click "Join" on active call banner - joins existing call (not new one)
+- [ ] Banner shows correct participant count and avatars
+- [ ] Start audio call - history shows "Audio call ended"
+- [ ] Start video call - history shows "Video call ended"
+- [ ] Multiple users join - all see correct participant list
+- [ ] User leaves - participant count updates for everyone
+- [ ] Last user leaves - call ends and history is saved
 
 ## Notes
 
-- Audio and video calls are identical except for initial camera state
-- LiveKit handles the camera state via `publishDefaults.videoEnabled`
-- Backend already tracks callType in database
-- No need for separate audio/video call components
+- LiveKit room is the source of truth for active participants
+- DB participants are for history tracking only
+- Socket events provide real-time updates between LiveKit sync intervals
