@@ -26,6 +26,9 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
   const displayParticipant = activeSpeaker || participants.find(p => p.identity !== localParticipant?.identity);
   const localCameraTrack = allTracks.find(t => t.participant.identity === localParticipant?.identity);
   const remoteCameraTrack = displayParticipant ? allTracks.find(t => t.participant.identity === displayParticipant.identity) : null;
+  
+  const remoteMetadata = displayParticipant?.metadata ? JSON.parse(displayParticipant.metadata) : {};
+  const localMetadata = localParticipant?.metadata ? JSON.parse(localParticipant.metadata) : {};
 
   // Attach track to video element for PiP
   useEffect(() => {
@@ -105,7 +108,7 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
 
       {/* Video Preview - Active Speaker or Remote Participant */}
       <div className="relative w-full h-[160px] bg-black">
-        {remoteCameraTrack ? (
+        {remoteCameraTrack?.publication?.track && !remoteCameraTrack.publication.isMuted ? (
           <>
             <video
               ref={videoRef}
@@ -119,6 +122,14 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
               style={{ display: isPiPActive ? 'none' : 'block' }}
             />
           </>
+        ) : displayParticipant ? (
+          <div className="w-full h-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+            <img
+              src={remoteMetadata.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayParticipant.name || 'User')}&background=random&color=fff`}
+              alt={displayParticipant.name}
+              className="w-20 h-20 rounded-full object-cover border-2 border-white shadow-lg"
+            />
+          </div>
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gray-800">
             <FiUsers className="w-12 h-12 text-gray-600" />
@@ -126,14 +137,22 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
         )}
         
         {/* Self View - Picture in Picture */}
-        {localCameraTrack && (
+        {localCameraTrack?.publication?.track && !localCameraTrack.publication.isMuted ? (
           <div className="absolute bottom-2 right-2 w-16 h-16 rounded-lg overflow-hidden border-2 border-white/50 shadow-lg">
             <VideoTrack
               trackRef={localCameraTrack}
               className="w-full h-full object-cover"
             />
           </div>
-        )}
+        ) : localParticipant ? (
+          <div className="absolute bottom-2 right-2 w-16 h-16 rounded-lg overflow-hidden border-2 border-white/50 shadow-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+            <img
+              src={localMetadata.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(localParticipant.name || 'User')}&background=random&color=fff`}
+              alt={localParticipant.name}
+              className="w-12 h-12 rounded-full object-cover"
+            />
+          </div>
+        ) : null}
         
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
         

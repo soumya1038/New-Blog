@@ -1,11 +1,46 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { LiveKitRoom, VideoConference, RoomAudioRenderer, useParticipants, useLocalParticipant } from '@livekit/components-react';
+import { LiveKitRoom, RoomAudioRenderer, useParticipants, useLocalParticipant, useTracks, VideoTrack } from '@livekit/components-react';
+import { Track } from 'livekit-client';
 import '@livekit/components-styles';
 import { FiUsers, FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiMessageSquare, FiMonitor, FiRotateCw, FiMinimize2 } from 'react-icons/fi';
 import api from '../services/api';
 import socketService from '../services/socket';
 import soundManager from '../utils/soundManager';
 import { saveCallState, clearCallState } from '../utils/callStateManager';
+
+const CustomVideoConference = () => {
+  const participants = useParticipants();
+  const allTracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
+
+  return (
+    <div className="lk-grid-layout">
+      {participants.map((participant) => {
+        const cameraTrack = allTracks.find(t => t.participant.identity === participant.identity);
+        const metadata = participant.metadata ? JSON.parse(participant.metadata) : {};
+        const hasVideo = cameraTrack?.publication?.track && !cameraTrack.publication.isMuted;
+
+        return (
+          <div key={participant.identity} className="lk-participant-tile" style={{ position: 'relative' }}>
+            {hasVideo ? (
+              <VideoTrack trackRef={cameraTrack} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+                <img
+                  src={metadata.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(participant.name || 'User')}&background=random&color=fff`}
+                  alt={participant.name}
+                  className="participant-avatar"
+                />
+              </div>
+            )}
+            <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(0,0,0,0.7)', padding: '4px 8px', borderRadius: '4px', color: 'white', fontSize: '14px' }}>
+              {participant.name}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 const CustomControls = ({ onLeave, callType, onMinimize }) => {
   const { isMicrophoneEnabled, isCameraEnabled, localParticipant } = useLocalParticipant();
@@ -270,22 +305,55 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
         </div>
         <div className="flex-1 overflow-hidden p-2 md:p-4" ref={videoContainerRef}>
           <div className="h-full">
-            <VideoConference />
+            <CustomVideoConference />
             <RoomAudioRenderer />
             <CustomControls onLeave={handleLeave} callType={callType} onMinimize={handleMinimize} />
           </div>
         </div>
       </LiveKitRoom>
       <style>{`
+        .participant-avatar {
+          width: min(30%, 120px);
+          aspect-ratio: 1;
+          border-radius: 50%;
+          object-fit: cover;
+          border: 4px solid white;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        @media (max-width: 768px) {
+          .participant-avatar {
+            width: min(40%, 80px);
+            border-width: 3px;
+          }
+        }
         .lk-participant-tile {
           border: 2px solid rgba(59, 130, 246, 0.5) !important;
           border-radius: 12px !important;
           overflow: hidden !important;
           box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
+          aspect-ratio: 16/9 !important;
         }
         .lk-participant-tile.lk-speaking {
           border-color: rgba(34, 197, 94, 0.8) !important;
           box-shadow: 0 0 20px rgba(34, 197, 94, 0.4) !important;
+        }
+        .lk-participant-placeholder {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        }
+        .lk-participant-metadata-item {
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          width: 100% !important;
+          height: 100% !important;
+        }
+        .lk-participant-metadata-item img {
+          width: 120px !important;
+          height: 120px !important;
+          border-radius: 50% !important;
+          object-fit: cover !important;
+          border: 4px solid white !important;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
         }
         .lk-grid-layout {
           gap: 12px !important;
@@ -309,6 +377,10 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
           }
           .lk-participant-tile {
             border-width: 1.5px !important;
+          }
+          .lk-participant-metadata-item img {
+            width: 80px !important;
+            height: 80px !important;
           }
         }
         .lk-control-bar {
