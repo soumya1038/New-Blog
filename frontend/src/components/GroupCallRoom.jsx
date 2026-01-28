@@ -303,7 +303,9 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
         @media (max-width: 768px) {
           .lk-grid-layout {
             gap: 8px !important;
-            padding: 4px !important;
+            padding: 0 !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            grid-auto-rows: minmax(0, 1fr) !important;
           }
           .lk-participant-tile {
             border-width: 1.5px !important;
