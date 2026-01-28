@@ -225,10 +225,6 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
   const handleLeave = () => {
     soundManager.play('leaveCall');
     clearCallState('group');
-    socketService.socket?.emit('groupcall:leave', {
-      groupId: groupId || roomName.replace('group-', ''),
-      roomName
-    });
     onLeave();
   };
 

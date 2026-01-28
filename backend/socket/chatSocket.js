@@ -104,6 +104,21 @@ module.exports = (io, onlineUsers = new Map()) => {
           updatedAt: message.updatedAt
         };
 
+        // Increment unread count for all members except sender
+        group.members.forEach(memberId => {
+          const memberIdStr = memberId.toString();
+          if (memberIdStr !== senderId) {
+            let unreadEntry = group.unreadCount?.find(u => u.user.toString() === memberIdStr);
+            if (!unreadEntry) {
+              if (!group.unreadCount) group.unreadCount = [];
+              group.unreadCount.push({ user: memberId, count: 1 });
+            } else {
+              unreadEntry.count++;
+            }
+          }
+        });
+        await group.save();
+
         // Broadcast to all group members
         group.members.forEach(memberId => {
           const memberIdStr = memberId.toString();
@@ -709,8 +724,8 @@ module.exports = (io, onlineUsers = new Map()) => {
           participantCount = 0;
         }
         
-        // If no one in room, end the call
-        if (participantCount === 0) {
+        // If no one in room, end the call (only once)
+        if (participantCount === 0 && call.status === 'active') {
           console.log('🔚 No participants left, ending call');
           
           call.status = 'ended';
@@ -760,14 +775,18 @@ module.exports = (io, onlineUsers = new Map()) => {
           
           await historyMsg.populate('sender', 'fullName profileImage');
           
-          console.log('📡 Broadcasting groupcall:ended');
+          console.log('📡 Broadcasting groupcall:ended to', group.members.length, 'members');
           // Notify all members
+          const notifiedMembers = new Set();
           group.members.forEach(memberId => {
             const memberIdStr = memberId.toString();
-            const memberData = onlineUsers.get(memberIdStr);
-            if (memberData) {
-              io.to(memberData.socketId).emit('groupcall:ended', { groupId });
-              io.to(memberData.socketId).emit('message:receive:group', historyMsg);
+            if (!notifiedMembers.has(memberIdStr)) {
+              notifiedMembers.add(memberIdStr);
+              const memberData = onlineUsers.get(memberIdStr);
+              if (memberData) {
+                io.to(memberData.socketId).emit('groupcall:ended', { groupId });
+                io.to(memberData.socketId).emit('message:receive:group', historyMsg);
+              }
             }
           });
         }
@@ -787,3 +806,4 @@ module.exports = (io, onlineUsers = new Map()) => {
     });
   });
 };
+

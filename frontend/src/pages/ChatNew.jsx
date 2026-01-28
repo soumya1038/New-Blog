@@ -355,7 +355,13 @@ const ChatNew = () => {
         }, 100);
 
         soundManager.play('receiveMsg');
+        
+        // Mark as read immediately
+        api.put(`/groups/${message.group}/mark-read`).catch(err => console.error(err));
       }
+
+      loadConversations();
+      loadGroups();
     });
 
     socket.current.on('message:sent:group', (message) => {
@@ -371,6 +377,9 @@ const ChatNew = () => {
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 100);
+
+      loadConversations();
+      loadGroups();
     });
 
     socket.current.on('message:status', ({ messageId, status, readAt }) => {
@@ -386,43 +395,40 @@ const ChatNew = () => {
       }));
     });
 
-    socket.current.on('typing:status', ({ userId, typing }) => {
-      console.log('⌨️ Typing status received:', { userId, typing });
-
+    const handleTypingStatus = ({ userId, groupId, typing }) => {
       // Update typing in conversations list
       setTypingInConversations(prev => {
         const newMap = new Map(prev);
+        const key = groupId ? `group:${groupId}` : `dm:${userId}`;
         if (typing) {
-          newMap.set(userId, true);
+          newMap.set(key, true);
         } else {
-          newMap.delete(userId);
+          newMap.delete(key);
         }
         return newMap;
       });
 
-      // Use ref to get current value
       const currentChat = selectedChatRef.current;
-      console.log('Current selectedChat (from ref):', currentChat?._id);
-      console.log('Checking if userId matches selectedChat._id:', userId, '===', currentChat?._id, '?', userId === currentChat?._id);
+      if (!currentChat) return;
 
-      // Only update if it's from the current chat
-      if (currentChat && !currentChat.isGroup && userId === currentChat._id) {
-        setTypingUsers(prev => {
-          const newSet = new Set(prev);
-          if (typing) {
-            console.log('✅ Adding user to typing set:', userId);
-            newSet.add(userId);
-          } else {
-            console.log('✅ Removing user from typing set:', userId);
-            newSet.delete(userId);
-          }
-          console.log('Typing users set:', Array.from(newSet));
-          return newSet;
-        });
-      } else {
-        console.log('⚠️ Typing status ignored - not from current individual chat');
-      }
-    });
+      const isCurrentChat = groupId
+        ? currentChat.isGroup && groupId === currentChat._id
+        : !currentChat.isGroup && userId === currentChat._id;
+
+      if (!isCurrentChat) return;
+
+      setTypingUsers(prev => {
+        const newSet = new Set(prev);
+        if (typing) {
+          newSet.add(userId);
+        } else {
+          newSet.delete(userId);
+        }
+        return newSet;
+      });
+    };
+
+    socket.current.on('typing:status', handleTypingStatus);
 
     socket.current.on('message:reaction', ({ messageId, reactions }) => {
       setMessages(prev => {
@@ -571,7 +577,7 @@ const ChatNew = () => {
         socket.current.off('message:receive:group');
         socket.current.off('message:sent:group');
         socket.current.off('message:status');
-        socket.current.off('typing:status');
+        socket.current.off('typing:status', handleTypingStatus);
         socket.current.off('message:reaction');
         socket.current.off('message:pinned');
         socket.current.off('call:incoming');
@@ -979,7 +985,11 @@ const ChatNew = () => {
 
       setMessages(messagesWithCalls);
 
-      if (!isGroup) {
+      if (isGroup) {
+        // Mark group messages as read
+        await api.put(`/groups/${chatId}/mark-read`);
+        loadGroups();
+      } else {
         // Mark all messages from this user as read
         await api.put(`/messages/mark-read/${chatId}`);
         // Notify sender via socket for real-time status update
@@ -2645,11 +2655,56 @@ const ChatNew = () => {
                           <FiUsers className="w-4 h-4 text-gray-500" />
                           <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{chat.name}</p>
                         </div>
+                        {chat.lastMessage && (
+                          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{formatDate(chat.lastMessage.createdAt)}</span>
+                        )}
                       </div>
                       <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
-                        {chat.members.length} members
+                        {(() => {
+                          const activeCall = activeCallsByGroup[chat._id];
+                          const isTyping = typingInConversations.has(`group:${chat._id}`);
+                          
+                          if (isTyping) {
+                            return (
+                              <span className="text-green-600 dark:text-green-400 italic flex items-center gap-1">
+                                <span className="flex gap-0.5">
+                                  <span className="w-1 h-1 bg-green-600 dark:bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></span>
+                                  <span className="w-1 h-1 bg-green-600 dark:bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }}></span>
+                                  <span className="w-1 h-1 bg-green-600 dark:bg-green-400 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }}></span>
+                                </span>
+                                {t('typing...')}
+                              </span>
+                            );
+                          }
+                          
+                          if (activeCall) {
+                            return (
+                              <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                                {activeCall.callType === 'video' ? <FiVideo className="w-3 h-3" /> : <FiPhone className="w-3 h-3" />}
+                                Call in progress • {activeCall.participants?.length || 0} joined
+                              </span>
+                            );
+                          }
+                          
+                          if (chat.lastMessage) {
+                            const sender = chat.lastMessage.sender;
+                            const senderName = sender?._id === user._id ? 'You' : (sender?.fullName || 'Unknown');
+                            const content = chat.lastMessage.type === 'image' ? '📷 Photo' : 
+                                          chat.lastMessage.type === 'voice' ? '🎤 Voice message' :
+                                          chat.lastMessage.type === 'document' ? '📄 Document' :
+                                          chat.lastMessage.content;
+                            return `${senderName}: ${content}`;
+                          }
+                          
+                          return `${chat.members.length} members`;
+                        })()}
                       </p>
                     </div>
+                    {chat.unreadCount > 0 && (
+                      <span className="ml-2 bg-blue-600 text-white text-xs font-semibold px-2 py-1 rounded-full">
+                        {chat.unreadCount}
+                      </span>
+                    )}
                   </div>
                 </div>
               ) : (

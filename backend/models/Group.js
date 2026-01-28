@@ -49,7 +49,17 @@ const groupSchema = new mongoose.Schema({
       type: Boolean,
       default: true
     }
-  }
+  },
+  unreadCount: [{
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
+    },
+    count: {
+      type: Number,
+      default: 0
+    }
+  }]
 }, {
   timestamps: true
 });

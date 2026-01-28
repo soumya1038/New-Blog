@@ -109,7 +109,8 @@ export const GroupCallProvider = ({ children }) => {
     try {
       const { data } = await api.post('/livekit/token', {
         roomName,
-        groupId
+        groupId,
+        callType
       });
 
       setCurrentCall({
@@ -160,7 +161,8 @@ export const GroupCallProvider = ({ children }) => {
     try {
       const { data } = await api.post('/livekit/token', {
         roomName,
-        groupId
+        groupId,
+        callType
       });
 
       setCurrentCall({
@@ -221,7 +223,8 @@ export const GroupCallProvider = ({ children }) => {
     try {
       const { data } = await api.post('/livekit/token', {
         roomName: activeCall.roomName,
-        groupId
+        groupId,
+        callType: activeCall.callType
       });
 
       setCurrentCall({

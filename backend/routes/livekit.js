@@ -43,12 +43,14 @@ router.post('/token', protect, async (req, res) => {
 
     // Track call participation
     if (groupId) {
+      const { callType } = req.body;
       let call = await GroupCall.findOne({ group: groupId, status: 'active' });
       
       if (!call) {
         call = await GroupCall.create({
           group: groupId,
           roomName,
+          callType: callType || 'video',
           initiator: req.user.id,
           participants: [{ user: req.user.id }]
         });

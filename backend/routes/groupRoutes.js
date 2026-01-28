@@ -45,7 +45,23 @@ router.get('/', protect, async (req, res) => {
       .populate('createdBy', 'name username fullName')
       .sort({ updatedAt: -1 });
 
-    res.json({ groups });
+    // Get last message and unread count for each group
+    const groupsWithMessages = await Promise.all(groups.map(async (group) => {
+      const lastMessage = await Message.findOne({ group: group._id })
+        .sort({ createdAt: -1 })
+        .populate('sender', 'fullName username profileImage')
+        .lean();
+      
+      const unreadEntry = group.unreadCount?.find(u => u.user.toString() === req.user._id.toString());
+      
+      return {
+        ...group.toObject(),
+        lastMessage,
+        unreadCount: unreadEntry?.count || 0
+      };
+    }));
+
+    res.json({ groups: groupsWithMessages });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -364,6 +380,26 @@ router.post('/:groupId/leave', protect, async (req, res) => {
 
     await group.save();
     res.json({ message: 'Left group successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Mark group messages as read
+router.put('/:groupId/mark-read', protect, async (req, res) => {
+  try {
+    const group = await Group.findById(req.params.groupId);
+    if (!group) {
+      return res.status(404).json({ message: 'Group not found' });
+    }
+
+    const unreadEntry = group.unreadCount?.find(u => u.user.toString() === req.user._id.toString());
+    if (unreadEntry) {
+      unreadEntry.count = 0;
+    }
+    await group.save();
+
+    res.json({ message: 'Marked as read' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
