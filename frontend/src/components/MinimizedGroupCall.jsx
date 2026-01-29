@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiMaximize2, FiX, FiUsers, FiRotateCw, FiMove, FiMonitor } from 'react-icons/fi';
 import { LiveKitRoom, useParticipants, useLocalParticipant, useTracks, RoomAudioRenderer, VideoTrack } from '@livekit/components-react';
 import { Track } from 'livekit-client';
+import { useGroupCall } from '../context/GroupCallContext';
 
 const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRotate, onToggleAudio, onToggleVideo, onRotateCamera }) => {
   const participants = useParticipants();
@@ -41,10 +42,10 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onEnd();
+            onOpen();
           }}
           className="p-1 hover:bg-white/20 rounded transition-colors"
-          title="End call"
+          title="Hide"
         >
           <FiX className="w-4 h-4 text-white" />
         </button>
@@ -150,7 +151,7 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
             {isCameraEnabled ? <FiVideo className="w-4 h-4 text-white mx-auto" /> : <FiVideoOff className="w-4 h-4 text-white mx-auto" />}
           </button>
 
-          {showRotate && (
+          {showRotate && isCameraEnabled && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -162,6 +163,16 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
               <FiRotateCw className="w-4 h-4 text-white mx-auto" />
             </button>
           )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEnd();
+            }}
+            className="flex-1 p-2 rounded-lg bg-red-500 hover:bg-red-600 transition-all"
+            title="End call"
+          >
+            <FiX className="w-4 h-4 text-white mx-auto" />
+          </button>
         </div>
       </div>
     </div>
@@ -179,6 +190,7 @@ const MinimizedGroupCall = ({ token, wsUrl, callType, onOpen, onEnd }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [showRotate, setShowRotate] = useState(false);
+  const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
   const bannerRef = useRef(null);
 
   useEffect(() => {
@@ -186,6 +198,7 @@ const MinimizedGroupCall = ({ token, wsUrl, callType, onOpen, onEnd }) => {
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const cameras = devices.filter(d => d.kind === 'videoinput');
+        setHasMultipleCameras(cameras.length > 1);
         setShowRotate(cameras.length > 1);
       } catch (err) {
         console.error('Failed to enumerate devices:', err);
@@ -265,29 +278,35 @@ const MinimizedGroupCall = ({ token, wsUrl, callType, onOpen, onEnd }) => {
           onOpen={onOpen}
           onEnd={onEnd}
           showRotate={showRotate}
+          hasMultipleCameras={hasMultipleCameras}
         />
       </LiveKitRoom>
     </div>
   );
 };
 
-const MinimizedContentWrapper = ({ onOpen, onEnd, showRotate }) => {
+const MinimizedContentWrapper = ({ onOpen, onEnd, showRotate, hasMultipleCameras }) => {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant();
+  const { updateDeviceStates } = useGroupCall();
 
   const toggleMic = async () => {
     if (localParticipant) {
-      await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+      const newState = !isMicrophoneEnabled;
+      await localParticipant.setMicrophoneEnabled(newState);
+      updateDeviceStates({ isMicEnabled: newState });
     }
   };
 
   const toggleCamera = async () => {
     if (localParticipant) {
-      await localParticipant.setCameraEnabled(!isCameraEnabled);
+      const newState = !isCameraEnabled;
+      await localParticipant.setCameraEnabled(newState);
+      updateDeviceStates({ isCameraEnabled: newState });
     }
   };
 
   const rotateCamera = async () => {
-    if (localParticipant) {
+    if (localParticipant && hasMultipleCameras) {
       await localParticipant.setCameraEnabled(false);
       setTimeout(() => localParticipant.setCameraEnabled(true), 100);
     }
@@ -299,7 +318,7 @@ const MinimizedContentWrapper = ({ onOpen, onEnd, showRotate }) => {
       onEnd={onEnd}
       isMicEnabled={isMicrophoneEnabled}
       isCameraEnabled={isCameraEnabled}
-      showRotate={showRotate}
+      showRotate={showRotate && isCameraEnabled}
       onToggleAudio={toggleMic}
       onToggleVideo={toggleCamera}
       onRotateCamera={rotateCamera}

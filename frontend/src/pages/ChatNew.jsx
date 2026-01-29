@@ -4169,6 +4169,8 @@ const ChatNew = () => {
           participantName={user.fullName}
           groupId={groupCallState.groupId}
           callType={groupCallState.callType}
+          token={groupCallState.token}
+          wsUrl={groupCallState.wsUrl}
           onLeave={endGroupCall}
           onMinimize={toggleGroupCallMinimize}
         />

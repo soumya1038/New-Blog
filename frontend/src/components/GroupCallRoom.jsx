@@ -7,6 +7,7 @@ import api from '../services/api';
 import socketService from '../services/socket';
 import soundManager from '../utils/soundManager';
 import { saveCallState, clearCallState } from '../utils/callStateManager';
+import { useGroupCall } from '../context/GroupCallContext';
 
 const CustomVideoConference = () => {
   const participants = useParticipants();
@@ -44,8 +45,25 @@ const CustomVideoConference = () => {
 
 const CustomControls = ({ onLeave, callType, onMinimize }) => {
   const { isMicrophoneEnabled, isCameraEnabled, localParticipant } = useLocalParticipant();
+  const { updateDeviceStates, deviceStates } = useGroupCall();
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [showRotate, setShowRotate] = useState(false);
+
+  // Apply saved states on mount
+  useEffect(() => {
+    if (!localParticipant) return;
+    
+    const applyStates = async () => {
+      if (isMicrophoneEnabled !== deviceStates.isMicEnabled) {
+        await localParticipant.setMicrophoneEnabled(deviceStates.isMicEnabled);
+      }
+      if (isCameraEnabled !== deviceStates.isCameraEnabled) {
+        await localParticipant.setCameraEnabled(deviceStates.isCameraEnabled);
+      }
+    };
+    
+    applyStates();
+  }, [localParticipant]);
 
   useEffect(() => {
     const checkCameras = async () => {
@@ -62,12 +80,26 @@ const CustomControls = ({ onLeave, callType, onMinimize }) => {
 
   const toggleMic = async () => {
     if (!localParticipant) return;
-    await localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled);
+    const newState = !isMicrophoneEnabled;
+    await localParticipant.setMicrophoneEnabled(newState);
+    updateDeviceStates({ isMicEnabled: newState });
   };
 
   const toggleCamera = async () => {
     if (!localParticipant) return;
-    await localParticipant.setCameraEnabled(!isCameraEnabled);
+    const newState = !isCameraEnabled;
+    await localParticipant.setCameraEnabled(newState);
+    updateDeviceStates({ isCameraEnabled: newState });
+  };
+
+  const rotateCamera = async () => {
+    if (!localParticipant) return;
+    try {
+      await localParticipant.setCameraEnabled(false);
+      setTimeout(() => localParticipant.setCameraEnabled(true), 100);
+    } catch (error) {
+      console.error('Camera rotation error:', error);
+    }
   };
 
   const toggleScreenShare = async () => {
@@ -86,22 +118,6 @@ const CustomControls = ({ onLeave, callType, onMinimize }) => {
     }
   };
 
-  const rotateCamera = async () => {
-    if (!localParticipant) return;
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cameras = devices.filter(d => d.kind === 'videoinput');
-      if (cameras.length > 1) {
-        await localParticipant.setCameraEnabled(false);
-        setTimeout(async () => {
-          await localParticipant.setCameraEnabled(true);
-        }, 100);
-      }
-    } catch (error) {
-      console.error('Camera rotation error:', error);
-    }
-  };
-
   return (
     <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-50">
       <div className="bg-gray-900/95 backdrop-blur-xl rounded-2xl shadow-2xl px-3 py-2 border border-gray-700">
@@ -112,7 +128,7 @@ const CustomControls = ({ onLeave, callType, onMinimize }) => {
           <button onClick={toggleCamera} className={`p-2 sm:p-3 rounded-xl transition-all duration-200 transform hover:scale-110 ${!isCameraEnabled ? 'bg-red-500 hover:bg-red-600 shadow-lg shadow-red-500/50' : 'bg-gray-700 hover:bg-gray-600 shadow-lg'}`} title={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}>
             {!isCameraEnabled ? <FiVideoOff className="w-4 h-4 sm:w-5 sm:h-5 text-white" /> : <FiVideo className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
           </button>
-          {showRotate && (
+          {showRotate && isCameraEnabled && (
             <button onClick={rotateCamera} className="p-2 sm:p-3 rounded-xl bg-gray-700 hover:bg-gray-600 shadow-lg transition-all duration-200 transform hover:scale-110" title="Rotate camera">
               <FiRotateCw className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </button>
@@ -144,9 +160,9 @@ const ParticipantCount = () => {
   );
 };
 
-const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType = 'video', onMinimize }) => {
-  const [token, setToken] = useState('');
-  const [wsUrl, setWsUrl] = useState('');
+const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType = 'video', token: existingToken, wsUrl: existingWsUrl, onMinimize }) => {
+  const [token, setToken] = useState(existingToken || '');
+  const [wsUrl, setWsUrl] = useState(existingWsUrl || '');
   const [error, setError] = useState('');
   const videoContainerRef = useRef(null);
 
@@ -183,6 +199,12 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
   }, [token]);
 
   useEffect(() => {
+    // Only fetch token if not provided
+    if (existingToken && existingWsUrl) {
+      console.log('✅ Using existing token and wsUrl');
+      return;
+    }
+
     const getToken = async () => {
       try {
         const { data } = await api.post('/livekit/token', {
@@ -220,7 +242,7 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
     return () => {
       // Cleanup on unmount
     };
-  }, [roomName, participantName, groupId, callType]);
+  }, [roomName, participantName, groupId, callType, existingToken, existingWsUrl]);
 
   const handleLeave = () => {
     soundManager.play('leaveCall');

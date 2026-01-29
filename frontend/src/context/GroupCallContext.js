@@ -17,6 +17,7 @@ export const GroupCallProvider = ({ children }) => {
   const [isMinimized, setIsMinimized] = useState(false);
   const [activeCallsByGroup, setActiveCallsByGroup] = useState({});
   const [socketReady, setSocketReady] = useState(false);
+  const [deviceStates, setDeviceStates] = useState({ isMicEnabled: true, isCameraEnabled: true });
 
   // Monitor socket connection
   useEffect(() => {
@@ -232,6 +233,10 @@ export const GroupCallProvider = ({ children }) => {
     setIsMinimized(prev => !prev);
   }, []);
 
+  const updateDeviceStates = useCallback((states) => {
+    setDeviceStates(prev => ({ ...prev, ...states }));
+  }, []);
+
   const fetchActiveCall = useCallback(async (groupId) => {
     try {
       const { data } = await api.get(`/livekit/active/${groupId}`);
@@ -288,11 +293,13 @@ export const GroupCallProvider = ({ children }) => {
     invitation,
     isMinimized,
     activeCallsByGroup,
+    deviceStates,
     acceptInvitation,
     declineInvitation,
     startCall,
     endCall,
     toggleMinimize,
+    updateDeviceStates,
     fetchActiveCall,
     joinActiveCall
   };
