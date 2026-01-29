@@ -1,4 +1,0 @@
-Line 686 has: </div>)}
-Should be: </div></div></div>
-
-Remove the closing parenthesis after the third closing div tag.

@@ -25,6 +25,7 @@ const callRoutes = require('./routes/callRoutes');
 const livekitRoutes = require('./routes/livekit');
 const zohoAuthRoutes = require('./routes/zohoAuth');
 const draftRoutes = require('./routes/draftRoutes');
+const chatbotRoutes = require('./routes/chatbot');
 const { errorHandler } = require('./middleware/errorHandler');
 const { systemMonitor } = require('./middleware/monitoring');
 const { startDatabaseMonitor } = require('./utils/dbMonitor');
@@ -100,6 +101,7 @@ app.use('/api/calls', callRoutes);
 app.use('/api/livekit', livekitRoutes);
 app.use('/api/auth/zoho', zohoAuthRoutes);
 app.use('/api/drafts', draftRoutes);
+app.use('/api/chatbot', chatbotRoutes);
 
 // SPA fallback - MUST be AFTER all API routes
 if (process.env.NODE_ENV === 'production') {

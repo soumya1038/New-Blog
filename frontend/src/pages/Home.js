@@ -11,7 +11,7 @@ import { AuthContext } from '../context/AuthContext';
 import { BlogCardSkeleton } from '../components/SkeletonLoader';
 import soundNotification from '../utils/soundNotifications';
 import Avatar from '../components/Avatar';
-import ProductTour from '../components/ProductTour';
+import ModernProductTour from '../components/ModernProductTour';
 import ShortBlogs from '../components/ShortBlogs';
 import ScrollToTop from '../components/ScrollToTop';
 import { useDebounce } from '../hooks/useDebounce';
@@ -323,13 +323,13 @@ const Home = () => {
 
   return (
     <>
-      {showTour && <ProductTour onComplete={() => setShowTour(false)} />}
+      {showTour && <ModernProductTour onComplete={() => setShowTour(false)} />}
       <ScrollToTop />
       
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8 overflow-y-auto">
       <div className="container mx-auto px-4">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between mb-8 gap-4">
-          <h1 className="text-4xl font-bold text-gray-800 dark:text-gray-100">{t('Welcome to Modern Blog')}</h1>
+          <h1 className="text-4xl font-bold text-gray-800 dark:text-gray-100">Welcome to Lekhon</h1>
           
           <div className="w-full md:w-96">
             <div className="search-bar relative" ref={searchBarRef}>

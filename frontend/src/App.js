@@ -35,7 +35,7 @@ const JoinGroup = lazy(() => import('./pages/JoinGroup'));
 const ShortBlogsViewer = lazy(() => import('./pages/ShortBlogsViewer'));
 const News = lazy(() => import('./pages/News'));
 const NotFound = lazy(() => import('./pages/NotFound'));
-const Chatbot = lazy(() => import('./components/Chatbot'));
+const ModernChatbot = lazy(() => import('./components/ModernChatbot'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center">
@@ -256,7 +256,7 @@ function AppContent() {
         {user && <GlobalGroupCallListener />}
         {location.pathname !== '/chat' && (
           <Suspense fallback={null}>
-            <Chatbot />
+            <ModernChatbot />
           </Suspense>
         )}
         {globalIncomingCall && (

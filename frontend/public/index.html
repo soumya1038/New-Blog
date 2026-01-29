@@ -1,42 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#3b82f6" />
-  <meta name="description" content="Modern Blog Application" />
-  <link rel="icon" href="%PUBLIC_URL%/logo.png" />
-  <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo.png" />
+  <meta name="description" content="Lekhon - Modern Blogging Platform" />
+  <link rel="icon" href="%PUBLIC_URL%/image/lekhon_url.png" />
+  <link rel="apple-touch-icon" href="%PUBLIC_URL%/image/lekhon_url.png" />
   <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-  <title>New Blog</title>
+  <title>Lekhon</title>
 </head>
+
 <body>
   <noscript>You need to enable JavaScript to run this app.</noscript>
   <div id="root"></div>
   <script>
-<<<<<<< HEAD
-=======
-    // Service worker disabled for development - uncomment to enable
-    /*
->>>>>>> 75a58b9 (fix chat issue)
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/service-worker.js')
-          .then(reg => console.log('SW registered'))
-          .catch(err => console.log('SW registration failed'));
-      });
-    }
-<<<<<<< HEAD
-=======
-    */
-    
     // Unregister existing service workers
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(registrations => {
         registrations.forEach(registration => registration.unregister());
       });
     }
->>>>>>> 75a58b9 (fix chat issue)
   </script>
 </body>
+
 </html>

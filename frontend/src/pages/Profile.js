@@ -271,6 +271,7 @@ const Profile = () => {
   };
 
   const fetchUserBlogs = async () => {
+    if (!user?._id) return;
     try {
       const { data } = await api.get(`/blogs?author=${user._id}`);
       setBlogs(data.blogs);
@@ -280,6 +281,7 @@ const Profile = () => {
   };
 
   const fetchUserShorts = async () => {
+    if (!user?._id) return;
     try {
       const { data } = await api.get(`/shorts?author=${user._id}`);
       setShorts(data.shorts);
@@ -294,7 +296,7 @@ const Profile = () => {
       const userProfile = data.user;
       // Set and save default description if empty
       if (!userProfile.description) {
-        const defaultDescription = 'Passionate blogger on Modern Blog platform. Join me on my writing journey!';
+        const defaultDescription = 'Passionate blogger on Lekhon platform. Join me on my writing journey!';
         userProfile.description = defaultDescription;
         // Save default description to database
         await api.put('/users/profile', { description: defaultDescription });
@@ -344,13 +346,14 @@ const Profile = () => {
   }, [statuses, showViewStatusModal]);
 
   useEffect(() => {
+    if (!user) return;
     const loadData = async () => {
       setLoading(true);
       await Promise.all([fetchProfile(), fetchApiKeys(), fetchUserBlogs(), fetchUserShorts(), fetchStatuses()]);
       setLoading(false);
     };
     loadData();
-  }, []);
+  }, [user]);
 
   const showModal = (type, title, message, onConfirm = null) => {
     setModal({ show: true, type, title, message, onConfirm });
