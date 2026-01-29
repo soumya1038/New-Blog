@@ -272,7 +272,7 @@ const Profile = () => {
 
   const fetchUserBlogs = async () => {
     try {
-      const { data } = await api.get(`/blogs?author=${user._id}&limit=5`);
+      const { data } = await api.get(`/blogs?author=${user._id}`);
       setBlogs(data.blogs);
     } catch (error) {
       console.error('Error fetching blogs:', error);
@@ -282,7 +282,7 @@ const Profile = () => {
   const fetchUserShorts = async () => {
     try {
       const { data } = await api.get(`/shorts?author=${user._id}`);
-      setShorts(data.shorts.slice(0, 5));
+      setShorts(data.shorts);
     } catch (error) {
       console.error('Error fetching shorts:', error);
     }
@@ -995,20 +995,44 @@ const Profile = () => {
             </div>
             
             {blogs.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {blogs.map(blog => (
-                  <div
-                    key={blog._id}
-                    onClick={() => navigate(`/blog/${blog._id}`)}
-                    className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition cursor-pointer"
-                  >
-                    <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={blog.title}>
-                      {blog.title}
-                    </h4>
-                    <p className="text-xs text-gray-500">{formatPostDate(blog.createdAt)}</p>
-                  </div>
-                ))}
-              </div>
+              <>
+                {/* Extra small: 1 col, 2 items */}
+                <div className="grid grid-cols-1 gap-3 sm:hidden">
+                  {blogs.slice(0, 2).map(blog => (
+                    <div key={blog._id} onClick={() => navigate(`/blog/${blog._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition cursor-pointer">
+                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={blog.title}>{blog.title}</h4>
+                      <p className="text-xs text-gray-500">{formatPostDate(blog.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Small: 2 cols, 4 items */}
+                <div className="hidden sm:grid md:hidden grid-cols-2 gap-3">
+                  {blogs.slice(0, 4).map(blog => (
+                    <div key={blog._id} onClick={() => navigate(`/blog/${blog._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition cursor-pointer">
+                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={blog.title}>{blog.title}</h4>
+                      <p className="text-xs text-gray-500">{formatPostDate(blog.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Medium: 3 cols, 6 items */}
+                <div className="hidden md:grid lg:hidden grid-cols-3 gap-3">
+                  {blogs.slice(0, 6).map(blog => (
+                    <div key={blog._id} onClick={() => navigate(`/blog/${blog._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition cursor-pointer">
+                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={blog.title}>{blog.title}</h4>
+                      <p className="text-xs text-gray-500">{formatPostDate(blog.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Large: 5 cols, 10 items */}
+                <div className="hidden lg:grid grid-cols-5 gap-3">
+                  {blogs.slice(0, 10).map(blog => (
+                    <div key={blog._id} onClick={() => navigate(`/blog/${blog._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition cursor-pointer">
+                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={blog.title}>{blog.title}</h4>
+                      <p className="text-xs text-gray-500">{formatPostDate(blog.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : (
               <p className="text-gray-500 text-sm">{t('No posts yet')}</p>
             )}
@@ -1029,20 +1053,44 @@ const Profile = () => {
             </div>
             
             {shorts.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {shorts.map(short => (
-                  <div
-                    key={short._id}
-                    onClick={() => navigate(`/shorts/${short._id}`)}
-                    className="bg-gray-50 p-3 rounded-lg border hover:border-purple-500 hover:shadow-md transition cursor-pointer"
-                  >
-                    <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={short.title}>
-                      {short.title}
-                    </h4>
-                    <p className="text-xs text-gray-500">{formatPostDate(short.createdAt)}</p>
-                  </div>
-                ))}
-              </div>
+              <>
+                {/* Extra small: 1 col, 2 items */}
+                <div className="grid grid-cols-1 gap-3 sm:hidden">
+                  {shorts.slice(0, 2).map(short => (
+                    <div key={short._id} onClick={() => navigate(`/shorts/${short._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-purple-500 hover:shadow-md transition cursor-pointer">
+                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={short.title}>{short.title}</h4>
+                      <p className="text-xs text-gray-500">{formatPostDate(short.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Small: 2 cols, 4 items */}
+                <div className="hidden sm:grid md:hidden grid-cols-2 gap-3">
+                  {shorts.slice(0, 4).map(short => (
+                    <div key={short._id} onClick={() => navigate(`/shorts/${short._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-purple-500 hover:shadow-md transition cursor-pointer">
+                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={short.title}>{short.title}</h4>
+                      <p className="text-xs text-gray-500">{formatPostDate(short.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Medium: 3 cols, 6 items */}
+                <div className="hidden md:grid lg:hidden grid-cols-3 gap-3">
+                  {shorts.slice(0, 6).map(short => (
+                    <div key={short._id} onClick={() => navigate(`/shorts/${short._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-purple-500 hover:shadow-md transition cursor-pointer">
+                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={short.title}>{short.title}</h4>
+                      <p className="text-xs text-gray-500">{formatPostDate(short.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+                {/* Large: 5 cols, 10 items */}
+                <div className="hidden lg:grid grid-cols-5 gap-3">
+                  {shorts.slice(0, 10).map(short => (
+                    <div key={short._id} onClick={() => navigate(`/shorts/${short._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-purple-500 hover:shadow-md transition cursor-pointer">
+                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={short.title}>{short.title}</h4>
+                      <p className="text-xs text-gray-500">{formatPostDate(short.createdAt)}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : (
               <p className="text-gray-500 text-sm">{t('No shorts yet')}</p>
             )}
