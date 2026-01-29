@@ -7,9 +7,7 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
   const participants = useParticipants();
   const { localParticipant } = useLocalParticipant();
   const [activeSpeaker, setActiveSpeaker] = useState(null);
-  const [isPiPActive, setIsPiPActive] = useState(false);
-  const allTracks = useTracks([Track.Source.Camera], { onlySubscribed: false });
-  const videoRef = useRef(null);
+  const allTracks = useTracks([Track.Source.Camera], { onlySubscribed: true });
   
   // Track speaking state
   useEffect(() => {
@@ -29,60 +27,6 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
   
   const remoteMetadata = displayParticipant?.metadata ? JSON.parse(displayParticipant.metadata) : {};
   const localMetadata = localParticipant?.metadata ? JSON.parse(localParticipant.metadata) : {};
-
-  // Attach track to video element for PiP
-  useEffect(() => {
-    if (videoRef.current && remoteCameraTrack?.publication?.track) {
-      remoteCameraTrack.publication.track.attach(videoRef.current);
-      return () => remoteCameraTrack.publication.track.detach();
-    }
-  }, [remoteCameraTrack]);
-
-  // Monitor PiP state
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const handleEnterPiP = () => setIsPiPActive(true);
-    const handleLeavePiP = () => setIsPiPActive(false);
-
-    video.addEventListener('enterpictureinpicture', handleEnterPiP);
-    video.addEventListener('leavepictureinpicture', handleLeavePiP);
-
-    return () => {
-      video.removeEventListener('enterpictureinpicture', handleEnterPiP);
-      video.removeEventListener('leavepictureinpicture', handleLeavePiP);
-    };
-  }, []);
-
-  // Auto-trigger PiP on tab switch
-  useEffect(() => {
-    const handleVisibilityChange = async () => {
-      const video = videoRef.current;
-      if (document.hidden && video && remoteCameraTrack && !document.pictureInPictureElement && video.readyState >= 2) {
-        try {
-          await video.requestPictureInPicture();
-        } catch (err) {
-          console.log('Auto PiP failed:', err);
-        }
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [remoteCameraTrack]);
-
-  const togglePiP = async () => {
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else if (videoRef.current && remoteCameraTrack) {
-        await videoRef.current.requestPictureInPicture();
-      }
-    } catch (err) {
-      console.error('PiP error:', err);
-    }
-  };
 
   return (
     <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-2xl overflow-hidden w-[220px] md:w-[240px]">
@@ -109,19 +53,10 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
       {/* Video Preview - Active Speaker or Remote Participant */}
       <div className="relative w-full h-[160px] bg-black">
         {remoteCameraTrack?.publication?.track && !remoteCameraTrack.publication.isMuted ? (
-          <>
-            <video
-              ref={videoRef}
-              className="w-full h-full object-cover"
-              autoPlay
-              playsInline
-            />
-            <VideoTrack
-              trackRef={remoteCameraTrack}
-              className="w-full h-full object-cover absolute inset-0"
-              style={{ display: isPiPActive ? 'none' : 'block' }}
-            />
-          </>
+          <VideoTrack
+            trackRef={remoteCameraTrack}
+            className="w-full h-full object-cover"
+          />
         ) : displayParticipant ? (
           <div className="w-full h-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
             <img
@@ -214,20 +149,7 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
           >
             {isCameraEnabled ? <FiVideo className="w-4 h-4 text-white mx-auto" /> : <FiVideoOff className="w-4 h-4 text-white mx-auto" />}
           </button>
-          {remoteCameraTrack && document.pictureInPictureEnabled && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                togglePiP();
-              }}
-              className={`flex-1 p-2 rounded-lg transition-all ${
-                isPiPActive ? 'bg-blue-500 hover:bg-blue-600' : 'bg-white/20 hover:bg-white/30'
-              }`}
-              title={isPiPActive ? 'Exit Picture-in-Picture' : 'Picture-in-Picture'}
-            >
-              <FiMonitor className="w-4 h-4 text-white mx-auto" />
-            </button>
-          )}
+
           {showRotate && (
             <button
               onClick={(e) => {

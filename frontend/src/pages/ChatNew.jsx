@@ -42,15 +42,23 @@ const ChatNew = () => {
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
   const { 
-    currentCall: groupCallState, 
+    currentCall: groupCallState,
+    invitation,
     isMinimized: isGroupCallMinimized, 
     activeCallsByGroup, 
     startCall: startGroupCall, 
     endCall: endGroupCall, 
     toggleMinimize: toggleGroupCallMinimize,
     fetchActiveCall,
-    joinActiveCall 
+    joinActiveCall,
+    acceptInvitation,
+    declineInvitation
   } = useGroupCall();
+
+  // Debug: Log invitation state
+  useEffect(() => {
+    console.log('📞 ChatNew: invitation state changed:', invitation);
+  }, [invitation]);
   const { t } = useTranslation();
   const [conversations, setConversations] = useState([]);
   const [selectedChat, setSelectedChat] = useState(null);
@@ -737,6 +745,16 @@ const ChatNew = () => {
       fetchActiveCall(selectedChat._id);
     }
   }, [selectedChat, fetchActiveCall]);
+
+  // Refresh active calls for all groups periodically
+  useEffect(() => {
+    const interval = setInterval(() => {
+      groups.forEach(group => {
+        fetchActiveCall(group._id);
+      });
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [groups, fetchActiveCall]);
 
   useEffect(() => {
     if (selectedChat) {
@@ -2688,7 +2706,7 @@ const ChatNew = () => {
                           
                           if (chat.lastMessage) {
                             const sender = chat.lastMessage.sender;
-                            const senderName = sender?._id === user._id ? 'You' : (sender?.fullName || 'Unknown');
+                            const senderName = sender?._id === user._id ? 'You' : (sender?.fullName || sender?.name || sender?.username || 'Member');
                             const content = chat.lastMessage.type === 'image' ? '📷 Photo' : 
                                           chat.lastMessage.type === 'voice' ? '🎤 Voice message' :
                                           chat.lastMessage.type === 'document' ? '📄 Document' :
@@ -4129,6 +4147,18 @@ const ChatNew = () => {
             setGroups(prev => prev.filter(g => g._id !== selectedChat._id));
             loadGroups();
           }}
+        />
+      )}
+
+      {/* Group Call Invitation */}
+      {invitation && (
+        <GroupCallInvitationModal
+          groupName={invitation.groupName}
+          initiator={invitation.initiator}
+          callType={invitation.callType}
+          onAccept={acceptInvitation}
+          onReject={declineInvitation}
+          hasActiveCall={invitation.hasActiveCall}
         />
       )}
 

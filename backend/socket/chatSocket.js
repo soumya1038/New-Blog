@@ -586,26 +586,27 @@ module.exports = (io, onlineUsers = new Map()) => {
           return;
         }
         
-        // Check if there's already an active call
-        const existingCall = await GroupCall.findOne({ group: groupId, status: 'active' });
-        if (existingCall) {
-          console.log('⚠️ Call already active for group:', groupId);
-          socket.emit('groupcall:error', { error: 'A call is already active in this group' });
-          return;
-        }
+        // End any existing active calls for this group
+        await GroupCall.updateMany(
+          { group: groupId, status: 'active' },
+          { status: 'ended', endedAt: new Date() }
+        );
         
         const initiator = await User.findById(initiatorId).select('fullName profileImage');
         
         console.log(`📡 Broadcasting to ${group.members.length} members`);
+        console.log('📡 Online users:', Array.from(onlineUsers.keys()));
         
         // Notify all online group members except initiator
         let notifiedCount = 0;
         group.members.forEach(member => {
           const memberId = member._id.toString();
+          console.log(`📡 Checking member ${memberId}, is initiator: ${memberId === initiatorId}`);
           if (memberId !== initiatorId) {
             const memberData = onlineUsers.get(memberId);
+            console.log(`📡 Member ${memberId} online data:`, memberData);
             if (memberData) {
-              console.log(`📨 Sending invitation to ${memberId}`);
+              console.log(`📨 Sending invitation to ${memberId} at socket ${memberData.socketId}`);
               io.to(memberData.socketId).emit('groupcall:invitation', {
                 groupId,
                 groupName: group.name,
@@ -618,6 +619,8 @@ module.exports = (io, onlineUsers = new Map()) => {
                 }
               });
               notifiedCount++;
+            } else {
+              console.log(`❌ Member ${memberId} not online`);
             }
           }
         });
