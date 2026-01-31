@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Blog = require('../models/Blog');
+const Article = require('../models/Article');
 const Short = require('../models/Short');
 const Comment = require('../models/Comment');
 const GuestAnalytics = require('../models/GuestAnalytics');
@@ -12,6 +13,7 @@ exports.getStats = async (req, res) => {
     
     const totalUsers = await User.countDocuments();
     const totalBlogs = await Blog.countDocuments({ isDraft: false });
+    const totalArticles = await Article.countDocuments({ isDraft: false });
     const totalShorts = await Short.countDocuments({ isDraft: false });
     const totalComments = await Comment.countDocuments();
     
@@ -47,6 +49,12 @@ exports.getStats = async (req, res) => {
       
       // Blogs count
       const blogCount = await Blog.countDocuments({
+        createdAt: { $gte: date, $lt: nextDate },
+        isDraft: false
+      });
+      
+      // Articles count
+      const articleCount = await Article.countDocuments({
         createdAt: { $gte: date, $lt: nextDate },
         isDraft: false
       });
@@ -112,7 +120,7 @@ exports.getStats = async (req, res) => {
         ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         : date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
       
-      blogsPerDay.push({ date: dateLabel, count: blogCount });
+      blogsPerDay.push({ date: dateLabel, blogs: blogCount, articles: articleCount });
       shortsPerDay.push({ date: dateLabel, count: shortCount });
       commentsPerDay.push({ date: dateLabel, count: commentCount });
       userRegistrations.push({ date: dateLabel, User: userCount, Guest: totalGuestsForDay });
@@ -129,6 +137,7 @@ exports.getStats = async (req, res) => {
       stats: {
         totalUsers,
         totalBlogs,
+        totalArticles,
         totalShorts,
         totalComments,
         activeUsersToday,
@@ -162,10 +171,12 @@ exports.getUsers = async (req, res) => {
       }
       
       const blogCount = await Blog.countDocuments({ author: user._id, isDraft: false });
+      const articleCount = await Article.countDocuments({ author: user._id, isDraft: false });
       const shortCount = await Short.countDocuments({ author: user._id, isDraft: false });
       return {
         ...user.toObject(),
         blogCount,
+        articleCount,
         shortCount
       };
     }));
@@ -192,6 +203,27 @@ exports.getAllBlogs = async (req, res) => {
     }));
 
     res.json({ success: true, blogs: blogsWithComments });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Get all articles (including drafts)
+exports.getAllArticles = async (req, res) => {
+  try {
+    const articles = await Article.find()
+      .populate('author', 'username profileImage')
+      .sort({ createdAt: -1 });
+
+    const articlesWithComments = await Promise.all(articles.map(async (article) => {
+      const commentCount = await Comment.countDocuments({ article: article._id });
+      return {
+        ...article.toObject(),
+        commentCount
+      };
+    }));
+
+    res.json({ success: true, articles: articlesWithComments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -434,6 +466,27 @@ exports.deleteBlog = async (req, res) => {
     await Blog.findByIdAndDelete(blog._id);
 
     res.json({ success: true, message: 'Blog deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Delete article
+exports.deleteArticle = async (req, res) => {
+  try {
+    const article = await Article.findById(req.params.id);
+    
+    if (!article) {
+      return res.status(404).json({ success: false, message: 'Article not found' });
+    }
+
+    // Delete associated comments
+    await Comment.deleteMany({ article: article._id });
+    
+    // Delete article
+    await Article.findByIdAndDelete(article._id);
+
+    res.json({ success: true, message: 'Article deleted successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -245,7 +245,7 @@ const Login = () => {
         sessionStorage.removeItem('redirectAfterLogin');
         navigate(redirectPath);
       } else {
-        // Show intro video immediately
+        // Show intro video directly
         setShowIntroVideo(true);
       }
     } catch (err) {

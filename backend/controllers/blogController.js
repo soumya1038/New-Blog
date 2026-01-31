@@ -122,18 +122,20 @@ exports.getBlogs = async (req, res) => {
       .populate('author', 'username profileImage isGuest role isVerified statuses')
       .sort({ createdAt: -1 });
 
-    // Add hasActiveStatus to each blog author
-    const blogsWithStatus = blogs.map(blog => {
+    // Add commentCount and hasActiveStatus to each blog
+    const Comment = require('../models/Comment');
+    const blogsWithStatus = await Promise.all(blogs.map(async (blog) => {
       const blogObj = blog.toObject();
+      blogObj.commentCount = await Comment.countDocuments({ blog: blog._id });
       if (blogObj.author && blogObj.author.statuses) {
         const now = new Date();
         blogObj.author.hasActiveStatus = blogObj.author.statuses.some(status => 
           status.expiresAt && new Date(status.expiresAt) > now
         );
-        delete blogObj.author.statuses; // Remove statuses array from response
+        delete blogObj.author.statuses;
       }
       return blogObj;
-    });
+    }));
 
     res.json({ success: true, blogs: blogsWithStatus });
   } catch (error) {

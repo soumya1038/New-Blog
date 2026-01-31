@@ -5,10 +5,12 @@ const {
   getStats,
   getUsers,
   getAllBlogs,
+  getAllArticles,
   getAllShorts,
   deleteUser,
   suspendUser,
   deleteBlog,
+  deleteArticle,
   deleteShort,
   makeAdmin,
   makeCoAdmin,
@@ -39,6 +41,7 @@ router.get('/stats', adminOrCoAdminAuth, getStats);
 router.get('/users', adminOrCoAdminAuth, getUsers);
 router.get('/guests', adminOrCoAdminAuth, getGuestUsers);
 router.get('/blogs', adminOrCoAdminAuth, getAllBlogs);
+router.get('/articles', adminOrCoAdminAuth, getAllArticles);
 router.get('/shorts', adminOrCoAdminAuth, getAllShorts);
 
 // Write routes (admin only)
@@ -49,6 +52,7 @@ router.put('/users/:id/make-admin', adminAuth, makeAdmin);
 router.put('/users/:id/make-coadmin', adminAuth, makeCoAdmin);
 router.put('/users/:id/remove-coadmin', adminAuth, removeCoAdmin);
 router.delete('/blogs/:id', adminAuth, deleteBlog);
+router.delete('/articles/:id', adminAuth, deleteArticle);
 router.delete('/shorts/:id', adminAuth, deleteShort);
 
 module.exports = router;

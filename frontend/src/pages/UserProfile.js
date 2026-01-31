@@ -3,12 +3,14 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaCalendar, FaUsers, FaFileAlt, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaEnvelope, FaUserPlus, FaUserMinus } from 'react-icons/fa';
+import { FaCalendar, FaUsers, FaFileAlt, FaFacebook, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaEnvelope, FaUserPlus, FaUserMinus, FaShare, FaEye, FaComment, FaWhatsapp } from 'react-icons/fa';
+import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified, GoUnverified } from 'react-icons/go';
 import { UserProfileSkeleton } from '../components/SkeletonLoader';
 import Avatar from '../components/Avatar';
 import StatusViewer from '../components/StatusViewer';
 import GuestBadge from '../components/GuestBadge';
+import toast, { Toaster } from 'react-hot-toast';
 
 const UserProfile = () => {
   const { t } = useTranslation();
@@ -17,6 +19,7 @@ const UserProfile = () => {
   const { user: currentUser } = useContext(AuthContext);
   const [profile, setProfile] = useState(null);
   const [blogs, setBlogs] = useState([]);
+  const [articles, setArticles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [graphView, setGraphView] = useState('months');
   const [selectedMonth, setSelectedMonth] = useState(null);
@@ -31,11 +34,15 @@ const UserProfile = () => {
   const [error, setError] = useState(null);
   const [showStatusViewer, setShowStatusViewer] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareTitle, setShareTitle] = useState('');
 
 
   useEffect(() => {
     fetchUserProfile();
     fetchUserBlogs();
+    fetchUserArticles();
     fetchUserShorts();
   }, [id, currentUser]);
 
@@ -86,10 +93,20 @@ const UserProfile = () => {
     }
   };
 
+  const fetchUserArticles = async () => {
+    try {
+      const { data } = await api.get(`/articles?author=${id}`);
+      setArticles(data.articles || []);
+    } catch (error) {
+      console.error('Error fetching user articles:', error);
+      setArticles([]);
+    }
+  };
+
   const getMonthsData = () => {
     const months = [];
     const now = new Date();
-    const allContent = [...blogs, ...shorts];
+    const allContent = [...blogs, ...articles, ...shorts];
 
     for (let i = 5; i >= 0; i--) {
       const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -111,7 +128,7 @@ const UserProfile = () => {
     const weeks = [];
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    const allContent = [...blogs, ...shorts];
+    const allContent = [...blogs, ...articles, ...shorts];
 
     let weekStart = new Date(firstDay);
     let weekNum = 1;
@@ -144,7 +161,7 @@ const UserProfile = () => {
   const getDaysData = (startDate, endDate) => {
     const days = [];
     const current = new Date(startDate);
-    const allContent = [...blogs, ...shorts];
+    const allContent = [...blogs, ...articles, ...shorts];
 
     while (current <= endDate) {
       const dayLabel = current.toLocaleDateString('en-US', { weekday: 'short' });
@@ -195,6 +212,14 @@ const UserProfile = () => {
     });
   };
 
+  const getFilteredArticles = () => {
+    if (!selectedDay) return articles;
+    return articles.filter(article => {
+      const articleDate = new Date(article.createdAt);
+      return articleDate.toDateString() === selectedDay.toDateString();
+    });
+  };
+
   const getFilteredShorts = () => {
     if (!selectedDay) return shorts;
     return shorts.filter(short => {
@@ -215,7 +240,7 @@ const UserProfile = () => {
     const months = [];
     const startDate = new Date(heatmapYear, 0, 1);
     const endDate = new Date(heatmapYear, 11, 31);
-    const allContent = [...blogs, ...shorts];
+    const allContent = [...blogs, ...articles, ...shorts];
 
     const current = new Date(startDate);
 
@@ -275,7 +300,7 @@ const UserProfile = () => {
   };
 
   const getAvailableYears = () => {
-    const allContent = [...blogs, ...shorts];
+    const allContent = [...blogs, ...articles, ...shorts];
     if (allContent.length === 0) return [new Date().getFullYear()];
     const years = new Set();
     allContent.forEach(item => {
@@ -304,6 +329,61 @@ const UserProfile = () => {
     if (lowerName.includes('linkedin')) return <FaLinkedin className="text-blue-700" />;
     return <FaGlobe className="text-gray-600" />;
   };
+
+  const handleShare = async (post, type) => {
+    const url = `${window.location.origin}/${type}/${post._id}`;
+    setShareUrl(url);
+    setShareTitle(post.title);
+    setShowShareModal(true);
+  };
+
+  const shareOptions = [
+    {
+      name: 'Facebook',
+      icon: <FaFacebook className="text-2xl" />,
+      color: 'bg-blue-600 hover:bg-blue-700',
+      action: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
+    },
+    {
+      name: 'Twitter',
+      icon: <FaXTwitter className="text-2xl" />,
+      color: 'bg-black hover:bg-gray-800',
+      action: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')
+    },
+    {
+      name: 'LinkedIn',
+      icon: <FaLinkedin className="text-2xl" />,
+      color: 'bg-blue-700 hover:bg-blue-800',
+      action: () => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank')
+    },
+    {
+      name: 'WhatsApp',
+      icon: <FaWhatsapp className="text-2xl" />,
+      color: 'bg-green-500 hover:bg-green-600',
+      action: () => window.open(`https://wa.me/?text=${encodeURIComponent(shareTitle + ' ' + shareUrl)}`, '_blank')
+    },
+    {
+      name: 'Copy Link',
+      icon: <FaGlobe className="text-2xl" />,
+      color: 'bg-gray-800 hover:bg-gray-900',
+      action: () => {
+        const textArea = document.createElement('textarea');
+        textArea.value = shareUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          toast.success('Link copied to clipboard!');
+          setShowShareModal(false);
+        } catch (err) {
+          toast.error('Failed to copy link');
+        }
+        document.body.removeChild(textArea);
+      }
+    }
+  ];
 
   if (loading) {
     return (
@@ -372,6 +452,7 @@ const UserProfile = () => {
 
 return (
   <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+    <Toaster />
     <div className="container mx-auto px-4 max-w-6xl">
       <button
         onClick={() => navigate(-1)}
@@ -433,8 +514,8 @@ return (
             {/* Stats */}
             <div className="flex flex-wrap justify-center sm:justify-start gap-6 mb-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-blue-600">{(blogs.length + shorts.length) || 0}</p>
-                <p className="text-sm text-gray-600 flex items-center gap-1"><FaFileAlt /> {t('Posts')} ({blogs.length} + {shorts.length} shorts)</p>
+                <p className="text-2xl font-bold text-blue-600">{(blogs.length + articles.length + shorts.length) || 0}</p>
+                <p className="text-sm text-gray-600 flex items-center gap-1"><FaFileAlt /> {t('Posts')} ({blogs.length} blogs + {articles.length} articles + {shorts.length} shorts)</p>
               </div>
               <div className="text-center">
                 <p className="text-2xl font-bold text-blue-600">{profile.followerCount || 0}</p>
@@ -654,8 +735,15 @@ return (
               {t('Blog Posts')} ({blogs.length})
             </button>
             <button
+              onClick={() => setContentTab('articles')}
+              className={`text-xl font-bold transition ${contentTab === 'articles' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-400 hover:text-gray-600'
+                }`}
+            >
+              {t('Articles')} ({articles.length})
+            </button>
+            <button
               onClick={() => setContentTab('shorts')}
-              className={`text-xl font-bold transition ${contentTab === 'shorts' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'
+              className={`text-xl font-bold transition ${contentTab === 'shorts' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-400 hover:text-gray-600'
                 }`}
             >
               {t('Shorts')} ({shorts.length})
@@ -679,31 +767,83 @@ return (
         {contentTab === 'posts' ? (
           getFilteredBlogs().length === 0 ? (
             <p className="text-gray-600 text-center py-8">
-              {selectedDay ? t('No blog posts on this day') : t('No blog posts yet')}
+              {selectedDay ? t('No posts on this day') : t('No posts yet')}
             </p>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {getFilteredBlogs().map(blog => (
+              {getFilteredBlogs().map(post => (
                 <Link
-                  key={blog._id}
-                  to={`/blog/${blog._id}`}
-                  className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-5 hover:shadow-lg transition"
+                  key={post._id}
+                  to={`/blog/${post._id}`}
+                  className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-5 hover:shadow-lg transition flex flex-col"
                 >
-                  <h3 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2">{blog.title}</h3>
-                  <p className="text-gray-600 text-sm mb-3 line-clamp-3">{blog.content.substring(0, 150)}...</p>
-                  <div className="flex items-center justify-between text-sm text-gray-500">
-                    <span>{new Date(blog.createdAt).toLocaleDateString()}</span>
-                    <span>❤️ {blog.likes?.length || 0}</span>
-                  </div>
-                  {blog.tags && blog.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {blog.tags.slice(0, 3).map((tag, idx) => (
+                  <h3 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2">{post.title}</h3>
+                  <p className="text-gray-600 text-sm mb-3 line-clamp-3">{post.content.substring(0, 150)}...</p>
+                  {post.tags && post.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {post.tags.slice(0, 3).map((tag, idx) => (
                         <span key={idx} className="bg-blue-100 text-blue-600 px-2 py-1 rounded text-xs">
                           {tag}
                         </span>
                       ))}
                     </div>
                   )}
+                  <div className="text-xs text-gray-500 mb-2">{new Date(post.createdAt).toLocaleDateString()}</div>
+                  <div className="flex items-center justify-between text-sm text-gray-500 pt-3 border-t border-gray-200 mt-auto">
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-1"><FaEye size={14} /> {post.views || 0}</span>
+                      <span className="flex items-center gap-1"><FaComment size={14} /> {post.commentCount || 0}</span>
+                      <span>❤️ {post.likes?.length || 0}</span>
+                    </div>
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleShare(post, 'blog'); }}
+                      className="text-blue-600 hover:text-blue-800 transition"
+                    >
+                      <FaShare size={14} />
+                    </button>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )
+        ) : contentTab === 'articles' ? (
+          getFilteredArticles().length === 0 ? (
+            <p className="text-gray-600 text-center py-8">
+              {selectedDay ? t('No articles on this day') : t('No articles yet')}
+            </p>
+          ) : (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {getFilteredArticles().map(article => (
+                <Link
+                  key={article._id}
+                  to={`/article/${article._id}`}
+                  className="bg-gradient-to-br from-green-50 to-teal-50 rounded-xl p-5 hover:shadow-lg transition flex flex-col"
+                >
+                  <h3 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2">{article.title}</h3>
+                  <p className="text-gray-600 text-sm mb-3 line-clamp-3">{article.content.substring(0, 150)}...</p>
+                  {article.tags && article.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {article.tags.slice(0, 3).map((tag, idx) => (
+                        <span key={idx} className="bg-green-100 text-green-600 px-2 py-1 rounded text-xs">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="text-xs text-gray-500 mb-2">{new Date(article.createdAt).toLocaleDateString()}</div>
+                  <div className="flex items-center justify-between text-sm text-gray-500 pt-3 border-t border-gray-200 mt-auto">
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center gap-1"><FaEye size={14} /> {article.views || 0}</span>
+                      <span className="flex items-center gap-1"><FaComment size={14} /> {article.commentCount || 0}</span>
+                      <span>❤️ {article.likes?.length || 0}</span>
+                    </div>
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleShare(article, 'article'); }}
+                      className="text-green-600 hover:text-green-800 transition"
+                    >
+                      <FaShare size={14} />
+                    </button>
+                  </div>
                 </Link>
               ))}
             </div>
@@ -752,9 +892,19 @@ return (
                           ))}
                         </div>
                       )}
-                      {short.metaDescription && (
-                        <p className="text-white/60 text-xs line-clamp-1">{short.metaDescription}</p>
-                      )}
+                      <div className="flex items-center justify-between text-xs text-white/90 pt-2 border-t border-white/20 mt-auto">
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center gap-1"><FaEye size={10} /> {short.views || 0}</span>
+                          <span className="flex items-center gap-1"><FaComment size={10} /> {short.commentCount || 0}</span>
+                          <span>❤️ {short.likes?.length || 0}</span>
+                        </div>
+                        <button
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleShare(short, 'shorts'); }}
+                          className="text-white hover:text-purple-300 transition"
+                        >
+                          <FaShare size={10} />
+                        </button>
+                      </div>
                     </div>
                   </Link>
                 );
@@ -792,6 +942,32 @@ return (
           onClose={() => setShowStatusViewer(false)}
           userName={profile.username}
         />
+      )}
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowShareModal(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-gray-800">{t('Share this post')}</h3>
+              <button onClick={() => setShowShareModal(false)} className="text-gray-500 hover:text-gray-700">
+                ×
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {shareOptions.map((option, index) => (
+                <button
+                  key={index}
+                  onClick={option.action}
+                  className={`${option.color} text-white p-4 rounded-lg flex flex-col items-center gap-2 transition`}
+                >
+                  {option.icon}
+                  <span className="text-xs font-semibold">{option.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Login Modal */}

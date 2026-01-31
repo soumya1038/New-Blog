@@ -1,5 +1,6 @@
 const Comment = require('../models/Comment');
 const Blog = require('../models/Blog');
+const Article = require('../models/Article');
 const Short = require('../models/Short');
 const Notification = require('../models/Notification');
 
@@ -8,16 +9,16 @@ exports.createComment = async (req, res) => {
   try {
     const { content, parentComment, replyTo } = req.body;
     const { blogId } = req.params;
-    const { isShort } = req.query;
+    const { isShort, isArticle } = req.query;
 
     if (!content || !content.trim()) {
       return res.status(400).json({ success: false, message: 'Comment content required' });
     }
 
-    const Model = isShort === 'true' ? Short : Blog;
+    const Model = isArticle === 'true' ? Article : (isShort === 'true' ? Short : Blog);
     const post = await Model.findById(blogId);
     if (!post) {
-      return res.status(404).json({ success: false, message: `${isShort === 'true' ? 'Short' : 'Blog'} not found` });
+      return res.status(404).json({ success: false, message: 'Content not found' });
     }
 
     const comment = await Comment.create({
@@ -25,7 +26,7 @@ exports.createComment = async (req, res) => {
       author: req.user._id,
       parentComment: parentComment || null,
       replyTo: replyTo || null,
-      ...(isShort === 'true' ? { short: blogId } : { blog: blogId })
+      ...(isArticle === 'true' ? { article: blogId } : (isShort === 'true' ? { short: blogId } : { blog: blogId }))
     });
 
     const populatedComment = await Comment.findById(comment._id)
@@ -59,9 +60,9 @@ exports.createComment = async (req, res) => {
 exports.getComments = async (req, res) => {
   try {
     const { blogId } = req.params;
-    const { isShort } = req.query;
+    const { isShort, isArticle } = req.query;
 
-    const filter = isShort === 'true' ? { short: blogId, parentComment: null } : { blog: blogId, parentComment: null };
+    const filter = isArticle === 'true' ? { article: blogId, parentComment: null } : (isShort === 'true' ? { short: blogId, parentComment: null } : { blog: blogId, parentComment: null });
     const comments = await Comment.find(filter)
       .populate('author', 'username profileImage isGuest role isVerified')
       .populate('replyTo', 'username')
@@ -123,12 +124,12 @@ exports.likeComment = async (req, res) => {
 // Heart/unheart comment (owner only)
 exports.heartComment = async (req, res) => {
   try {
-    const comment = await Comment.findById(req.params.id).populate('blog short');
+    const comment = await Comment.findById(req.params.id).populate('blog article short');
     if (!comment) {
       return res.status(404).json({ success: false, message: 'Comment not found' });
     }
 
-    const post = comment.blog || comment.short;
+    const post = comment.blog || comment.article || comment.short;
     if (post.author.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Only post owner can heart comments' });
     }
@@ -145,12 +146,12 @@ exports.heartComment = async (req, res) => {
 // Pin/unpin comment (owner only)
 exports.pinComment = async (req, res) => {
   try {
-    const comment = await Comment.findById(req.params.id).populate('blog short');
+    const comment = await Comment.findById(req.params.id).populate('blog article short');
     if (!comment) {
       return res.status(404).json({ success: false, message: 'Comment not found' });
     }
 
-    const post = comment.blog || comment.short;
+    const post = comment.blog || comment.article || comment.short;
     if (post.author.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Only post owner can pin comments' });
     }
@@ -168,7 +169,7 @@ exports.pinComment = async (req, res) => {
 exports.editComment = async (req, res) => {
   try {
     const { content } = req.body;
-    const comment = await Comment.findById(req.params.id).populate('blog short');
+    const comment = await Comment.findById(req.params.id).populate('blog article short');
 
     if (!comment) {
       return res.status(404).json({ success: false, message: 'Comment not found' });
@@ -188,7 +189,7 @@ exports.editComment = async (req, res) => {
     // Emit socket event for real-time updates
     const io = req.app.get('io');
     if (io) {
-      const blogId = comment.blog?._id || comment.short?._id;
+      const blogId = comment.blog?._id || comment.article?._id || comment.short?._id;
       io.emit('comment:updated', { blogId, comment: populatedComment });
     }
 
@@ -201,13 +202,13 @@ exports.editComment = async (req, res) => {
 // Delete comment
 exports.deleteComment = async (req, res) => {
   try {
-    const comment = await Comment.findById(req.params.id).populate('blog short');
+    const comment = await Comment.findById(req.params.id).populate('blog article short');
 
     if (!comment) {
       return res.status(404).json({ success: false, message: 'Comment not found' });
     }
 
-    const post = comment.blog || comment.short;
+    const post = comment.blog || comment.article || comment.short;
     const isOwner = comment.author.toString() === req.user._id.toString();
     const isPostOwner = post && post.author.toString() === req.user._id.toString();
 
@@ -215,7 +216,7 @@ exports.deleteComment = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const blogId = comment.blog?._id || comment.short?._id;
+    const blogId = comment.blog?._id || comment.article?._id || comment.short?._id;
 
     // Delete all replies to this comment
     await Comment.deleteMany({ parentComment: comment._id });

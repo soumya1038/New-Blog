@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Blog = require('../models/Blog');
+const Article = require('../models/Article');
 const Notification = require('../models/Notification');
 const Comment = require('../models/Comment');
 const bcrypt = require('bcryptjs');
@@ -38,6 +39,7 @@ exports.getProfile = async (req, res) => {
     }
 
     const blogCount = await Blog.countDocuments({ author: user._id, isDraft: false });
+    const articleCount = await Article.countDocuments({ author: user._id, isDraft: false });
 
     // Filter active statuses
     const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
@@ -50,6 +52,7 @@ exports.getProfile = async (req, res) => {
         statuses: activeStatuses,
         hasActiveStatus,
         blogCount,
+        articleCount,
         followerCount: user.followers.length,
         followingCount: user.following.length
       }
@@ -289,6 +292,7 @@ exports.confirmAccountDeletion = async (req, res) => {
 
     // Delete user's blogs
     await Blog.deleteMany({ author: user._id });
+    await Article.deleteMany({ author: user._id });
 
     // Delete user's notifications
     await Notification.deleteMany({ $or: [{ recipient: user._id }, { sender: user._id }] });

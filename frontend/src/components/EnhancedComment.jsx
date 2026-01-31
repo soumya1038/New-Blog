@@ -31,7 +31,8 @@ const EnhancedComment = ({
   loadingReplies = false,
   isReply = false,
   deletingComment,
-  postOwner
+  postOwner,
+  showAuthorBadge = false
 }) => {
   const { user } = useContext(AuthContext);
   const [showReplyInput, setShowReplyInput] = useState(false);
@@ -82,6 +83,11 @@ const EnhancedComment = ({
                   className="font-semibold text-sm text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 inline-flex items-center gap-1"
                 >
                   {comment.author?.username}
+                  {showAuthorBadge && postOwner?._id === comment.author._id && (
+                    <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                      Author
+                    </span>
+                  )}
                   {(comment.author?.isGuest || comment.author?.role === 'guest') ? (
                     <TbBrandAmongUs className="text-purple-500" size={14} title="Guest User" />
                   ) : comment.author?.isVerified && (
@@ -296,6 +302,7 @@ const EnhancedComment = ({
                     isReply={true}
                     deletingComment={deletingComment}
                     postOwner={postOwner}
+                    showAuthorBadge={showAuthorBadge}
                   />
                 ))
               )}

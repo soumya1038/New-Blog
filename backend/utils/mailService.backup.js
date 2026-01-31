@@ -41,33 +41,23 @@ const sendVerificationEmail = async (email, username, verificationCode) => {
   const logoUrl = process.env.LOGO_URL || '';
   const html = `
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Verify Your Email</title>
-      <style>
-        @media only screen and (max-width: 600px) {
-          .container { width: 100% !important; }
-          .content { padding: 20px !important; }
-          .code-box { font-size: 28px !important; padding: 20px !important; }
-          h1 { font-size: 24px !important; }
-        }
-      </style>
     </head>
-    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f5f5f5; padding: 20px 0;">
+    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
         <tr>
           <td align="center">
-            <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-              ${logoUrl ? `<tr><td align="center" style="padding: 48px 32px 24px;"><img src="${logoUrl}" alt="Lekhon" width="100" height="100" style="border-radius: 50%; border: 3px solid #f0f0f0;"/></td></tr>` : '<tr><td style="padding-top: 48px;"></td></tr>'}
-              <tr><td class="content" align="center" style="padding: 0 32px 32px;"><h1 style="margin: 0 0 16px; color: #1a1a1a; font-size: 28px; font-weight: 600; line-height: 1.3;">Welcome to Lekhon!</h1><p style="margin: 0; color: #666; font-size: 16px; line-height: 1.6;">We're excited to have you here, ${username}.</p></td></tr>
-              <tr><td class="content" style="padding: 0 32px;"><p style="margin: 0 0 24px; color: #333; font-size: 15px; line-height: 1.6;">To get started, please verify your email address by entering this code:</p></td></tr>
-              <tr><td align="center" style="padding: 0 32px 32px;"><div class="code-box" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #ffffff; font-size: 32px; font-weight: 700; padding: 24px 40px; border-radius: 10px; letter-spacing: 8px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);">${verificationCode}</div></td></tr>
-              <tr><td class="content" style="padding: 0 32px 32px;"><div style="background-color: #fff8e1; border-left: 3px solid #ffa726; padding: 16px 20px; border-radius: 6px;"><p style="margin: 0; color: #e65100; font-size: 14px; line-height: 1.5;">⏱️ This code will expire in 2 minutes for security reasons.</p></div></td></tr>
-              <tr><td class="content" style="padding: 0 32px 48px;"><p style="margin: 0; color: #999; font-size: 14px; line-height: 1.6;">If you didn't create an account with Lekhon, you can safely ignore this email.</p></td></tr>
-              <tr><td style="background-color: #fafafa; padding: 24px 32px; border-top: 1px solid #e0e0e0;"><p style="margin: 0; color: #999; font-size: 12px; text-align: center; line-height: 1.5;">© ${new Date().getFullYear()} Lekhon. All rights reserved.</p></td></tr>
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
+              ${logoUrl ? `<tr><td align="center" style="padding: 40px 40px 20px;"><img src="${logoUrl}" alt="Lekhon" style="width: 120px; height: 120px; object-fit: cover; border-radius: 50%; display: block;"/></td></tr>` : ''}
+              <tr><td align="center" style="padding: ${logoUrl ? '20px' : '40px'} 40px 30px;"><h1 style="margin: 0; color: #111827; font-size: 28px; font-weight: 700;">Welcome to Lekhon!</h1></td></tr>
+              <tr><td style="padding: 0 40px;"><p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hi <strong>${username}</strong>,</p><p style="margin: 0 0 30px; color: #374151; font-size: 16px; line-height: 1.6;">Thank you for joining us! Enter this code to verify your email:</p></td></tr>
+              <tr><td align="center" style="padding: 0 40px 30px;"><div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; font-size: 36px; font-weight: 700; padding: 24px; border-radius: 12px; letter-spacing: 10px; display: inline-block;">${verificationCode}</div></td></tr>
+              <tr><td style="padding: 0 40px 30px;"><div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px;"><p style="margin: 0; color: #92400e; font-size: 14px; font-weight: 600;">⏰ Expires in 2 minutes</p></div></td></tr>
+              <tr><td style="padding: 0 40px 40px;"><p style="margin: 0; color: #9ca3af; font-size: 14px; line-height: 1.6;">If you didn't create this account, please ignore this email.</p></td></tr>
+              <tr><td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb;"><p style="margin: 0; color: #6b7280; font-size: 13px; text-align: center;">© 2024 Lekhon. All rights reserved.</p></td></tr>
             </table>
           </td>
         </tr>
@@ -88,33 +78,23 @@ const sendPasswordResetEmail = async (email, username, resetCode) => {
   const logoUrl = process.env.LOGO_URL || '';
   const html = `
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Reset Your Password</title>
-      <style>
-        @media only screen and (max-width: 600px) {
-          .container { width: 100% !important; }
-          .content { padding: 20px !important; }
-          .code-box { font-size: 28px !important; padding: 20px !important; }
-          h1 { font-size: 24px !important; }
-        }
-      </style>
     </head>
-    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f5f5f5; padding: 20px 0;">
+    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
         <tr>
           <td align="center">
-            <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-              ${logoUrl ? `<tr><td align="center" style="padding: 48px 32px 24px;"><img src="${logoUrl}" alt="Lekhon" width="100" height="100" style="border-radius: 50%; border: 3px solid #f0f0f0;"/></td></tr>` : '<tr><td style="padding-top: 48px;"></td></tr>'}
-              <tr><td class="content" align="center" style="padding: 0 32px 32px;"><h1 style="margin: 0 0 16px; color: #1a1a1a; font-size: 28px; font-weight: 600; line-height: 1.3;">Reset Your Password</h1><p style="margin: 0; color: #666; font-size: 16px; line-height: 1.6;">Hi ${username}, we received a request to reset your password.</p></td></tr>
-              <tr><td class="content" style="padding: 0 32px;"><p style="margin: 0 0 24px; color: #333; font-size: 15px; line-height: 1.6;">Use this code to create a new password:</p></td></tr>
-              <tr><td align="center" style="padding: 0 32px 32px;"><div class="code-box" style="display: inline-block; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #ffffff; font-size: 32px; font-weight: 700; padding: 24px 40px; border-radius: 10px; letter-spacing: 8px; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);">${resetCode}</div></td></tr>
-              <tr><td class="content" style="padding: 0 32px 32px;"><div style="background-color: #fff8e1; border-left: 3px solid #ffa726; padding: 16px 20px; border-radius: 6px;"><p style="margin: 0; color: #e65100; font-size: 14px; line-height: 1.5;">⏱️ This code will expire in 2 minutes for your security.</p></div></td></tr>
-              <tr><td class="content" style="padding: 0 32px 48px;"><p style="margin: 0; color: #999; font-size: 14px; line-height: 1.6;">If you didn't request a password reset, you can safely ignore this email. Your password won't be changed.</p></td></tr>
-              <tr><td style="background-color: #fafafa; padding: 24px 32px; border-top: 1px solid #e0e0e0;"><p style="margin: 0; color: #999; font-size: 12px; text-align: center; line-height: 1.5;">© ${new Date().getFullYear()} Lekhon. All rights reserved.</p></td></tr>
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
+              ${logoUrl ? `<tr><td align="center" style="padding: 40px 40px 20px;"><img src="${logoUrl}" alt="Lekhon" style="width: 120px; height: 120px; object-fit: cover; border-radius: 50%; display: block;"/></td></tr>` : ''}
+              <tr><td align="center" style="padding: ${logoUrl ? '20px' : '40px'} 40px 30px;"><h1 style="margin: 0; color: #111827; font-size: 28px; font-weight: 700;">Password Reset</h1></td></tr>
+              <tr><td style="padding: 0 40px;"><p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hi <strong>${username}</strong>,</p><p style="margin: 0 0 30px; color: #374151; font-size: 16px; line-height: 1.6;">Use this code to reset your password:</p></td></tr>
+              <tr><td align="center" style="padding: 0 40px 30px;"><div style="background: linear-gradient(135deg, #f43f5e 0%, #dc2626 100%); color: #ffffff; font-size: 36px; font-weight: 700; padding: 24px; border-radius: 12px; letter-spacing: 10px; display: inline-block;">${resetCode}</div></td></tr>
+              <tr><td style="padding: 0 40px 30px;"><div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px;"><p style="margin: 0; color: #92400e; font-size: 14px; font-weight: 600;">⏰ Expires in 2 minutes</p></div></td></tr>
+              <tr><td style="padding: 0 40px 40px;"><p style="margin: 0; color: #9ca3af; font-size: 14px; line-height: 1.6;">If you didn't request this, please ignore this email.</p></td></tr>
+              <tr><td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb;"><p style="margin: 0; color: #6b7280; font-size: 13px; text-align: center;">© 2024 Lekhon. All rights reserved.</p></td></tr>
             </table>
           </td>
         </tr>
@@ -133,35 +113,24 @@ const sendPasswordResetEmail = async (email, username, resetCode) => {
 const sendWelcomeEmail = async (email, username) => {
   console.log('📧 [EMAIL] Sending welcome email to:', email);
   const logoUrl = process.env.LOGO_URL || '';
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
   const html = `
     <!DOCTYPE html>
-    <html lang="en">
+    <html>
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Welcome to Lekhon</title>
-      <style>
-        @media only screen and (max-width: 600px) {
-          .container { width: 100% !important; }
-          .content { padding: 20px !important; }
-          h1 { font-size: 24px !important; }
-          .button { padding: 14px 28px !important; font-size: 15px !important; }
-        }
-      </style>
     </head>
-    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f5f5f5; padding: 20px 0;">
+    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
         <tr>
           <td align="center">
-            <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-              ${logoUrl ? `<tr><td align="center" style="padding: 48px 32px 24px;"><img src="${logoUrl}" alt="Lekhon" width="100" height="100" style="border-radius: 50%; border: 3px solid #f0f0f0;"/></td></tr>` : '<tr><td style="padding-top: 48px;"></td></tr>'}
-              <tr><td class="content" align="center" style="padding: 0 32px 24px;"><h1 style="margin: 0 0 16px; color: #1a1a1a; font-size: 28px; font-weight: 600; line-height: 1.3;">🎉 You're all set, ${username}!</h1><p style="margin: 0; color: #666; font-size: 16px; line-height: 1.6;">Your email has been verified successfully.</p></td></tr>
-              <tr><td class="content" style="padding: 0 32px 32px;"><p style="margin: 0 0 24px; color: #333; font-size: 15px; line-height: 1.6;">Welcome to Lekhon! We're thrilled to have you as part of our community. You can now start sharing your thoughts, connecting with others, and exploring amazing content.</p></td></tr>
-              <tr><td align="center" style="padding: 0 32px 32px;"><a href="${frontendUrl}" class="button" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; padding: 16px 36px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);">Start Writing</a></td></tr>
-              <tr><td class="content" style="padding: 0 32px 48px;"><p style="margin: 0; color: #666; font-size: 15px; line-height: 1.6; text-align: center;">Happy blogging! 🚀</p></td></tr>
-              <tr><td style="background-color: #fafafa; padding: 24px 32px; border-top: 1px solid #e0e0e0;"><p style="margin: 0; color: #999; font-size: 12px; text-align: center; line-height: 1.5;">© ${new Date().getFullYear()} Lekhon. All rights reserved.</p></td></tr>
+            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
+              ${logoUrl ? `<tr><td align="center" style="padding: 40px 40px 20px;"><img src="${logoUrl}" alt="Lekhon" style="width: 120px; height: 120px; object-fit: cover; border-radius: 50%; display: block;"/></td></tr>` : ''}
+              <tr><td align="center" style="padding: ${logoUrl ? '20px' : '40px'} 40px 30px;"><h1 style="margin: 0; color: #111827; font-size: 28px; font-weight: 700;">🎉 Welcome to Lekhon!</h1></td></tr>
+              <tr><td style="padding: 0 40px 20px;"><p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hi <strong>${username}</strong>,</p><p style="margin: 0; color: #374151; font-size: 16px; line-height: 1.6;">Your email has been verified successfully! You're all set to start creating amazing content.</p></td></tr>
+              <tr><td align="center" style="padding: 0 40px 30px;"><a href="${process.env.FRONTEND_URL}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">Start Writing</a></td></tr>
+              <tr><td style="padding: 0 40px 40px;"><p style="margin: 0; color: #374151; font-size: 16px; line-height: 1.6;">Happy blogging! 🚀</p></td></tr>
+              <tr><td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb;"><p style="margin: 0; color: #6b7280; font-size: 13px; text-align: center;">© 2024 Lekhon. All rights reserved.</p></td></tr>
             </table>
           </td>
         </tr>

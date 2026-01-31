@@ -42,16 +42,26 @@ const CreateBlog = () => {
   const [autoSaveSuccess, setAutoSaveSuccess] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isShortMode, setIsShortMode] = useState(false);
+  const [isArticleMode, setIsArticleMode] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
   const [videoUrls, setVideoUrls] = useState(['']);
+  const [isDark, setIsDark] = useState(false);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const autoSaveTimerRef = useRef(null);
   const simpleMDERef = useRef(null);
+
+  useEffect(() => {
+    const checkTheme = () => setIsDark(document.documentElement.classList.contains('dark'));
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (location.state?.repostContent) {
@@ -222,13 +232,32 @@ const CreateBlog = () => {
       const scheduledPublishDate = isScheduled ? new Date(`${scheduledDate}T${scheduledTime}`).toISOString() : null;
       const filteredVideoUrls = videoUrls.filter(url => url.trim());
       
-      console.log('=== PUBLISH DEBUG ===');
-      console.log('isShortMode:', isShortMode);
-      console.log('wordCount:', wordCount);
-      console.log('isScheduled:', isScheduled);
-      console.log('scheduledPublishDate:', scheduledPublishDate);
+      // Article Mode - only create article
+      if (isArticleMode) {
+        const { data } = await api.post('/articles', { 
+          title, 
+          content, 
+          tags: tags.join(', '),
+          category,
+          coverImage: uploadedImageUrl,
+          cloudinaryPublicId,
+          videoUrls: JSON.stringify(filteredVideoUrls),
+          metaDescription,
+          isDraft: false,
+          isScheduled,
+          scheduledPublishDate
+        });
+        
+        console.log('Article created:', data);
+        setHasUnsavedChanges(false);
+        toast.success(isScheduled ? 'Article scheduled successfully!' : 'Article published successfully!');
+        const articleId = data.article?._id;
+        console.log('Navigating to:', `/article/${articleId}`);
+        setTimeout(() => navigate(isScheduled ? '/drafts' : `/article/${articleId}`), 1000);
+        return;
+      }
       
-      // Scenario A: Regular Blog mode
+      // Regular Blog mode
       if (!isShortMode) {
         if (wordCount <= 100) {
           // Create BOTH blog and short (2 separate documents)
@@ -266,7 +295,7 @@ const CreateBlog = () => {
           setTimeout(() => navigate(isScheduled ? '/drafts' : `/blog/${blogData.blog._id}`), 1000);
         } else {
           // Create only BLOG
-          const { data } = await api.post('/blogs', { 
+          const { data } = await api.post('/blogs', {
             title, 
             content, 
             tags: tags.join(', '),
@@ -285,8 +314,8 @@ const CreateBlog = () => {
           setTimeout(() => navigate(isScheduled ? '/drafts' : `/blog/${data.blog._id}`), 1000);
         }
       } else {
-        // Scenario B: Create Short mode - only create SHORT
-        const { data } = await api.post('/shorts', { 
+        // Short Blog mode - only create SHORT
+        const { data } = await api.post('/shorts', {
           title, 
           content, 
           tags: tags.join(', '),
@@ -336,8 +365,8 @@ const CreateBlog = () => {
 
       if (draftId) {
         // Update existing draft
-        const endpoint = isShortMode ? `/shorts/${draftId}` : `/blogs/${draftId}`;
-        await api.put(endpoint, { 
+        const endpoint = isArticleMode ? `/articles/${draftId}` : (isShortMode ? `/shorts/${draftId}` : `/blogs/${draftId}`);
+        await api.put(endpoint, {
           title, 
           content, 
           tags: tags.join(', '),
@@ -350,19 +379,21 @@ const CreateBlog = () => {
         });
       } else {
         // Check if draft with same title exists
-        const endpoint = isShortMode ? '/shorts?draft=true' : '/blogs?draft=true';
+        const endpoint = isArticleMode ? '/articles?draft=true' : (isShortMode ? '/shorts?draft=true' : '/blogs?draft=true');
         const { data: existingDrafts } = await api.get(endpoint);
-        const existingDraft = isShortMode ? existingDrafts.shorts?.find(d => d.title === title) : existingDrafts.blogs?.find(d => d.title === title);
+        const existingDraft = isArticleMode 
+          ? existingDrafts.articles?.find(d => d.title === title)
+          : (isShortMode ? existingDrafts.shorts?.find(d => d.title === title) : existingDrafts.blogs?.find(d => d.title === title));
         
         if (existingDraft) {
           // Delete old draft and create new one
-          const deleteEndpoint = isShortMode ? `/shorts/${existingDraft._id}` : `/blogs/${existingDraft._id}`;
+          const deleteEndpoint = isArticleMode ? `/articles/${existingDraft._id}` : (isShortMode ? `/shorts/${existingDraft._id}` : `/blogs/${existingDraft._id}`);
           await api.delete(deleteEndpoint);
         }
         
         // Create new draft
-        const createEndpoint = isShortMode ? '/shorts' : '/blogs';
-        const { data } = await api.post(createEndpoint, { 
+        const createEndpoint = isArticleMode ? '/articles' : (isShortMode ? '/shorts' : '/blogs');
+        const { data } = await api.post(createEndpoint, {
           title, 
           content, 
           tags: tags.join(', '),
@@ -373,7 +404,7 @@ const CreateBlog = () => {
           metaDescription,
           isDraft: true
         });
-        setDraftId(isShortMode ? data.short._id : data.blog._id);
+        setDraftId(isArticleMode ? data.article._id : (isShortMode ? data.short._id : data.blog._id));
       }
       
       // Clear file after upload
@@ -499,23 +530,52 @@ const CreateBlog = () => {
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-4">
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100">
-                {isShortMode ? t('Create Short Blog') : t('Create New Blog')}
+                {isArticleMode ? t('Create Article') : (isShortMode ? t('Create Short Blog') : t('Create New Blog'))}
               </h1>
-              <button
-                type="button"
-                onClick={() => setIsShortMode(!isShortMode)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
-                  isShortMode 
-                    ? 'bg-purple-600 text-white hover:bg-purple-700' 
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
-                }`}
-              >
-                {isShortMode ? (
-                  <><TbBrandBlogger className="w-5 h-5" /> {t('Regular Blog')}</>
-                ) : (
-                  <><MdOutlineSwitchAccessShortcutAdd className="w-5 h-5" /> {t('Create Short')}</>
-                )}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsArticleMode(false);
+                    setIsShortMode(false);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
+                    !isShortMode && !isArticleMode
+                      ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <TbBrandBlogger className="w-5 h-5" /> {t('Blog')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsArticleMode(true);
+                    setIsShortMode(false);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
+                    isArticleMode
+                      ? 'bg-green-600 text-white hover:bg-green-700' 
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <img src={isArticleMode ? '/image/article_logo_light.png' : (isDark ? '/image/article_logo_light.png' : '/image/article_logo_dark.png')} alt="Article" className="w-5 h-5" /> {t('Article')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsArticleMode(false);
+                    setIsShortMode(true);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
+                    isShortMode
+                      ? 'bg-purple-600 text-white hover:bg-purple-700' 
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <MdOutlineSwitchAccessShortcutAdd className="w-5 h-5" /> {t('Short')}
+                </button>
+              </div>
             </div>
             {lastSaved && (
               <span className="text-xs text-gray-500">
@@ -535,7 +595,7 @@ const CreateBlog = () => {
                 onChange={(e) => setTitle(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 required
-                placeholder={isShortMode ? t('Enter short blog title...') : t('Enter blog title...')}
+                placeholder={isArticleMode ? t('Enter article title...') : (isShortMode ? t('Enter short blog title...') : t('Enter blog title...'))}
                 maxLength={100}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{title.length}/100 {t('characters')}</p>
@@ -693,6 +753,7 @@ const CreateBlog = () => {
                     onGenerate={handleAIGenerate}
                     onMetaGenerate={setMetaDescription}
                     isShortMode={isShortMode}
+                    isArticleMode={isArticleMode}
                   />
                 </div>
               </div>
@@ -710,6 +771,13 @@ const CreateBlog = () => {
                   rows={6}
                   maxLength={700}
                 />
+              ) : isArticleMode ? (
+                <SimpleMDE
+                  key="simplemde-article"
+                  value={content}
+                  onChange={(value) => setContent(value)}
+                  options={mdeOptions}
+                />
               ) : (
                 <SimpleMDE
                   key="simplemde-editor"
@@ -726,6 +794,7 @@ const CreateBlog = () => {
                 <AIContentTools
                   content={content}
                   isShortMode={isShortMode}
+                  isArticleMode={isArticleMode}
                   onTitlesGenerated={handleTitlesGenerated}
                   onTagsGenerated={handleTagsGenerated}
                   onContentImproved={handleContentImproved}

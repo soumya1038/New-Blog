@@ -24,6 +24,7 @@ const Register = lazy(() => import('./pages/Register'));
 const CreateBlog = lazy(() => import('./pages/CreateBlog'));
 const EditBlog = lazy(() => import('./pages/EditBlog'));
 const BlogDetail = lazy(() => import('./pages/BlogDetail'));
+const ArticleDetails = lazy(() => import('./pages/ArticleDetails'));
 const Profile = lazy(() => import('./pages/Profile'));
 const UserProfile = lazy(() => import('./pages/UserProfile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
@@ -327,6 +328,7 @@ function AppContent() {
             <Route path="/create" element={<CreateBlog />} />
             <Route path="/edit/:id" element={<EditBlog />} />
             <Route path="/blog/:id" element={<BlogDetail />} />
+            <Route path="/article/:id" element={<ArticleDetails />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/user/:id" element={<UserProfile />} />
             <Route path="/notifications" element={<Notifications />} />

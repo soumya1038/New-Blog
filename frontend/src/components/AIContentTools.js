@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import api from '../services/api';
 import { FaLightbulb, FaTags, FaSpinner } from 'react-icons/fa';
 
-const AIContentTools = ({ content, isShortMode = false, onTitlesGenerated, onTagsGenerated, onContentImproved }) => {
+const AIContentTools = ({ content, isShortMode = false, isArticleMode = false, onTitlesGenerated, onTagsGenerated, onContentImproved }) => {
   const [loading, setLoading] = useState(false);
 
   const generateTitles = async () => {
@@ -40,7 +40,8 @@ const AIContentTools = ({ content, isShortMode = false, onTitlesGenerated, onTag
       const { data } = await api.post('/ai/improve-content', { 
         content, 
         improvementType: type,
-        isShortMode 
+        isShortMode,
+        isArticleMode
       });
       onContentImproved(data.improvedContent);
     } catch (error) {

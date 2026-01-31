@@ -5,6 +5,7 @@ import { AuthContext } from '../context/AuthContext';
 import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun } from 'react-icons/fa';
 import LanguageSelector from './LanguageSelector';
 import Avatar from './Avatar';
+import AnimatedLogo from './AnimatedLogo';
 
 const Navbar = () => {
   const { t } = useTranslation();
@@ -90,7 +91,7 @@ const Navbar = () => {
         <div className="flex justify-between items-center">
           <Link to="/" className="flex items-center gap-3">
             <img src="/image/lekhon_url.png" alt="Lekhon Logo" className="h-10 w-10 rounded-full bg-gray-200 object-cover border-2 border-white shadow-lg" />
-            <span className="text-2xl font-bold">Lekhon</span>
+            <AnimatedLogo />
           </Link>
           
           {/* Desktop Menu */}
@@ -101,7 +102,7 @@ const Navbar = () => {
                   <Link to="/admin" className="hover:text-gray-200 font-semibold">{t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}</Link>
                 )}
                 <Link to="/news" className="hover:text-gray-200 font-semibold">📰 {t('News')}</Link>
-                <Link to="/create" className="create-blog-btn hover:text-gray-200">{t('Create Blog')}</Link>
+                <Link to="/create" className="create-blog-btn hover:text-gray-200">{t('Create Post')}</Link>
                 <Link to="/drafts" className="hover:text-gray-200">{t('My Drafts')}</Link>
                 <button
                   onClick={toggleTheme}
@@ -203,7 +204,7 @@ const Navbar = () => {
             {user ? (
               <>
                 <Link to="/news" className="hover:text-gray-200 text-sm">📰</Link>
-                <Link to="/create" className="hover:text-gray-200 text-sm">{t('Create')}</Link>
+                <Link to="/create" className="hover:text-gray-200 text-sm">{t('Create Post')}</Link>
                 <button
                   onClick={toggleTheme}
                   className="hover:text-gray-200 p-2 rounded-lg hover:bg-white/10 transition-all duration-300 transform hover:scale-110"
@@ -471,7 +472,7 @@ const Navbar = () => {
                   onClick={() => setShowMobileMenu(false)}
                   className="block py-2 hover:bg-white/10 px-3 rounded"
                 >
-                  {t('Create Blog')}
+                  {t('Create Post')}
                 </Link>
                 <Link
                   to="/drafts"

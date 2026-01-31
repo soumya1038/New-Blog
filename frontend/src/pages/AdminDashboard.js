@@ -3,7 +3,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaUsers, FaFileAlt, FaComments, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes } from 'react-icons/fa';
+import { TbBrandBlogger } from "react-icons/tb";
+import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes } from 'react-icons/fa';
 import { GoVerified, GoUnverified } from 'react-icons/go';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -18,13 +19,16 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
   const [guests, setGuests] = useState([]);
   const [blogs, setBlogs] = useState([]);
+  const [articles, setArticles] = useState([]);
   const [shorts, setShorts] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
   const [userSearch, setUserSearch] = useState('');
   const [blogSearch, setBlogSearch] = useState('');
+  const [articleSearch, setArticleSearch] = useState('');
   const [shortSearch, setShortSearch] = useState('');
   const [timeRange, setTimeRange] = useState(7);
+  const [isDark, setIsDark] = useState(false);
   
   // Modal states
   const [showModal, setShowModal] = useState(false);
@@ -38,6 +42,16 @@ const AdminDashboard = () => {
   const [verifyingUserId, setVerifyingUserId] = useState(null);
 
   useEffect(() => {
+    const checkTheme = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     if (authLoading) return;
     if (!user || (user.role !== 'admin' && user.role !== 'coAdmin')) {
       navigate('/');
@@ -48,11 +62,12 @@ const AdminDashboard = () => {
 
   const fetchData = async () => {
     try {
-      const [statsRes, usersRes, guestsRes, blogsRes, shortsRes, metricsRes] = await Promise.all([
+      const [statsRes, usersRes, guestsRes, blogsRes, articlesRes, shortsRes, metricsRes] = await Promise.all([
         api.get(`/admin/stats?days=${timeRange}`),
         api.get('/admin/users'),
         api.get('/admin/guests'),
         api.get('/admin/blogs'),
+        api.get('/admin/articles'),
         api.get('/admin/shorts'),
         api.get('/admin/metrics')
       ]);
@@ -60,6 +75,7 @@ const AdminDashboard = () => {
       setUsers(usersRes.data.users);
       setGuests(guestsRes.data.guests);
       setBlogs(blogsRes.data.blogs);
+      setArticles(articlesRes.data.articles);
       setShorts(shortsRes.data.shorts);
       setSystemMetrics(metricsRes.data.metrics);
     } catch (error) {
@@ -245,6 +261,25 @@ const AdminDashboard = () => {
     });
   };
 
+  const handleDeleteArticle = (articleId, title) => {
+    openModal({
+      type: 'delete-article',
+      title: t('Delete Article'),
+      message: `${t('Are you sure you want to delete')} "${title}"? ${t('This action cannot be undone.')}.`,
+      confirmText: t('Delete'),
+      onConfirm: async () => {
+        try {
+          await api.delete(`/admin/articles/${articleId}`);
+          setArticles(articles.filter(a => a._id !== articleId));
+          closeModal();
+          openModal({ type: 'success', title: t('Success!'), message: t('Article deleted successfully!') });
+        } catch (error) {
+          setModalError(error.response?.data?.message || 'Error deleting article');
+        }
+      }
+    });
+  };
+
   const handleDeleteShort = (shortId, title) => {
     openModal({
       type: 'delete-short',
@@ -347,6 +382,12 @@ const AdminDashboard = () => {
             {t('Blogs')}
           </button>
           <button
+            onClick={() => setActiveTab('articles')}
+            className={`px-4 py-2 font-semibold ${activeTab === 'articles' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+          >
+            {t('Articles')}
+          </button>
+          <button
             onClick={() => setActiveTab('shorts')}
             className={`px-4 py-2 font-semibold ${activeTab === 'shorts' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
           >
@@ -374,7 +415,16 @@ const AdminDashboard = () => {
                     <p className="text-gray-500 text-sm">{t('Total Blogs')}</p>
                     <p className="text-3xl font-bold text-green-600">{stats.totalBlogs || 0}</p>
                   </div>
-                  <FaFileAlt className="text-4xl text-green-600" />
+                  <TbBrandBlogger className="text-4xl text-blue-600" />
+                </div>
+              </div>
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-gray-500 text-sm">{t('Total Articles')}</p>
+                    <p className="text-3xl font-bold text-teal-600">{stats.totalArticles || 0}</p>
+                  </div>
+                  <img src={isDark ? '/image/article_logo_light.png' : '/image/article_logo_dark.png'} alt="Article" className="w-10 h-10" />
                 </div>
               </div>
               <div className="bg-white rounded-xl shadow-lg p-6">
@@ -384,15 +434,6 @@ const AdminDashboard = () => {
                     <p className="text-3xl font-bold text-pink-600">{stats.totalShorts || 0}</p>
                   </div>
                   <MdOutlineSwitchAccessShortcutAdd className="text-4xl text-pink-600" />
-                </div>
-              </div>
-              <div className="bg-white rounded-xl shadow-lg p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-gray-500 text-sm">{t('Total Comments')}</p>
-                    <p className="text-3xl font-bold text-purple-600">{stats.totalComments || 0}</p>
-                  </div>
-                  <FaComments className="text-4xl text-purple-600" />
                 </div>
               </div>
               <div className="bg-white rounded-xl shadow-lg p-6">
@@ -459,14 +500,16 @@ const AdminDashboard = () => {
             {/* Charts */}
             <div className="grid md:grid-cols-2 gap-6 mb-6">
               <div className="bg-white rounded-xl shadow-lg p-6">
-                <h3 className="text-xl font-bold mb-4 text-gray-800">{t('Blogs Per Day')}</h3>
+                <h3 className="text-xl font-bold mb-4 text-gray-800">{t('Posts Per Day')}</h3>
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={stats.blogsPerDay}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" angle={timeRange > 30 ? -45 : 0} textAnchor={timeRange > 30 ? 'end' : 'middle'} height={timeRange > 30 ? 80 : 30} />
                     <YAxis />
                     <Tooltip />
-                    <Bar dataKey="count" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                    <Legend />
+                    <Bar dataKey="blogs" fill="#3b82f6" radius={[8, 8, 0, 0]} name="Blogs" />
+                    <Bar dataKey="articles" fill="#14b8a6" radius={[8, 8, 0, 0]} name="Articles" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -727,6 +770,7 @@ const AdminDashboard = () => {
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Verify')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Email Address')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Blogs')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Articles')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Shorts')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Status')}</th>
                     <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Joined')}</th>
@@ -771,6 +815,7 @@ const AdminDashboard = () => {
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">{u.email || 'N/A'}</td>
                       <td className="px-6 py-4 text-sm">{u.blogCount}</td>
+                      <td className="px-6 py-4 text-sm">{u.articleCount || 0}</td>
                       <td className="px-6 py-4 text-sm">{u.shortCount || 0}</td>
                       <td className="px-6 py-4">
                         {u.isActive ? (
@@ -1023,13 +1068,89 @@ const AdminDashboard = () => {
           </div>
         )}
 
+        {/* Articles Tab */}
+        {activeTab === 'articles' && (
+          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+            <div className="p-4 border-b">
+              <div className="relative">
+                <FaSearch className="absolute left-3 top-3 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder={t('Search articles...')}
+                  value={articleSearch}
+                  onChange={(e) => setArticleSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Title')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Author')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Likes')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Comments')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Status')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Created')}</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase">{t('Actions')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {(articles || []).filter(article => 
+                    article.title.toLowerCase().includes(articleSearch.toLowerCase()) ||
+                    article.author?.username.toLowerCase().includes(articleSearch.toLowerCase())
+                  ).map(article => (
+                    <tr key={article._id}>
+                      <td className="px-6 py-4">
+                        <p className="font-semibold text-gray-800 truncate max-w-xs">{article.title}</p>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{article.author?.username}</td>
+                      <td className="px-6 py-4 text-sm">{article.likes?.length || 0}</td>
+                      <td className="px-6 py-4 text-sm">{article.commentCount || 0}</td>
+                      <td className="px-6 py-4">
+                        {article.isDraft ? (
+                          <span className="text-yellow-600 text-sm">{t('Draft')}</span>
+                        ) : (
+                          <span className="text-green-600 text-sm">{t('Published')}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">{new Date(article.createdAt).toLocaleDateString()}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex gap-2">
+                          <Link
+                            to={`/article/${article._id}`}
+                            className="text-blue-600 hover:text-blue-800"
+                            title={t('View Article')}
+                          >
+                            <FaEye size={18} />
+                          </Link>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDeleteArticle(article._id, article.title)}
+                              className="text-red-600 hover:text-red-800"
+                              title="Delete"
+                            >
+                              <FaTrash size={18} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Professional Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full">
               <h3 className={`text-xl font-bold mb-4 ${
                 modalConfig.type === 'success' ? 'text-green-600' :
-                modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'delete-short' || modalConfig.type === 'remove-coadmin' ? 'text-red-600' :
+                modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'delete-article' || modalConfig.type === 'delete-short' || modalConfig.type === 'remove-coadmin' ? 'text-red-600' :
                 modalConfig.type === 'make-admin' ? 'text-purple-600' :
                 modalConfig.type === 'make-coadmin' ? 'text-blue-600' :
                 'text-orange-600'
@@ -1081,7 +1202,7 @@ const AdminDashboard = () => {
                     <button
                       onClick={modalConfig.type === 'suspend-user' ? handleModalConfirm : modalConfig.onConfirm}
                       className={`flex-1 px-6 py-2 rounded-lg hover:opacity-90 font-semibold text-white ${
-                        modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'delete-short' || modalConfig.type === 'remove-coadmin' ? 'bg-red-600' :
+                        modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'delete-article' || modalConfig.type === 'delete-short' || modalConfig.type === 'remove-coadmin' ? 'bg-red-600' :
                         modalConfig.type === 'make-admin' ? 'bg-purple-600' :
                         modalConfig.type === 'make-coadmin' ? 'bg-blue-600' :
                         'bg-orange-600'

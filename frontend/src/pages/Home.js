@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
-import { FaHeart, FaComment, FaClock, FaSearch, FaTimes } from 'react-icons/fa';
+import { FaHeart, FaComment, FaClock, FaSearch, FaTimes, FaEye } from 'react-icons/fa';
 import { GoVerified } from 'react-icons/go';
 import { PiMonitorPlayDuotone } from 'react-icons/pi';
 import { TbBrandBlogger, TbBrandAmongUs } from 'react-icons/tb';
@@ -22,8 +22,10 @@ const Home = () => {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [blogs, setBlogs] = useState([]);
+  const [articles, setArticles] = useState([]);
   const [shortBlogs, setShortBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [contentFilter, setContentFilter] = useState('all');
   const [showShortBlogs, setShowShortBlogs] = useState(true);
   const [clickTimer, setClickTimer] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,9 +34,18 @@ const Home = () => {
   const [showAllTags, setShowAllTags] = useState(false);
   const [visibleTagCount, setVisibleTagCount] = useState(5);
   const [error, setError] = useState(false);
+  const [isDark, setIsDark] = useState(false);
   const searchBarRef = useRef(null);
   const tagContainerRef = useRef(null);
   const [showTour, setShowTour] = useState(false);
+  
+  useEffect(() => {
+    const checkTheme = () => setIsDark(document.documentElement.classList.contains('dark'));
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
   
   useEffect(() => {
     // Show tour for new users after they've seen the intro video
@@ -105,6 +116,7 @@ const Home = () => {
 
   useEffect(() => {
     fetchBlogs();
+    fetchArticles();
     fetchShortBlogs();
   }, []);
 
@@ -150,6 +162,24 @@ const Home = () => {
     }
   };
 
+  const fetchArticles = async () => {
+    try {
+      const cacheKey = 'articles-list';
+      const cached = apiCache.get(cacheKey);
+      
+      if (cached) {
+        setArticles(cached);
+        return;
+      }
+      
+      const { data } = await api.get('/articles');
+      apiCache.set(cacheKey, data.articles);
+      setArticles(data.articles);
+    } catch (error) {
+      console.error('Error fetching articles:', error);
+    }
+  };
+
   const handleLike = async (e, blogId) => {
     e?.preventDefault();
     e?.stopPropagation();
@@ -172,11 +202,11 @@ const Home = () => {
     }
   };
 
-  const handleCardClick = (blogId) => {
+  const handleCardClick = (id, type = 'blog') => {
     if (clickTimer) clearTimeout(clickTimer);
     
     const timer = setTimeout(() => {
-      navigate(`/blog/${blogId}`);
+      navigate(type === 'article' ? `/article/${id}` : `/blog/${id}`);
     }, 300);
     
     setClickTimer(timer);
@@ -238,14 +268,23 @@ const Home = () => {
   }, [selectedTags]);
 
   const filteredBlogs = useMemo(() => {
-    return blogs.filter(blog => {
+    let allContent = [];
+    
+    if (contentFilter === 'all' || contentFilter === 'blogs') {
+      allContent = [...allContent, ...blogs.map(b => ({ ...b, type: 'blog' }))];
+    }
+    if (contentFilter === 'all' || contentFilter === 'articles') {
+      allContent = [...allContent, ...articles.map(a => ({ ...a, type: 'article' }))];
+    }
+    
+    return allContent.filter(item => {
       if (selectedTags.length > 0) {
-        const hasTags = selectedTags.some(tag => blog.tags?.includes(tag));
+        const hasTags = selectedTags.some(tag => item.tags?.includes(tag));
         if (!hasTags) return false;
       }
       
       if (debouncedSearch.trim()) {
-        const matchesSearch = blog.title.toLowerCase().includes(debouncedSearch.toLowerCase());
+        const matchesSearch = item.title.toLowerCase().includes(debouncedSearch.toLowerCase());
         if (!matchesSearch) return false;
       }
       
@@ -256,9 +295,9 @@ const Home = () => {
         const bMatchCount = selectedTags.filter(tag => b.tags?.includes(tag)).length;
         if (aMatchCount !== bMatchCount) return bMatchCount - aMatchCount;
       }
-      return 0;
+      return new Date(b.createdAt) - new Date(a.createdAt);
     });
-  }, [blogs, selectedTags, debouncedSearch]);
+  }, [blogs, articles, selectedTags, debouncedSearch, contentFilter]);
 
   const allTags = [...new Set(blogs.flatMap(blog => blog.tags || []))];
 
@@ -329,7 +368,41 @@ const Home = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8 overflow-y-auto">
       <div className="container mx-auto px-4">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between mb-8 gap-4">
-          <h1 className="text-4xl font-bold text-gray-800 dark:text-gray-100">Welcome to Lekhon</h1>
+          <div>
+            <h1 className="text-4xl font-bold text-gray-800 dark:text-gray-100 mb-4">Welcome to Lekhon</h1>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setContentFilter('all')}
+                className={`px-4 py-2 rounded-lg font-semibold transition ${
+                  contentFilter === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300'
+                }`}
+              >
+                {t('All')}
+              </button>
+              <button
+                onClick={() => setContentFilter('blogs')}
+                className={`px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 ${
+                  contentFilter === 'blogs'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300'
+                }`}
+              >
+                <TbBrandBlogger className="w-4 h-4" /> {t('Blogs')}
+              </button>
+              <button
+                onClick={() => setContentFilter('articles')}
+                className={`px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 ${
+                  contentFilter === 'articles'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300'
+                }`}
+              >
+                <img src={contentFilter === 'articles' ? '/image/article_logo_light.png' : (isDark ? '/image/article_logo_light.png' : '/image/article_logo_dark.png')} alt="Article" className="w-4 h-4" /> {t('Articles')}
+              </button>
+            </div>
+          </div>
           
           <div className="w-full md:w-96">
             <div className="search-bar relative" ref={searchBarRef}>
@@ -388,13 +461,17 @@ const Home = () => {
             <div 
               key={blog._id} 
               className="rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer group relative border-4 border-white"
-              onClick={() => handleCardClick(blog._id)}
+              onClick={() => handleCardClick(blog._id, blog.type)}
               onDoubleClick={(e) => handleCardDoubleClick(e, blog._id)}
               style={getBackgroundStyle(blog, index)}
             >
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30 group-hover:from-black/90 group-hover:via-black/60 transition-all duration-300"></div>
               <div className="absolute top-3 right-3 z-20 bg-white/20 backdrop-blur-sm p-1.5 md:p-2 rounded-full shadow-lg">
-                <TbBrandBlogger className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                {blog.type === 'article' ? (
+                  <img src="/image/article_logo_light.png" alt="Article" className="w-4 h-4 md:w-5 md:h-5" />
+                ) : (
+                  <TbBrandBlogger className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                )}
               </div>
               
               <div className="relative z-10 p-6 min-h-[400px] flex flex-col justify-end">
@@ -429,7 +506,7 @@ const Home = () => {
                   className="text-2xl font-bold mb-3 line-clamp-2 transition text-white drop-shadow-lg"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <Link to={`/blog/${blog._id}`}>{blog.title}</Link>
+                  <Link to={blog.type === 'article' ? `/article/${blog._id}` : `/blog/${blog._id}`}>{blog.title}</Link>
                 </h2>
                 
                 <p className="mb-4 line-clamp-2 text-sm leading-relaxed text-gray-200">
@@ -454,6 +531,9 @@ const Home = () => {
                   </button>
                   <span className="flex items-center gap-1">
                     <FaClock /> {blog.readingTime} {t('min read')}
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <FaEye /> {blog.views || 0}
                   </span>
                 </div>
                 
@@ -507,13 +587,17 @@ const Home = () => {
               <div 
                 key={blog._id} 
                 className="rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer group relative border-4 border-white"
-                onClick={() => handleCardClick(blog._id)}
+                onClick={() => handleCardClick(blog._id, blog.type)}
                 onDoubleClick={(e) => handleCardDoubleClick(e, blog._id)}
                 style={getBackgroundStyle(blog, index + 3)}
               >
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30 group-hover:from-black/90 group-hover:via-black/60 transition-all duration-300"></div>
                 <div className="absolute top-3 right-3 z-20 bg-white/20 backdrop-blur-sm p-1.5 md:p-2 rounded-full shadow-lg">
-                  <TbBrandBlogger className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                  {blog.type === 'article' ? (
+                    <img src="/image/article_logo_light.png" alt="Article" className="w-4 h-4 md:w-5 md:h-5" />
+                  ) : (
+                    <TbBrandBlogger className="w-4 h-4 md:w-5 md:h-5 text-white" />
+                  )}
                 </div>
                 
                 <div className="relative z-10 p-6 min-h-[400px] flex flex-col justify-end">
@@ -548,7 +632,7 @@ const Home = () => {
                     className="text-2xl font-bold mb-3 line-clamp-2 transition text-white drop-shadow-lg"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <Link to={`/blog/${blog._id}`}>{blog.title}</Link>
+                    <Link to={blog.type === 'article' ? `/article/${blog._id}` : `/blog/${blog._id}`}>{blog.title}</Link>
                   </h2>
                   
                   <p className="mb-4 line-clamp-2 text-sm leading-relaxed text-gray-200">

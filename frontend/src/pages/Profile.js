@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaFacebook, FaTwitter, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaArrowRight, FaTimes } from 'react-icons/fa';
+import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaFacebook, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaArrowRight, FaTimes, FaShare, FaWhatsapp } from 'react-icons/fa';
+import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified, GoUnverified } from 'react-icons/go';
 import AIBioGenerator from '../components/AIBioGenerator';
 import Avatar from '../components/Avatar';
@@ -38,6 +39,7 @@ const Profile = () => {
   const [deleteCode, setDeleteCode] = useState('');
   const [sendingDeleteCode, setSendingDeleteCode] = useState(false);
   const [blogs, setBlogs] = useState([]);
+  const [articles, setArticles] = useState([]);
   const [shorts, setShorts] = useState([]);
   const [heatmapYear, setHeatmapYear] = useState(new Date().getFullYear());
   const [generatingDescription, setGeneratingDescription] = useState(false);
@@ -77,6 +79,9 @@ const Profile = () => {
   const [contactLoading, setContactLoading] = useState(false);
   const [showForgotSection, setShowForgotSection] = useState(false);
   const [showSocialSection, setShowSocialSection] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+  const [shareTitle, setShareTitle] = useState('');
 
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -280,6 +285,16 @@ const Profile = () => {
     }
   };
 
+  const fetchUserArticles = async () => {
+    if (!user?._id) return;
+    try {
+      const { data } = await api.get(`/articles?author=${user._id}`);
+      setArticles(data.articles);
+    } catch (error) {
+      console.error('Error fetching articles:', error);
+    }
+  };
+
   const fetchUserShorts = async () => {
     if (!user?._id) return;
     try {
@@ -349,7 +364,7 @@ const Profile = () => {
     if (!user) return;
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchProfile(), fetchApiKeys(), fetchUserBlogs(), fetchUserShorts(), fetchStatuses()]);
+      await Promise.all([fetchProfile(), fetchApiKeys(), fetchUserBlogs(), fetchUserArticles(), fetchUserShorts(), fetchStatuses()]);
       setLoading(false);
     };
     loadData();
@@ -477,6 +492,61 @@ const Profile = () => {
     showModal('success', 'Success', 'API key copied to clipboard!');
   };
 
+  const handleShare = (postId, postTitle, isArticle = false) => {
+    const url = `${window.location.origin}/${isArticle ? 'article' : 'blog'}/${postId}`;
+    setShareUrl(url);
+    setShareTitle(postTitle);
+    setShowShareModal(true);
+  };
+
+  const shareOptions = [
+    {
+      name: 'Facebook',
+      icon: <FaFacebook className="text-2xl" />,
+      color: 'bg-blue-600 hover:bg-blue-700',
+      action: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
+    },
+    {
+      name: 'Twitter',
+      icon: <FaXTwitter className="text-2xl" />,
+      color: 'bg-black hover:bg-gray-800',
+      action: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')
+    },
+    {
+      name: 'LinkedIn',
+      icon: <FaLinkedin className="text-2xl" />,
+      color: 'bg-blue-700 hover:bg-blue-800',
+      action: () => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank')
+    },
+    {
+      name: 'WhatsApp',
+      icon: <FaWhatsapp className="text-2xl" />,
+      color: 'bg-green-500 hover:bg-green-600',
+      action: () => window.open(`https://wa.me/?text=${encodeURIComponent(shareTitle + ' ' + shareUrl)}`, '_blank')
+    },
+    {
+      name: 'Copy Link',
+      icon: <FaCopy className="text-2xl" />,
+      color: 'bg-gray-800 hover:bg-gray-900',
+      action: () => {
+        const textArea = document.createElement('textarea');
+        textArea.value = shareUrl;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          showModal('success', 'Success', 'Link copied to clipboard!');
+          setShowShareModal(false);
+        } catch (err) {
+          showModal('error', 'Error', 'Failed to copy link');
+        }
+        document.body.removeChild(textArea);
+      }
+    }
+  ];
+
   const getSocialIcon = (name) => {
     if (!name) return <FaGlobe className="text-gray-600" />;
     const lowerName = name.toLowerCase();
@@ -543,7 +613,7 @@ const Profile = () => {
     const months = [];
     const startDate = new Date(heatmapYear, 0, 1);
     const endDate = new Date(heatmapYear, 11, 31);
-    const allContent = [...blogs, ...shorts];
+    const allContent = [...blogs, ...articles, ...shorts];
     
     const current = new Date(startDate);
     let week = [];
@@ -597,7 +667,7 @@ const Profile = () => {
   };
 
   const getAvailableYears = () => {
-    const allContent = [...blogs, ...shorts];
+    const allContent = [...blogs, ...articles, ...shorts];
     if (allContent.length === 0) return [new Date().getFullYear()];
     const years = new Set();
     allContent.forEach(item => {
@@ -986,8 +1056,8 @@ const Profile = () => {
           {/* Posts Section */}
           <div className="border-t pt-6 mb-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold">{t('Posts')} ({blogs.length})</h3>
-              {blogs.length > 0 && (
+              <h3 className="text-xl font-bold">{t('Posts')} ({blogs.length + articles.length + shorts.length})</h3>
+              {(blogs.length > 0 || articles.length > 0 || shorts.length > 0) && (
                 <button
                   onClick={() => navigate(`/user/${user._id}`)}
                   className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-semibold"
@@ -997,41 +1067,73 @@ const Profile = () => {
               )}
             </div>
             
-            {blogs.length > 0 ? (
+            {(blogs.length > 0 || articles.length > 0) ? (
               <>
                 {/* Extra small: 1 col, 2 items */}
                 <div className="grid grid-cols-1 gap-3 sm:hidden">
-                  {blogs.slice(0, 2).map(blog => (
-                    <div key={blog._id} onClick={() => navigate(`/blog/${blog._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition cursor-pointer">
-                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={blog.title}>{blog.title}</h4>
-                      <p className="text-xs text-gray-500">{formatPostDate(blog.createdAt)}</p>
+                  {[...blogs, ...articles].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 2).map(post => (
+                    <div key={post._id} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition group">
+                      <div onClick={() => navigate(post.author ? `/blog/${post._id}` : `/article/${post._id}`)} className="cursor-pointer">
+                        <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={post.title}>{post.title}</h4>
+                        <p className="text-xs text-gray-500">{formatPostDate(post.createdAt)}</p>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleShare(post._id, post.title, !post.author); }}
+                        className="mt-2 text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1 opacity-0 group-hover:opacity-100 transition"
+                      >
+                        <FaShare size={10} /> Share
+                      </button>
                     </div>
                   ))}
                 </div>
                 {/* Small: 2 cols, 4 items */}
                 <div className="hidden sm:grid md:hidden grid-cols-2 gap-3">
-                  {blogs.slice(0, 4).map(blog => (
-                    <div key={blog._id} onClick={() => navigate(`/blog/${blog._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition cursor-pointer">
-                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={blog.title}>{blog.title}</h4>
-                      <p className="text-xs text-gray-500">{formatPostDate(blog.createdAt)}</p>
+                  {[...blogs, ...articles].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 4).map(post => (
+                    <div key={post._id} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition group">
+                      <div onClick={() => navigate(post.author ? `/blog/${post._id}` : `/article/${post._id}`)} className="cursor-pointer">
+                        <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={post.title}>{post.title}</h4>
+                        <p className="text-xs text-gray-500">{formatPostDate(post.createdAt)}</p>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleShare(post._id, post.title, !post.author); }}
+                        className="mt-2 text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1 opacity-0 group-hover:opacity-100 transition"
+                      >
+                        <FaShare size={10} /> Share
+                      </button>
                     </div>
                   ))}
                 </div>
                 {/* Medium: 3 cols, 6 items */}
                 <div className="hidden md:grid lg:hidden grid-cols-3 gap-3">
-                  {blogs.slice(0, 6).map(blog => (
-                    <div key={blog._id} onClick={() => navigate(`/blog/${blog._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition cursor-pointer">
-                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={blog.title}>{blog.title}</h4>
-                      <p className="text-xs text-gray-500">{formatPostDate(blog.createdAt)}</p>
+                  {[...blogs, ...articles].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 6).map(post => (
+                    <div key={post._id} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition group">
+                      <div onClick={() => navigate(post.author ? `/blog/${post._id}` : `/article/${post._id}`)} className="cursor-pointer">
+                        <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={post.title}>{post.title}</h4>
+                        <p className="text-xs text-gray-500">{formatPostDate(post.createdAt)}</p>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleShare(post._id, post.title, !post.author); }}
+                        className="mt-2 text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1 opacity-0 group-hover:opacity-100 transition"
+                      >
+                        <FaShare size={10} /> Share
+                      </button>
                     </div>
                   ))}
                 </div>
                 {/* Large: 5 cols, 10 items */}
                 <div className="hidden lg:grid grid-cols-5 gap-3">
-                  {blogs.slice(0, 10).map(blog => (
-                    <div key={blog._id} onClick={() => navigate(`/blog/${blog._id}`)} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition cursor-pointer">
-                      <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={blog.title}>{blog.title}</h4>
-                      <p className="text-xs text-gray-500">{formatPostDate(blog.createdAt)}</p>
+                  {[...blogs, ...articles].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 10).map(post => (
+                    <div key={post._id} className="bg-gray-50 p-3 rounded-lg border hover:border-blue-500 hover:shadow-md transition group">
+                      <div onClick={() => navigate(post.author ? `/blog/${post._id}` : `/article/${post._id}`)} className="cursor-pointer">
+                        <h4 className="font-semibold text-sm text-gray-800 truncate mb-1" title={post.title}>{post.title}</h4>
+                        <p className="text-xs text-gray-500">{formatPostDate(post.createdAt)}</p>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleShare(post._id, post.title, !post.author); }}
+                        className="mt-2 text-blue-600 hover:text-blue-800 text-xs flex items-center gap-1 opacity-0 group-hover:opacity-100 transition"
+                      >
+                        <FaShare size={10} /> Share
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -1100,7 +1202,7 @@ const Profile = () => {
           </div>
           
           {/* GitHub-style Contribution Heatmap */}
-          {blogs.length > 0 && (
+          {(blogs.length > 0 || articles.length > 0 || shorts.length > 0) && (
             <div className="border-t pt-6 mb-6">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="text-sm font-semibold text-gray-700">{t('Your Post Activity')}</h3>
@@ -2135,6 +2237,32 @@ const Profile = () => {
       )}
 
 
+
+      {/* Share Modal */}
+      {showShareModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setShowShareModal(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-gray-800">{t('Share this post')}</h3>
+              <button onClick={() => setShowShareModal(false)} className="text-gray-500 hover:text-gray-700">
+                <FaTimes size={24} />
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {shareOptions.map((option, index) => (
+                <button
+                  key={index}
+                  onClick={option.action}
+                  className={`${option.color} text-white p-4 rounded-lg flex flex-col items-center gap-2 transition`}
+                >
+                  {option.icon}
+                  <span className="text-xs font-semibold">{option.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDeleteCodeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">

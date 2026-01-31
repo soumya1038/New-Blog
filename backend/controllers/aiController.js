@@ -3,7 +3,7 @@ const groq = require('../utils/openai'); // Using Groq now
 // Generate blog content from title and tags
 exports.generateBlog = async (req, res) => {
   try {
-    const { title, tags = '', category = 'General', existingContent = '', tone = 'professional', length = 'medium', isShortMode = false } = req.body;
+    const { title, tags = '', category = 'General', existingContent = '', tone = 'professional', length = 'medium', isShortMode = false, isArticleMode = false } = req.body;
 
     if (!title || !title.trim()) {
       return res.status(400).json({ success: false, message: 'Title is required' });
@@ -15,7 +15,8 @@ exports.generateBlog = async (req, res) => {
       '100-110': '100-110 words',
       short: '300-500 words',
       medium: '500-800 words',
-      long: '800-1200 words'
+      long: '800-1200 words',
+      article: '1000-1500 words'
     };
 
     const isShortLength = ['10-50', '50-100', '100-110'].includes(length) || isShortMode;
@@ -23,7 +24,42 @@ exports.generateBlog = async (req, res) => {
     const categoryText = category ? ` Category: ${category}.` : '';
     
     let userPrompt;
-    if (existingContent && existingContent.trim()) {
+    let systemContent;
+
+    if (isArticleMode) {
+      // Article-specific prompts (formal, research-focused, third-person)
+      systemContent = `You are a professional article writer specializing in formal, well-researched content. Write in third person, maintain objectivity, use academic tone, and structure content with clear sections. Focus on facts, analysis, and credible information.`;
+      
+      if (existingContent && existingContent.trim()) {
+        userPrompt = `Enhance this article about "${title}".${categoryText}${tagsText} Target: ${lengthMap.article}.
+
+Existing:
+${existingContent}
+
+Improve by:
+- Adding formal structure (Introduction, Analysis, Conclusion)
+- Using third-person perspective
+- Including factual analysis
+- Maintaining objective tone
+- Adding depth and research-backed insights
+- Using proper markdown formatting
+
+Write ONLY the content, NO title.`;
+      } else {
+        userPrompt = `Write a professional, formal article: "${title}".${categoryText}${tagsText} Length: ${lengthMap.article}.
+
+Requirements:
+- Write in third person (avoid "I", "we", "you")
+- Maintain formal, objective tone
+- Structure: Introduction → Body (with subheadings) → Conclusion
+- Include factual analysis and insights
+- Use markdown formatting (headers, lists, emphasis)
+- Focus on informing and educating
+- Avoid personal opinions or casual language
+
+Write ONLY content, NO title.`;
+      }
+    } else if (existingContent && existingContent.trim()) {
       if (isShortLength) {
         userPrompt = `Improve this short blog content about "${title}".${categoryText}${tagsText} Target: ${lengthMap[length] || '50-100 words'}.
 
@@ -39,6 +75,9 @@ ${existingContent}
 
 Improve structure, add depth, use markdown formatting (headers, lists, bold). Make it comprehensive and engaging.`;
       }
+      systemContent = isShortLength 
+        ? `You are an expert at writing viral short-form content. Write in a ${tone} tone. Be concise, punchy, and memorable. Every word must add value. No fluff.`
+        : `You are a professional blog writer. Write in a ${tone} tone. Create well-structured, engaging content with markdown formatting. Be comprehensive yet readable.`;
     } else {
       if (isShortLength) {
         userPrompt = `Write a short, impactful post: "${title}".${categoryText}${tagsText} Length: ${lengthMap[length] || '50-100 words'}.
@@ -50,6 +89,7 @@ Make it:
 - No fluff, only value
 
 Write ONLY the content, NO title.`;
+        systemContent = `You are an expert at writing viral short-form content. Write in a ${tone} tone. Be concise, punchy, and memorable. Every word must add value. No fluff.`;
       } else {
         userPrompt = `Write a comprehensive blog: "${title}".${categoryText}${tagsText} Length: ${lengthMap[length] || lengthMap.medium}.
 
@@ -61,13 +101,11 @@ Include:
 - Strong conclusion
 
 Use markdown. Write ONLY content, NO title.`;
+        systemContent = `You are a professional blog writer. Write in a ${tone} tone. Create well-structured, engaging content with markdown formatting. Be comprehensive yet readable.`;
       }
     }
 
-    const maxTokens = isShortLength ? 300 : 2000;
-    const systemContent = isShortLength 
-      ? `You are an expert at writing viral short-form content. Write in a ${tone} tone. Be concise, punchy, and memorable. Every word must add value. No fluff.`
-      : `You are a professional blog writer. Write in a ${tone} tone. Create well-structured, engaging content with markdown formatting. Be comprehensive yet readable.`;
+    const maxTokens = isShortLength ? 300 : (isArticleMode ? 2500 : 2000);
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',

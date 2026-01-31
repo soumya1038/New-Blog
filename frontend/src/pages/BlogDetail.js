@@ -5,7 +5,8 @@ import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
 import ReactMarkdown from 'react-markdown';
-import { FaHeart, FaComment, FaClock, FaEdit, FaTrash, FaArrowLeft, FaShare, FaRetweet, FaTimes, FaFacebook, FaTwitter, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink, FaUserPlus, FaUserCheck, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { FaHeart, FaComment, FaClock, FaEdit, FaTrash, FaArrowLeft, FaShare, FaRetweet, FaTimes, FaFacebook, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink, FaUserPlus, FaUserCheck, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified } from 'react-icons/go';
 import { BiMenuAltRight } from 'react-icons/bi';
 import { TbBrandAmongUs } from 'react-icons/tb';
@@ -354,8 +355,8 @@ const BlogDetail = () => {
     },
     {
       name: 'Twitter',
-      icon: <FaTwitter className="text-2xl" />,
-      color: 'bg-blue-400 hover:bg-blue-500',
+      icon: <FaXTwitter className="text-2xl" />,
+      color: 'bg-black hover:bg-gray-800',
       action: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')
     },
     {
@@ -798,6 +799,7 @@ const BlogDetail = () => {
                     loadingReplies={loadingReplies[comment._id]}
                     deletingComment={deletingComment}
                     postOwner={blog?.author}
+                    showAuthorBadge={true}
                   />
                 ))
               )}

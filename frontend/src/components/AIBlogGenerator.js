@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import api from '../services/api';
 import { FaMagic, FaSpinner } from 'react-icons/fa';
 
-const AIBlogGenerator = ({ title, tags, category, existingContent, onGenerate, onMetaGenerate, isShortMode }) => {
+const AIBlogGenerator = ({ title, tags, category, existingContent, onGenerate, onMetaGenerate, isShortMode, isArticleMode }) => {
   const [editableTitle, setEditableTitle] = useState('');
   const [tone, setTone] = useState('professional');
   const [length, setLength] = useState('medium');
@@ -24,7 +24,8 @@ const AIBlogGenerator = ({ title, tags, category, existingContent, onGenerate, o
         existingContent,
         tone, 
         length,
-        isShortMode 
+        isShortMode,
+        isArticleMode
       });
       onGenerate(data.content, data.metaDescription);
       
@@ -110,6 +111,8 @@ const AIBlogGenerator = ({ title, tags, category, existingContent, onGenerate, o
                       <option value="50-100">50-100 words</option>
                       <option value="100-110">100-110 words</option>
                     </>
+                  ) : isArticleMode ? (
+                    <option value="article">Article (1000-1500 words)</option>
                   ) : (
                     <>
                       <option value="10-50">10-50 words</option>
