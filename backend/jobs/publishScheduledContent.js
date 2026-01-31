@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const Blog = require('../models/Blog');
 const Short = require('../models/Short');
+const Article = require('../models/Article');
 const Notification = require('../models/Notification');
 
 const publishScheduledContent = (io) => {
@@ -71,6 +72,39 @@ const publishScheduledContent = (io) => {
         }
         
         console.log(`✅ Published scheduled short: ${short.title}`);
+      }
+      
+      // Find scheduled articles ready to publish
+      const scheduledArticles = await Article.find({
+        isScheduled: true,
+        isDraft: true,
+        scheduledPublishDate: { $lte: now }
+      }).populate('author', 'username');
+      
+      for (const article of scheduledArticles) {
+        article.isDraft = false;
+        article.isScheduled = false;
+        await article.save();
+        
+        // Create notification
+        await Notification.create({
+          recipient: article.author._id,
+          sender: article.author._id,
+          type: 'publish',
+          article: article._id,
+          message: `Your article "${article.title}" has been published successfully!`
+        });
+        
+        // Emit socket event
+        if (io) {
+          io.to(`user:${article.author._id.toString()}`).emit('notification:scheduled-publish', {
+            articleId: article._id,
+            articleTitle: article.title,
+            type: 'article'
+          });
+        }
+        
+        console.log(`✅ Published scheduled article: ${article.title}`);
       }
     } catch (error) {
       console.error('❌ Scheduled publish job failed:', error);

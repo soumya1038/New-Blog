@@ -640,6 +640,13 @@ const Home = () => {
                   </p>
                   
                   <div className="flex items-center gap-4 text-sm text-gray-200">
+                    {blog.videoUrls && blog.videoUrls.length > 0 && (
+                      <span className="flex items-center gap-1 text-blue-300">
+                        <PiMonitorPlayDuotone className="w-4 h-4" /> {blog.videoUrls[0] && getVideoTitle(blog.videoUrls[0])}{blog.videoUrls.length > 1 && ` +${blog.videoUrls.length - 1}`}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-gray-200 mt-2">
                     <button
                       onClick={(e) => handleLike(e, blog._id)}
                       className={`flex items-center gap-1 transition ${
@@ -650,6 +657,9 @@ const Home = () => {
                     </button>
                     <span className="flex items-center gap-1">
                       <FaClock /> {blog.readingTime} {t('min read')}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <FaEye /> {blog.views || 0}
                     </span>
                   </div>
                   

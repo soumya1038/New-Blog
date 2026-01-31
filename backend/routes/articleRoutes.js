@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { protect } = require('../middleware/auth');
+const { protect, optionalAuth } = require('../middleware/auth');
 const {
   createArticle,
   getArticles,
@@ -12,7 +12,7 @@ const {
 } = require('../controllers/articleController');
 
 router.post('/', protect, createArticle);
-router.get('/', getArticles);
+router.get('/', optionalAuth, getArticles);
 router.get('/:id', getArticle);
 router.put('/:id', protect, updateArticle);
 router.delete('/:id', protect, deleteArticle);

@@ -38,6 +38,7 @@ const ArticleDetails = () => {
   const [deletingComment, setDeletingComment] = useState(null);
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState('');
+  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -570,6 +571,41 @@ const ArticleDetails = () => {
             </button>
           </div>
         </div>
+
+        {/* Video Section */}
+        {article.videoUrls && article.videoUrls.length > 0 && (
+          <div className="mb-8">
+            <div className="relative bg-black rounded-xl overflow-hidden group">
+              <iframe
+                src={`https://www.youtube.com/embed/${article.videoUrls[currentVideoIndex].includes('youtube.com') ? article.videoUrls[currentVideoIndex].split('v=')[1]?.split('&')[0] : article.videoUrls[currentVideoIndex].split('youtu.be/')[1]}`}
+                className="w-full aspect-video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+              {article.videoUrls.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setCurrentVideoIndex((prev) => (prev === 0 ? article.videoUrls.length - 1 : prev - 1))}
+                    className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-3 rounded-full opacity-0 group-hover:opacity-100 transition"
+                  >
+                    <FaArrowLeft size={20} />
+                  </button>
+                  <button
+                    onClick={() => setCurrentVideoIndex((prev) => (prev === article.videoUrls.length - 1 ? 0 : prev + 1))}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white p-3 rounded-full opacity-0 group-hover:opacity-100 transition"
+                  >
+                    <FaArrowLeft size={20} className="rotate-180" />
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="mt-4 text-center">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                Video {currentVideoIndex + 1} of {article.videoUrls.length}
+              </h3>
+            </div>
+          </div>
+        )}
 
         {/* Author Section */}
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 mb-8 border border-gray-200 dark:border-gray-700">

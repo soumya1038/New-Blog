@@ -28,6 +28,17 @@ const Drafts = () => {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const location = useLocation();
+  const [isDark, setIsDark] = useState(false);
+
+    useEffect(() => {
+    const checkTheme = () => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    };
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -97,7 +108,7 @@ const Drafts = () => {
   const handlePublish = async () => {
     setActionLoading(true);
     try {
-      const endpoint = selectedDraft.isShortBlog ? `/shorts/${selectedDraft._id}` : `/blogs/${selectedDraft._id}`;
+      const endpoint = selectedDraft.isArticle ? `/articles/${selectedDraft._id}` : (selectedDraft.isShortBlog ? `/shorts/${selectedDraft._id}` : `/blogs/${selectedDraft._id}`);
       await api.put(endpoint, { 
         isDraft: false, 
         isScheduled: false, 
@@ -130,7 +141,7 @@ const Drafts = () => {
     }
     setActionLoading(true);
     try {
-      const endpoint = selectedDraft.isShortBlog ? `/shorts/${selectedDraft._id}` : `/blogs/${selectedDraft._id}`;
+      const endpoint = selectedDraft.isArticle ? `/articles/${selectedDraft._id}` : (selectedDraft.isShortBlog ? `/shorts/${selectedDraft._id}` : `/blogs/${selectedDraft._id}`);
       await api.put(endpoint, { 
         isScheduled: true,
         scheduledPublishDate: scheduleDateTime.toISOString()
@@ -223,7 +234,7 @@ const Drafts = () => {
   const handleDelete = async () => {
     setActionLoading(true);
     try {
-      const endpoint = selectedDraft.isShortBlog ? `/shorts/${selectedDraft._id}` : `/blogs/${selectedDraft._id}`;
+      const endpoint = selectedDraft.isArticle ? `/articles/${selectedDraft._id}` : (selectedDraft.isShortBlog ? `/shorts/${selectedDraft._id}` : `/blogs/${selectedDraft._id}`);
       await api.delete(endpoint);
       await fetchDrafts();
       toast.success('Draft deleted successfully!');
@@ -321,7 +332,9 @@ const Drafts = () => {
                     {draft.isScheduled && (
                       <BsFillCalendarRangeFill className="w-5 h-5 text-blue-600 dark:text-blue-400" title="Scheduled" />
                     )}
-                    {draft.isShortBlog ? (
+                    {draft.isArticle ? (
+                      <img src={isDark ? '/image/article_logo_light.png' : '/image/article_logo_dark.png'} alt="Article" className="w-6 h-6" title="Article" />
+                    ) : draft.isShortBlog ? (
                       <MdOutlineSwitchAccessShortcutAdd className="w-6 h-6" title="Short Blog" />
                     ) : (
                       <TbBrandBlogger className="w-6 h-6" title="Blog" />

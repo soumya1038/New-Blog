@@ -42,17 +42,27 @@ const EditBlog = () => {
   const [autoSaveSuccess, setAutoSaveSuccess] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [isShortMode, setIsShortMode] = useState(false);
-  const [originalMode, setOriginalMode] = useState(false);
+  const [isArticleMode, setIsArticleMode] = useState(false);
+  const [originalMode, setOriginalMode] = useState('blog');
   const [customCategory, setCustomCategory] = useState('');
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
   const [videoUrls, setVideoUrls] = useState(['']);
+  const [isDark, setIsDark] = useState(false);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const autoSaveTimerRef = useRef(null);
   const simpleMDERef = useRef(null);
+
+  useEffect(() => {
+    const checkTheme = () => setIsDark(document.documentElement.classList.contains('dark'));
+    checkTheme();
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -94,18 +104,25 @@ const EditBlog = () => {
   const fetchBlog = async () => {
     try {
       let data;
-      let isShort = false;
+      let mode = 'blog';
       try {
-        const response = await api.get(`/shorts/${id}`);
-        data = { blog: response.data.short };
-        isShort = true;
+        const response = await api.get(`/articles/${id}`);
+        data = { blog: response.data.article };
+        mode = 'article';
       } catch {
-        const response = await api.get(`/blogs/${id}`);
-        data = response.data;
-        isShort = false;
+        try {
+          const response = await api.get(`/shorts/${id}`);
+          data = { blog: response.data.short };
+          mode = 'short';
+        } catch {
+          const response = await api.get(`/blogs/${id}`);
+          data = response.data;
+          mode = 'blog';
+        }
       }
-      setIsShortMode(isShort);
-      setOriginalMode(isShort);
+      setIsShortMode(mode === 'short');
+      setIsArticleMode(mode === 'article');
+      setOriginalMode(mode);
       
       if (data.blog.author._id !== user._id) {
         toast.error('Not authorized to edit this content');
@@ -136,11 +153,11 @@ const EditBlog = () => {
 
   const autoSaveDraft = async () => {
     if (!title.trim() || !content.trim()) return;
-    if (isShortMode !== originalMode) return;
+    if (isShortMode !== (originalMode === 'short') || isArticleMode !== (originalMode === 'article')) return;
     setAutoSaving(true);
     try {
       const filteredVideoUrls = videoUrls.filter(url => url.trim());
-      const endpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
+      const endpoint = originalMode === 'article' ? `/articles/${id}` : (originalMode === 'short' ? `/shorts/${id}` : `/blogs/${id}`);
       await api.put(endpoint, { 
         title, 
         content, 
@@ -211,29 +228,29 @@ const EditBlog = () => {
         uploadedImageUrl = '';
       }
 
-      if (isShortMode !== originalMode) {
-        const createEndpoint = isShortMode ? '/shorts' : '/blogs';
+      if ((isShortMode && originalMode !== 'short') || (isArticleMode && originalMode !== 'article') || (!isShortMode && !isArticleMode && originalMode !== 'blog')) {
+        const createEndpoint = isArticleMode ? '/articles' : (isShortMode ? '/shorts' : '/blogs');
         const { data: newData } = await api.post(createEndpoint, { 
           title, 
           content, 
           tags: tags.join(', '),
           category,
           coverImage: uploadedImageUrl,
-          cloudinaryPublicId: isShortMode ? null : (cloudinaryPublicId || undefined),
+          cloudinaryPublicId: isArticleMode || isShortMode ? null : (cloudinaryPublicId || undefined),
           videoUrls: JSON.stringify(filteredVideoUrls),
           metaDescription,
           isDraft: false,
           isScheduled,
           scheduledPublishDate
         });
-        const deleteEndpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
+        const deleteEndpoint = originalMode === 'article' ? `/articles/${id}` : (originalMode === 'short' ? `/shorts/${id}` : `/blogs/${id}`);
         await api.delete(deleteEndpoint);
-        const newId = isShortMode ? newData.short._id : newData.blog._id;
+        const newId = isArticleMode ? newData.article._id : (isShortMode ? newData.short._id : newData.blog._id);
         setHasUnsavedChanges(false);
-        toast.success(isScheduled ? `Scheduled as ${isShortMode ? 'short' : 'blog'} successfully!` : `Converted to ${isShortMode ? 'short' : 'blog'} successfully!`);
-        setTimeout(() => navigate(isScheduled ? '/drafts' : (isShortMode ? `/short-blogs/${newId}` : `/blog/${newId}`)), 1000);
+        toast.success(isScheduled ? `Scheduled as ${isArticleMode ? 'article' : (isShortMode ? 'short' : 'blog')} successfully!` : `Converted to ${isArticleMode ? 'article' : (isShortMode ? 'short' : 'blog')} successfully!`);
+        setTimeout(() => navigate(isScheduled ? '/drafts' : (isArticleMode ? `/article/${newId}` : (isShortMode ? `/shorts/${newId}` : `/blog/${newId}`))), 1000);
       } else {
-        const endpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
+        const endpoint = originalMode === 'article' ? `/articles/${id}` : (originalMode === 'short' ? `/shorts/${id}` : `/blogs/${id}`);
         await api.put(endpoint, { 
           title, 
           content, 
@@ -248,8 +265,8 @@ const EditBlog = () => {
           scheduledPublishDate
         });
         setHasUnsavedChanges(false);
-        toast.success(isScheduled ? `${isShortMode ? 'Short' : 'Blog'} scheduled successfully!` : `${isShortMode ? 'Short' : 'Blog'} updated successfully!`);
-        setTimeout(() => navigate(isScheduled ? '/drafts' : (isShortMode ? `/short-blogs/${id}` : `/blog/${id}`)), 1000);
+        toast.success(isScheduled ? `${isArticleMode ? 'Article' : (isShortMode ? 'Short' : 'Blog')} scheduled successfully!` : `${isArticleMode ? 'Article' : (isShortMode ? 'Short' : 'Blog')} updated successfully!`);
+        setTimeout(() => navigate(isScheduled ? '/drafts' : (isArticleMode ? `/article/${id}` : (isShortMode ? `/shorts/${id}` : `/blog/${id}`))), 1000);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update blog');
@@ -289,12 +306,12 @@ const EditBlog = () => {
         uploadedImageUrl = '';
       }
 
-      if (isShortMode !== originalMode) {
+      if ((isShortMode && originalMode !== 'short') || (isArticleMode && originalMode !== 'article') || (!isShortMode && !isArticleMode && originalMode !== 'blog')) {
         toast.error('Cannot save as draft when converting. Please publish instead.');
         setLoading(false);
         return;
       }
-      const endpoint = originalMode ? `/shorts/${id}` : `/blogs/${id}`;
+      const endpoint = originalMode === 'article' ? `/articles/${id}` : (originalMode === 'short' ? `/shorts/${id}` : `/blogs/${id}`);
       await api.put(endpoint, { 
         title, 
         content, 
@@ -429,24 +446,53 @@ const EditBlog = () => {
         <div className="bg-white rounded-2xl shadow-xl p-4 sm:p-8">
           <div className="flex justify-between items-center mb-6">
             <div className="flex items-center gap-4">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">
-                {isDraft ? t('Edit Draft') : (isShortMode ? t('Edit Short') : t('Edit Blog'))}
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100">
+                {isDraft ? t('Edit Draft') : (isArticleMode ? t('Edit Article') : (isShortMode ? t('Edit Short') : t('Edit Blog')))}
               </h1>
-              <button
-                type="button"
-                onClick={() => setIsShortMode(!isShortMode)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition text-sm ${
-                  isShortMode 
-                    ? 'bg-purple-600 text-white hover:bg-purple-700' 
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-              >
-                {isShortMode ? (
-                  <><TbBrandBlogger className="w-5 h-5" /> {t('Regular Blog')}</>
-                ) : (
-                  <><MdOutlineSwitchAccessShortcutAdd className="w-5 h-5" /> {t('Create Short')}</>
-                )}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsArticleMode(false);
+                    setIsShortMode(false);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
+                    !isShortMode && !isArticleMode
+                      ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <TbBrandBlogger className="w-5 h-5" /> {t('Blog')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsArticleMode(true);
+                    setIsShortMode(false);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
+                    isArticleMode
+                      ? 'bg-green-600 text-white hover:bg-green-700' 
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <img src={isArticleMode ? '/image/article_logo_light.png' : (isDark ? '/image/article_logo_light.png' : '/image/article_logo_dark.png')} alt="Article" className="w-5 h-5" /> {t('Article')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsArticleMode(false);
+                    setIsShortMode(true);
+                  }}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
+                    isShortMode
+                      ? 'bg-purple-600 text-white hover:bg-purple-700' 
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <MdOutlineSwitchAccessShortcutAdd className="w-5 h-5" /> {t('Short')}
+                </button>
+              </div>
             </div>
             {lastSaved && (
               <span className="text-xs text-gray-500">
@@ -622,6 +668,7 @@ const EditBlog = () => {
                     category={category}
                     existingContent={content}
                     isShortMode={isShortMode}
+                    isArticleMode={isArticleMode}
                     onGenerate={handleAIGenerate}
                     onMetaGenerate={setMetaDescription}
                   />
@@ -629,17 +676,24 @@ const EditBlog = () => {
               </div>
               
               {previewMode ? (
-                <div className="border rounded-lg p-4 min-h-[300px] prose max-w-none">
-                  <ReactMarkdown>{content || '*No content to preview*'}</ReactMarkdown>
+                <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 min-h-[300px] prose dark:prose-invert max-w-none bg-white dark:bg-gray-700">
+                  <ReactMarkdown>{content || `*${t('No content to preview')}*`}</ReactMarkdown>
                 </div>
               ) : isShortMode ? (
                 <textarea
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  className="w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   placeholder={t('Write your short blog (max 100 words)...')}
                   rows={6}
                   maxLength={700}
+                />
+              ) : isArticleMode ? (
+                <SimpleMDE
+                  key="simplemde-article"
+                  value={content}
+                  onChange={(value) => setContent(value)}
+                  options={mdeOptions}
                 />
               ) : (
                 <SimpleMDE
@@ -657,6 +711,7 @@ const EditBlog = () => {
                 <AIContentTools
                   content={content}
                   isShortMode={isShortMode}
+                  isArticleMode={isArticleMode}
                   onTitlesGenerated={handleTitlesGenerated}
                   onTagsGenerated={handleTagsGenerated}
                   onContentImproved={handleContentImproved}
