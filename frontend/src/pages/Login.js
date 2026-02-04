@@ -8,7 +8,6 @@ import { FaGoogle, FaFacebook, FaTwitter, FaGithub, FaLinkedin } from 'react-ico
 import { TbBrandAmongUs } from 'react-icons/tb';
 import { SyncLoader, ScaleLoader } from 'react-spinners';
 import axios from 'axios';
-import IntroVideoModal from '../components/IntroVideoModal';
 import GuestUsernameModal from '../components/GuestUsernameModal';
 import GuestInfoModal from '../components/GuestInfoModal';
 
@@ -43,7 +42,6 @@ const Login = () => {
   const [finalError, setFinalError] = useState('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-  const [showIntroVideo, setShowIntroVideo] = useState(false);
   
   // Guest login states
   const [showGuestModal, setShowGuestModal] = useState(false);
@@ -150,8 +148,7 @@ const Login = () => {
   }, [isLocked, lockoutTime]);
 
   useEffect(() => {
-    // Only redirect if user exists and we're not in login flow
-    if (user && !showIntroVideo) {
+    if (user) {
       const isInLoginFlow = isLoggingIn || sessionStorage.getItem('loginInProgress');
       if (!isInLoginFlow) {
         navigate('/');
@@ -167,21 +164,13 @@ const Login = () => {
       setPassword(p);
       setRememberMe(true);
     }
-  }, [user, showIntroVideo, isLoggingIn, navigate]);
+  }, [user, isLoggingIn, navigate]);
   
   useEffect(() => {
-    // Mark login flow start
     if (isLoggingIn) {
       sessionStorage.setItem('loginInProgress', 'true');
     }
   }, [isLoggingIn]);
-  
-  useEffect(() => {
-    // Clear login flow when video is shown or closed
-    if (showIntroVideo) {
-      sessionStorage.removeItem('loginInProgress');
-    }
-  }, [showIntroVideo]);
   
   // Verify code timer
   useEffect(() => {
@@ -239,14 +228,13 @@ const Login = () => {
       localStorage.removeItem('loginLockoutEnd');
       setIsLoggingIn(false);
       
-      // Check for redirect path
+      sessionStorage.setItem('showLoginIntro', 'true');
       const redirectPath = sessionStorage.getItem('redirectAfterLogin');
       if (redirectPath) {
         sessionStorage.removeItem('redirectAfterLogin');
         navigate(redirectPath);
       } else {
-        // Show intro video directly
-        setShowIntroVideo(true);
+        navigate('/');
       }
     } catch (err) {
       const newAttempts = failedAttempts + 1;
@@ -403,19 +391,6 @@ const Login = () => {
         <div className="fixed top-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
           {flashMessage}
         </div>
-      )}
-
-      {/* Intro Video Modal */}
-      {showIntroVideo && (
-        <IntroVideoModal
-          onClose={() => {
-            setShowIntroVideo(false);
-            // Set flag to show tour on home page
-            sessionStorage.setItem('showTourAfterLogin', 'true');
-            // Navigate to home after video
-            navigate('/');
-          }}
-        />
       )}
 
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center px-4">

@@ -9,6 +9,7 @@ import GuestExpiredModal from './components/GuestExpiredModal';
 import FloatingCallBanner from './components/FloatingCallBanner';
 import GlobalGroupCallListener from './components/GlobalGroupCallListener';
 import MinimizedGroupCall from './components/MinimizedGroupCall';
+import { CinematicIntro } from './components/intro/CinematicIntro';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
 import soundManager from './utils/soundManager';
@@ -52,8 +53,21 @@ function AppContent() {
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   const [globalCallState, setGlobalCallState] = useState(null);
+  const [showIntro, setShowIntro] = useState(() => {
+    const hasSeenIntro = sessionStorage.getItem('hasSeenIntro');
+    const showLoginIntro = sessionStorage.getItem('showLoginIntro');
+    return !hasSeenIntro || showLoginIntro === 'true';
+  });
   
   useRouteTracker();
+
+  useEffect(() => {
+    const loginIntro = sessionStorage.getItem('showLoginIntro');
+    if (loginIntro === 'true') {
+      sessionStorage.removeItem('showLoginIntro');
+      setShowIntro(true);
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     const savedState = getCallState('one-to-one');
@@ -134,7 +148,7 @@ function AppContent() {
     };
 
     const handleIncomingCall = ({ callerId, caller, callType, callLogId }) => {
-      console.log('📞 App.js: Global incoming call:', { callerId, caller, callType });
+      // console.log('📞 App.js: Global incoming call:', { callerId, caller, callType });
       if (location.pathname !== '/chat') {
         soundManager.play('incomingCall');
         setGlobalIncomingCall({ callerId, caller, callType, callLogId });
@@ -142,14 +156,14 @@ function AppContent() {
     };
 
     const handleCallRejected = () => {
-      console.log('📞 App.js: Call rejected');
+      // console.log('📞 App.js: Call rejected');
       soundManager.stop('callRing');
       soundManager.play('endCall');
       setGlobalIncomingCall(null);
     };
 
     const handleCallEnded = () => {
-      console.log('📞 App.js: Call ended');
+      // console.log('📞 App.js: Call ended');
       soundManager.stop('callRing');
       soundManager.stop('incomingCall');
       soundManager.play('endCall');
@@ -158,7 +172,7 @@ function AppContent() {
     };
 
     const handleCallAccepted = () => {
-      console.log('📞 App.js: Call accepted, clearing global popup');
+      // console.log('📞 App.js: Call accepted, clearing global popup');
       soundManager.stop('callRing');
       soundManager.stop('incomingCall');
       setGlobalIncomingCall(null);
@@ -234,7 +248,7 @@ function AppContent() {
     audioTrack.enabled = !audioTrack.enabled;
     setGlobalCallState(prev => prev ? { ...prev, isAudioEnabled: audioTrack.enabled } : null);
     
-    console.log('🔊 Global audio toggled:', audioTrack.enabled);
+    // console.log('🔊 Global audio toggled:', audioTrack.enabled);
   };
 
   const handleGlobalRotateCamera = async () => {
@@ -249,6 +263,19 @@ function AppContent() {
       console.error('Failed to rotate camera:', err);
     }
   };
+
+  const handleIntroComplete = () => {
+    sessionStorage.setItem('hasSeenIntro', 'true');
+    setShowIntro(false);
+    const showTour = sessionStorage.getItem('showTourAfterLogin');
+    if (showTour === 'true') {
+      sessionStorage.removeItem('showTourAfterLogin');
+    }
+  };
+
+  if (showIntro) {
+    return <CinematicIntro onComplete={handleIntroComplete} />;
+  }
 
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>

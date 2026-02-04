@@ -356,40 +356,40 @@ const AdminDashboard = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-4 mb-6 border-b">
+        <div className="flex gap-2 mb-6 border-b overflow-x-auto pb-2">
           <button
             onClick={() => setActiveTab('overview')}
-            className={`px-4 py-2 font-semibold ${activeTab === 'overview' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+            className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base ${activeTab === 'overview' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
           >
             {t('Overview')}
           </button>
           <button
             onClick={() => setActiveTab('users')}
-            className={`px-4 py-2 font-semibold ${activeTab === 'users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+            className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base ${activeTab === 'users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
           >
             {t('Users')}
           </button>
           <button
             onClick={() => setActiveTab('guests')}
-            className={`px-4 py-2 font-semibold ${activeTab === 'guests' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+            className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base ${activeTab === 'guests' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
           >
             {t('Guest Users')}
           </button>
           <button
             onClick={() => setActiveTab('blogs')}
-            className={`px-4 py-2 font-semibold ${activeTab === 'blogs' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+            className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base ${activeTab === 'blogs' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
           >
             {t('Blogs')}
           </button>
           <button
             onClick={() => setActiveTab('articles')}
-            className={`px-4 py-2 font-semibold ${activeTab === 'articles' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+            className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base ${activeTab === 'articles' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
           >
             {t('Articles')}
           </button>
           <button
             onClick={() => setActiveTab('shorts')}
-            className={`px-4 py-2 font-semibold ${activeTab === 'shorts' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
+            className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base ${activeTab === 'shorts' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-600'}`}
           >
             {t('Shorts')}
           </button>

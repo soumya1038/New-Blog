@@ -23,7 +23,7 @@ export const GroupCallProvider = ({ children }) => {
   useEffect(() => {
     const socket = socketService.getSocket();
     if (socket && socket.connected) {
-      console.log('📞 GroupCallContext: Socket already ready');
+      // console.log('📞 GroupCallContext: Socket already ready');
       setSocketReady(true);
       return;
     }
@@ -31,7 +31,7 @@ export const GroupCallProvider = ({ children }) => {
     const interval = setInterval(() => {
       const socket = socketService.getSocket();
       if (socket && socket.connected) {
-        console.log('📞 GroupCallContext: Socket is now ready');
+        // console.log('📞 GroupCallContext: Socket is now ready');
         setSocketReady(true);
         clearInterval(interval);
       }
@@ -43,17 +43,17 @@ export const GroupCallProvider = ({ children }) => {
   // Handle incoming invitation
   useEffect(() => {
     if (!socketReady) {
-      console.log('⚠️ GroupCallContext: Socket not ready yet');
+      // console.log('⚠️ GroupCallContext: Socket not ready yet');
       return;
     }
 
     const socket = socketService.getSocket();
-    console.log('📞 GroupCallContext: Setting up socket listeners');
+    // console.log('📞 GroupCallContext: Setting up socket listeners');
     if (!socket) return;
 
     const handleInvitation = (data) => {
-      console.log('📞 GroupCallContext: Received invitation:', data);
-      console.log('📞 GroupCallContext: Current call:', currentCall);
+      // console.log('📞 GroupCallContext: Received invitation:', data);
+      // console.log('📞 GroupCallContext: Current call:', currentCall);
       
       // Replace any existing invitation with new one
       setInvitation(prev => {
@@ -61,12 +61,12 @@ export const GroupCallProvider = ({ children }) => {
           soundManager.stop('incomingCall');
         }
         const newInvitation = { ...data, hasActiveCall: !!currentCall };
-        console.log('📞 GroupCallContext: Setting invitation:', newInvitation);
+        // console.log('📞 GroupCallContext: Setting invitation:', newInvitation);
         return newInvitation;
       });
       
       soundManager.play('incomingCall');
-      console.log('📞 GroupCallContext: Invitation set and sound played');
+      // console.log('📞 GroupCallContext: Invitation set and sound played');
     };
 
     const handleUserJoined = ({ groupId, user }) => {
@@ -118,7 +118,7 @@ export const GroupCallProvider = ({ children }) => {
     socket.on('groupcall:user-left', handleUserLeft);
     socket.on('groupcall:ended', handleCallEnded);
 
-    console.log('✅ GroupCallContext: Socket listeners registered');
+    // console.log('✅ GroupCallContext: Socket listeners registered');
 
     return () => {
       socket.off('groupcall:invitation', handleInvitation);
@@ -193,7 +193,7 @@ export const GroupCallProvider = ({ children }) => {
   const startCall = useCallback(async (groupId, groupName, callType = 'video') => {
     const roomName = `group-${groupId}-${Date.now()}`;
     
-    console.log('📡 Starting group call:', { groupId, roomName, callType });
+    // console.log('📡 Starting group call:', { groupId, roomName, callType });
     
     try {
       const { data } = await api.post('/livekit/token', {
@@ -215,7 +215,7 @@ export const GroupCallProvider = ({ children }) => {
       setIsMinimized(false);
 
       // Notify all group members
-      console.log('📡 Emitting groupcall:start to backend');
+      // console.log('📡 Emitting groupcall:start to backend');
       socketService.socket?.emit('groupcall:start', {
         groupId,
         roomName,

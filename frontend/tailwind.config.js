@@ -3,6 +3,9 @@ module.exports = {
   darkMode: 'class',
   theme: {
     extend: {
+      screens: {
+        'xs': '475px',
+      },
       keyframes: {
         shimmer: {
           '100%': { transform: 'translateX(100%)' },

@@ -57,7 +57,7 @@ const ChatNew = () => {
 
   // Debug: Log invitation state
   useEffect(() => {
-    console.log('📞 ChatNew: invitation state changed:', invitation);
+    // console.log('📞 ChatNew: invitation state changed:', invitation);
   }, [invitation]);
   const { t } = useTranslation();
   const [conversations, setConversations] = useState([]);
@@ -178,7 +178,7 @@ const ChatNew = () => {
   useEffect(() => {
     const savedState = getCallState('one-to-one');
     if (savedState && savedState.callAccepted) {
-      console.log('📞 Restoring call state:', savedState);
+      // console.log('📞 Restoring call state:', savedState);
       setIsCallMinimized(true);
       setActiveCall({
         userId: savedState.remoteUser.id,
@@ -226,29 +226,29 @@ const ChatNew = () => {
     webrtcService.setSocket(socket.current);
 
     webrtcService.setOnRemoteStream((stream) => {
-      console.log('📹 Remote stream received in ChatNew, stream ID:', stream?.id);
+      // console.log('📹 Remote stream received in ChatNew, stream ID:', stream?.id);
       setActiveCall(prev => {
         if (prev) {
-          console.log('📹 activeCall exists, updating with remote stream');
+          // console.log('📹 activeCall exists, updating with remote stream');
           return { ...prev, remoteStream: stream };
         } else {
-          console.log('📹 activeCall is null, storing stream in ref');
+          // console.log('📹 activeCall is null, storing stream in ref');
           pendingRemoteStreamRef.current = stream;
           return null;
         }
       });
     });
 
-    console.log('🔔 Sending route:change to /chat');
+    // console.log('🔔 Sending route:change to /chat');
     socketService.updateRoute('/chat');
 
     socket.current.on('users:online', (userIds) => {
-      console.log('🟢 Online users updated:', userIds.length);
+      // console.log('🟢 Online users updated:', userIds.length);
       setOnlineUsers(new Set(userIds));
     });
 
     socket.current.on('user:status', ({ userId, status }) => {
-      console.log(`🔵 User status: ${userId} is ${status}`);
+      // console.log(`🔵 User status: ${userId} is ${status}`);
       setOnlineUsers(prev => {
         const newSet = new Set(prev);
         if (status === 'online') newSet.add(userId);
@@ -258,7 +258,7 @@ const ChatNew = () => {
     });
 
     socket.current.on('call:error', ({ error }) => {
-      console.error('❌ Call error:', error);
+      // console.error('❌ Call error:', error);
       soundManager.stop('callRing');
       soundManager.stop('incomingCall');
       showAlertModal('Call Error', error);
@@ -268,27 +268,27 @@ const ChatNew = () => {
     });
 
     const messageReceiveHandler = (message) => {
-      console.log('📨 Message received from:', message.sender._id);
+      // console.log('📨 Message received from:', message.sender._id);
 
       // Use ref to get current value
       const currentChat = selectedChatRef.current;
       const currentMuted = mutedUsersRef.current;
 
-      console.log('Current selectedChat (from ref):', currentChat?._id);
+      // console.log('Current selectedChat (from ref):', currentChat?._id);
 
       const isChatOpen = currentChat && message.sender._id === currentChat._id;
-      console.log('Is chat open?', isChatOpen);
+      // console.log('Is chat open?', isChatOpen);
 
       if (isChatOpen) {
-        console.log('✅ ADDING MESSAGE TO ACTIVE CHAT');
+        // console.log('✅ ADDING MESSAGE TO ACTIVE CHAT');
 
         // Add message to chat
         setMessages(prev => {
           if (prev.some(m => m._id === message._id)) {
-            console.log('⚠️ Duplicate message, skipping');
+            // console.log('⚠️ Duplicate message, skipping');
             return prev;
           }
-          console.log('✅ Message added to state');
+          // console.log('✅ Message added to state');
           return [...prev, message];
         });
 
@@ -305,17 +305,17 @@ const ChatNew = () => {
 
         // Play sound if not muted
         if (!currentMuted.has(message.sender._id)) {
-          console.log('🔊 PLAYING SOUND: receive-msg.mp3');
+          // console.log('🔊 PLAYING SOUND: receive-msg.mp3');
           soundManager.play('receiveMsg');
         } else {
-          console.log('🔇 User is muted, no sound');
+          // console.log('🔇 User is muted, no sound');
         }
 
         // Mark as read
         socket.current.emit('messages:mark-read', { senderId: message.sender._id });
         api.put(`/messages/mark-read/${message.sender._id}`).catch(err => console.error(err));
       } else {
-        console.log('❌ Chat not open, not adding message');
+        // console.log('❌ Chat not open, not adding message');
       }
 
       // Always refresh conversation list
@@ -339,7 +339,7 @@ const ChatNew = () => {
     });
 
     socket.current.on('message:receive:group', (message) => {
-      console.log('📨 Group message received:', message);
+      // console.log('📨 Group message received:', message);
 
       const currentChat = selectedChatRef.current;
       const isChatOpen = currentChat && currentChat.isGroup && message.group === currentChat._id;
@@ -373,7 +373,7 @@ const ChatNew = () => {
     });
 
     socket.current.on('message:sent:group', (message) => {
-      console.log('✅ Group message sent:', message);
+      // console.log('✅ Group message sent:', message);
       setMessages(prev => {
         if (prev.some(m => m._id === message._id)) {
           return prev;
@@ -478,7 +478,7 @@ const ChatNew = () => {
 
     // WebRTC call listeners
     socket.current.on('call:incoming', ({ callerId, caller, callType, callLogId }) => {
-      console.log('📞 ChatNew: Incoming call received:', { callerId, caller, callType, callLogId });
+      // console.log('📞 ChatNew: Incoming call received:', { callerId, caller, callType, callLogId });
       if (window.location.pathname === '/chat') {
         setIncomingCall({ callerId, caller, callType, callLogId });
         soundManager.play('incomingCall');
@@ -486,7 +486,7 @@ const ChatNew = () => {
     });
 
     socket.current.on('call:accepted', async ({ receiverId }) => {
-      console.log('✅ Call accepted by receiver');
+      // console.log('✅ Call accepted by receiver');
       soundManager.stop('callRing');
       // Clear any incoming call state (shouldn't exist but safety check)
       setIncomingCall(null);
@@ -508,7 +508,7 @@ const ChatNew = () => {
     });
 
     socket.current.on('call:ended', async () => {
-      console.log('📞 Call ended by remote user');
+      // console.log('📞 Call ended by remote user');
       soundManager.stop('callRing');
       soundManager.play('endCall');
       await webrtcService.endCall();
@@ -523,29 +523,29 @@ const ChatNew = () => {
     });
 
     socket.current.on('call:offer', async ({ callerId, offer }) => {
-      console.log('📞 Received call:offer from:', callerId);
+      // console.log('📞 Received call:offer from:', callerId);
       // Store offer - process immediately if local media already acquired (user accepted earlier)
       pendingOfferRef.current = { callerId, offer };
       try {
         // If local stream already exists (user accepted earlier), handle offer and send answer immediately
         if (webrtcService.localStream) {
-          console.log('📞 Local stream already available — auto-processing offer');
+          // console.log('📞 Local stream already available — auto-processing offer');
           await webrtcService.handleOffer(offer, callerId);
           await webrtcService.createAnswer(callerId);
           pendingOfferRef.current = null;
-          console.log('✅ Offer handled and answer sent (auto)');
+          // console.log('✅ Offer handled and answer sent (auto)');
         } else {
-          console.log('✅ Offer stored, waiting for user to accept');
+          // console.log('✅ Offer stored, waiting for user to accept');
         }
       } catch (err) {
-        console.error('Failed to auto-process incoming offer:', err);
+        // console.error('Failed to auto-process incoming offer:', err);
       }
     });
 
     socket.current.on('call:answer', async ({ answer }) => {
-      console.log('📞 Received call:answer');
+      // console.log('📞 Received call:answer');
       await webrtcService.handleAnswer(answer);
-      console.log('✅ Answer processed');
+      // console.log('✅ Answer processed');
     });
 
     socket.current.on('call:ice-candidate', async ({ candidate }) => {
@@ -553,7 +553,7 @@ const ChatNew = () => {
     });
 
     socket.current.on('groupcall:ended', ({ groupId }) => {
-      console.log('❌ ChatNew: groupcall:ended received for groupId:', groupId);
+      // console.log('❌ ChatNew: groupcall:ended received for groupId:', groupId);
       soundManager.stop('incomingCall');
     });
 
@@ -602,31 +602,31 @@ const ChatNew = () => {
         socket.current.off('groupcall:user-left');
       }
 
-      console.log('Leaving /chat');
+      // console.log('Leaving /chat');
       socketService.updateRoute(null);
     };
   }, [user]);
 
   useEffect(() => {
-    console.log('📞 ChatNew: location.state changed:', location.state);
-    console.log('📞 ChatNew: loading status:', loading);
-    console.log('📞 ChatNew: groups count:', groups.length);
+    // console.log('📞 ChatNew: location.state changed:', location.state);
+    // console.log('📞 ChatNew: loading status:', loading);
+    // console.log('📞 ChatNew: groups count:', groups.length);
     
     if (!loading && location.state?.selectedUser) {
-      console.log('📞 ChatNew: Setting selectedUser:', location.state.selectedUser);
+      // console.log('📞 ChatNew: Setting selectedUser:', location.state.selectedUser);
       setSelectedChat(location.state.selectedUser);
     }
     // Handle incoming call from global modal
     if (!loading && location.state?.incomingCall) {
-      console.log('📞 ChatNew: Setting incomingCall:', location.state.incomingCall);
+      // console.log('📞 ChatNew: Setting incomingCall:', location.state.incomingCall);
       setIncomingCall(location.state.incomingCall);
       window.history.replaceState({}, document.title);
     }
     // Handle group call join from GlobalGroupCallListener
     if (!loading && location.state?.joinGroupCall) {
-      console.log('📞 ChatNew: Received joinGroupCall:', location.state.joinGroupCall);
+      // console.log('📞 ChatNew: Received joinGroupCall:', location.state.joinGroupCall);
       const { groupId, roomName, callType, joinedUsers } = location.state.joinGroupCall;
-      console.log('📞 ChatNew: Opening group call room for groupId:', groupId);
+      // console.log('📞 ChatNew: Opening group call room for groupId:', groupId);
       setShowGroupCallRoom(true);
       setActiveGroupCall({
         groupId,
@@ -635,12 +635,12 @@ const ChatNew = () => {
         participantCount: (joinedUsers || []).length + 1,
         participants: joinedUsers || []
       });
-      console.log('📞 ChatNew: activeGroupCall set, showGroupCallRoom=true');
+      // console.log('📞 ChatNew: activeGroupCall set, showGroupCallRoom=true');
       window.history.replaceState({}, document.title);
     }
     // Handle declined group call from GlobalGroupCallListener
     if (!loading && location.state?.declinedGroupCall) {
-      console.log('📞 ChatNew: Received declinedGroupCall:', location.state.declinedGroupCall);
+      // console.log('📞 ChatNew: Received declinedGroupCall:', location.state.declinedGroupCall);
       const { groupId, roomName, callType, joinedUsers } = location.state.declinedGroupCall;
       setActiveGroupCall({
         groupId,
@@ -649,15 +649,15 @@ const ChatNew = () => {
         participantCount: (joinedUsers || []).length,
         participants: joinedUsers || []
       });
-      console.log('📞 ChatNew: activeGroupCall set for declined call, groupId:', groupId);
+      // console.log('📞 ChatNew: activeGroupCall set for declined call, groupId:', groupId);
       // Auto-select the group chat to show banner
       const group = groups.find(g => g._id === groupId);
-      console.log('📞 ChatNew: Found group:', group);
+      // console.log('📞 ChatNew: Found group:', group);
       if (group) {
-        console.log('📞 ChatNew: Auto-selecting group chat:', group.name);
+        // console.log('📞 ChatNew: Auto-selecting group chat:', group.name);
         setSelectedChat({ ...group, isGroup: true });
       } else {
-        console.log('⚠️ ChatNew: Group not found in groups list!');
+        // console.log('⚠️ ChatNew: Group not found in groups list!');
       }
       window.history.replaceState({}, document.title);
     }
@@ -667,7 +667,7 @@ const ChatNew = () => {
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (activeCall && activeCall.callAccepted) {
-        console.log('📞 Page unloading, saving call state');
+        // console.log('📞 Page unloading, saving call state');
         saveCallState({
           type: 'one-to-one',
           remoteUser: {
@@ -689,7 +689,7 @@ const ChatNew = () => {
   // Listen for global call end events
   useEffect(() => {
     const handleGlobalCallEnd = async () => {
-      console.log('📞 ChatNew: Received global call end event');
+      // console.log('📞 ChatNew: Received global call end event');
       await webrtcService.endCall();
       setActiveCall(null);
       setIncomingCall(null);
@@ -868,7 +868,7 @@ const ChatNew = () => {
         try {
           // Try different file extensions
           const soundPath = '/sound/bubble_typing.mp3';
-          console.log('🔊 Attempting to play typing sound:', soundPath);
+          // console.log('🔊 Attempting to play typing sound:', soundPath);
           const audio = new Audio(soundPath);
           audio.playbackRate = 1.25;
           audio.volume = 0.5;
@@ -878,7 +878,7 @@ const ChatNew = () => {
             if (playCount < 3) {
               audio.currentTime = 0;
               audio.play()
-                .then(() => console.log('✅ Audio playing, count:', playCount + 1))
+                // .then(() => console.log('✅ Audio playing, count:', playCount + 1))
                 .catch(err => console.log('❌ Audio play failed:', err.message));
               playCount++;
             }
@@ -1498,7 +1498,7 @@ const ChatNew = () => {
 
     if (!selectedChat || selectedChat.isGroup) return;
 
-    console.log('⌨️ User typing, emitting typing:start to:', selectedChat._id);
+    // console.log('⌨️ User typing, emitting typing:start to:', selectedChat._id);
     socket.current.emit('typing:start', selectedChat._id);
 
     if (typingTimeoutRef.current) {
@@ -1506,7 +1506,7 @@ const ChatNew = () => {
     }
 
     typingTimeoutRef.current = setTimeout(() => {
-      console.log('⌨️ Typing stopped, emitting typing:stop to:', selectedChat._id);
+      // console.log('⌨️ Typing stopped, emitting typing:stop to:', selectedChat._id);
       socket.current.emit('typing:stop', selectedChat._id);
     }, 1000);
   };
@@ -1782,7 +1782,7 @@ const ChatNew = () => {
 
       const stream = await webrtcService.startCall(callType === 'video');
 
-      console.log('📞 Emitting call:initiate to:', selectedChat._id);
+      // console.log('📞 Emitting call:initiate to:', selectedChat._id);
       socket.current.emit('call:initiate', {
         receiverId: selectedChat._id,
         type: callType,
@@ -1791,7 +1791,7 @@ const ChatNew = () => {
 
       // Create and send offer
       await webrtcService.createOffer(selectedChat._id);
-      console.log('✅ Call initiated with offer sent');
+      // console.log('✅ Call initiated with offer sent');
 
       // Start call ring sound
       soundManager.play('callRing');
@@ -1831,7 +1831,7 @@ const ChatNew = () => {
     const caller = incomingCall.caller;
 
     try {
-      console.log('📞 Accepting call...');
+      // console.log('📞 Accepting call...');
 
       // Stop incoming call sound
       soundManager.stop('incomingCall');
@@ -1841,28 +1841,28 @@ const ChatNew = () => {
 
       // End any existing call first to free up camera/mic
       if (activeCall) {
-        console.log('⚠️ Ending existing call before accepting new one');
+        // console.log('⚠️ Ending existing call before accepting new one');
         await webrtcService.endCall();
         setActiveCall(null);
-        console.log('✅ Existing call cleaned up');
+        // console.log('✅ Existing call cleaned up');
       }
 
-      console.log('📞 Requesting media devices...');
+      // console.log('📞 Requesting media devices...');
       const stream = await webrtcService.startCall(callType === 'video');
-      console.log('✅ Media stream obtained');
+      // console.log('✅ Media stream obtained');
 
       // Process the pending offer with media stream ready
       if (pendingOfferRef.current) {
-        console.log('📞 Processing pending offer...');
+        // console.log('📞 Processing pending offer...');
         await webrtcService.handleOffer(pendingOfferRef.current.offer, callerId);
         const answer = await webrtcService.createAnswer(callerId);
-        console.log('✅ Answer sent to caller');
+        // console.log('✅ Answer sent to caller');
         pendingOfferRef.current = null;
       }
 
       // Emit accept event
       socket.current.emit('call:accept', { callerId });
-      console.log('✅ Emitted call:accept to caller');
+      // console.log('✅ Emitted call:accept to caller');
 
       // Set active call with timer started
       const startTime = Date.now();
@@ -1889,8 +1889,8 @@ const ChatNew = () => {
       pendingRemoteStreamRef.current = null;
       setIsVideoEnabled(callType === 'video');
       setIsAudioEnabled(true);
-      console.log('✅ Call accepted, video enabled:', callType === 'video', 'audio enabled: true');
-      console.log('✅ Local stream tracks:', stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
+      // console.log('✅ Call accepted, video enabled:', callType === 'video', 'audio enabled: true');
+      // console.log('✅ Local stream tracks:', stream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
     } catch (error) {
       console.error('❌ Failed to accept call:', error);
       let errorMsg = 'Failed to accept call.';
@@ -1910,7 +1910,7 @@ const ChatNew = () => {
 
   const rejectCall = () => {
     if (!incomingCall) return;
-    console.log('📞 Rejecting call from:', incomingCall.callerId);
+    // console.log('📞 Rejecting call from:', incomingCall.callerId);
     soundManager.stop('incomingCall');
     soundManager.play('endCall');
     socket.current.emit('call:reject', { callerId: incomingCall.callerId });
@@ -1934,7 +1934,7 @@ const ChatNew = () => {
       if (webrtcService.localStream) {
         webrtcService.localStream.getAudioTracks().forEach(track => {
           track.enabled = isAudioEnabled;
-          console.log('🔊 Audio track enabled on minimize:', track.enabled);
+          // console.log('🔊 Audio track enabled on minimize:', track.enabled);
         });
       }
 
@@ -1958,7 +1958,7 @@ const ChatNew = () => {
   const endCall = async () => {
     if (!activeCall) return;
 
-    console.log('📞 Ending call, notifying remote user:', activeCall.userId);
+    // console.log('📞 Ending call, notifying remote user:', activeCall.userId);
     soundManager.stop('callRing');
     soundManager.stop('incomingCall');
     soundManager.play('endCall');
@@ -1997,7 +1997,7 @@ const ChatNew = () => {
     audioTrack.enabled = newAudioState;
     setIsAudioEnabled(newAudioState);
 
-    console.log('🔊 Audio toggled:', newAudioState);
+    // console.log('🔊 Audio toggled:', newAudioState);
 
     if (activeCall && activeCall.callAccepted) {
       const callState = {
@@ -2735,16 +2735,16 @@ const ChatNew = () => {
                     setConversations(prev => prev.map(c =>
                       c.user._id === chat.user._id ? { ...c, unreadCount: 0 } : c
                     ));
-                    console.log('Conversation user selected:', chat.user);
+                    // console.log('Conversation user selected:', chat.user);
                     setSelectedChat(chat.user);
 
                     // Fetch user's statuses
                     (async () => {
                       try {
                         const { data } = await api.get(`/users/profile/${chat.user._id}`);
-                        console.log('Fetched user profile:', data);
+                        // console.log('Fetched user profile:', data);
                         const activeStatuses = data.user.statuses?.filter(s => new Date() < new Date(s.expiresAt)) || [];
-                        console.log('Active statuses:', activeStatuses);
+                        // console.log('Active statuses:', activeStatuses);
                         setSelectedUserStatuses(activeStatuses);
                         setCurrentStatusIndex(0);
                         setStatusProgress(0);
@@ -4125,7 +4125,7 @@ const ChatNew = () => {
         <CreateGroupModal
           onClose={() => setShowCreateGroup(false)}
           onGroupCreated={(group) => {
-            console.log('Group created:', group);
+            // console.log('Group created:', group);
             setGroups(prev => [group, ...prev]);
           }}
         />

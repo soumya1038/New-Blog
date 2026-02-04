@@ -387,7 +387,7 @@ const UserProfile = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
         <div className="container mx-auto px-4 max-w-6xl">
           <UserProfileSkeleton />
         </div>
@@ -397,7 +397,7 @@ const UserProfile = () => {
 
   if (error === 'not_found') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
           <div className="text-6xl mb-4">❌</div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('User Does Not Exist')}</h2>
@@ -416,7 +416,7 @@ const UserProfile = () => {
   // Unauthorized - need to login
   if (error === 'unauthorized') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
           <div className="text-6xl mb-4">🔒</div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('Login Required')}</h2>
@@ -434,7 +434,7 @@ const UserProfile = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center px-4">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
           <div className="text-6xl mb-4">⚠️</div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('Something Went Wrong')}</h2>
@@ -451,7 +451,7 @@ const UserProfile = () => {
   }
 
 return (
-  <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+  <div className="min-h-screen bg-gradient-to-br from-slate-50 via-indigo-50/30 to-purple-50/30 dark:from-gray-900 dark:via-slate-900 dark:to-gray-900 py-8">
     <Toaster />
     <div className="container mx-auto px-4 max-w-6xl">
       <button
@@ -461,7 +461,7 @@ return (
         <FaArrowLeft /> {t('Back')}
       </button>
       {/* Profile Header */}
-      <div className="bg-white rounded-2xl shadow-xl p-6 sm:p-8 mb-6">
+      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-3xl shadow-xl p-6 sm:p-8 mb-6 border border-gray-100 dark:border-gray-700">
         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
           <div
             onClick={() => {

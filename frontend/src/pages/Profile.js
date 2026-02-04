@@ -832,7 +832,7 @@ const Profile = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
         <div className="container mx-auto px-4 max-w-4xl">
           <div className="h-6 w-20 bg-gray-200 rounded mb-4 animate-pulse"></div>
           <div className="bg-white rounded-2xl shadow-xl p-8">
@@ -869,7 +869,7 @@ const Profile = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30 dark:from-gray-900 dark:via-slate-900 dark:to-gray-900 py-8">
       <ScrollToTop />
       <div className="container mx-auto px-4 max-w-4xl">
         <button
@@ -878,7 +878,7 @@ const Profile = () => {
         >
           <FaArrowLeft /> {t('Back')}
         </button>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-3xl shadow-xl p-8 border border-gray-100 dark:border-gray-700">
           <h1 className="text-3xl font-bold mb-6 text-gray-800 dark:text-gray-100">{t('My Profile')}</h1>
           
           <div className="flex items-center gap-4 mb-8">

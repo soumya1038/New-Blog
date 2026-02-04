@@ -202,6 +202,28 @@ const Home = () => {
     }
   };
 
+  const handleArticleLike = async (e, articleId) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    try {
+      const { data } = await api.post(`/articles/${articleId}/like`);
+      setArticles(articles.map(article => 
+        article._id === articleId ? { ...article, likes: data.likes } : article
+      ));
+      apiCache.clear('articles-list');
+      
+      if (data.liked) {
+        soundNotification.playLikeActionSound();
+      }
+    } catch (error) {
+      console.error('Error liking article:', error);
+    }
+  };
+
   const handleCardClick = (id, type = 'blog') => {
     if (clickTimer) clearTimeout(clickTimer);
     
@@ -212,13 +234,17 @@ const Home = () => {
     setClickTimer(timer);
   };
 
-  const handleCardDoubleClick = (e, blogId) => {
+  const handleCardDoubleClick = (e, blogId, type = 'blog') => {
     e.preventDefault();
     if (clickTimer) {
       clearTimeout(clickTimer);
       setClickTimer(null);
     }
-    handleLike(null, blogId);
+    if (type === 'article') {
+      handleArticleLike(null, blogId);
+    } else {
+      handleLike(null, blogId);
+    }
   };
 
   const handleTagClick = (e, tag) => {
@@ -335,8 +361,12 @@ const Home = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 flex items-center justify-center px-4 py-8">
-        <div className="text-center max-w-2xl">
+      <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center px-4 py-8 relative">
+        <div className="absolute inset-0 opacity-20 dark:opacity-10">
+          <div className="absolute top-20 left-20 w-72 h-72 bg-red-300 dark:bg-red-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob"></div>
+          <div className="absolute bottom-20 right-20 w-72 h-72 bg-orange-300 dark:bg-orange-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob animation-delay-2000"></div>
+        </div>
+        <div className="text-center max-w-2xl relative z-10">
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-to-r from-red-400 to-orange-500 blur-3xl opacity-20 rounded-full"></div>
             <img 
@@ -365,55 +395,76 @@ const Home = () => {
       {showTour && <ModernProductTour onComplete={() => setShowTour(false)} />}
       <ScrollToTop />
       
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8 overflow-y-auto">
-      <div className="container mx-auto px-4">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-8 overflow-y-auto relative">
+      {/* Animated Background Pattern */}
+      <div className="absolute inset-0 opacity-30 dark:opacity-10">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-purple-300 dark:bg-purple-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob"></div>
+        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-300 dark:bg-blue-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob animation-delay-2000"></div>
+        <div className="absolute bottom-0 left-1/2 w-96 h-96 bg-pink-300 dark:bg-pink-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob animation-delay-4000"></div>
+      </div>
+      
+      <div className="container mx-auto px-4 relative z-10">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-bold text-gray-800 dark:text-gray-100 mb-4">Welcome to Lekhon</h1>
-            <div className="flex gap-2">
+            <div className="flex gap-3 flex-wrap">
               <button
                 onClick={() => setContentFilter('all')}
-                className={`px-4 py-2 rounded-lg font-semibold transition ${
+                className={`group relative px-6 py-2.5 rounded-xl font-semibold transition-all duration-300 overflow-hidden ${
                   contentFilter === 'all'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300'
+                    ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30 scale-105'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-2 border-gray-200 dark:border-gray-700 hover:border-blue-300 hover:shadow-md hover:scale-105'
                 }`}
               >
-                {t('All')}
+                <span className="relative z-10 flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${contentFilter === 'all' ? 'bg-white' : 'bg-blue-500'} transition-colors`}></span>
+                  {t('All')}
+                </span>
               </button>
               <button
                 onClick={() => setContentFilter('blogs')}
-                className={`px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 ${
+                className={`group relative px-6 py-2.5 rounded-xl font-semibold transition-all duration-300 overflow-hidden flex items-center gap-2 ${
                   contentFilter === 'blogs'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300'
+                    ? 'bg-gradient-to-r from-purple-600 to-purple-500 text-white shadow-lg shadow-purple-500/30 scale-105'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-2 border-gray-200 dark:border-gray-700 hover:border-purple-300 hover:shadow-md hover:scale-105'
                 }`}
               >
-                <TbBrandBlogger className="w-4 h-4" /> {t('Blogs')}
+                <TbBrandBlogger className={`w-5 h-5 ${contentFilter === 'blogs' ? '' : 'text-purple-600'}`} />
+                {t('Blogs')}
               </button>
               <button
                 onClick={() => setContentFilter('articles')}
-                className={`px-4 py-2 rounded-lg font-semibold transition flex items-center gap-2 ${
+                className={`group relative px-6 py-2.5 rounded-xl font-semibold transition-all duration-300 overflow-hidden flex items-center gap-2 ${
                   contentFilter === 'articles'
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300'
+                    ? 'bg-gradient-to-r from-green-600 to-green-500 text-white shadow-lg shadow-green-500/30 scale-105'
+                    : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-2 border-gray-200 dark:border-gray-700 hover:border-green-300 hover:shadow-md hover:scale-105'
                 }`}
               >
-                <img src={contentFilter === 'articles' ? '/image/article_logo_light.png' : (isDark ? '/image/article_logo_light.png' : '/image/article_logo_dark.png')} alt="Article" className="w-4 h-4" /> {t('Articles')}
+                <img src={contentFilter === 'articles' ? '/image/article_logo_light.png' : (isDark ? '/image/article_logo_light.png' : '/image/article_logo_dark.png')} alt="Article" className="w-5 h-5" />
+                {t('Articles')}
               </button>
             </div>
           </div>
           
           <div className="w-full md:w-96">
-            <div className="search-bar relative" ref={searchBarRef}>
+            <div className="search-bar relative group" ref={searchBarRef}>
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-400 rounded-2xl blur-xl opacity-0 group-hover:opacity-20 group-focus-within:opacity-25 transition-opacity duration-500"></div>
               <input
                 type="text"
                 placeholder={t('Search blogs...')}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 pl-10 pr-4 border-2 border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                className="relative w-full px-5 py-3.5 pl-12 pr-12 border-2 border-gray-200/50 dark:border-gray-700/50 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm rounded-2xl focus:outline-none focus:border-transparent focus:ring-2 focus:ring-blue-400/50 shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-300 text-gray-900 dark:text-gray-100 placeholder:text-gray-400"
               />
-              <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <FaSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 group-focus-within:scale-110 transition-all duration-300" size={20} />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-red-500 hover:rotate-90 transition-all duration-300"
+                >
+                  <FaTimes size={16} />
+                </button>
+              )}
             </div>
             
             {selectedTags.length > 0 && (
@@ -456,54 +507,58 @@ const Home = () => {
           </div>
         </div>
         
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredBlogs.slice(0, 3).map((blog, index) => (
             <div 
               key={blog._id} 
-              className="rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer group relative border-4 border-white"
+              className="group relative rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 cursor-pointer transform hover:-translate-y-2 hover:rotate-1"
               onClick={() => handleCardClick(blog._id, blog.type)}
-              onDoubleClick={(e) => handleCardDoubleClick(e, blog._id)}
+              onDoubleClick={(e) => handleCardDoubleClick(e, blog._id, blog.type)}
               style={getBackgroundStyle(blog, index)}
             >
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30 group-hover:from-black/90 group-hover:via-black/60 transition-all duration-300"></div>
-              <div className="absolute top-3 right-3 z-20 bg-white/20 backdrop-blur-sm p-1.5 md:p-2 rounded-full shadow-lg">
-                {blog.type === 'article' ? (
-                  <img src="/image/article_logo_light.png" alt="Article" className="w-4 h-4 md:w-5 md:h-5" />
-                ) : (
-                  <TbBrandBlogger className="w-4 h-4 md:w-5 md:h-5 text-white" />
-                )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent dark:from-black/50 dark:via-black/10 group-hover:from-black/80 group-hover:via-black/30 dark:group-hover:from-black/60 dark:group-hover:via-black/20 transition-all duration-500"></div>
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/10 group-hover:via-purple-500/10 group-hover:to-pink-500/10 transition-all duration-500"></div>
+              
+              <div className="absolute top-4 right-4 z-20">
+                <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md p-2.5 rounded-xl shadow-lg group-hover:scale-110 group-hover:rotate-12 transition-all duration-300">
+                  {blog.type === 'article' ? (
+                    <img src={isDark ? '/image/article_logo_light.png' : '/image/article_logo_dark.png'} alt="Article" className="w-5 h-5" />
+                  ) : (
+                    <TbBrandBlogger className="w-5 h-5 text-blue-600" />
+                  )}
+                </div>
               </div>
               
-              <div className="relative z-10 p-6 min-h-[400px] flex flex-col justify-end">
-                <div className="w-[90%] mx-auto">
-                <div className="flex items-center gap-2 mb-3">
+              <div className="relative z-10 p-6 min-h-[420px] flex flex-col justify-end">
+                <div className="flex items-center gap-3 mb-3">
                   <Link 
                     to={`/user/${blog.author?._id}`}
                     onClick={(e) => e.stopPropagation()}
-                    className="border-2 border-white rounded-full hover:opacity-80 transition"
+                    className="border-2 border-white rounded-full hover:scale-110 hover:border-blue-400 transition-all duration-300"
                   >
                     <Avatar user={blog.author} size="sm" showStatusRing={true} />
                   </Link>
-                  <Link 
-                    to={`/user/${blog.author?._id}`} 
-                    className="text-sm font-medium hover:underline text-white flex items-center gap-1"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {blog.author?.username}
-                    {(blog.author?.isGuest || blog.author?.role === 'guest') ? (
-                      <TbBrandAmongUs className="text-purple-300" size={14} title="Guest User" />
-                    ) : blog.author?.isVerified && (
-                      <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
-                        <GoVerified className="text-white flex-shrink-0" size={9} />
-                      </div>
-                    )}
-                  </Link>
-                  <span className="text-gray-300 text-sm">•</span>
-                  <span className="text-sm text-gray-300">{new Date(blog.createdAt).toLocaleDateString()}</span>
+                  <div className="flex-1 min-w-0">
+                    <Link 
+                      to={`/user/${blog.author?._id}`} 
+                      className="text-sm font-semibold hover:underline text-white flex items-center gap-1.5"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="truncate">{blog.author?.username}</span>
+                      {(blog.author?.isGuest || blog.author?.role === 'guest') ? (
+                        <TbBrandAmongUs className="text-purple-300 flex-shrink-0" size={14} title="Guest User" />
+                      ) : blog.author?.isVerified && (
+                        <div className="bg-blue-500 rounded-full p-0.5 flex items-center justify-center flex-shrink-0" title="Verified">
+                          <GoVerified className="text-white" size={10} />
+                        </div>
+                      )}
+                    </Link>
+                    <span className="text-xs text-gray-300">{new Date(blog.createdAt).toLocaleDateString()}</span>
+                  </div>
                 </div>
                 
                 <h2 
-                  className="text-2xl font-bold mb-3 line-clamp-2 transition text-white drop-shadow-lg"
+                  className="text-2xl font-bold mb-3 line-clamp-2 text-white leading-tight group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-blue-300 group-hover:to-purple-300 transition-all duration-300"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Link to={blog.type === 'article' ? `/article/${blog._id}` : `/blog/${blog._id}`}>{blog.title}</Link>
@@ -513,44 +568,51 @@ const Home = () => {
                   {blog.content.replace(/[#*_`]/g, '').substring(0, 120)}...
                 </p>
                 
-                <div className="flex items-center gap-4 text-sm text-gray-200">
-                  {blog.videoUrls && blog.videoUrls.length > 0 && (
-                    <span className="flex items-center gap-1 text-blue-300">
-                      <PiMonitorPlayDuotone className="w-4 h-4" /> {blog.videoUrls[0] && getVideoTitle(blog.videoUrls[0])}{blog.videoUrls.length > 1 && ` +${blog.videoUrls.length - 1}`}
+                {blog.videoUrls && blog.videoUrls.length > 0 && (
+                  <div className="mb-3">
+                    <span className="inline-flex items-center gap-1.5 bg-red-500/90 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
+                      <PiMonitorPlayDuotone className="w-4 h-4" /> 
+                      {blog.videoUrls[0] && getVideoTitle(blog.videoUrls[0])}{blog.videoUrls.length > 1 && ` +${blog.videoUrls.length - 1}`}
                     </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-4 text-sm text-gray-200 mt-2">
+                  </div>
+                )}
+                
+                <div className="flex items-center gap-4 text-sm text-gray-200 mb-4">
                   <button
-                    onClick={(e) => handleLike(e, blog._id)}
-                    className={`flex items-center gap-1 transition ${
+                    onClick={(e) => blog.type === 'article' ? handleArticleLike(e, blog._id) : handleLike(e, blog._id)}
+                    className={`flex items-center gap-1.5 transition-colors ${
                       blog.likes?.includes(user?._id) ? 'text-red-400' : 'hover:text-red-400'
                     }`}
                   >
-                    <FaHeart className={blog.likes?.includes(user?._id) ? 'fill-current' : ''} /> {blog.likes?.length || 0}
+                    <FaHeart className={blog.likes?.includes(user?._id) ? 'fill-current' : ''} size={16} />
+                    <span className="font-semibold">{blog.likes?.length || 0}</span>
                   </button>
-                  <span className="flex items-center gap-1">
-                    <FaClock /> {blog.readingTime} {t('min read')}
+                  <span className="flex items-center gap-1.5">
+                    <FaClock size={14} />
+                    <span>{blog.readingTime} {t('min')}</span>
                   </span>
-                  <span className="flex items-center gap-1">
-                    <FaEye /> {blog.views || 0}
+                  <span className="flex items-center gap-1.5">
+                    <FaEye size={14} />
+                    <span>{blog.views || 0}</span>
                   </span>
                 </div>
                 
                 {blog.tags?.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {blog.tags.map((tag, idx) => (
+                  <div className="flex flex-wrap gap-2">
+                    {blog.tags.slice(0, 3).map((tag, idx) => (
                       <span 
                         key={idx} 
-                        className="bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm border border-white/30 hover:bg-white/30 cursor-pointer transition"
+                        className="bg-gradient-to-r from-blue-500/30 to-purple-500/30 backdrop-blur-md text-white px-3 py-1.5 rounded-xl text-xs font-semibold border border-white/40 hover:from-blue-500/50 hover:to-purple-500/50 hover:scale-110 hover:shadow-lg cursor-pointer transition-all duration-300"
                         onClick={(e) => handleTagClick(e, tag)}
                       >
-                        {tag}
+                        #{tag}
                       </span>
                     ))}
+                    {blog.tags.length > 3 && (
+                      <span className="bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium border border-white/30">+{blog.tags.length - 3}</span>
+                    )}
                   </div>
                 )}
-                </div>
               </div>
             </div>
           ))}
@@ -582,101 +644,105 @@ const Home = () => {
         
         {/* Remaining Blogs */}
         {filteredBlogs.length > 3 && (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mt-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-12">
             {filteredBlogs.slice(3).map((blog, index) => (
               <div 
                 key={blog._id} 
-                className="rounded-xl shadow-lg overflow-hidden hover:shadow-2xl transition-all duration-300 cursor-pointer group relative border-4 border-white"
+                className="group relative rounded-3xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-500 cursor-pointer transform hover:-translate-y-2 hover:rotate-1"
                 onClick={() => handleCardClick(blog._id, blog.type)}
-                onDoubleClick={(e) => handleCardDoubleClick(e, blog._id)}
+                onDoubleClick={(e) => handleCardDoubleClick(e, blog._id, blog.type)}
                 style={getBackgroundStyle(blog, index + 3)}
               >
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/50 to-black/30 group-hover:from-black/90 group-hover:via-black/60 transition-all duration-300"></div>
-                <div className="absolute top-3 right-3 z-20 bg-white/20 backdrop-blur-sm p-1.5 md:p-2 rounded-full shadow-lg">
-                  {blog.type === 'article' ? (
-                    <img src="/image/article_logo_light.png" alt="Article" className="w-4 h-4 md:w-5 md:h-5" />
-                  ) : (
-                    <TbBrandBlogger className="w-4 h-4 md:w-5 md:h-5 text-white" />
-                  )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent dark:from-black/50 dark:via-black/10 group-hover:from-black/80 group-hover:via-black/30 dark:group-hover:from-black/60 dark:group-hover:via-black/20 transition-all duration-500"></div>
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/10 group-hover:via-purple-500/10 group-hover:to-pink-500/10 transition-all duration-500"></div>
+                <div className="absolute top-4 right-4 z-20">
+                  <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md p-2.5 rounded-xl shadow-lg group-hover:scale-110 group-hover:rotate-12 transition-all duration-300">
+                    {blog.type === 'article' ? (
+                      <img src={isDark ? '/image/article_logo_light.png' : '/image/article_logo_dark.png'} alt="Article" className="w-5 h-5" />
+                    ) : (
+                      <TbBrandBlogger className="w-5 h-5 text-blue-600" />
+                    )}
+                  </div>
                 </div>
-                
-                <div className="relative z-10 p-6 min-h-[400px] flex flex-col justify-end">
-                  <div className="w-[90%] mx-auto">
-                  <div className="flex items-center gap-2 mb-3">
+                <div className="relative z-10 p-6 min-h-[420px] flex flex-col justify-end">
+                  <div className="flex items-center gap-3 mb-3">
                     <Link 
                       to={`/user/${blog.author?._id}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="border-2 border-white rounded-full hover:opacity-80 transition"
+                      className="border-2 border-white rounded-full hover:scale-110 hover:border-blue-400 transition-all duration-300"
                     >
                       <Avatar user={blog.author} size="sm" showStatusRing={true} />
                     </Link>
-                    <Link 
-                      to={`/user/${blog.author?._id}`} 
-                      className="text-sm font-medium hover:underline text-white flex items-center gap-1"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {blog.author?.username}
-                      {(blog.author?.isGuest || blog.author?.role === 'guest') ? (
-                        <TbBrandAmongUs className="text-purple-300" size={14} title="Guest User" />
-                      ) : blog.author?.isVerified && (
-                        <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
-                          <GoVerified className="text-white flex-shrink-0" size={9} />
-                        </div>
-                      )}
-                    </Link>
-                    <span className="text-gray-300 text-sm">•</span>
-                    <span className="text-sm text-gray-300">{new Date(blog.createdAt).toLocaleDateString()}</span>
+                    <div className="flex-1 min-w-0">
+                      <Link 
+                        to={`/user/${blog.author?._id}`} 
+                        className="text-sm font-semibold hover:underline text-white flex items-center gap-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span className="truncate">{blog.author?.username}</span>
+                        {(blog.author?.isGuest || blog.author?.role === 'guest') ? (
+                          <TbBrandAmongUs className="text-purple-300 flex-shrink-0" size={14} title="Guest User" />
+                        ) : blog.author?.isVerified && (
+                          <div className="bg-blue-500 rounded-full p-0.5 flex items-center justify-center flex-shrink-0" title="Verified">
+                            <GoVerified className="text-white" size={10} />
+                          </div>
+                        )}
+                      </Link>
+                      <span className="text-xs text-gray-300">{new Date(blog.createdAt).toLocaleDateString()}</span>
+                    </div>
                   </div>
-                  
                   <h2 
-                    className="text-2xl font-bold mb-3 line-clamp-2 transition text-white drop-shadow-lg"
+                    className="text-2xl font-bold mb-3 line-clamp-2 text-white leading-tight group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-blue-300 group-hover:to-purple-300 transition-all duration-300"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <Link to={blog.type === 'article' ? `/article/${blog._id}` : `/blog/${blog._id}`}>{blog.title}</Link>
                   </h2>
-                  
                   <p className="mb-4 line-clamp-2 text-sm leading-relaxed text-gray-200">
                     {blog.content.replace(/[#*_`]/g, '').substring(0, 120)}...
                   </p>
-                  
-                  <div className="flex items-center gap-4 text-sm text-gray-200">
-                    {blog.videoUrls && blog.videoUrls.length > 0 && (
-                      <span className="flex items-center gap-1 text-blue-300">
-                        <PiMonitorPlayDuotone className="w-4 h-4" /> {blog.videoUrls[0] && getVideoTitle(blog.videoUrls[0])}{blog.videoUrls.length > 1 && ` +${blog.videoUrls.length - 1}`}
+                  {blog.videoUrls && blog.videoUrls.length > 0 && (
+                    <div className="mb-3">
+                      <span className="inline-flex items-center gap-1.5 bg-red-500/90 text-white px-3 py-1.5 rounded-lg text-xs font-semibold">
+                        <PiMonitorPlayDuotone className="w-4 h-4" /> 
+                        {blog.videoUrls[0] && getVideoTitle(blog.videoUrls[0])}{blog.videoUrls.length > 1 && ` +${blog.videoUrls.length - 1}`}
                       </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-200 mt-2">
+                    </div>
+                  )}
+                  <div className="flex items-center gap-4 text-sm text-gray-200 mb-4">
                     <button
-                      onClick={(e) => handleLike(e, blog._id)}
-                      className={`flex items-center gap-1 transition ${
+                      onClick={(e) => blog.type === 'article' ? handleArticleLike(e, blog._id) : handleLike(e, blog._id)}
+                      className={`flex items-center gap-1.5 transition-colors ${
                         blog.likes?.includes(user?._id) ? 'text-red-400' : 'hover:text-red-400'
                       }`}
                     >
-                      <FaHeart className={blog.likes?.includes(user?._id) ? 'fill-current' : ''} /> {blog.likes?.length || 0}
+                      <FaHeart className={blog.likes?.includes(user?._id) ? 'fill-current' : ''} size={16} />
+                      <span className="font-semibold">{blog.likes?.length || 0}</span>
                     </button>
-                    <span className="flex items-center gap-1">
-                      <FaClock /> {blog.readingTime} {t('min read')}
+                    <span className="flex items-center gap-1.5">
+                      <FaClock size={14} />
+                      <span>{blog.readingTime} {t('min')}</span>
                     </span>
-                    <span className="flex items-center gap-1">
-                      <FaEye /> {blog.views || 0}
+                    <span className="flex items-center gap-1.5">
+                      <FaEye size={14} />
+                      <span>{blog.views || 0}</span>
                     </span>
                   </div>
-                  
                   {blog.tags?.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-4">
-                      {blog.tags.map((tag, idx) => (
+                    <div className="flex flex-wrap gap-2">
+                      {blog.tags.slice(0, 3).map((tag, idx) => (
                         <span 
                           key={idx} 
-                          className="bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full text-sm border border-white/30 hover:bg-white/30 cursor-pointer transition"
+                          className="bg-gradient-to-r from-blue-500/30 to-purple-500/30 backdrop-blur-md text-white px-3 py-1.5 rounded-xl text-xs font-semibold border border-white/40 hover:from-blue-500/50 hover:to-purple-500/50 hover:scale-110 hover:shadow-lg cursor-pointer transition-all duration-300"
                           onClick={(e) => handleTagClick(e, tag)}
                         >
-                          {tag}
+                          #{tag}
                         </span>
                       ))}
+                      {blog.tags.length > 3 && (
+                        <span className="bg-white/20 backdrop-blur-sm text-white px-3 py-1 rounded-full text-xs font-medium border border-white/30">+{blog.tags.length - 3}</span>
+                      )}
                     </div>
                   )}
-                  </div>
                 </div>
               </div>
             ))}

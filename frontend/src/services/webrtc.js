@@ -23,9 +23,9 @@ class WebRTCService {
           username: turnUser,
           credential: turnPass
         });
-        console.log('WebRTC: TURN server added from env');
+        // console.log('WebRTC: TURN server added from env');
       } else {
-        console.log('WebRTC: No TURN server configured (REACT_APP_TURN_* env vars missing)');
+        // console.log('WebRTC: No TURN server configured (REACT_APP_TURN_* env vars missing)');
       }
     } catch (err) {
       console.warn('WebRTC: Failed to read TURN env vars', err);
@@ -58,10 +58,10 @@ class WebRTCService {
       };
       
       this.localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log('✅ Local stream obtained:', {
-        audio: this.localStream.getAudioTracks().length,
-        video: this.localStream.getVideoTracks().length
-      });
+      // console.log('✅ Local stream obtained:', {
+      //   audio: this.localStream.getAudioTracks().length,
+      //   video: this.localStream.getVideoTracks().length
+      // });
       return this.localStream;
     } catch (error) {
       console.error('Failed to get media devices:', error);
@@ -75,9 +75,9 @@ class WebRTCService {
       
       // Set up ontrack BEFORE adding local tracks - CRITICAL for receiving remote tracks
       this.peerConnection.ontrack = (event) => {
-        console.log('📹 Caller received remote track:', event.track.kind, 'enabled:', event.track.enabled);
-        console.log('Remote stream:', event.streams[0]);
-        console.log('Remote stream tracks:', event.streams[0].getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
+        // console.log('📹 Caller received remote track:', event.track.kind, 'enabled:', event.track.enabled);
+        // console.log('Remote stream:', event.streams[0]);
+        // console.log('Remote stream tracks:', event.streams[0].getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
         
         if (!this.remoteStream) {
           this.remoteStream = event.streams[0];
@@ -97,12 +97,12 @@ class WebRTCService {
       };
 
       this.peerConnection.oniceconnectionstatechange = () => {
-        console.log('🧊 ICE connection state:', this.peerConnection.iceConnectionState);
+        // console.log('🧊 ICE connection state:', this.peerConnection.iceConnectionState);
       };
 
       // Add local tracks AFTER setting up ontrack handler
       this.localStream.getTracks().forEach(track => {
-        console.log('➕ Caller adding local track:', track.kind, 'enabled:', track.enabled);
+        // console.log('➕ Caller adding local track:', track.kind, 'enabled:', track.enabled);
         this.peerConnection.addTrack(track, this.localStream);
       });
 
@@ -111,7 +111,7 @@ class WebRTCService {
         offerToReceiveVideo: true
       });
       await this.peerConnection.setLocalDescription(offer);
-      console.log('✅ Offer created and set as local description');
+      // console.log('✅ Offer created and set as local description');
 
       if (this._remoteCandidateQueue.length && this.peerConnection) {
         for (const c of this._remoteCandidateQueue) {
@@ -140,9 +140,9 @@ class WebRTCService {
       
       // Set up ontrack FIRST - CRITICAL for receiving remote tracks
       this.peerConnection.ontrack = (event) => {
-        console.log('📹 Receiver received remote track:', event.track.kind, 'enabled:', event.track.enabled);
-        console.log('Remote stream:', event.streams[0]);
-        console.log('Remote stream tracks:', event.streams[0].getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
+        // console.log('📹 Receiver received remote track:', event.track.kind, 'enabled:', event.track.enabled);
+        // console.log('Remote stream:', event.streams[0]);
+        // console.log('Remote stream tracks:', event.streams[0].getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
         
         if (!this.remoteStream) {
           this.remoteStream = event.streams[0];
@@ -162,17 +162,17 @@ class WebRTCService {
       };
 
       this.peerConnection.oniceconnectionstatechange = () => {
-        console.log('🧊 ICE connection state:', this.peerConnection.iceConnectionState);
+        // console.log('🧊 ICE connection state:', this.peerConnection.iceConnectionState);
       };
       
       // Add local tracks AFTER setting up ontrack handler
       this.localStream.getTracks().forEach(track => {
-        console.log('➕ Receiver adding local track:', track.kind, 'enabled:', track.enabled);
+        // console.log('➕ Receiver adding local track:', track.kind, 'enabled:', track.enabled);
         this.peerConnection.addTrack(track, this.localStream);
       });
 
       await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-      console.log('✅ Remote description set from offer');
+      // console.log('✅ Remote description set from offer');
 
       if (this._remoteCandidateQueue.length) {
         for (const c of this._remoteCandidateQueue) {
@@ -197,7 +197,7 @@ class WebRTCService {
         offerToReceiveVideo: true
       });
       await this.peerConnection.setLocalDescription(answer);
-      console.log('✅ Answer created and set as local description');
+      // console.log('✅ Answer created and set as local description');
 
       this.socket.emit('call:answer', {
         callerId,
@@ -223,11 +223,11 @@ class WebRTCService {
   async handleIceCandidate(candidate) {
     try {
       if (this.peerConnection) {
-        console.log('🧊 ICE candidate received, PeerConnection ready — adding immediately');
+        // console.log('🧊 ICE candidate received, PeerConnection ready — adding immediately');
         await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
       } else {
         // PeerConnection not ready yet — queue candidate for later
-        console.log(`🧊 ICE candidate received, PeerConnection NOT ready — queueing (total queued: ${this._remoteCandidateQueue.length + 1})`);
+        // console.log(`🧊 ICE candidate received, PeerConnection NOT ready — queueing (total queued: ${this._remoteCandidateQueue.length + 1})`);
         this._remoteCandidateQueue.push(candidate);
       }
     } catch (error) {
@@ -257,7 +257,7 @@ class WebRTCService {
     if (this.localStream) {
       this.localStream.getTracks().forEach(track => {
         track.stop();
-        console.log('🛑 Stopped local track:', track.kind);
+        // console.log('🛑 Stopped local track:', track.kind);
       });
       this.localStream = null;
     }
@@ -265,7 +265,7 @@ class WebRTCService {
     if (this.peerConnection) {
       this.peerConnection.close();
       this.peerConnection = null;
-      console.log('🛑 Peer connection closed');
+      // console.log('🛑 Peer connection closed');
     }
     
     this.remoteStream = null;

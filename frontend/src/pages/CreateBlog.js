@@ -248,11 +248,11 @@ const CreateBlog = () => {
           scheduledPublishDate
         });
         
-        console.log('Article created:', data);
+        // console.log('Article created:', data);
         setHasUnsavedChanges(false);
         toast.success(isScheduled ? 'Article scheduled successfully!' : 'Article published successfully!');
         const articleId = data.article?._id;
-        console.log('Navigating to:', `/article/${articleId}`);
+        // console.log('Navigating to:', `/article/${articleId}`);
         setTimeout(() => navigate(isScheduled ? '/drafts' : `/article/${articleId}`), 1000);
         return;
       }
@@ -455,7 +455,7 @@ const CreateBlog = () => {
     if (titles.length > 0) {
       setTitle(titles[0]);
       toast.success('Title generated! Check other suggestions in console.');
-      console.log('Other title suggestions:', titles.slice(1));
+      // console.log('Other title suggestions:', titles.slisce(1));
     }
   };
 
@@ -517,29 +517,36 @@ const CreateBlog = () => {
   }), [t]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-8">
+    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-8 relative overflow-hidden">
+      {/* Animated Background */}
+      <div className="absolute inset-0 opacity-30 dark:opacity-10">
+        <div className="absolute top-20 left-10 w-72 h-72 bg-purple-300 dark:bg-purple-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob"></div>
+        <div className="absolute top-40 right-10 w-72 h-72 bg-blue-300 dark:bg-blue-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob animation-delay-2000"></div>
+        <div className="absolute bottom-20 left-1/3 w-72 h-72 bg-pink-300 dark:bg-pink-900 rounded-full mix-blend-multiply dark:mix-blend-soft-light filter blur-3xl animate-blob animation-delay-4000"></div>
+      </div>
+      
       <Toaster />
-      <div className="container mx-auto px-4 max-w-4xl">
+      <div className="container mx-auto px-4 max-w-4xl relative z-10">
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-blue-600 hover:text-blue-800 mb-4 font-semibold"
         >
           <FaArrowLeft /> {t('Back')}
         </button>
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sm:p-8">
+        <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl rounded-2xl shadow-2xl p-4 sm:p-8 border border-white/20 dark:border-gray-700/50">
           <div className="flex justify-between items-center mb-6">
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 dark:text-gray-100">
                 {isArticleMode ? t('Create Article') : (isShortMode ? t('Create Short Blog') : t('Create New Blog'))}
               </h1>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   type="button"
                   onClick={() => {
                     setIsArticleMode(false);
                     setIsShortMode(false);
                   }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
+                  className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
                     !isShortMode && !isArticleMode
                       ? 'bg-blue-600 text-white hover:bg-blue-700' 
                       : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
@@ -553,7 +560,7 @@ const CreateBlog = () => {
                     setIsArticleMode(true);
                     setIsShortMode(false);
                   }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
+                  className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
                     isArticleMode
                       ? 'bg-green-600 text-white hover:bg-green-700' 
                       : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
@@ -567,7 +574,7 @@ const CreateBlog = () => {
                     setIsArticleMode(false);
                     setIsShortMode(true);
                   }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
+                  className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
                     isShortMode
                       ? 'bg-purple-600 text-white hover:bg-purple-700' 
                       : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'

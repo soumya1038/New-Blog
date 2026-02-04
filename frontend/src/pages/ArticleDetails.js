@@ -51,7 +51,7 @@ const ArticleDetails = () => {
   }, []);
 
   useEffect(() => {
-    console.log('ArticleDetails mounted, id:', id);
+    // console.log('ArticleDetails mounted, id:', id);
     fetchArticle();
     fetchComments();
     trackView();
@@ -97,9 +97,9 @@ const ArticleDetails = () => {
 
   const fetchArticle = async () => {
     try {
-      console.log('Fetching article:', id);
+      // console.log('Fetching article:', id);
       const { data } = await api.get(`/articles/${id}`);
-      console.log('Article data:', data);
+      // console.log('Article data:', data);
       setArticle(data.article);
       setLiked(data.article.likes?.some(like => like._id === user?._id));
     } catch (error) {
@@ -403,11 +403,11 @@ const ArticleDetails = () => {
   if (!article) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-green-50/30 to-teal-50/30 dark:from-gray-900 dark:via-slate-900 dark:to-gray-900">
       <Toaster />
       
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border-b border-gray-200/50 dark:border-gray-700/50">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <button
             onClick={() => navigate(-1)}

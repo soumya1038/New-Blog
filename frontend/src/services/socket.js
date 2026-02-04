@@ -20,7 +20,7 @@ class SocketService {
       });
 
       this.socket.on('connect', () => {
-        console.log('✅ Socket connected:', this.socket.id);
+        // console.log('✅ Socket connected:', this.socket.id);
         this.socket.emit('user:online', this.userId);
         if (this.currentRoute) {
           this.socket.emit('route:change', this.currentRoute);
@@ -28,11 +28,11 @@ class SocketService {
       });
 
       this.socket.on('disconnect', (reason) => {
-        console.log('❌ Socket disconnected:', reason);
+        // console.log('❌ Socket disconnected:', reason);
       });
 
       this.socket.on('reconnect', (attemptNumber) => {
-        console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
+        // console.log('🔄 Socket reconnected after', attemptNumber, 'attempts');
         this.socket.emit('user:online', this.userId);
         if (this.currentRoute) {
           this.socket.emit('route:change', this.currentRoute);
@@ -40,7 +40,7 @@ class SocketService {
       });
 
       this.socket.on('reconnect_error', (error) => {
-        console.error('🔴 Reconnection error:', error.message);
+        // console.error('🔴 Reconnection error:', error.message);
       });
     }
     return this.socket;

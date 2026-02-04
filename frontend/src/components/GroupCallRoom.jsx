@@ -175,15 +175,15 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
         setTimeout(async () => {
           // Find participant tiles (remote participants)
           const participantTiles = document.querySelectorAll('.lk-participant-tile');
-          console.log('Found participant tiles:', participantTiles.length);
+          // console.log('Found participant tiles:', participantTiles.length);
           
           for (const tile of participantTiles) {
             const video = tile.querySelector('video');
             if (video && video.readyState >= 2) {
-              console.log('Trying video:', { readyState: video.readyState, paused: video.paused });
+              // console.log('Trying video:', { readyState: video.readyState, paused: video.paused });
               try {
                 await video.requestPictureInPicture();
-                console.log('PiP activated');
+                // console.log('PiP activated');
                 break;
               } catch (err) {
                 console.log('PiP failed:', err.message);
@@ -201,7 +201,7 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
   useEffect(() => {
     // Only fetch token if not provided
     if (existingToken && existingWsUrl) {
-      console.log('✅ Using existing token and wsUrl');
+      // console.log('✅ Using existing token and wsUrl');
       return;
     }
 

@@ -88,9 +88,8 @@ const Chat = () => {
   const loadConversations = async () => {
     try {
       const data = await getConversations();
-<<<<<<< HEAD
       setConversations(data.conversations);
-=======
+
       // Sort by last message time (most recent first)
       const sortedConversations = data.conversations.sort((a, b) => {
         const timeA = a.lastMessage?.createdAt ? new Date(a.lastMessage.createdAt) : new Date(0);
@@ -98,7 +97,6 @@ const Chat = () => {
         return timeB - timeA;
       });
       setConversations(sortedConversations);
->>>>>>> 75a58b9 (fix chat issue)
       
       // Fetch statuses for all users in conversations
       const userIds = data.conversations.map(c => c.user._id);
@@ -146,9 +144,9 @@ const Chat = () => {
     // Fetch user's statuses
     try {
       const { data } = await api.get(`/users/profile/${user._id}`);
-      console.log('Fetched user profile:', data);
+      // console.log('Fetched user profile:', data);
       const activeStatuses = data.user.statuses?.filter(s => new Date() < new Date(s.expiresAt)) || [];
-      console.log('Active statuses:', activeStatuses);
+      // console.log('Active statuses:', activeStatuses);
       setSelectedUserStatuses(activeStatuses);
       setCurrentStatusIndex(0);
       setStatusProgress(0);
@@ -305,7 +303,7 @@ const Chat = () => {
                   } : {}
                 }}
                 onClick={() => {
-                  console.log('Header clicked, statuses:', selectedUserStatuses);
+                  // console.log('Header clicked, statuses:', selectedUserStatuses);
                   if (selectedUserStatuses.length > 0 && selectedUserStatuses[currentStatusIndex]?.image) {
                     window.open(selectedUserStatuses[currentStatusIndex].image, '_blank');
                   }

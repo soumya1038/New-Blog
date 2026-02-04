@@ -61,8 +61,8 @@ const ActiveCallScreen = ({
 
   useEffect(() => {
     if (localStream && localVideoRef.current) {
-      console.log('📹 Setting local stream to video element');
-      console.log('Local stream tracks:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
+      // console.log('📹 Setting local stream to video element');
+      // console.log('Local stream tracks:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
       
       // Only set if different
       if (localVideoRef.current.srcObject !== localStream) {
@@ -77,10 +77,10 @@ const ActiveCallScreen = ({
   }, [localStream, isSwapped]);
 
   useEffect(() => {
-    console.log('🔄 ActiveCallScreen remoteStream prop changed:', remoteStream ? 'HAS STREAM' : 'NO STREAM');
+    // console.log('🔄 ActiveCallScreen remoteStream prop changed:', remoteStream ? 'HAS STREAM' : 'NO STREAM');
     if (remoteStream) {
-      console.log('📹 Setting remote stream to media elements');
-      console.log('Remote stream tracks:', remoteStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
+      // console.log('📹 Setting remote stream to media elements');
+      // console.log('Remote stream tracks:', remoteStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
       
       // Set to BOTH elements - browser will handle audio/video appropriately
       if (remoteAudioRef.current && remoteAudioRef.current.srcObject !== remoteStream) {
