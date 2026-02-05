@@ -26,7 +26,8 @@ const CreateBlog = lazy(() => import('./pages/CreateBlog'));
 const EditBlog = lazy(() => import('./pages/EditBlog'));
 const BlogDetail = lazy(() => import('./pages/BlogDetail'));
 const ArticleDetails = lazy(() => import('./pages/ArticleDetails'));
-const Profile = lazy(() => import('./pages/Profile'));
+// const Profile = lazy(() => import('./pages/Profile'));
+const Profile = lazy(() => import('./pages/ProfileNew'));
 const UserProfile = lazy(() => import('./pages/UserProfile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const Drafts = lazy(() => import('./pages/Drafts'));
@@ -36,6 +37,7 @@ const ChatNew = lazy(() => import('./pages/ChatNew'));
 const JoinGroup = lazy(() => import('./pages/JoinGroup'));
 const ShortBlogsViewer = lazy(() => import('./pages/ShortBlogsViewer'));
 const News = lazy(() => import('./pages/News'));
+const About = lazy(() => import('./pages/About'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ModernChatbot = lazy(() => import('./components/ModernChatbot'));
 
@@ -369,6 +371,7 @@ function AppContent() {
             <Route path="/shorts" element={<ShortBlogsViewer />} />
             <Route path="/shorts/:id" element={<ShortBlogsViewer />} />
             <Route path="/news" element={<News />} />
+            <Route path="/about" element={<About />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

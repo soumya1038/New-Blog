@@ -513,8 +513,9 @@ const CreateBlog = () => {
     placeholder: t('Write your blog content in Markdown...'),
     minHeight: '300px',
     autofocus: false,
-    status: false
-  }), [t]);
+    status: false,
+    theme: isDark ? 'dark' : 'default'
+  }), [t, isDark]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-8 relative overflow-hidden">
@@ -557,14 +558,22 @@ const CreateBlog = () => {
                 <button
                   type="button"
                   onClick={() => {
+                    if (!user?.isVerified) {
+                      toast.error('Only verified users can create articles. Please verify your account.');
+                      return;
+                    }
                     setIsArticleMode(true);
                     setIsShortMode(false);
                   }}
+                  disabled={!user?.isVerified}
                   className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold transition ${
                     isArticleMode
                       ? 'bg-green-600 text-white hover:bg-green-700' 
+                      : !user?.isVerified
+                      ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed opacity-60'
                       : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600'
                   }`}
+                  title={!user?.isVerified ? 'Only verified users can create articles' : ''}
                 >
                   <img src={isArticleMode ? '/image/article_logo_light.png' : (isDark ? '/image/article_logo_light.png' : '/image/article_logo_dark.png')} alt="Article" className="w-5 h-5" /> {t('Article')}
                 </button>
@@ -766,7 +775,7 @@ const CreateBlog = () => {
               </div>
               
               {previewMode ? (
-                <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 min-h-[300px] prose dark:prose-invert max-w-none bg-white dark:bg-gray-700">
+                <div className="border border-gray-300 dark:border-gray-600 rounded-lg p-4 min-h-[300px] prose dark:prose-invert max-w-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
                   <ReactMarkdown>{content || `*${t('No content to preview')}*`}</ReactMarkdown>
                 </div>
               ) : isShortMode ? (

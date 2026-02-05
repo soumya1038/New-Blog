@@ -516,7 +516,7 @@ const Home = () => {
               onDoubleClick={(e) => handleCardDoubleClick(e, blog._id, blog.type)}
               style={getBackgroundStyle(blog, index)}
             >
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent dark:from-black/50 dark:via-black/10 group-hover:from-black/80 group-hover:via-black/30 dark:group-hover:from-black/60 dark:group-hover:via-black/20 transition-all duration-500"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/10 group-hover:from-black/85 group-hover:via-black/40 transition-all duration-500"></div>
               <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/10 group-hover:via-purple-500/10 group-hover:to-pink-500/10 transition-all duration-500"></div>
               
               <div className="absolute top-4 right-4 z-20">
@@ -653,7 +653,7 @@ const Home = () => {
                 onDoubleClick={(e) => handleCardDoubleClick(e, blog._id, blog.type)}
                 style={getBackgroundStyle(blog, index + 3)}
               >
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent dark:from-black/50 dark:via-black/10 group-hover:from-black/80 group-hover:via-black/30 dark:group-hover:from-black/60 dark:group-hover:via-black/20 transition-all duration-500"></div>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/10 group-hover:from-black/85 group-hover:via-black/40 transition-all duration-500"></div>
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/10 group-hover:via-purple-500/10 group-hover:to-pink-500/10 transition-all duration-500"></div>
                 <div className="absolute top-4 right-4 z-20">
                   <div className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md p-2.5 rounded-xl shadow-lg group-hover:scale-110 group-hover:rotate-12 transition-all duration-300">

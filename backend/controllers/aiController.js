@@ -1,4 +1,4 @@
-const groq = require('../utils/openai'); // Using Groq now
+const groq = require('../utils/openai');
 
 // Generate blog content from title and tags
 exports.generateBlog = async (req, res) => {
@@ -27,8 +27,7 @@ exports.generateBlog = async (req, res) => {
     let systemContent;
 
     if (isArticleMode) {
-      // Article-specific prompts (formal, research-focused, third-person)
-      systemContent = `You are a professional article writer specializing in formal, well-researched content. Write in third person, maintain objectivity, use academic tone, and structure content with clear sections. Focus on facts, analysis, and credible information.`;
+      systemContent = `You are a professional article writer specializing in formal, well-researched content. Write in third person, maintain objectivity, use academic tone, and structure content with clear sections.`;
       
       if (existingContent && existingContent.trim()) {
         userPrompt = `Enhance this article about "${title}".${categoryText}${tagsText} Target: ${lengthMap.article}.
@@ -55,53 +54,71 @@ Requirements:
 - Include factual analysis and insights
 - Use markdown formatting (headers, lists, emphasis)
 - Focus on informing and educating
-- Avoid personal opinions or casual language
 
 Write ONLY content, NO title.`;
       }
-    } else if (existingContent && existingContent.trim()) {
-      if (isShortLength) {
-        userPrompt = `Improve this short blog content about "${title}".${categoryText}${tagsText} Target: ${lengthMap[length] || '50-100 words'}.
-
-Existing:
-${existingContent}
-
-Make it punchy, engaging, and memorable. Use short sentences. Remove fluff. Keep only the most impactful points.`;
-      } else {
-        userPrompt = `Enhance this blog about "${title}".${categoryText}${tagsText} Target: ${lengthMap[length] || lengthMap.medium}.
-
-Existing:
-${existingContent}
-
-Improve structure, add depth, use markdown formatting (headers, lists, bold). Make it comprehensive and engaging.`;
-      }
-      systemContent = isShortLength 
-        ? `You are an expert at writing viral short-form content. Write in a ${tone} tone. Be concise, punchy, and memorable. Every word must add value. No fluff.`
-        : `You are a professional blog writer. Write in a ${tone} tone. Create well-structured, engaging content with markdown formatting. Be comprehensive yet readable.`;
     } else {
-      if (isShortLength) {
-        userPrompt = `Write a short, impactful post: "${title}".${categoryText}${tagsText} Length: ${lengthMap[length] || '50-100 words'}.
+      systemContent = `You are a creative human writer, not an AI. Write naturally as if you're having a conversation with a friend. Use contractions (I'm, you're, it's), vary sentence length, include personal touches, and avoid corporate jargon. Write in ${tone} tone but keep it authentic and relatable.`;
+      
+      if (existingContent && existingContent.trim()) {
+        if (isShortLength) {
+          userPrompt = `Improve this short content about "${title}".${categoryText}${tagsText} Target: ${lengthMap[length] || '50-100 words'}.
+
+Existing:
+${existingContent}
 
 Make it:
+- Sound like a real person wrote it
 - Punchy and memorable
-- Easy to read (short sentences)
-- Engaging from first word
-- No fluff, only value
+- Use short, impactful sentences
+- Remove any robotic or formal language
+- Keep the human voice and personality
+- Make every word count`;
+        } else {
+          userPrompt = `Enhance this blog about "${title}".${categoryText}${tagsText} Target: ${lengthMap[length] || lengthMap.medium}.
+
+Existing:
+${existingContent}
+
+Improve by:
+- Making it sound more human and conversational
+- Adding personality and relatable examples
+- Using varied sentence structure (mix short and long)
+- Including transitions like "So", "Well", "Now"
+- Adding occasional rhetorical questions
+- Using markdown formatting naturally
+- Keeping the authentic voice`;
+        }
+      } else {
+        if (isShortLength) {
+          userPrompt = `Write a short, impactful post: "${title}".${categoryText}${tagsText} Length: ${lengthMap[length] || '50-100 words'}.
+
+Write like a real person:
+- Use contractions (I'm, you're, it's)
+- Short, punchy sentences
+- Conversational and relatable
+- Hook readers from the first word
+- No corporate speak or jargon
+- Sound authentic, not AI-generated
 
 Write ONLY the content, NO title.`;
-        systemContent = `You are an expert at writing viral short-form content. Write in a ${tone} tone. Be concise, punchy, and memorable. Every word must add value. No fluff.`;
-      } else {
-        userPrompt = `Write a comprehensive blog: "${title}".${categoryText}${tagsText} Length: ${lengthMap[length] || lengthMap.medium}.
+        } else {
+          userPrompt = `Write a blog: "${title}".${categoryText}${tagsText} Length: ${lengthMap[length] || lengthMap.medium}.
 
-Include:
-- Clear structure with headers
-- Engaging introduction
-- Detailed main points
-- Practical examples
-- Strong conclusion
+Write naturally like a human:
+- Use contractions and conversational language
+- Mix short punchy sentences with longer flowing ones
+- Include personal touches and relatable examples
+- Use transitions (So, Well, Now, Here's the thing)
+- Add occasional rhetorical questions
+- Include emotions and personality
+- Use active voice, avoid passive
+- Add specific details and vivid descriptions
+- Structure with clear headers (markdown)
+- Sound authentic, not robotic
 
-Use markdown. Write ONLY content, NO title.`;
-        systemContent = `You are a professional blog writer. Write in a ${tone} tone. Create well-structured, engaging content with markdown formatting. Be comprehensive yet readable.`;
+Write ONLY content, NO title.`;
+        }
       }
     }
 
@@ -125,7 +142,6 @@ Use markdown. Write ONLY content, NO title.`;
 
     let content = completion.choices[0].message.content.trim();
     
-    // Enforce word limit for short content
     if (isShortLength) {
       const words = content.split(/\s+/);
       const targetWords = {
@@ -137,7 +153,6 @@ Use markdown. Write ONLY content, NO title.`;
       
       if (words.length > maxWords) {
         content = words.slice(0, maxWords).join(' ');
-        // Remove incomplete sentence at end
         const lastPunctuation = Math.max(
           content.lastIndexOf('.'),
           content.lastIndexOf('!'),
@@ -149,7 +164,6 @@ Use markdown. Write ONLY content, NO title.`;
       }
     }
     
-    // Generate fresh SEO meta description
     const metaCompletion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
@@ -180,7 +194,6 @@ Use markdown. Write ONLY content, NO title.`;
   }
 };
 
-// Generate bio from user information
 exports.generateBio = async (req, res) => {
   try {
     const { name, profession, interests, style = 'professional' } = req.body;
@@ -217,7 +230,6 @@ exports.generateBio = async (req, res) => {
   }
 };
 
-// Improve existing content
 exports.improveContent = async (req, res) => {
   try {
     const { content, improvementType = 'grammar', isShortMode = false } = req.body;
@@ -226,30 +238,105 @@ exports.improveContent = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Content is required' });
     }
 
-    const prompts = isShortMode ? {
-      grammar: 'Fix grammar and spelling. Keep it punchy and under 100 words.',
-      clarity: 'Make crystal clear and easy to scan. Short sentences. Under 100 words.',
-      professional: 'Make professional yet conversational. Remove casual slang. Under 100 words.',
-      engaging: 'Make it hook readers instantly. Use power words. Create curiosity. Under 100 words.',
-      concise: 'Cut all fluff. Keep only the most impactful words. Maximum impact, minimum words.'
-    } : {
-      grammar: 'Fix all grammar, spelling, and punctuation errors. Maintain the original tone and message.',
-      clarity: 'Improve clarity and flow. Break complex sentences. Add transitions. Make it easy to understand.',
-      professional: 'Elevate to professional quality. Polish language. Add structure. Remove casual elements.',
-      engaging: 'Make it captivating. Add storytelling elements. Use vivid language. Create emotional connection.',
-      concise: 'Remove redundancy and filler. Keep essential information. Make every sentence count.'
+    const prompts = {
+      grammar: {
+        system: 'You are an expert editor. Fix grammar and spelling errors while preserving the author\'s natural voice and style.',
+        user: `Fix grammar, spelling, and punctuation errors in this content. Keep the conversational tone intact. Don't make it overly formal. Preserve contractions and casual language. Maintain the author's personality.
+
+Content:
+${content}
+
+Return only the corrected content:`
+      },
+      clarity: {
+        system: 'You are a clarity expert. Make content clearer and easier to understand while keeping it natural and engaging.',
+        user: `Make this content clearer and easier to understand:
+
+Content:
+${content}
+
+Guidelines:
+- Break down complex ideas into simple terms
+- Use shorter sentences where needed
+- Add transitions between ideas
+- Remove ambiguity and vague language
+- Keep the conversational tone
+- Use examples to illustrate points
+- Maintain the author's voice
+
+Return the improved content:`
+      },
+      professional: {
+        system: 'You are a professional writing coach. Elevate content to sound more professional while still being approachable and human.',
+        user: `Make this content more professional while keeping it approachable:
+
+Content:
+${content}
+
+Guidelines:
+- Use more sophisticated vocabulary where appropriate
+- Maintain credibility with specific details
+- Structure ideas logically
+- Remove excessive casual language (but keep some warmth)
+- Add authority without being stuffy
+- Keep it readable - professional doesn't mean boring
+- Preserve authenticity
+
+Return the professional version:`
+      },
+      engaging: {
+        system: 'You are an engagement specialist. Transform content to be more captivating and fun to read.',
+        user: `Make this content more engaging and captivating:
+
+Content:
+${content}
+
+Guidelines:
+- Add storytelling elements
+- Use vivid, sensory descriptions
+- Include rhetorical questions
+- Add humor or wit where appropriate
+- Create emotional connections
+- Use power words and strong verbs
+- Vary sentence structure for rhythm
+- Make readers want to keep reading
+- Keep it authentic - don't force engagement
+
+Return the engaging version:`
+      },
+      concise: {
+        system: 'You are a conciseness expert. Make content more concise without losing its essence or personality.',
+        user: `Make this content more concise:
+
+Content:
+${content}
+
+Guidelines:
+- Remove redundancy and filler words
+- Keep the most impactful sentences
+- Maintain the core message
+- Preserve the author's voice
+- Use stronger, more precise words
+- Cut unnecessary adjectives and adverbs
+- Keep it punchy and direct
+- Don't sacrifice clarity for brevity
+
+Return the concise version:`
+      }
     };
+
+    const selectedPrompt = prompts[improvementType] || prompts.grammar;
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'system',
-          content: `You are an expert editor. ${prompts[improvementType] || prompts.grammar} Return only the improved content.`
+          content: selectedPrompt.system
         },
         {
           role: 'user',
-          content: content
+          content: selectedPrompt.user
         }
       ],
       temperature: 0.5,
@@ -258,7 +345,6 @@ exports.improveContent = async (req, res) => {
 
     let improvedContent = completion.choices[0].message.content.trim();
     
-    // Enforce 100 word limit for shorts
     if (isShortMode) {
       const words = improvedContent.split(/\s+/);
       if (words.length > 100) {
@@ -282,28 +368,37 @@ exports.improveContent = async (req, res) => {
   }
 };
 
-// Generate title suggestions
 exports.generateTitles = async (req, res) => {
   try {
     const { topic = '', count = 5 } = req.body;
-
-    let userPrompt;
-    if (topic && topic.trim()) {
-      userPrompt = `Generate ${count} catchy, SEO-friendly blog titles about: ${topic}. Make them compelling and click-worthy. Return only titles, one per line, no numbering.`;
-    } else {
-      userPrompt = `Generate ${count} catchy blog titles about current trending topics in technology, lifestyle, business, and health. Make them timely and engaging. Return only titles, one per line, no numbering.`;
-    }
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'system',
-          content: 'You are a viral content creator. Generate attention-grabbing, SEO-optimized titles that make people want to click.'
+          content: 'You are a creative title writer. Generate attention-grabbing titles that sound human-written, not AI-generated.'
         },
         {
           role: 'user',
-          content: userPrompt
+          content: `Generate ${count} creative, attention-grabbing blog titles${topic ? ` about: ${topic}` : ' on trending topics'}.
+
+Guidelines:
+- Make titles intriguing and clickable
+- Use power words that evoke emotion
+- Include numbers when relevant (5 Ways, 10 Tips)
+- Ask questions that readers want answered
+- Use "How to" or "Why" formats when appropriate
+- Keep titles between 50-70 characters
+- Sound conversational, not corporate
+- Avoid clickbait - be genuine
+
+Examples of good titles:
+- "I Tried This Morning Routine for 30 Days. Here's What Happened"
+- "Why Your Coffee Tastes Bad (And How to Fix It)"
+- "5 Simple Tricks That Actually Work for Better Sleep"
+
+Return only titles, one per line, no numbering:`
         }
       ],
       temperature: 0.9,
@@ -324,7 +419,6 @@ exports.generateTitles = async (req, res) => {
   }
 };
 
-// Generate description from user profile
 exports.generateDescription = async (req, res) => {
   try {
     const { fullName, email, phone, bio, existingDescription } = req.body;
@@ -332,10 +426,8 @@ exports.generateDescription = async (req, res) => {
     let prompt;
     
     if (existingDescription && existingDescription.trim()) {
-      // Improve existing description
       prompt = `Improve and refine this description to make it more engaging and professional (max 200 characters):\n\n"${existingDescription}"\n\nWrite only the improved description, nothing else.`;
     } else {
-      // Generate from profile info
       let profileInfo = [];
       if (fullName) profileInfo.push(`Name: ${fullName}`);
       if (email) profileInfo.push(`Email: ${email}`);
@@ -376,7 +468,6 @@ exports.generateDescription = async (req, res) => {
   }
 };
 
-// Generate quick chat message
 exports.generateQuickChat = async (req, res) => {
   try {
     const { category, recipientName = 'them' } = req.body;
@@ -422,7 +513,6 @@ exports.generateQuickChat = async (req, res) => {
   }
 };
 
-// Enhance chat message
 exports.enhanceMessage = async (req, res) => {
   try {
     const { message, enhanceType = 'grammar' } = req.body;
@@ -466,7 +556,6 @@ exports.enhanceMessage = async (req, res) => {
   }
 };
 
-// Generate tags from content
 exports.generateTags = async (req, res) => {
   try {
     const { content, count = 5 } = req.body;
@@ -480,11 +569,24 @@ exports.generateTags = async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: 'You are a tag generator. Generate relevant, concise tags for blog posts.'
+          content: 'You are a tag generation expert. Suggest relevant, specific tags that real people would search for.'
         },
         {
           role: 'user',
-          content: `Generate ${count} relevant tags for this content. Return only the tags, comma-separated:\n\n${content.substring(0, 500)}`
+          content: `Analyze this content and suggest ${count} relevant tags.
+
+Content:
+${content.substring(0, 500)}
+
+Guidelines:
+- Mix broad and specific tags
+- Use tags people actually search for, not just keywords
+- Include trending or popular tags when relevant
+- Keep tags concise (1-3 words each)
+- Think like a reader: what would they search to find this?
+- Avoid overly generic tags like "blog" or "post"
+
+Return tags as comma-separated list:`
         }
       ],
       temperature: 0.5,
@@ -505,7 +607,6 @@ exports.generateTags = async (req, res) => {
   }
 };
 
-// Summarize blog content
 exports.summarizeBlog = async (req, res) => {
   try {
     const { content } = req.body;

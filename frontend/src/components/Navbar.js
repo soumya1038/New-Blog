@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun } from 'react-icons/fa';
+import { PiBookOpenTextThin } from 'react-icons/pi';
 import LanguageSelector from './LanguageSelector';
 import Avatar from './Avatar';
 import AnimatedLogo from './AnimatedLogo';
@@ -221,6 +222,12 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                <Link to="/about" className="nav-link px-4 py-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-lg">
+                  <span className="flex items-center gap-2">
+                    <PiBookOpenTextThin size={24} />
+                    <span className="font-medium">{t('About Us')}</span>
+                  </span>
+                </Link>
                 <button
                   onClick={toggleTheme}
                   className="p-3 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 hover:rotate-12 border border-white/20 hover:border-white/40"
@@ -318,6 +325,9 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                <Link to="/about" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105">
+                  <PiBookOpenTextThin size={20} />
+                </Link>
                 <button
                   onClick={toggleTheme}
                   className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20"
@@ -409,6 +419,9 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                <Link to="/about" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105">
+                  <PiBookOpenTextThin size={18} />
+                </Link>
                 <button
                   onClick={toggleTheme}
                   className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20"
@@ -527,6 +540,9 @@ const Navbar = () => {
                 <div className="py-3 px-4 flex items-center gap-3 mx-2">
                   <LanguageSelector />
                 </div>
+                <Link to="/about" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300 flex items-center gap-2">
+                  <PiBookOpenTextThin size={20} /> {t('About Us')}
+                </Link>
                 <Link to="/login" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
                   {t('Login')}
                 </Link>
