@@ -24,7 +24,7 @@ const News = () => {
   const [currentChunk, setCurrentChunk] = useState(0);
   const [carouselIndex, setCarouselIndex] = useState(0);
   const observerRef = useRef();
-  const CHUNK_SIZE = 10;
+  const CHUNK_SIZE = 12;
 
   const categories = ['All', 'India', 'World', 'Business', 'Sports', 'Technology', 'Entertainment', 'Health', 'Esports'];
 
@@ -33,9 +33,10 @@ const News = () => {
   }, [activeCategory]);
 
   useEffect(() => {
+    if (carouselNews.length === 0) return;
     const interval = setInterval(() => {
       setCarouselIndex(prev => (prev + 1) % carouselNews.length);
-    }, 3000);
+    }, 4000);
     return () => clearInterval(interval);
   }, [carouselNews.length]);
 
@@ -55,7 +56,7 @@ const News = () => {
   useEffect(() => {
     const timer = setInterval(() => {
       setShowRefresh(true);
-    }, 60000);
+    }, 120000);
     return () => clearInterval(timer);
   }, [lastRefresh]);
 
@@ -66,53 +67,48 @@ const News = () => {
       const categoryMap = {
         'All': '',
         'India': '&country=in',
-        'World': '&country=us,gb,au',
+        'World': '&country=us,gb',
         'Business': '&category=business',
         'Sports': '&category=sports',
         'Technology': '&category=technology',
         'Entertainment': '&category=entertainment',
         'Health': '&category=health',
-        'Esports': '&q=esports gaming tournament valorant csgo dota pubg bgmi'
+        'Esports': '&category=sports&q=esports'
       };
       
       const categoryParam = categoryMap[activeCategory] || '';
-      const url = `https://newsdata.io/api/1/news?apikey=${NEWSDATA_KEY}&language=en${categoryParam}`;
+      const url = `https://newsdata.io/api/1/latest?apikey=${NEWSDATA_KEY}&language=en${categoryParam}`;
       
       const response = await fetch(url);
       const data = await response.json();
       
-      if (data.status === 'success' && data.results && data.results.length > 0) {
+      if (data.status === 'success' && data.results?.length > 0) {
         const articles = data.results.map((article, index) => ({
-          id: index,
-          title: article.title,
+          id: `${article.article_id || index}`,
+          title: article.title || 'Untitled',
           description: article.description || 'No description available',
-          image: article.image_url || 'https://via.placeholder.com/400x250',
-          source: article.source_id || 'News Source',
-          publishedAt: article.pubDate,
-          url: article.link,
-          content: article.content,
+          image: article.image_url || 'https://via.placeholder.com/400x250?text=News',
+          source: article.source_name || article.source_id || 'News Source',
+          publishedAt: article.pubDate || new Date().toISOString(),
+          url: article.link || '#',
+          content: article.content || article.description,
           isExternal: true
         }));
         
-        // Remove duplicates and limit to actual articles
-        const uniqueArticles = articles.slice(0, Math.min(articles.length, 50));
-        setCarouselNews(uniqueArticles.slice(0, Math.min(6, uniqueArticles.length)));
-        setAllNews(uniqueArticles.slice(6));
-        setDisplayedNews(uniqueArticles.slice(6, Math.min(6 + CHUNK_SIZE, uniqueArticles.length)));
+        setCarouselNews(articles.slice(0, 5));
+        setAllNews(articles);
+        setDisplayedNews(articles.slice(0, CHUNK_SIZE));
         setCurrentChunk(1);
-      } else {
-        setPlaceholderNews();
       }
     } catch (error) {
       console.error('Error fetching news:', error);
-      setPlaceholderNews();
     } finally {
       setLoading(false);
     }
   };
 
   const loadMoreNews = () => {
-    const start = 6 + currentChunk * CHUNK_SIZE;
+    const start = currentChunk * CHUNK_SIZE;
     const end = start + CHUNK_SIZE;
     const newChunk = allNews.slice(start, end);
     if (newChunk.length > 0) {
@@ -121,25 +117,8 @@ const News = () => {
     }
   };
 
-  const setPlaceholderNews = () => {
-    const mockNews = Array(20).fill(null).map((_, i) => ({
-      id: `mock-${i}`,
-      title: `Breaking News ${i + 1}: Latest Updates`,
-      description: 'Stay tuned for the latest news updates. Refresh the page to try loading news again.',
-      image: 'https://via.placeholder.com/400x250',
-      source: 'News Source',
-      publishedAt: new Date().toISOString(),
-      url: '#',
-      isExternal: true
-    }));
-    setCarouselNews(mockNews.slice(0, 6));
-    setAllNews(mockNews.slice(6));
-    setDisplayedNews(mockNews.slice(6, 6 + CHUNK_SIZE));
-    setCurrentChunk(1);
-  };
-
-  const handleNewsClick = (newsItem) => {
-    if (newsItem.isExternal) {
+const handleNewsClick = (newsItem) => {
+    if (newsItem.isExternal && newsItem.url !== '#') {
       window.open(newsItem.url, '_blank');
     } else {
       setSelectedNews(newsItem);
@@ -148,50 +127,9 @@ const News = () => {
   };
 
   const filteredNews = displayedNews.filter(item =>
-    item.title.toLowerCase().includes(searchTerm.toLowerCase())
+    item.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const renderNewsLayout = () => {
-    const layout = [];
-    let index = 0;
-    
-    while (index < filteredNews.length) {
-      const chunk = filteredNews.slice(index, index + 6);
-      if (chunk.length === 0) break;
-      
-      layout.push(
-        <div key={`grid-${index}`} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {chunk.slice(0, 6).map((newsItem) => (
-            <NewsCard key={newsItem.id} news={newsItem} onClick={() => handleNewsClick(newsItem)} />
-          ))}
-        </div>
-      );
-      
-      index += 6;
-      
-      if (index < filteredNews.length) {
-        const horizontalNews = filteredNews[index];
-        layout.push(
-          <div key={`horizontal-${index}`} onClick={() => handleNewsClick(horizontalNews)}
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden cursor-pointer hover:shadow-xl transition">
-            <div className="md:flex">
-              <div className="md:w-1/2 h-64">
-                <img src={horizontalNews.image} alt={horizontalNews.title} className="w-full h-full object-cover" />
-              </div>
-              <div className="md:w-1/2 p-6 flex flex-col justify-center">
-                <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-3">{horizontalNews.title}</h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">{horizontalNews.description}</p>
-                <p className="text-sm text-gray-500 dark:text-gray-500">{horizontalNews.source}</p>
-              </div>
-            </div>
-          </div>
-        );
-        index += 1;
-      }
-    }
-    
-    return layout;
-  };
 
   const handleRefresh = () => {
     setShowRefresh(false);
@@ -201,7 +139,7 @@ const News = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="container mx-auto px-4 py-6">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <div className="lg:col-span-1 space-y-6">
@@ -217,7 +155,7 @@ const News = () => {
                 <div className="h-10 bg-gray-300 dark:bg-gray-600 rounded"></div>
               </div>
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden animate-pulse">
-                <div className="h-80 bg-gray-300 dark:bg-gray-600"></div>
+                <div className="h-96 bg-gray-300 dark:bg-gray-600"></div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {[1,2,3,4].map(i => (
@@ -238,35 +176,34 @@ const News = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <ScrollToTop />
       <div className="container mx-auto px-4 py-6">
         {showRefresh && (
-          <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-slide-down">
+          <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
             <button
               onClick={handleRefresh}
-              className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-lg shadow-xl hover:shadow-2xl hover:from-blue-700 hover:to-blue-800 transition-all duration-300 flex items-center gap-3 border border-blue-500"
+              className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-xl shadow-2xl hover:shadow-blue-500/50 hover:from-blue-700 hover:to-blue-800 transition-all duration-300 flex items-center gap-3"
             >
               <FaSync className="w-5 h-5" />
-              <span className="font-semibold">Refresh News</span>
+              <span className="font-semibold">Fresh News Available</span>
             </button>
           </div>
         )}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
-          {/* Left Sidebar */}
+          {/* Sidebar */}
           <div className={`lg:col-span-1 space-y-6 ${
             showWidgets ? 'fixed inset-0 bg-black/50 z-50 p-4 overflow-y-auto' : 'hidden lg:block'
           }`}>
             {showWidgets && (
               <button
                 onClick={() => setShowWidgets(false)}
-                className="lg:hidden fixed top-4 right-4 bg-white dark:bg-gray-800 text-gray-800 dark:text-white p-2 rounded-full shadow-lg z-50"
+                className="lg:hidden fixed top-4 right-4 bg-white dark:bg-gray-800 text-gray-800 dark:text-white p-3 rounded-full shadow-lg z-50 hover:scale-110 transition"
               >
                 ✕
               </button>
             )}
-            {/* Search Header */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-4">
               <div className="relative">
                 <input
@@ -279,23 +216,14 @@ const News = () => {
                 <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               </div>
             </div>
-
-            {/* Weather Widget */}
             <WeatherWidget />
-
-            {/* Market Widget */}
             <MarketWidget />
-
-            {/* Cricket Widget */}
             <CricketWidget />
-
-            {/* Games Widget */}
             <GamesWidget />
           </div>
 
           {/* Main Content */}
           <div className="lg:col-span-3 space-y-6">
-            {/* Mobile Widget Button */}
             <div className="lg:hidden flex justify-start mb-4">
               <button
                 onClick={() => setShowWidgets(!showWidgets)}
@@ -306,7 +234,7 @@ const News = () => {
               </button>
             </div>
 
-            {/* Category Tabs */}
+            {/* Categories */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-4">
               <div className="flex flex-wrap gap-2">
                 {categories.map((category) => (
@@ -315,8 +243,8 @@ const News = () => {
                     onClick={() => setActiveCategory(category)}
                     className={`px-4 py-2 rounded-lg font-semibold transition ${
                       activeCategory === category
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                        ? 'bg-blue-600 text-white shadow-lg'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                     }`}
                   >
                     {category}
@@ -328,16 +256,16 @@ const News = () => {
             {/* Carousel */}
             {carouselNews.length > 0 && (
               <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden">
-                <div className="relative h-64 md:h-96">
+                <div className="relative h-80 md:h-96">
                   {carouselNews.map((item, idx) => (
                     <div key={item.id} onClick={() => handleNewsClick(item)}
                       className={`absolute inset-0 transition-opacity duration-1000 cursor-pointer ${
                         idx === carouselIndex ? 'opacity-100' : 'opacity-0'
                       }`}>
                       <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
                       <div className="absolute bottom-0 left-0 right-0 p-6">
-                        <h2 className="text-2xl md:text-3xl font-bold text-white mb-2">{item.title}</h2>
+                        <h2 className="text-2xl md:text-3xl font-bold text-white mb-2 line-clamp-2">{item.title}</h2>
                         <p className="text-gray-200 text-sm">{item.source}</p>
                       </div>
                     </div>
@@ -346,30 +274,37 @@ const News = () => {
                 <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex gap-2">
                   {carouselNews.map((_, idx) => (
                     <button key={idx} onClick={() => setCarouselIndex(idx)}
-                      className={`w-2 h-2 rounded-full transition ${
-                        idx === carouselIndex ? 'bg-white w-8' : 'bg-white/50'
+                      className={`h-2 rounded-full transition-all ${
+                        idx === carouselIndex ? 'bg-white w-8' : 'bg-white/50 w-2'
                       }`} />
                   ))}
                 </div>
               </div>
             )}
 
-            {/* News Layout */}
-            <div className="space-y-6">
-              {renderNewsLayout()}
+            {/* News Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {filteredNews.map((newsItem) => (
+                <NewsCard key={newsItem.id} news={newsItem} onClick={() => handleNewsClick(newsItem)} />
+              ))}
             </div>
 
-            {/* Infinite Scroll Trigger */}
+            {/* Load More */}
             <div ref={observerRef} className="h-20 flex items-center justify-center">
               {displayedNews.length < allNews.length && (
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               )}
             </div>
+
+            {filteredNews.length === 0 && (
+              <div className="text-center py-20">
+                <p className="text-xl text-gray-600 dark:text-gray-400">No news found matching your search.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* News Modal */}
       {showModal && selectedNews && (
         <NewsModal
           news={selectedNews}

@@ -1053,7 +1053,10 @@ const ChatNew = () => {
     if (query.trim()) {
       try {
         const { data } = await api.get(`/messages/search-users?query=${query}`);
-        setSearchResults(data.users);
+        // Filter to only show users who have existing conversations
+        const conversationUserIds = new Set(conversations.map(c => c.user._id));
+        const filteredUsers = data.users.filter(u => conversationUserIds.has(u._id));
+        setSearchResults(filteredUsers);
       } catch (error) {
         console.error('Search failed:', error);
       }

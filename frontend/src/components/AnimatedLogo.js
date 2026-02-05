@@ -1,19 +1,35 @@
 import React, { useState, useEffect } from 'react';
 
 const fonts = [
-  'Helvetica', 'Arial', 'Inter', 'Roboto', 'Open Sans', 'Poppins', 'Montserrat', 'Lato', 'SF Pro Display', 'Segoe UI',
-  'Futura', 'Avenir', 'Proxima Nova', 'Nunito', 'Ubuntu', 'Raleway', 'Source Sans Pro', 'Work Sans', 'DM Sans', 'Noto Sans',
-  'Verdana', 'Tahoma', 'Calibri', 'Gill Sans', 'Franklin Gothic', 'Times New Roman', 'Georgia', 'Garamond', 'Baskerville',
-  'Playfair Display', 'Merriweather', 'Didot', 'Bodoni', 'Libre Baskerville', 'Crimson Text', 'EB Garamond', 'Lora',
-  'PT Serif', 'Charter', 'Palatino', 'Oswald', 'Bebas Neue', 'Anton', 'League Spartan', 'Abril Fatface', 'Cinzel',
-  'Pacifico', 'Lobster', 'Permanent Marker', 'Fredoka', 'Baloo', 'Playfair Display SC', 'Alata', 'Archivo Black',
-  'Cooper Black', 'Dancing Script', 'Great Vibes', 'Sacramento', 'Caveat', 'Indie Flower', 'Allura', 'Satisfy',
-  'Kaushan Script', 'Alex Brush', 'Yellowtail', 'Courier New', 'Consolas', 'Monaco', 'Menlo', 'Fira Code',
-  'JetBrains Mono', 'Source Code Pro', 'IBM Plex Mono', 'Inconsolata', 'Ubuntu Mono', 'Manrope', 'Plus Jakarta Sans',
-  'Space Grotesk', 'Sora', 'Urbanist', 'Red Hat Display', 'Outfit', 'Mulish', 'Karla', 'Assistant', 'Trebuchet MS',
-  'Lucida Sans', 'Lucida Console', 'Optima', 'Candara', 'Clash Display', 'General Sans', 'Neue Haas Grotesk',
-  'Circular Std', 'GT America', 'Canela', 'PP Neue Montreal', 'Instrument Sans', 'Suisse Intl', 'Aeonik'
+  'Inter', 'Playfair Display', 'JetBrains Mono', 'Dancing Script', 'Verdana',
+  'Manrope', 'Georgia', 'Bebas Neue', 'Fira Code', 'Pacifico',
+  'Helvetica', 'Canela', 'Ubuntu Mono', 'Nunito', 'Cinzel',
+  'Roboto', 'Libre Baskerville', 'Anton', 'Caveat', 'Calibri',
+  'Poppins', 'Lora', 'League Spartan', 'Indie Flower', 'Segoe UI',
+  'Montserrat', 'EB Garamond', 'Archivo Black', 'Great Vibes', 'Tahoma',
+  'Lato', 'Crimson Text', 'Cooper Black', 'Sacramento', 'Gill Sans',
+  'SF Pro Display', 'Charter', 'Oswald', 'Satisfy', 'Franklin Gothic',
+  'Avenir', 'Didot', 'Abril Fatface', 'Kaushan Script', 'Times New Roman',
+  'Proxima Nova', 'Baskerville', 'Cinzel Decorative', 'Yellowtail', 'Garamond',
+  'Nunito Sans', 'PT Serif', 'Alata', 'Alex Brush', 'Bodoni',
+  'Ubuntu', 'Palatino', 'Playfair Display SC', 'Allura', 'Baskerville Old Face',
+  'Raleway', 'Optima', 'Fredoka', 'Permanent Marker', 'Trebuchet MS',
+  'Source Sans Pro', 'Candara', 'Baloo', 'Lobster', 'Lucida Sans',
+  'Work Sans', 'DM Sans', 'Oswald Stencil', 'Sora', 'Lucida Console',
+  'Noto Sans', 'Merriweather', 'Anton SC', 'Red Hat Display', 'Courier New',
+  'Tahoma Rounded', 'Didact Gothic', 'IBM Plex Mono', 'Mulish', 'Consolas',
+  'Space Grotesk', 'Charis SIL', 'Inconsolata', 'Assistant', 'Monaco',
+  'Plus Jakarta Sans', 'Cormorant Garamond', 'Menlo', 'Karla', 'Futura',
+  'Urbanist', 'Spectral', 'Source Code Pro', 'General Sans', 'Clash Display',
+  'Outfit', 'Zilla Slab', 'Ubuntu Condensed', 'Instrument Sans', 'Neue Haas Grotesk',
+  'Circular Std', 'GT America', 'PP Neue Montreal', 'Suisse Intl', 'Aeonik',
+  'Archivo', 'Josefin Sans', 'Quicksand', 'Varela Round', 'Rubik',
+  'Kanit', 'Hind', 'Exo', 'Cabin', 'Teko',
+  'Rokkitt', 'Arvo', 'Alegreya', 'Yanone Kaffeesatz', 'Titillium Web',
+  'Pathway Gothic One', 'Barlow', 'Heebo', 'Asap', 'Fjalla One',
+  'Prompt', 'Chivo', 'Encode Sans', 'Metropolis', 'Public Sans'
 ];
+
 
 const text = 'Lekhon';
 const CHAR_SPEED = 190;
@@ -29,7 +45,7 @@ const AnimatedLogo = () => {
     const now = Date.now();
     const cycleIndex = Math.floor(now / CYCLE_TIME);
     const timeInCycle = now % CYCLE_TIME;
-    
+
     const currentFont = fonts[cycleIndex % fonts.length];
     setFontFamily(currentFont);
 
@@ -54,7 +70,7 @@ const AnimatedLogo = () => {
       const now = Date.now();
       const cycleIndex = Math.floor(now / CYCLE_TIME);
       const timeInCycle = now % CYCLE_TIME;
-      
+
       const newFont = fonts[cycleIndex % fonts.length];
       setFontFamily(newFont);
 

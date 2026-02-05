@@ -24,16 +24,10 @@ const JoinGroup = () => {
 
   const loadGroupInfo = async () => {
     try {
-      const { data } = await api.get(`/groups`);
-      const foundGroup = data.groups.find(g => g.inviteCode === inviteCode);
-      
-      if (foundGroup) {
-        setGroup(foundGroup);
-      } else {
-        setError('Invalid or expired invite link');
-      }
+      const { data } = await api.get(`/groups/invite/${inviteCode}`);
+      setGroup(data.group);
     } catch (err) {
-      setError('Failed to load group information');
+      setError(err.response?.data?.message || 'Invalid or expired invite link');
     } finally {
       setLoading(false);
     }
