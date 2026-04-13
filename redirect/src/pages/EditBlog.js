@@ -349,7 +349,9 @@ const EditBlog = () => {
         });
         const deleteEndpoint = originalMode === 'article' ? `/articles/${id}` : (originalMode === 'short' ? `/shorts/${id}` : `/blogs/${id}`);
         await api.delete(deleteEndpoint);
-        const newId = isArticleMode ? newData.article._id : (isShortMode ? newData.short._id : newData.blog._id);
+        const newId = isArticleMode
+          ? (newData.article.slug || newData.article._id)
+          : (isShortMode ? newData.short._id : (newData.blog.slug || newData.blog._id));
         setHasUnsavedChanges(false);
         if (templateResolution.usedRecommendation && templateResolution.recommendation?.templateName) {
           toast.success(`Auto-selected suggested template: ${templateResolution.recommendation.templateName}`);
@@ -359,7 +361,7 @@ const EditBlog = () => {
         setTimeout(() => navigate(isScheduled ? '/drafts' : (isArticleMode ? `/article/${newId}` : (isShortMode ? `/shorts/${newId}` : `/blog/${newId}`))), 1000);
       } else {
         const endpoint = originalMode === 'article' ? `/articles/${id}` : (originalMode === 'short' ? `/shorts/${id}` : `/blogs/${id}`);
-        await api.put(endpoint, { 
+        const { data: updatedData } = await api.put(endpoint, { 
           title, 
           content, 
           tags: tags.join(', '),
@@ -379,13 +381,16 @@ const EditBlog = () => {
             galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
           } : {})
         });
+        const stayOnId = isArticleMode
+          ? (updatedData.article?.slug || updatedData.article?._id || id)
+          : (isShortMode ? id : (updatedData.blog?.slug || updatedData.blog?._id || id));
         setHasUnsavedChanges(false);
         if (templateResolution.usedRecommendation && templateResolution.recommendation?.templateName) {
           toast.success(`Auto-selected suggested template: ${templateResolution.recommendation.templateName}`);
           setSelectedArticleTemplateId(templateIdForSubmit);
         }
         toast.success(isScheduled ? `${isArticleMode ? 'Article' : (isShortMode ? 'Short' : 'Blog')} scheduled successfully!` : `${isArticleMode ? 'Article' : (isShortMode ? 'Short' : 'Blog')} updated successfully!`);
-        setTimeout(() => navigate(isScheduled ? '/drafts' : (isArticleMode ? `/article/${id}` : (isShortMode ? `/shorts/${id}` : `/blog/${id}`))), 1000);
+        setTimeout(() => navigate(isScheduled ? '/drafts' : (isArticleMode ? `/article/${stayOnId}` : (isShortMode ? `/shorts/${stayOnId}` : `/blog/${stayOnId}`))), 1000);
       }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to update blog');

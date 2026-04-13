@@ -10,7 +10,8 @@ const articleSchema = new mongoose.Schema({
   cloudinaryPublicId: { type: String },
   videoUrls: [{ type: String }],
   metaDescription: { type: String, maxlength: 160 },
-  slug: { type: String },
+  slug: { type: String, index: true },
+  slugHistory: [{ type: String }],
   wordCount: { type: Number, default: 0 },
   readingTime: { type: Number, default: 0 },
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
@@ -33,5 +34,7 @@ articleSchema.pre('save', function(next) {
   this.readingTime = Math.ceil(words.length / 200);
   next();
 });
+
+articleSchema.index({ slugHistory: 1 });
 
 module.exports = mongoose.model('Article', articleSchema);

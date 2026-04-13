@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { FaHeart, FaRegHeart } from 'react-icons/fa';
+import { getBlogPath } from '../utils/contentRoutes';
 
 const BlogCard = ({ blog, index = 0, onLike, onTagClick }) => {
   const [isLiked, setIsLiked] = React.useState(false);
@@ -31,7 +32,7 @@ const BlogCard = ({ blog, index = 0, onLike, onTagClick }) => {
         boxShadow: 'var(--blog-shadow)',
       }}
     >
-      <Link to={`/blog/${blog._id}`} style={{ textDecoration: 'none' }}>
+      <Link to={getBlogPath(blog)} style={{ textDecoration: 'none' }}>
         {blog.coverImage && (
           <div style={{ width: '100%', height: '200px', overflow: 'hidden', marginBottom: '18px', borderRadius: '12px' }}>
             <img

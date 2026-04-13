@@ -28,7 +28,7 @@ const stripMarkdown = (value = '') =>
 const toExcerpt = (text = '', max = 220) => {
   const compact = stripMarkdown(text);
   if (compact.length <= max) return compact;
-  return `${compact.slice(0, max - 1).trim()}…`;
+  return `${compact.slice(0, max - 3).trim()}...`;
 };
 
 const resolvePublicBaseUrl = (req) => {
@@ -60,11 +60,11 @@ router.get('/sitemap.xml', async (req, res) => {
 
     const [blogs, articles] = await Promise.all([
       Blog.find({ isDraft: false })
-        .select('_id updatedAt createdAt')
+        .select('_id slug updatedAt createdAt')
         .sort({ updatedAt: -1 })
         .limit(MAX_SITEMAP_ITEMS),
       Article.find({ isDraft: false })
-        .select('_id updatedAt createdAt')
+        .select('_id slug updatedAt createdAt')
         .sort({ updatedAt: -1 })
         .limit(MAX_SITEMAP_ITEMS)
     ]);
@@ -77,13 +77,13 @@ router.get('/sitemap.xml', async (req, res) => {
         priority: '1.0'
       },
       ...blogs.map((item) => ({
-        loc: buildContentUrl(baseUrl, 'blog', item._id),
+        loc: buildContentUrl(baseUrl, 'blog', item.slug || item._id),
         lastmod: new Date(item.updatedAt || item.createdAt || Date.now()).toISOString(),
         changefreq: 'weekly',
         priority: '0.8'
       })),
       ...articles.map((item) => ({
-        loc: buildContentUrl(baseUrl, 'article', item._id),
+        loc: buildContentUrl(baseUrl, 'article', item.slug || item._id),
         lastmod: new Date(item.updatedAt || item.createdAt || Date.now()).toISOString(),
         changefreq: 'weekly',
         priority: '0.8'
@@ -117,11 +117,11 @@ router.get('/feed.xml', async (req, res) => {
 
     const [blogs, articles] = await Promise.all([
       Blog.find({ isDraft: false })
-        .select('_id title content metaDescription createdAt updatedAt')
+        .select('_id slug title content metaDescription createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(MAX_FEED_ITEMS),
       Article.find({ isDraft: false })
-        .select('_id title content metaDescription createdAt updatedAt')
+        .select('_id slug title content metaDescription createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(MAX_FEED_ITEMS)
     ]);
@@ -129,7 +129,7 @@ router.get('/feed.xml', async (req, res) => {
     const items = [
       ...blogs.map((item) => ({
         type: 'blog',
-        id: item._id,
+        id: item.slug || item._id,
         title: item.title,
         description: item.metaDescription || toExcerpt(item.content),
         createdAt: item.createdAt,
@@ -137,7 +137,7 @@ router.get('/feed.xml', async (req, res) => {
       })),
       ...articles.map((item) => ({
         type: 'article',
-        id: item._id,
+        id: item.slug || item._id,
         title: item.title,
         description: item.metaDescription || toExcerpt(item.content),
         createdAt: item.createdAt,
@@ -178,3 +178,5 @@ ${items
 });
 
 module.exports = router;
+
+

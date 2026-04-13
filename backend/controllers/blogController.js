@@ -1,6 +1,7 @@
 const Blog = require('../models/Blog');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
+const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 
 // Create blog
 exports.createBlog = async (req, res) => {
@@ -50,6 +51,12 @@ exports.createBlog = async (req, res) => {
       }
     }
 
+    const generatedSlug = await generateUniqueSlug({
+      Model: Blog,
+      title,
+      preferredSlug: slug
+    });
+
     const blog = await Blog.create({
       title,
       content,
@@ -60,7 +67,8 @@ exports.createBlog = async (req, res) => {
       cloudinaryPublicId: cloudinaryPublicId || null,
       videoUrls: videoUrlsArray,
       metaDescription: metaDescription || null,
-      slug: slug || null,
+      slug: generatedSlug,
+      slugHistory: [],
       isDraft: isScheduled ? true : (isDraft || false),
       isScheduled: isScheduled || false,
       scheduledPublishDate: isScheduled ? scheduledPublishDate : null
@@ -146,9 +154,14 @@ exports.getBlogs = async (req, res) => {
 // Get single blog
 exports.getBlog = async (req, res) => {
   try {
-    const blog = await Blog.findById(req.params.id)
-      .populate('author', 'username profileImage fullName bio isGuest role isVerified statuses')
-      .populate('likes', 'username profileImage');
+    const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id, {
+      populate: [
+        { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses' },
+        { path: 'likes', select: 'username profileImage' }
+      ]
+    });
+
+    const blog = resolved.doc;
 
     if (!blog) {
       return res.status(404).json({ success: false, message: 'Blog not found' });
@@ -173,6 +186,10 @@ exports.getBlog = async (req, res) => {
         ...blogObj,
         likeCount: blog.likes.length,
         commentCount
+      },
+      redirect: {
+        shouldRedirect: resolved.resolution === 'legacy_slug',
+        to: `/blog/${blog.slug || blog._id}`
       }
     });
   } catch (error) {
@@ -183,7 +200,8 @@ exports.getBlog = async (req, res) => {
 // Update blog
 exports.updateBlog = async (req, res) => {
   try {
-    const blog = await Blog.findById(req.params.id);
+    const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id);
+    const blog = resolved.doc;
 
     if (!blog) {
       return res.status(404).json({ success: false, message: 'Blog not found' });
@@ -193,7 +211,7 @@ exports.updateBlog = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrls } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls } = req.body;
     
     // Validate scheduled date
     if (isScheduled && scheduledPublishDate) {
@@ -236,6 +254,18 @@ exports.updateBlog = async (req, res) => {
     blog.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : blog.cloudinaryPublicId;
     blog.videoUrls = videoUrlsArray;
     blog.metaDescription = metaDescription !== undefined ? metaDescription : blog.metaDescription;
+
+    const shouldRefreshSlug = slug !== undefined || Boolean(title) || !blog.slug;
+    if (shouldRefreshSlug) {
+      const nextSlug = await generateUniqueSlug({
+        Model: Blog,
+        title: blog.title,
+        preferredSlug: slug !== undefined ? slug : blog.title,
+        excludeId: blog._id
+      });
+      applySlugWithHistory(blog, nextSlug);
+    }
+
     blog.isDraft = isScheduled ? true : (isDraft !== undefined ? isDraft : blog.isDraft);
     blog.isScheduled = isScheduled !== undefined ? isScheduled : blog.isScheduled;
     blog.scheduledPublishDate = isScheduled ? scheduledPublishDate : null;
@@ -254,7 +284,8 @@ exports.updateBlog = async (req, res) => {
 // Delete blog
 exports.deleteBlog = async (req, res) => {
   try {
-    const blog = await Blog.findById(req.params.id);
+    const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id);
+    const blog = resolved.doc;
 
     if (!blog) {
       return res.status(404).json({ success: false, message: 'Blog not found' });
@@ -291,7 +322,8 @@ exports.deleteBlog = async (req, res) => {
 // Track blog view
 exports.trackView = async (req, res) => {
   try {
-    const blog = await Blog.findById(req.params.id);
+    const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id);
+    const blog = resolved.doc;
     if (!blog) {
       return res.status(404).json({ success: false, message: 'Blog not found' });
     }
@@ -341,7 +373,8 @@ exports.getShortBlogs = async (req, res) => {
 // Like/Unlike blog
 exports.toggleLike = async (req, res) => {
   try {
-    const blog = await Blog.findById(req.params.id);
+    const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id);
+    const blog = resolved.doc;
 
     if (!blog) {
       return res.status(404).json({ success: false, message: 'Blog not found' });

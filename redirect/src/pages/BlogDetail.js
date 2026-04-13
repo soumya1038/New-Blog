@@ -53,6 +53,7 @@ const BlogDetail = () => {
   const [showStatusViewer, setShowStatusViewer] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [progress, setProgress] = useState(0);
+  const contentId = blog?._id || id;
 
   useEffect(() => {
     const update = () => {
@@ -80,19 +81,19 @@ const BlogDetail = () => {
     const socket = socketService.getSocket();
     if (socket) {
       socket.on('comment:new', (data) => {
-        if (data.blogId === id) {
+        if (String(data.blogId) === String(id) || String(data.blogId) === String(blog?._id)) {
           fetchComments();
         }
       });
 
       socket.on('comment:updated', (data) => {
-        if (data.blogId === id) {
+        if (String(data.blogId) === String(id) || String(data.blogId) === String(blog?._id)) {
           fetchComments();
         }
       });
 
       socket.on('comment:deleted', (data) => {
-        if (data.blogId === id) {
+        if (String(data.blogId) === String(id) || String(data.blogId) === String(blog?._id)) {
           fetchComments();
         }
       });
@@ -106,13 +107,17 @@ const BlogDetail = () => {
         socket.off('comment:deleted');
       }
     };
-  }, [id]);
+  }, [id, blog?._id]);
 
   const fetchBlog = async () => {
     try {
       const { data } = await api.get(`/blogs/${id}`);
       setBlog(data.blog);
       setLiked(data.blog.likes?.some(like => like._id === user?._id));
+
+      if (data.redirect?.shouldRedirect && data.redirect?.to) {
+        navigate(data.redirect.to, { replace: true });
+      }
     } catch (error) {
       console.error('Error fetching blog:', error);
     } finally {
@@ -141,7 +146,7 @@ const BlogDetail = () => {
 
   const fetchComments = async () => {
     try {
-      const { data } = await api.get(`/comments/${id}`);
+      const { data } = await api.get(`/comments/${contentId}`);
       const commentsWithReplies = await Promise.all(data.comments.map(async (comment) => {
         const replyCount = await api.get(`/comments/${comment._id}/replies`).then(res => res.data.replies.length).catch(() => 0);
         return { ...comment, replyCount };
@@ -176,7 +181,7 @@ const BlogDetail = () => {
       return;
     }
     try {
-      const { data } = await api.post(`/blogs/${id}/like`);
+      const { data } = await api.post(`/blogs/${contentId}/like`);
       setLiked(data.liked);
       setBlog({ ...blog, likeCount: data.likeCount });
 
@@ -195,7 +200,7 @@ const BlogDetail = () => {
       return;
     }
     try {
-      const { data } = await api.post(`/comments/${id}`, { content: newComment });
+      const { data } = await api.post(`/comments/${contentId}`, { content: newComment });
       await fetchComments();
       setNewComment('');
       window.dispatchEvent(new CustomEvent('newComment'));
@@ -210,7 +215,7 @@ const BlogDetail = () => {
       return;
     }
     try {
-      await api.post(`/comments/${id}`, {
+      await api.post(`/comments/${contentId}`, {
         content,
         parentComment: parentCommentId,
         replyTo: replyToUserId
@@ -344,7 +349,7 @@ const BlogDetail = () => {
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      await api.delete(`/blogs/${id}`);
+      await api.delete(`/blogs/${contentId}`);
       navigate('/');
     } catch (error) {
       console.error('Error deleting blog:', error);
@@ -645,7 +650,7 @@ const BlogDetail = () => {
                   <button
                     onClick={() => {
                       setEditLoading(true);
-                      navigate(`/edit/${id}`);
+                      navigate(`/edit/${contentId}`);
                     }}
                     className="text-blue-600 hover:text-blue-800"
                   >

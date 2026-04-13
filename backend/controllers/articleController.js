@@ -1,6 +1,7 @@
 const Article = require('../models/Article');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
+const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 
 exports.createArticle = async (req, res) => {
   try {
@@ -40,6 +41,12 @@ exports.createArticle = async (req, res) => {
       }
     }
 
+    const generatedSlug = await generateUniqueSlug({
+      Model: Article,
+      title,
+      preferredSlug: slug
+    });
+
     const article = await Article.create({
       title,
       content,
@@ -50,7 +57,8 @@ exports.createArticle = async (req, res) => {
       cloudinaryPublicId: cloudinaryPublicId || null,
       videoUrls: videoUrlsArray,
       metaDescription: metaDescription || null,
-      slug: slug || null,
+      slug: generatedSlug,
+      slugHistory: [],
       isDraft: isScheduled ? true : (isDraft || false),
       isScheduled: isScheduled || false,
       scheduledPublishDate: isScheduled ? scheduledPublishDate : null
@@ -130,9 +138,14 @@ exports.getArticles = async (req, res) => {
 
 exports.getArticle = async (req, res) => {
   try {
-    const article = await Article.findById(req.params.id)
-      .populate('author', 'username profileImage fullName bio isGuest role isVerified statuses')
-      .populate('likes', 'username profileImage');
+    const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id, {
+      populate: [
+        { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses' },
+        { path: 'likes', select: 'username profileImage' }
+      ]
+    });
+
+    const article = resolved.doc;
 
     if (!article) {
       return res.status(404).json({ success: false, message: 'Article not found' });
@@ -156,6 +169,10 @@ exports.getArticle = async (req, res) => {
         ...articleObj,
         likeCount: article.likes.length,
         commentCount
+      },
+      redirect: {
+        shouldRedirect: resolved.resolution === 'legacy_slug',
+        to: `/article/${article.slug || article._id}`
       }
     });
   } catch (error) {
@@ -165,7 +182,8 @@ exports.getArticle = async (req, res) => {
 
 exports.updateArticle = async (req, res) => {
   try {
-    const article = await Article.findById(req.params.id);
+    const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id);
+    const article = resolved.doc;
 
     if (!article) {
       return res.status(404).json({ success: false, message: 'Article not found' });
@@ -175,7 +193,7 @@ exports.updateArticle = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, isScheduled, scheduledPublishDate, videoUrls } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls } = req.body;
     
     if (isScheduled && scheduledPublishDate) {
       const scheduleDate = new Date(scheduledPublishDate);
@@ -216,6 +234,18 @@ exports.updateArticle = async (req, res) => {
     article.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : article.cloudinaryPublicId;
     article.videoUrls = videoUrlsArray;
     article.metaDescription = metaDescription !== undefined ? metaDescription : article.metaDescription;
+
+    const shouldRefreshSlug = slug !== undefined || Boolean(title) || !article.slug;
+    if (shouldRefreshSlug) {
+      const nextSlug = await generateUniqueSlug({
+        Model: Article,
+        title: article.title,
+        preferredSlug: slug !== undefined ? slug : article.title,
+        excludeId: article._id
+      });
+      applySlugWithHistory(article, nextSlug);
+    }
+
     article.isDraft = isScheduled ? true : (isDraft !== undefined ? isDraft : article.isDraft);
     article.isScheduled = isScheduled !== undefined ? isScheduled : article.isScheduled;
     article.scheduledPublishDate = isScheduled ? scheduledPublishDate : null;
@@ -233,7 +263,8 @@ exports.updateArticle = async (req, res) => {
 
 exports.deleteArticle = async (req, res) => {
   try {
-    const article = await Article.findById(req.params.id);
+    const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id);
+    const article = resolved.doc;
 
     if (!article) {
       return res.status(404).json({ success: false, message: 'Article not found' });
@@ -264,7 +295,8 @@ exports.deleteArticle = async (req, res) => {
 
 exports.trackView = async (req, res) => {
   try {
-    const article = await Article.findById(req.params.id);
+    const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id);
+    const article = resolved.doc;
     if (!article) {
       return res.status(404).json({ success: false, message: 'Article not found' });
     }
@@ -291,7 +323,8 @@ exports.trackView = async (req, res) => {
 
 exports.toggleLike = async (req, res) => {
   try {
-    const article = await Article.findById(req.params.id);
+    const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id);
+    const article = resolved.doc;
 
     if (!article) {
       return res.status(404).json({ success: false, message: 'Article not found' });

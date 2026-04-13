@@ -3,6 +3,7 @@ const Blog = require('../models/Blog');
 const Article = require('../models/Article');
 const Short = require('../models/Short');
 const Notification = require('../models/Notification');
+const { resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 
 // Create comment
 exports.createComment = async (req, res) => {
@@ -15,8 +16,22 @@ exports.createComment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Comment content required' });
     }
 
-    const Model = isArticle === 'true' ? Article : (isShort === 'true' ? Short : Blog);
-    const post = await Model.findById(blogId);
+    let post = null;
+    let resolvedPostId = blogId;
+
+    if (isArticle === 'true') {
+      const resolved = await resolveDocumentByIdOrSlug(Article, blogId);
+      post = resolved.doc;
+      resolvedPostId = post?._id?.toString();
+    } else if (isShort === 'true') {
+      post = await Short.findById(blogId);
+      resolvedPostId = post?._id?.toString();
+    } else {
+      const resolved = await resolveDocumentByIdOrSlug(Blog, blogId);
+      post = resolved.doc;
+      resolvedPostId = post?._id?.toString();
+    }
+
     if (!post) {
       return res.status(404).json({ success: false, message: 'Content not found' });
     }
@@ -26,7 +41,9 @@ exports.createComment = async (req, res) => {
       author: req.user._id,
       parentComment: parentComment || null,
       replyTo: replyTo || null,
-      ...(isArticle === 'true' ? { article: blogId } : (isShort === 'true' ? { short: blogId } : { blog: blogId }))
+      ...(isArticle === 'true'
+        ? { article: resolvedPostId }
+        : (isShort === 'true' ? { short: resolvedPostId } : { blog: resolvedPostId }))
     });
 
     const populatedComment = await Comment.findById(comment._id)
@@ -47,7 +64,7 @@ exports.createComment = async (req, res) => {
     // Emit socket event for real-time updates
     const io = req.app.get('io');
     if (io) {
-      io.emit('comment:new', { blogId, comment: populatedComment });
+      io.emit('comment:new', { blogId: resolvedPostId, comment: populatedComment });
     }
 
     res.status(201).json({ success: true, comment: populatedComment });
@@ -62,7 +79,31 @@ exports.getComments = async (req, res) => {
     const { blogId } = req.params;
     const { isShort, isArticle } = req.query;
 
-    const filter = isArticle === 'true' ? { article: blogId, parentComment: null } : (isShort === 'true' ? { short: blogId, parentComment: null } : { blog: blogId, parentComment: null });
+    let contentFilterId = blogId;
+
+    if (isArticle === 'true') {
+      const resolved = await resolveDocumentByIdOrSlug(Article, blogId);
+      if (!resolved.doc) {
+        return res.status(404).json({ success: false, message: 'Content not found' });
+      }
+      contentFilterId = resolved.doc._id.toString();
+    } else if (isShort === 'true') {
+      const shortPost = await Short.findById(blogId);
+      if (!shortPost) {
+        return res.status(404).json({ success: false, message: 'Content not found' });
+      }
+      contentFilterId = shortPost._id.toString();
+    } else {
+      const resolved = await resolveDocumentByIdOrSlug(Blog, blogId);
+      if (!resolved.doc) {
+        return res.status(404).json({ success: false, message: 'Content not found' });
+      }
+      contentFilterId = resolved.doc._id.toString();
+    }
+
+    const filter = isArticle === 'true'
+      ? { article: contentFilterId, parentComment: null }
+      : (isShort === 'true' ? { short: contentFilterId, parentComment: null } : { blog: contentFilterId, parentComment: null });
     const comments = await Comment.find(filter)
       .populate('author', 'username profileImage isGuest role isVerified')
       .populate('replyTo', 'username')

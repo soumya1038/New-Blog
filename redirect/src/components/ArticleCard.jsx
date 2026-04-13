@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { FaHeart, FaRegHeart } from 'react-icons/fa';
+import { getArticlePath } from '../utils/contentRoutes';
 
 const ArticleCard = ({ article, index = 0, onLike, onTagClick }) => {
   const [isLiked, setIsLiked] = React.useState(false);
@@ -31,7 +32,7 @@ const ArticleCard = ({ article, index = 0, onLike, onTagClick }) => {
         boxShadow: 'var(--art-shadow)',
       }}
     >
-      <Link to={`/article/${article._id}`} style={{ textDecoration: 'none' }}>
+      <Link to={getArticlePath(article)} style={{ textDecoration: 'none' }}>
         {article.coverImage && (
           <div style={{ width: '100%', height: '220px', overflow: 'hidden', marginBottom: '20px', borderRadius: '0px' }}>
             <img

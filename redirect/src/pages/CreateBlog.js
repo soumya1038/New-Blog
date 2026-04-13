@@ -1020,7 +1020,7 @@ const CreateBlog = () => {
           setSelectedArticleTemplateId(templateIdForSubmit);
         }
         toast.success(isScheduled ? 'Article scheduled successfully!' : 'Article published successfully!');
-        const articleId = data.article?._id;
+        const articleId = data.article?.slug || data.article?._id;
         // console.log('Navigating to:', `/article/${articleId}`);
         setTimeout(() => navigate(isScheduled ? '/drafts' : `/article/${articleId}`), 1000);
         return;
@@ -1061,7 +1061,7 @@ const CreateBlog = () => {
           
           setHasUnsavedChanges(false);
           toast.success(isScheduled ? 'Scheduled successfully!' : 'Published as blog and short successfully!');
-          setTimeout(() => navigate(isScheduled ? '/drafts' : `/blog/${blogData.blog._id}`), 1000);
+          setTimeout(() => navigate(isScheduled ? '/drafts' : `/blog/${blogData.blog.slug || blogData.blog._id}`), 1000);
         } else {
           // Create only BLOG
           const { data } = await api.post('/blogs', {
@@ -1080,7 +1080,7 @@ const CreateBlog = () => {
           
           setHasUnsavedChanges(false);
           toast.success(isScheduled ? 'Blog scheduled successfully!' : 'Blog published successfully!');
-          setTimeout(() => navigate(isScheduled ? '/drafts' : `/blog/${data.blog._id}`), 1000);
+          setTimeout(() => navigate(isScheduled ? '/drafts' : `/blog/${data.blog.slug || data.blog._id}`), 1000);
         }
       } else {
         // Short Blog mode - only create SHORT

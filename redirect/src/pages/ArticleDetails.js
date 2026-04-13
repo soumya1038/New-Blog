@@ -40,6 +40,7 @@ const ArticleDetails = () => {
   const [focusMode, setFocusMode] = useState(false);
   const [moreByAuthor, setMoreByAuthor] = useState([]);
   const [progress, setProgress] = useState(0);
+  const contentId = article?._id || id;
 
   useEffect(() => {
     const update = () => {
@@ -81,19 +82,19 @@ const ArticleDetails = () => {
     const socket = socketService.getSocket();
     if (socket) {
       socket.on('comment:new', (data) => {
-        if (data.blogId === id) {
+        if (String(data.blogId) === String(id) || String(data.blogId) === String(article?._id)) {
           fetchComments();
         }
       });
 
       socket.on('comment:updated', (data) => {
-        if (data.blogId === id) {
+        if (String(data.blogId) === String(id) || String(data.blogId) === String(article?._id)) {
           fetchComments();
         }
       });
 
       socket.on('comment:deleted', (data) => {
-        if (data.blogId === id) {
+        if (String(data.blogId) === String(id) || String(data.blogId) === String(article?._id)) {
           fetchComments();
         }
       });
@@ -107,7 +108,7 @@ const ArticleDetails = () => {
         socket.off('comment:deleted');
       }
     };
-  }, [id]);
+  }, [id, article?._id]);
 
   const fetchArticle = async () => {
     try {
@@ -116,6 +117,10 @@ const ArticleDetails = () => {
       // console.log('Article data:', data);
       setArticle(data.article);
       setLiked(data.article.likes?.some(like => like._id === user?._id));
+
+      if (data.redirect?.shouldRedirect && data.redirect?.to) {
+        navigate(data.redirect.to, { replace: true });
+      }
     } catch (error) {
       console.error('Error fetching article:', error);
       toast.error('Failed to load article');
@@ -127,7 +132,7 @@ const ArticleDetails = () => {
 
   const trackView = async () => {
     try {
-      await api.post(`/articles/${id}/view`);
+      await api.post(`/articles/${contentId}/view`);
     } catch (error) {
       console.error('View tracking failed');
     }
@@ -135,7 +140,7 @@ const ArticleDetails = () => {
 
   const fetchComments = async () => {
     try {
-      const { data } = await api.get(`/comments/${id}?isArticle=true`);
+      const { data } = await api.get(`/comments/${contentId}?isArticle=true`);
       const commentsWithReplies = await Promise.all(data.comments.map(async (comment) => {
         const replyCount = await api.get(`/comments/${comment._id}/replies`).then(res => res.data.replies.length).catch(() => 0);
         return { ...comment, replyCount };
@@ -170,7 +175,7 @@ const ArticleDetails = () => {
       return;
     }
     try {
-      const { data } = await api.post(`/articles/${id}/like`);
+      const { data } = await api.post(`/articles/${contentId}/like`);
       setArticle({ ...article, likes: data.likes, likeCount: data.likeCount });
       setLiked(data.liked);
       if (data.liked) toast.success('Article liked!');
@@ -192,7 +197,7 @@ const ArticleDetails = () => {
       return;
     }
     try {
-      await api.post(`/comments/${id}?isArticle=true`, {
+      await api.post(`/comments/${contentId}?isArticle=true`, {
         content,
         parentComment: parentCommentId,
         replyTo: replyToUserId
@@ -397,7 +402,7 @@ const ArticleDetails = () => {
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      await api.delete(`/articles/${id}`);
+      await api.delete(`/articles/${contentId}`);
       toast.success('Article deleted successfully!');
       setTimeout(() => navigate(-1), 1000);
     } catch (error) {
@@ -553,7 +558,7 @@ const ArticleDetails = () => {
             {user?._id === article.author._id && (
               <>
                 <button
-                  onClick={() => navigate(`/edit/${id}`)}
+                  onClick={() => navigate(`/edit/${contentId}`)}
                   className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition"
                 >
                   <FaEdit size={18} />
@@ -651,7 +656,7 @@ const ArticleDetails = () => {
               e.preventDefault();
               if (!newComment.trim()) return;
               try {
-                await api.post(`/comments/${id}?isArticle=true`, { content: newComment });
+                await api.post(`/comments/${contentId}?isArticle=true`, { content: newComment });
                 setNewComment('');
                 await fetchComments();
                 await fetchArticle();
