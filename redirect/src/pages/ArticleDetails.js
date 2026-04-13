@@ -14,6 +14,7 @@ import Avatar from '../components/Avatar';
 import EnhancedComment from '../components/EnhancedComment';
 import ArticleCard from '../components/ArticleCard';
 import ArticleTemplateFrame from '../components/ArticleTemplateFrame';
+import SEOHead from '../components/SEOHead';
 
 const ArticleDetails = () => {
   const { t } = useTranslation();
@@ -405,24 +406,62 @@ const ArticleDetails = () => {
     }
   };
 
+  const canonicalPath = typeof window !== 'undefined' ? window.location.pathname : `/article/${id}`;
+  const seoTitle = article?.title || (loading ? 'Loading Article' : 'Article Not Found');
+  const seoDescription = article?.metaDescription || '';
+  const seoContent = article?.content || '';
+  const seoImage = article?.coverImage || '/image/lekhon_url.png';
+  const seoNoIndex = !loading && !article;
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
+      <>
+        <SEOHead
+          title={seoTitle}
+          description={seoDescription}
+          content={seoContent}
+          canonicalUrl={canonicalPath}
+          image={seoImage}
+          type="article"
+        />
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </>
     );
   }
 
-  if (!article) return null;
+  if (!article) {
+    return (
+      <SEOHead
+        title={seoTitle}
+        description={seoDescription}
+        content={seoContent}
+        canonicalUrl={canonicalPath}
+        image={seoImage}
+        type="article"
+        noIndex={seoNoIndex}
+      />
+    );
+  }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--art-page-bg)' }}>
-      {/* Reading Progress Bar */}
-      <div className="reading-progress"
-        style={{ width:`${progress}%`, background:'linear-gradient(90deg, var(--art-accent), var(--art-accent-light))' }} />
-      <Toaster />
-      
-      <div style={{ background: 'var(--surface-container)', borderBottom: '1px solid var(--outline-variant)' }}>
+    <>
+      <SEOHead
+        title={seoTitle}
+        description={seoDescription}
+        content={seoContent}
+        canonicalUrl={canonicalPath}
+        image={seoImage}
+        type="article"
+      />
+      <div style={{ minHeight: '100vh', background: 'var(--art-page-bg)' }}>
+        {/* Reading Progress Bar */}
+        <div className="reading-progress"
+          style={{ width:`${progress}%`, background:'linear-gradient(90deg, var(--art-accent), var(--art-accent-light))' }} />
+        <Toaster />
+        
+        <div style={{ background: 'var(--surface-container)', borderBottom: '1px solid var(--outline-variant)' }}>
         <div className="max-w-4xl mx-auto px-4" style={{ padding: 'var(--spacing-4)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <button
@@ -716,7 +755,7 @@ const ArticleDetails = () => {
       )}
 
       {/* Delete Confirmation Modal */}
-      {showDeleteModal && (
+        {showDeleteModal && (
         <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4">
           <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-red-600 mb-4">{t('Delete Article')}</h3>
@@ -739,8 +778,9 @@ const ArticleDetails = () => {
             </div>
           </div>
         </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 };
 

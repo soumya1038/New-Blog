@@ -21,6 +21,7 @@ import AudioControls from '../components/AudioControls';
 import ScrollToTop from '../components/ScrollToTop';
 import EnhancedComment from '../components/EnhancedComment';
 import StatusViewer from '../components/StatusViewer';
+import SEOHead from '../components/SEOHead';
 
 const BlogDetail = () => {
   const { t } = useTranslation();
@@ -463,53 +464,90 @@ const BlogDetail = () => {
     return sorted;
   }, [comments, sortBy]);
 
+  const canonicalPath = typeof window !== 'undefined' ? window.location.pathname : `/blog/${id}`;
+  const seoTitle = blog?.title || (loading ? 'Loading Blog' : 'Blog Not Found');
+  const seoDescription = blog?.metaDescription || '';
+  const seoContent = blog?.content || '';
+  const seoImage = blog?.coverImage || '/image/lekhon_url.png';
+  const seoNoIndex = !loading && !blog;
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
-        <div className="container mx-auto px-4 max-w-4xl">
-          <BlogDetailSkeleton />
+      <>
+        <SEOHead
+          title={seoTitle}
+          description={seoDescription}
+          content={seoContent}
+          canonicalUrl={canonicalPath}
+          image={seoImage}
+          type="article"
+        />
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
+          <div className="container mx-auto px-4 max-w-4xl">
+            <BlogDetailSkeleton />
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (!blog) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4">
-        <div className="text-center">
-          <img
-            src="/image/failed_to_load.png"
-            alt="Blog Not Found"
-            className="w-64 h-64 mx-auto mb-6 object-contain"
-          />
-          <h1 className="text-4xl font-bold text-gray-800 mb-4">{t('Blog Not Found')}</h1>
-          <p className="text-gray-600 mb-8 text-lg">
-            {t('The blog you are looking for does not exist or has been removed.')}
-          </p>
-          <button
-            onClick={() => navigate('/')}
-            className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
-          >
-            {t('Go to Home')}
-          </button>
+      <>
+        <SEOHead
+          title={seoTitle}
+          description={seoDescription}
+          content={seoContent}
+          canonicalUrl={canonicalPath}
+          image={seoImage}
+          type="article"
+          noIndex={seoNoIndex}
+        />
+        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center px-4">
+          <div className="text-center">
+            <img
+              src="/image/failed_to_load.png"
+              alt="Blog Not Found"
+              className="w-64 h-64 mx-auto mb-6 object-contain"
+            />
+            <h1 className="text-4xl font-bold text-gray-800 mb-4">{t('Blog Not Found')}</h1>
+            <p className="text-gray-600 mb-8 text-lg">
+              {t('The blog you are looking for does not exist or has been removed.')}
+            </p>
+            <button
+              onClick={() => navigate('/')}
+              className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+            >
+              {t('Go to Home')}
+            </button>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="blog-surface min-h-screen py-8" style={{ minHeight:'100vh', background:'var(--blog-page-bg)' }}>
-      {/* Reading Progress Bar */}
-      <div className="reading-progress"
-        style={{ width:`${progress}%`, background:'var(--blog-accent)' }} />
-      <Toaster />
-      <ScrollToTop />
-      {editLoading && (
-        <div className="fixed top-0 left-0 right-0 z-50">
-          <BarLoader color="#3B82F6" width="100%" height={4} />
-        </div>
-      )}
-      <div className="container mx-auto px-4 max-w-4xl">
+    <>
+      <SEOHead
+        title={seoTitle}
+        description={seoDescription}
+        content={seoContent}
+        canonicalUrl={canonicalPath}
+        image={seoImage}
+        type="article"
+      />
+      <div className="blog-surface min-h-screen py-8" style={{ minHeight:'100vh', background:'var(--blog-page-bg)' }}>
+        {/* Reading Progress Bar */}
+        <div className="reading-progress"
+          style={{ width:`${progress}%`, background:'var(--blog-accent)' }} />
+        <Toaster />
+        <ScrollToTop />
+        {editLoading && (
+          <div className="fixed top-0 left-0 right-0 z-50">
+            <BarLoader color="#3B82F6" width="100%" height={4} />
+          </div>
+        )}
+        <div className="container mx-auto px-4 max-w-4xl">
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-blue-600 hover:text-blue-800 mb-4 font-semibold"
@@ -921,8 +959,9 @@ const BlogDetail = () => {
             </div>
           </div>
         )}
+        </div>
       </div>
-    </div>
+    </>
   );
 };
 
