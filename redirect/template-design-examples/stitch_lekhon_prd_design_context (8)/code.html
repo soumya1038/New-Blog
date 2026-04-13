@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Lekhon | Community Blog - The Quiet Art of Observation</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&amp;family=Lora:ital,wght@0,400..700;1,400..700&amp;family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&amp;family=Noto+Serif:ital,wght@0,100..900;1,100..900&amp;family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Overriding for the "Soft Parchment" request while maintaining the design system's structural integrity */
+        .page-canvas {
+            background-color: #FDFAF6;
+            color: #2b4e38; /* Organic Sage Green influence for text */
+        }
+        .font-organic-header { font-family: 'DM Sans', sans-serif; }
+        .font-organic-body { font-family: 'Lora', serif; }
+        .accent-sage { color: #5a7d66; }
+        .bg-sage-light { background-color: #f1f5f2; }
+        
+        /* Progress line following the Design System "Progress Serif" rule */
+        #scroll-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 0%;
+            background-color: #e8c265;
+            z-index: 100;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#e8c265",
+                        "surface-dim": "#01170b",
+                        "surface": "#01170b",
+                        "on-tertiary": "#31302e",
+                        "tertiary-fixed": "#e5e2de",
+                        "on-primary-fixed": "#251a00",
+                        "surface-tint": "#e8c265",
+                        "on-primary-container": "#ac8b34",
+                        "on-secondary-fixed": "#002110",
+                        "primary-fixed": "#ffdf96",
+                        "tertiary": "#c8c6c2",
+                        "outline-variant": "#424843",
+                        "tertiary-container": "#282826",
+                        "inverse-primary": "#765a00",
+                        "tertiary-fixed-dim": "#c8c6c2",
+                        "on-secondary-container": "#98bea3",
+                        "background": "#01170b",
+                        "surface-container-highest": "#223a2b",
+                        "on-error-container": "#ffdad6",
+                        "inverse-on-surface": "#1e3527",
+                        "error-container": "#93000a",
+                        "on-tertiary-fixed": "#1c1c1a",
+                        "primary-fixed-dim": "#e8c265",
+                        "surface-variant": "#223a2b",
+                        "on-tertiary-fixed-variant": "#474744",
+                        "secondary": "#a9d0b4",
+                        "surface-container-lowest": "#001207",
+                        "outline": "#8c938b",
+                        "on-background": "#cde9d4",
+                        "on-tertiary-container": "#908f8c",
+                        "on-surface-variant": "#c1c8c1",
+                        "on-primary": "#3e2e00",
+                        "secondary-fixed-dim": "#a9d0b4",
+                        "surface-bright": "#263e2f",
+                        "surface-container-high": "#172f21",
+                        "on-surface": "#cde9d4",
+                        "on-secondary": "#143723",
+                        "surface-container": "#0c2417",
+                        "secondary-container": "#2b4e38",
+                        "primary-container": "#342600",
+                        "surface-container-low": "#082013",
+                        "error": "#ffb4ab",
+                        "on-primary-fixed-variant": "#594400",
+                        "inverse-surface": "#cde9d4",
+                        "on-secondary-fixed-variant": "#2b4e38",
+                        "secondary-fixed": "#c5eccf",
+                        "on-error": "#690005"
+                    },
+                    fontFamily: {
+                        "headline": ["Newsreader"],
+                        "body": ["Noto Serif"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0rem", "lg": "0rem", "xl": "0rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+</head>
+<body class="page-canvas antialiased overflow-x-hidden">
+<div id="scroll-progress"></div>
+<!-- TopAppBar Section -->
+<header class="bg-[#01170b] dark:bg-[#01170b] text-[#e8c265] docked full-width top-0 rounded-none no-border space-y-16 flat no shadows z-50">
+<div class="flex justify-between items-center w-full px-12 py-6 max-w-screen-2xl mx-auto">
+<div class="text-[#e8c265] font-serif italic text-3xl">Lekhon</div>
+<nav class="hidden md:flex items-center space-x-12">
+<a class="text-[#cde9d4] uppercase tracking-widest text-xs font-sans hover:text-[#e8c265] transition-colors duration-300" href="#">Archives</a>
+<a class="text-[#e8c265] border-b border-[#e8c265] pb-1 uppercase tracking-widest text-xs font-sans transition-colors duration-300" href="#">Essays</a>
+<a class="text-[#cde9d4] uppercase tracking-widest text-xs font-sans hover:text-[#e8c265] transition-colors duration-300" href="#">Series</a>
+<a class="text-[#cde9d4] uppercase tracking-widest text-xs font-sans hover:text-[#e8c265] transition-colors duration-300" href="#">Authors</a>
+</nav>
+<div class="flex items-center gap-6">
+<span class="material-symbols-outlined text-2xl cursor-pointer hover:scale-95 duration-200" data-icon="search">search</span>
+<span class="material-symbols-outlined text-2xl cursor-pointer hover:scale-95 duration-200" data-icon="account_circle">account_circle</span>
+</div>
+</div>
+</header>
+<main class="max-w-screen-xl mx-auto px-6 md:px-20 pt-24 pb-32">
+<!-- Hero Section -->
+<article class="space-y-16">
+<header class="max-w-3xl mx-auto text-center space-y-8">
+<div class="font-label uppercase tracking-[0.3em] text-[10px] text-on-secondary-container/60">Community Journal • Spring Edition</div>
+<h1 class="font-organic-header text-5xl md:text-7xl font-light tracking-tight text-secondary-container leading-[1.1]">The Quiet Art of Observation</h1>
+<div class="flex items-center justify-center gap-4 pt-4">
+<img alt="Author profile" class="w-10 h-10 rounded-full object-cover grayscale opacity-80" data-alt="Close-up portrait of a thoughtful woman in soft natural lighting, muted earth tones, artistic editorial style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3PPxRA7wrHeJ6QoiGhmlHCV9ASQ_DszgPLAl7PeZSskILccy_sKt8rV_mbaDjPnntS8ruqa-v1vM1ymGJXTIVch09uTFAaOavQQB0xVa1eAGK6-Kccx8pSE0RRb8WVJWSu_a5fWRDx7oVLdM_BrQdDKRCbqdWwDs_Jo5GCPHalfr1Mta5sGP9i6BEhwAzTNhQ1khtnv4QiuMi7VOYmGVSfnMXAKdVUBSCMmUsJgNiV5IjSMuDkOxdqhVa1UNEAdY_CpU-ejVBXvpM"/>
+<div class="text-left">
+<p class="font-label text-xs uppercase tracking-widest font-bold text-secondary-container">Elena Rostova</p>
+<p class="font-label text-[10px] text-on-secondary-container/50">March 14, 2024 • 8 min read</p>
+</div>
+</div>
+</header>
+<!-- Hero Image with soft focus -->
+<div class="w-full h-[614px] relative overflow-hidden">
+<img alt="Main article visual" class="w-full h-full object-cover" data-alt="Dreamy soft-focus field of wild spring flowers at dawn, hazy morning mist, organic sage and warm cream tones, high-end editorial photography" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB4vCz685f1P2rCPIMJFmlM48lcFKbdS1AYFPCraDzSbx9B0cVYCh4hsJf-VQ5NPfbt22XWcbAFhiKRDkbzdQx8oaxWsEvXv1FJHClv4NRqozsO1A5if_RKNuDwpybf52JnjAamwcAKlWCuXKdMXT3k_LYQBxS3-N9vuqB1bXpIeTPkVyVsAy-uOeKI8T6fjCmFQ5VlQGBJ0_0oMXZWAx1zsA0X2iUJUQ1Y2xfpe6WIpJ38MrnjIqIoskQrT0FseyI3o3E8srqjiK66"/>
+<div class="absolute inset-0 bg-gradient-to-t from-[#FDFAF6] via-transparent to-transparent opacity-40"></div>
+</div>
+<!-- Article Content -->
+<div class="max-w-2xl mx-auto space-y-12">
+<p class="font-organic-body text-xl md:text-2xl leading-relaxed italic text-secondary-container/80 first-letter:text-6xl first-letter:font-headline first-letter:mr-3 first-letter:float-left first-letter:text-primary">
+                    To observe is not merely to see, but to dwell within the silence between things. In the modern rush, we have lost the cadence of the slow gaze.
+                </p>
+<div class="font-organic-body text-lg leading-[1.8] text-secondary-container/90 space-y-8">
+<p>
+                        It begins with the windows. We often treat them as barriers, as glass sheets separating the warmth of our interiors from the unpredictability of the outside. But a window, observed correctly, is a curated gallery of light. During the "blue hour"—that fleeting transition between day and dusk—the shadows in a room don't just darken; they deepen into a complex violet that only reveals itself to those who sit perfectly still.
+                    </p>
+<p>
+                        In our community discussions last month, many spoke of the difficulty of finding 'quiet time.' Perhaps the issue is that we treat quiet as a commodity to be acquired rather than a state to be noticed. It is already here, layered beneath the hum of the refrigerator and the distant murmur of traffic.
+                    </p>
+<!-- Asymmetric Image Insert -->
+<div class="py-12 -mx-4 md:-mx-20 flex flex-col md:flex-row gap-12 items-center">
+<div class="w-full md:w-3/5">
+<img alt="Quiet interior" class="w-full grayscale brightness-105 opacity-90" data-alt="Minimalist sunlit interior with a single wooden chair, soft shadows on a warm parchment wall, organic aesthetic, peaceful atmosphere" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDeL8_6A-JOWJAcebn80VZHR40kz1k_s4njWpUhjMyslMNk-RpkGEy-tvbEA49_gBuMtlGQFu7_DMnL_I35xNHjvrVGRc-WZiysZAMbX0DRClPw8f-H4jbb4H5bwU_ViDc6a0RkBqzvh_NrMiVBUifKTcC4adxNbBRh6xTca-mBsYGyObMSj2728NzV94UVsevAmYQKbASeqdG5Oko1QgpJFgOAuF0iLnyBepf7M5JykIBC2dnZvY7RvUb1K-ZCUp_VeYy-IVFpT6Vg"/>
+</div>
+<div class="w-full md:w-2/5 px-6">
+<span class="font-label text-[10px] uppercase tracking-[0.2em] text-primary">Observation Note #04</span>
+<h3 class="font-organic-header text-2xl mt-4 mb-2 text-secondary-container">The Weight of Sunlight</h3>
+<p class="font-organic-body text-sm italic text-secondary-container/70">
+                                Notice how the dust motes dance in a single beam. There is a whole universe in a cubic meter of air, moving to a rhythm we rarely acknowledge.
+                            </p>
+</div>
+</div>
+<p>
+                        When we write together, we are practicing this observation. The act of putting pen to paper—or fingers to keys—is a commitment to the details. The way a word feels as it lands. The weight of a sentence. This is the 'intellectual discussion' we strive for: not a debate of opinions, but a shared noticing of the world.
+                    </p>
+</div>
+</div>
+</article>
+<!-- Divider -->
+<div class="max-w-2xl mx-auto py-24">
+<div class="h-[1px] bg-secondary-container/10 w-full"></div>
+</div>
+<!-- Intellectual Discussion Space (Comments) -->
+<section class="max-w-2xl mx-auto">
+<div class="flex items-baseline justify-between mb-16">
+<h2 class="font-organic-header text-3xl font-light text-secondary-container">The Dialogue</h2>
+<span class="font-label text-[10px] uppercase tracking-widest text-on-secondary-container/40">4 Contributions</span>
+</div>
+<div class="space-y-20">
+<!-- Comment 1 -->
+<div class="group">
+<div class="flex gap-8">
+<div class="flex-shrink-0 pt-2">
+<div class="w-8 h-8 bg-secondary-container/5 flex items-center justify-center font-label text-[10px] text-secondary-container">JM</div>
+</div>
+<div class="space-y-4">
+<div class="flex items-center gap-4">
+<span class="font-label text-xs uppercase tracking-widest font-bold text-secondary-container">Julian Marc</span>
+<span class="text-[10px] font-label text-on-secondary-container/30">2 days ago</span>
+</div>
+<p class="font-organic-body text-base leading-relaxed text-secondary-container/80">
+                                This resonates deeply with the concept of 'Mono no aware'—the pathos of things. The fleeting nature of that blue hour light you described is what gives it such profound emotional weight. I've found that writing in that specific light changes the tone of my prose entirely. It becomes more tentative, more honest.
+                            </p>
+<button class="font-label text-[10px] uppercase tracking-widest text-primary hover:tracking-[0.2em] transition-all duration-300">Reply with grace</button>
+</div>
+</div>
+</div>
+<!-- Comment 2 -->
+<div class="group">
+<div class="flex gap-8">
+<div class="flex-shrink-0 pt-2">
+<div class="w-8 h-8 bg-secondary-container/5 flex items-center justify-center font-label text-[10px] text-secondary-container">SC</div>
+</div>
+<div class="space-y-4">
+<div class="flex items-center gap-4">
+<span class="font-label text-xs uppercase tracking-widest font-bold text-secondary-container">Sarah Chen</span>
+<span class="text-[10px] font-label text-on-secondary-container/30">Yesterday</span>
+</div>
+<p class="font-organic-body text-base leading-relaxed text-secondary-container/80">
+                                Elena, your point about 'quiet as a state to be noticed' shifted something for me. I often find myself waiting for the world to stop so I can start. But the world never stops. Learning to notice the quiet *under* the noise is a skill I need to cultivate. Thank you for this.
+                            </p>
+<button class="font-label text-[10px] uppercase tracking-widest text-primary hover:tracking-[0.2em] transition-all duration-300">Reply with grace</button>
+</div>
+</div>
+</div>
+<!-- Comment Input Area -->
+<div class="bg-sage-light p-12 mt-24">
+<h4 class="font-organic-header text-lg mb-6 text-secondary-container">Add to the Conversation</h4>
+<form class="space-y-6">
+<textarea class="w-full bg-transparent border-0 border-b border-secondary-container/20 focus:ring-0 focus:border-primary font-organic-body text-lg placeholder:text-secondary-container/30 transition-colors duration-300 px-0" placeholder="Share your reflections..." rows="4"></textarea>
+<div class="flex justify-end">
+<button class="bg-secondary-container text-surface-bright font-label text-[10px] uppercase tracking-[0.2em] px-10 py-4 hover:bg-primary hover:text-on-primary transition-all duration-300" type="submit">Publish Note</button>
+</div>
+</form>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer Section -->
+<footer class="bg-[#082013] dark:bg-[#082013] text-[#e8c265] full-width rounded-none no-border pt-24 pb-12 flat no shadows">
+<div class="flex flex-col items-center gap-8 w-full px-12 py-16">
+<div class="text-[#e8c265] font-serif italic text-2xl">Lekhon</div>
+<div class="flex flex-wrap justify-center gap-12">
+<a class="text-[#cde9d4]/60 font-sans uppercase text-[10px] tracking-[0.2em] hover:text-[#e8c265] underline decoration-[#e8c265] underline-offset-4 transition-opacity" href="#">Colophon</a>
+<a class="text-[#cde9d4]/60 font-sans uppercase text-[10px] tracking-[0.2em] hover:text-[#e8c265] underline decoration-[#e8c265] underline-offset-4 transition-opacity" href="#">Privacy</a>
+<a class="text-[#cde9d4]/60 font-sans uppercase text-[10px] tracking-[0.2em] hover:text-[#e8c265] underline decoration-[#e8c265] underline-offset-4 transition-opacity" href="#">Terms</a>
+<a class="text-[#cde9d4]/60 font-sans uppercase text-[10px] tracking-[0.2em] hover:text-[#e8c265] underline decoration-[#e8c265] underline-offset-4 transition-opacity" href="#">Submission Guidelines</a>
+</div>
+<p class="text-[#cde9d4]/40 font-sans uppercase text-[10px] tracking-[0.2em] mt-8">
+                © 2024 Lekhon Editorial. Printed in Digital Ether.
+            </p>
+</div>
+</footer>
+<script>
+        // Simple scroll progress script
+        window.onscroll = function() {
+            var winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+            var height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+            var scrolled = (winScroll / height) * 100;
+            document.getElementById("scroll-progress").style.height = scrolled + "%";
+        };
+    </script>
+</body></html>

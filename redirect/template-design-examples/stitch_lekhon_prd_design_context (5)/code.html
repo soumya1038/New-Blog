@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>The Archivist | The Parchment Edition</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&amp;family=Noto+Serif:ital,wght@0,100..900;1,100..900&amp;family=Inter:wght@100..900&amp;family=Lora:ital,wght@0,400..700;1,400..700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "tertiary-fixed": "#e5e2de",
+              "tertiary-container": "#282826",
+              "inverse-surface": "#cde9d4",
+              "outline-variant": "#424843",
+              "secondary-container": "#2b4e38",
+              "on-error-container": "#ffdad6",
+              "on-surface": "#cde9d4",
+              "tertiary": "#c8c6c2",
+              "surface-variant": "#223a2b",
+              "on-surface-variant": "#c1c8c1",
+              "on-secondary": "#143723",
+              "on-primary-fixed": "#251a00",
+              "outline": "#8c938b",
+              "secondary-fixed": "#c5eccf",
+              "on-secondary-fixed": "#002110",
+              "on-tertiary-fixed": "#1c1c1a",
+              "secondary": "#a9d0b4",
+              "surface-container-low": "#082013",
+              "on-tertiary": "#31302e",
+              "error": "#ffb4ab",
+              "background": "#01170b",
+              "surface": "#01170b",
+              "surface-tint": "#e8c265",
+              "surface-container-high": "#172f21",
+              "inverse-on-surface": "#1e3527",
+              "on-primary-fixed-variant": "#594400",
+              "surface-container-lowest": "#001207",
+              "on-secondary-container": "#98bea3",
+              "surface-dim": "#01170b",
+              "surface-container-highest": "#223a2b",
+              "surface-bright": "#263e2f",
+              "on-tertiary-fixed-variant": "#474744",
+              "on-secondary-fixed-variant": "#2b4e38",
+              "on-error": "#690005",
+              "on-primary-container": "#ac8b34",
+              "primary-fixed-dim": "#e8c265",
+              "primary": "#e8c265",
+              "on-background": "#cde9d4",
+              "surface-container": "#0c2417",
+              "tertiary-fixed-dim": "#c8c6c2",
+              "on-tertiary-container": "#908f8c",
+              "inverse-primary": "#765a00",
+              "secondary-fixed-dim": "#a9d0b4",
+              "error-container": "#93000a",
+              "primary-fixed": "#ffdf96",
+              "primary-container": "#342600",
+              "on-primary": "#3e2e00"
+            },
+            fontFamily: {
+              "headline": ["Newsreader", "serif"],
+              "body": ["Noto Serif", "serif"],
+              "label": ["Inter", "sans-serif"],
+              "lora": ["Lora", "serif"]
+            },
+            borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>.material-symbols-outlined {
+    font-variation-settings: "FILL" 0, "wght" 300, "GRAD" 0, "opsz" 24;
+    font-size: 20px
+    }
+.parchment-texture {
+    background-image: url(https://lh3.googleusercontent.com/aida-public/AB6AXuCs90_ehBTkGJrDYNv-AQDrvv9S3Jpdpmcn-lvfsOetaluIvZvTEFAL77m9xER_Wnl_ReA8dW3A1ERbF6BpavdSbnV3ILKDUnKs3-4Z54HrP63WR6YM_i2OqPzSl6mZCGvizTmYLthJDxD6cCBvi5vMmBs-zEee08LSgditaZNr0-re6qb_FPX6ZTnMSjGVfSFdB-AIuZOW76amYiFVGrESWo-K3zrZOxQWnfrC3H-sKrbwo_w4DPLOBvC4fM3iUf7PR_28wOCfUk6B)
+    }
+.hide-scrollbar::-webkit-scrollbar {
+    display: none
+    }
+.hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none
+    }</style>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary/30">
+<!-- TopAppBar Component -->
+<header class="fixed top-0 w-full z-50 rounded-none bg-[#01170b]/60 backdrop-blur-xl flex justify-between items-center px-12 py-6 w-full">
+<div class="text-2xl font-serif italic text-[#e8c265]">The Archivist</div>
+<nav class="hidden md:flex gap-10 items-center">
+<a class="text-[#cde9d4] uppercase tracking-widest text-[10px] font-sans hover:text-[#e8c265] transition-colors duration-300" href="#">Essays</a>
+<a class="text-[#cde9d4] uppercase tracking-widest text-[10px] font-sans hover:text-[#e8c265] transition-colors duration-300" href="#">Gallery</a>
+<a class="text-[#e8c265] border-b border-[#e8c265] pb-1 uppercase tracking-widest text-[10px] font-sans" href="#">Library</a>
+<a class="text-[#cde9d4] uppercase tracking-widest text-[10px] font-sans hover:text-[#e8c265] transition-colors duration-300" href="#">About</a>
+</nav>
+<div class="flex items-center gap-6 text-[#e8c265]">
+<button class="material-symbols-outlined hover:opacity-70 transition-opacity" data-icon="bookmark">bookmark</button>
+<button class="material-symbols-outlined hover:opacity-70 transition-opacity" data-icon="search">search</button>
+</div>
+</header>
+<main class="pt-32 pb-24">
+<!-- Hero Section: The Notebook Aesthetic -->
+<section class="px-8 md:px-24 mb-32">
+<div class="grid grid-cols-1 md:grid-cols-12 gap-12 items-end">
+<div class="md:col-span-8">
+<span class="font-label text-[10px] uppercase tracking-[0.3em] text-secondary mb-6 block">Volume IV • Issue II</span>
+<h1 class="font-headline text-6xl md:text-8xl lg:text-9xl leading-[0.9] tracking-tighter text-on-surface mb-8">
+                        The Ink of <br/><span class="italic text-primary">Collective Memory</span>
+</h1>
+</div>
+<div class="md:col-span-4 pb-4">
+<p class="font-lora text-lg text-on-surface-variant leading-relaxed italic border-l border-primary/20 pl-6">
+                        "A shared journal of the mundane and the magnificent, bound in digital parchment for the curious soul."
+                    </p>
+</div>
+</div>
+</section>
+<!-- Featured Content: Studio Layout -->
+<section class="px-8 md:px-12 mb-40">
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-16">
+<!-- Large Feature -->
+<div class="lg:col-span-2 group">
+<div class="relative overflow-hidden aspect-[16/9] mb-8 bg-surface-container">
+<img alt="A weathered leather notebook open on a dark oak desk with a fountain pen nearby" class="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700" data-alt="close-up of a vintage weathered leather journal open on a dark wooden table with soft morning light hitting the pages" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDsfSsOgxj3SDP1uEjdJuLYnU5XglEhhCvb-Wmv0OnEY4p7moHS1SNOB4QaXkUI3jlOkwjOjRZ4_QcOhO6OVffY-WJ1ihI03ayqNRl4mq96L_rJDD3kH30ruPjA24fMZDrCEZU1520G-HCLmJ_UtjPoWWEgQVGOijWE3jRILoUvTBLgDWu1qtJ0LO14iMurihdelcvi03rYlqz31tW1QCpE-6SpfTTpLcUN9VPqBqJUkNhzSucAeTB_lA-3W8StkF3OXseAqItS9HRr"/>
+<div class="absolute top-6 left-6 flex gap-2">
+<span class="bg-secondary/10 backdrop-blur-md text-secondary px-3 py-1 text-[9px] uppercase tracking-widest font-label">Community</span>
+</div>
+</div>
+<div class="max-w-2xl">
+<h2 class="font-headline text-4xl mb-6 group-hover:text-primary transition-colors duration-300">Tracing the Lines of Yesterday</h2>
+<p class="font-lora text-xl text-on-surface/80 leading-relaxed mb-8">
+                            How we document our lives defines our legacy. In this edition, we explore the tactile nature of remembrance and why the digital age craves the permanence of a written mark.
+                        </p>
+<a class="inline-flex items-center gap-4 text-primary font-label text-[11px] uppercase tracking-widest group/link" href="#">
+                            Read the entry 
+                            <span class="h-[1px] w-12 bg-primary group-hover/link:w-20 transition-all duration-500"></span>
+</a>
+</div>
+</div>
+<!-- Sidebar Grid -->
+<div class="flex flex-col gap-16">
+<div class="bg-surface-container-low p-8 parchment-texture relative">
+<h3 class="font-label text-[10px] uppercase tracking-[0.2em] text-secondary mb-8">Recent Sketches</h3>
+<div class="space-y-12">
+<div class="group cursor-pointer">
+<span class="text-primary/40 font-headline italic text-2xl block mb-2">01.</span>
+<h4 class="font-headline text-xl mb-2">The Silence of Libraries</h4>
+<p class="font-lora text-sm text-on-surface-variant italic">By Julian Vane</p>
+</div>
+<div class="group cursor-pointer">
+<span class="text-primary/40 font-headline italic text-2xl block mb-2">02.</span>
+<h4 class="font-headline text-xl mb-2">Botanical Observations</h4>
+<p class="font-lora text-sm text-on-surface-variant italic">By Elena Thorne</p>
+</div>
+<div class="group cursor-pointer">
+<span class="text-primary/40 font-headline italic text-2xl block mb-2">03.</span>
+<h4 class="font-headline text-xl mb-2">Midnight Correspondences</h4>
+<p class="font-lora text-sm text-on-surface-variant italic">By Marcus Grainger</p>
+</div>
+</div>
+</div>
+<div class="p-8 border border-outline-variant/20">
+<h3 class="font-label text-[10px] uppercase tracking-[0.2em] text-primary mb-6">Contribute</h3>
+<p class="font-lora text-sm text-on-surface-variant mb-6 leading-relaxed">
+                            Our archives are built by the community. Share your thoughts, sketches, or fragments of prose.
+                        </p>
+<button class="w-full bg-primary text-on-primary py-4 font-label text-[10px] uppercase tracking-widest font-bold hover:bg-on-primary-container transition-colors">
+                            Submit Entry
+                        </button>
+</div>
+</div>
+</div>
+</section>
+<!-- The Dialogue Section (Collaborative Journal) -->
+<section class="bg-surface-container-low py-32 parchment-texture overflow-hidden">
+<div class="max-w-5xl mx-auto px-8">
+<div class="flex flex-col md:flex-row justify-between items-baseline mb-20 gap-8">
+<div>
+<h2 class="font-headline text-5xl mb-4">The Dialogue</h2>
+<p class="font-lora italic text-secondary">Marginalia &amp; Shared Notes</p>
+</div>
+<div class="h-[1px] flex-grow mx-8 bg-secondary/20 hidden md:block"></div>
+<button class="font-label text-[10px] uppercase tracking-widest text-primary border-b border-primary pb-1">Open Inkwell</button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+<!-- Note 1 -->
+<div class="relative p-10 bg-surface border-l-2 border-primary shadow-2xl">
+<div class="absolute -top-4 -right-4 bg-secondary-container text-secondary px-3 py-1 font-label text-[9px] uppercase tracking-tighter">Verified</div>
+<p class="font-lora text-lg leading-relaxed mb-6 text-on-surface">
+                            "The way Julian describes the smell of old paper—vanilla and decay—reminds me of my grandfather's study in Sussex. Truly evocative."
+                        </p>
+<div class="flex items-center gap-4">
+<div class="w-8 h-8 rounded-full bg-secondary-container flex items-center justify-center text-[10px] font-label text-secondary">AM</div>
+<span class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">Aria Moretti • 2h ago</span>
+</div>
+</div>
+<!-- Note 2 -->
+<div class="relative p-10 bg-surface border-l-2 border-secondary shadow-2xl">
+<p class="font-lora text-lg leading-relaxed mb-6 text-on-surface">
+                            "Does anyone else feel that digital archiving lacks the 'soul' of a physical ledger? I struggle to find the same connection with a cloud drive."
+                        </p>
+<div class="flex items-center gap-4">
+<div class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-[10px] font-label text-primary">SL</div>
+<span class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">Samuel L. • 5h ago</span>
+</div>
+<div class="mt-6 pt-6 border-t border-outline-variant/10">
+<p class="font-lora text-sm italic text-secondary">12 replies written in the margins</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Asymmetric Gallery -->
+<section class="py-40 px-8 md:px-24">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 md:h-[800px]">
+<div class="md:col-span-2 md:row-span-2 bg-surface-container overflow-hidden">
+<img alt="Detailed close-up of ink spreading on wet paper" class="w-full h-full object-cover opacity-70 hover:opacity-100 transition-opacity duration-1000" data-alt="macro photograph of blue ink diffusing into thick watercolor paper with delicate textures and gradients" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCpGpaQKRwY8G1to93f-JNLse2Z2MStjhMfUqTy0EG_wPjN890NtLqvKeKET3_slwEmuJNkO8YDWzHSNBpng9fjkiliQPrIBGy137X3oiZvxiWPVbcVVJg6_N4nvJ779Y2WWDsKkIm5_GHJHMmHKHL48fXoaDH_hT3Ztfsf1VaMAZEftHc1qdYMSuIuWMhyIG_tZZVHaNKDatbgU53QAw3sW6wB8d4LWJezAp1CPcFwPEKJ1_EcntbuSg5y7fHkYnRaWHEq3FKlu7fb"/>
+</div>
+<div class="md:col-span-1 md:row-span-1 bg-surface-container overflow-hidden">
+<img alt="A stack of old letters tied with twine" class="w-full h-full object-cover opacity-70 hover:opacity-100 transition-opacity duration-1000" data-alt="a bundle of vintage handwritten letters tied with rustic twine sitting on a sunlit windowsill" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAOyB2VOxaFWCkX2hDIm4BsQDvZk9HXk16-jyLCen7lBTF7xE1gmZvKyZOCXvXT5vEwNSHujdRAxh0YNyEMAfEI64eWVApTmpCcHVOOqxtqXTVSXJIHHrMWCqte2QBIAJS0J0qgkL-xDOGR78iw2XUNt7z74nAdLQHV89hhD3BMU6F805WzgZpeh55YI5DT7OtKdp-h24eWUpzyJLAG-5UlQ5_ym67rTOgXMVz04WGA0hXFsskDMKIyv3dazL8UjjYamePPukd8IYHj"/>
+</div>
+<div class="md:col-span-1 md:row-span-2 bg-surface-container overflow-hidden">
+<img alt="An antique typewriter keys in soft focus" class="w-full h-full object-cover opacity-70 hover:opacity-100 transition-opacity duration-1000" data-alt="extreme close up of antique typewriter keys with metallic finish and soft warm bokeh in the background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDd7OX7DK07ToDTjZAFLK8TsJNKzOoeEGrjcMUyWqLlByXKafE0T2aPzFMNICUpLEgN_6qI9lJoujUTYjsRrv7QGZNgUeEtQ_VARGuv2hUxvU41T-jYFtC_RAzES3TXedZxAyHT7zg5qlYrG4bCs23c7NYk_T8J39XHP82u0unpZSOewXu3yNUHL3W7BBk831iGdS4OHLKq8NKOfHd5CuklLrg1r1WWHqPisipqHbxOyTucy4UswZzE0gg_HsOx1yAVNmFx8Je7nD8o"/>
+</div>
+<div class="md:col-span-1 md:row-span-1 bg-surface-container overflow-hidden">
+<img alt="Dried wildflowers inside a book" class="w-full h-full object-cover opacity-70 hover:opacity-100 transition-opacity duration-1000" data-alt="pressed dried flowers lying between the pages of an old book with elegant typography" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCuCel_Qk7k3F7iCcz8TkdHpwfYhwga655e5BOhxg_bsNrmKTYN60_CGgvPdO1uO_dHHhKnLC5h3Azxt8a-UJj2Eb5Slr79GioJ9-Gw9zEEBMRAW2qShxhv9ns4klSk5eM6TykTmkt9JPOYJxxFI-4cHL5ls3Da-WKJS9McwhrdiOWiyE9PihuAjXGR3eSEBMK_w05xHO8eDbx6B64rlNaQhZJld5_1Taz13D1zz0lPWWdCbjlSoGTVHVRzYKpIOE7zTIct5kyB15nR"/>
+</div>
+</div>
+<div class="mt-12 text-center">
+<p class="font-headline text-2xl italic text-on-surface-variant">Curating the visual fragments of our story.</p>
+</div>
+</section>
+</main>
+<!-- Footer Component -->
+<footer class="bg-[#082013] flex flex-col items-center justify-center gap-8 py-24 px-8 w-full border-t border-[#cde9d4]/10">
+<div class="text-[#e8c265] font-serif uppercase tracking-[0.2em] text-xl">THE ARCHIVIST</div>
+<nav class="flex flex-wrap justify-center gap-12">
+<a class="text-[#cde9d4]/60 uppercase tracking-widest text-[9px] font-sans hover:text-[#cde9d4] transition-all duration-500" href="#">Colophon</a>
+<a class="text-[#cde9d4]/60 uppercase tracking-widest text-[9px] font-sans hover:text-[#cde9d4] transition-all duration-500" href="#">Provenance</a>
+<a class="text-[#cde9d4]/60 uppercase tracking-widest text-[9px] font-sans hover:text-[#cde9d4] transition-all duration-500" href="#">Terms</a>
+<a class="text-[#cde9d4]/60 uppercase tracking-widest text-[9px] font-sans hover:text-[#cde9d4] transition-all duration-500" href="#">Inquiry</a>
+</nav>
+<div class="mt-8 text-center">
+<p class="font-serif text-sm italic text-[#e8c265]">© MMXXIV THE ARCHIVIST. PRINTED IN DIGITAL ETHER.</p>
+</div>
+<div class="flex gap-6 mt-4">
+<div class="w-10 h-10 border border-primary/20 flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-colors cursor-pointer">
+<span class="material-symbols-outlined">share</span>
+</div>
+<div class="w-10 h-10 border border-primary/20 flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-colors cursor-pointer">
+<span class="material-symbols-outlined">mail</span>
+</div>
+</div>
+</footer>
+</body></html>

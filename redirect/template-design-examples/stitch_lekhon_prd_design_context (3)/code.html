@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ARCHIVIST | The Modern Literary Journal</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&amp;family=Noto+Serif:ital,wght@0,100..900;1,100..900&amp;family=Inter:wght@100..900&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary-fixed-dim": "#c8c6c2",
+                        "on-secondary": "#143723",
+                        "on-tertiary-fixed": "#1c1c1a",
+                        "primary-fixed-dim": "#e8c265",
+                        "secondary": "#a9d0b4",
+                        "primary-fixed": "#ffdf96",
+                        "error": "#ffb4ab",
+                        "on-primary-fixed-variant": "#594400",
+                        "on-primary": "#3e2e00",
+                        "surface-bright": "#263e2f",
+                        "outline-variant": "#424843",
+                        "on-surface-variant": "#c1c8c1",
+                        "surface": "#01170b",
+                        "secondary-fixed-dim": "#a9d0b4",
+                        "on-primary-container": "#ac8b34",
+                        "outline": "#8c938b",
+                        "primary-container": "#342600",
+                        "tertiary-container": "#282826",
+                        "on-primary-fixed": "#251a00",
+                        "surface-container-high": "#172f21",
+                        "on-surface": "#cde9d4",
+                        "tertiary-fixed": "#e5e2de",
+                        "inverse-on-surface": "#1e3527",
+                        "on-background": "#cde9d4",
+                        "surface-dim": "#01170b",
+                        "surface-container-lowest": "#001207",
+                        "on-secondary-container": "#98bea3",
+                        "inverse-surface": "#cde9d4",
+                        "on-secondary-fixed-variant": "#2b4e38",
+                        "surface-container-highest": "#223a2b",
+                        "primary": "#e8c265",
+                        "surface-container-low": "#082013",
+                        "secondary-fixed": "#c5eccf",
+                        "on-error": "#690005",
+                        "on-tertiary": "#31302e",
+                        "surface-tint": "#e8c265",
+                        "secondary-container": "#2b4e38",
+                        "on-secondary-fixed": "#002110",
+                        "background": "#01170b",
+                        "surface-variant": "#223a2b",
+                        "tertiary": "#c8c6c2",
+                        "error-container": "#93000a",
+                        "on-error-container": "#ffdad6",
+                        "surface-container": "#0c2417",
+                        "on-tertiary-fixed-variant": "#474744",
+                        "on-tertiary-container": "#908f8c",
+                        "inverse-primary": "#765a00"
+                    },
+                    fontFamily: {
+                        "headline": ["Newsreader"],
+                        "body": ["Noto Serif"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        .editorial-shadow {
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+        .glass-nav {
+            background-color: rgba(1, 23, 11, 0.85);
+            backdrop-filter: blur(12px);
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary selection:text-on-primary">
+<!-- TopNavBar from Shared Components JSON -->
+<nav class="fixed top-0 z-50 w-full flex justify-between items-center px-12 py-6 bg-[#01170b] transition-all duration-500 ease-in-out">
+<div class="text-2xl font-['Newsreader'] font-black tracking-tighter text-[#e8c265]">ARCHIVIST</div>
+<div class="hidden md:flex gap-10">
+<a class="font-['Newsreader'] uppercase tracking-widest text-xs font-bold text-[#e8c265] border-b border-[#e8c265] pb-1" href="#">Essays</a>
+<a class="font-['Newsreader'] uppercase tracking-widest text-xs font-bold text-[#cde9d4] hover:text-[#e8c265] transition-colors duration-300" href="#">Archives</a>
+<a class="font-['Newsreader'] uppercase tracking-widest text-xs font-bold text-[#cde9d4] hover:text-[#e8c265] transition-colors duration-300" href="#">Collections</a>
+<a class="font-['Newsreader'] uppercase tracking-widest text-xs font-bold text-[#cde9d4] hover:text-[#e8c265] transition-colors duration-300" href="#">Chronicle</a>
+</div>
+<div class="flex items-center gap-6">
+<button class="text-[#cde9d4] hover:text-[#e8c265] transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="w-10 h-10 bg-surface-container-high border border-outline-variant flex items-center justify-center">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="Portrait of a sophisticated man with glasses in a dark library setting with moody lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCXoX5MD83UWpjNORFiLAWJCBZT2B2Z6kzcqAzG1j5i_x3Shb3m88iQz0ErFkccGlDCtXYiQTtHeB_CtThwVawBdxCgN1FWeFyITeR13wl4AvX1oHPZOuwX_KAmwysGBTpytfAtyld2_1L3QGqf_Q5XNgau8LcEG6YgZ2s5pQgC9UhXwH88nCwX51rTQ9ktSjn7GCpNfGb5ffNdDhZWsBbTJ36Ba6Ks_zD0gXSQGx8OOvfRTunbpTNNixMOAIyFzLDVFgjsRC5DWcJd"/>
+</div>
+</div>
+</nav>
+<!-- Hero Section: Soft Cream Background & Bold Deep Heading -->
+<header class="relative pt-48 pb-32 px-12 bg-[#fdfaf3] text-surface overflow-hidden">
+<div class="max-w-7xl mx-auto flex flex-col items-center text-center">
+<span class="font-label uppercase tracking-[0.3em] text-[10px] mb-6 text-on-primary-container">Volume IV • Issue II</span>
+<h1 class="font-headline font-black text-7xl md:text-9xl tracking-tighter leading-[0.85] mb-12 max-w-5xl">
+                The Architecture of <span class="italic font-normal">Stillness</span>.
+            </h1>
+<p class="font-body text-xl max-w-2xl leading-relaxed mb-12 opacity-80">
+                Exploring the silent corners of modern existence through long-form prose and curated archival discoveries.
+            </p>
+<div class="flex gap-4">
+<button class="px-10 py-4 bg-surface text-on-surface font-label font-bold uppercase tracking-widest text-xs hover:bg-surface-container-high transition-all">
+                    Begin Reading
+                </button>
+<button class="px-10 py-4 border border-surface text-surface font-label font-bold uppercase tracking-widest text-xs hover:bg-surface hover:text-white transition-all">
+                    View Catalog
+                </button>
+</div>
+</div>
+<!-- Decorative subtle element -->
+<div class="absolute bottom-0 right-0 opacity-10 pointer-events-none">
+<span class="font-headline text-[25rem] font-black -mb-32 select-none text-surface">M</span>
+</div>
+</header>
+<main class="max-w-7xl mx-auto px-12 pt-32">
+<!-- Section Label -->
+<div class="flex items-center justify-between mb-20">
+<div>
+<h2 class="font-headline text-4xl font-bold text-primary italic">Featured Works</h2>
+<div class="h-px w-24 bg-primary mt-4"></div>
+</div>
+<div class="font-label uppercase tracking-widest text-[10px] text-on-surface-variant flex gap-4">
+<span class="text-primary">Latest</span>
+<span class="opacity-40">Popular</span>
+<span class="opacity-40">Editor's Choice</span>
+</div>
+</div>
+<!-- Asymmetric Content Grid -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-12">
+<!-- Featured Card (Large) -->
+<article class="md:col-span-8 flex flex-col gap-8 group">
+<div class="relative overflow-hidden aspect-[16/9] bg-surface-container-low">
+<img alt="Interior" class="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105" data-alt="Minimalist modern architecture with concrete walls and light streaming through a narrow window casting sharp shadows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBCmW_w9VhBVChVgSMfe5_lAFZRACjabEiR_mxPjQCXRqcSQwdkJ3V4t47M_RyhRPulkO23bB3YL8vfZo0E4lkMOQui-z8nVExt-uoBT-Fohv_YLVeCfA2h49EptaWqIfzYx7VHI6JdjuO5MHPtPIXxWWPley2qzXik-2CviQlX2M2iIAZpG5TQjINDgwEgL5V61SUs02EbohubKwRKe4v_6wQKrwqv3sRf9QBWYTLdngrvJK2lAXbu3nvuguzvtOaqOsjQSVxMaGmW"/>
+<div class="absolute top-6 left-6 px-3 py-1 bg-primary text-on-primary font-label text-[10px] uppercase font-black tracking-widest">
+                        Feature Essay
+                    </div>
+</div>
+<div class="max-w-2xl">
+<h3 class="font-headline text-5xl font-bold mb-6 leading-tight group-hover:text-primary transition-colors">The Elegance of Entropy: Finding Beauty in Decay</h3>
+<p class="font-body text-lg text-on-surface-variant leading-relaxed mb-6">
+                        An examination of how the passage of time transforms contemporary structures into timeless artifacts of human ambition and neglect.
+                    </p>
+<div class="flex items-center gap-4 text-[10px] font-label uppercase tracking-widest">
+<span class="text-primary font-bold">Julian Vane</span>
+<span class="text-outline">12 Min Read</span>
+<span class="px-2 py-0.5 border border-outline-variant text-outline-variant">Philosophy</span>
+</div>
+</div>
+</article>
+<!-- Sidebar Shorts -->
+<div class="md:col-span-4 flex flex-col gap-12">
+<article class="bg-surface-container-low p-8 border-l-2 border-primary group">
+<span class="font-label text-[10px] uppercase tracking-widest text-primary font-bold mb-4 block">Archive Note</span>
+<h4 class="font-headline text-2xl font-bold mb-4 group-hover:italic transition-all cursor-pointer">The Forgotten Cartography of 18th Century Venice</h4>
+<p class="font-body text-sm text-on-surface-variant mb-6 opacity-80">A short exploration into the maps that defined a maritime empire before its decline.</p>
+<div class="flex gap-2">
+<span class="font-label text-[9px] uppercase tracking-widest text-outline">Geography</span>
+</div>
+</article>
+<article class="bg-surface-container p-8 group">
+<span class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant mb-4 block">Daily Short</span>
+<h4 class="font-headline text-2xl font-bold mb-4 group-hover:italic transition-all cursor-pointer">The Silence of the Paperweight</h4>
+<p class="font-body text-sm text-on-surface-variant mb-6 opacity-80">Reflections on the tangible objects that anchor our digital workspaces.</p>
+<div class="flex gap-2">
+<span class="font-label text-[9px] uppercase tracking-widest text-outline">Materialism</span>
+</div>
+</article>
+<div class="relative aspect-square bg-[#e8c265]/10 p-8 flex flex-col justify-end">
+<h4 class="font-headline text-3xl font-black text-primary leading-none mb-4">Subscribe to the Printed Quarterly</h4>
+<button class="w-full py-4 border border-primary text-primary font-label font-bold uppercase tracking-widest text-xs hover:bg-primary hover:text-on-primary transition-all">
+                        Join the Order
+                    </button>
+</div>
+</div>
+</div>
+<!-- Secondary Grid Section -->
+<section class="mt-40 grid grid-cols-1 md:grid-cols-3 gap-12">
+<!-- Content Card 1 -->
+<article class="flex flex-col gap-6 group">
+<div class="aspect-[4/5] bg-surface-container-high overflow-hidden">
+<img alt="Books" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A stack of old, leather-bound books resting on a dark oak table with a single quill pen beside them" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBP0GxPQTSDP97oD38VLz0eiX6Ae_FfKEc878miN0Juti4xbID0YB4sf6dZZlHcEW_v39-OSQ8WFEH9cn8ChwciWith0RKcD3XhfQDAUbca3Et-BlNym7Cb-_F0uPylVPjoI4SbYxB5_el5LZVEYGiEKIDVOy9r0fbng0X0gMJS7TcTmXiRbyWDDtoOvHiu0_oxznQac8K2wEQOwPVbcscSTpydPbSqSC9c0o9YmwEOPJ0c3Fd2bR4w4FugKJbhUh6ivKK1CzcHF03U"/>
+</div>
+<div>
+<div class="font-label uppercase tracking-widest text-[10px] text-primary mb-3">Literary Theory</div>
+<h4 class="font-headline text-2xl font-bold group-hover:text-primary transition-colors">Beyond the Margin: Notes on Collaborative Reading</h4>
+<div class="mt-4 flex gap-3">
+<span class="text-[9px] font-label uppercase tracking-tighter text-on-surface-variant bg-surface-container px-2 py-0.5">Article</span>
+<span class="text-[9px] font-label uppercase tracking-tighter text-on-surface-variant bg-surface-container px-2 py-0.5">8 min</span>
+</div>
+</div>
+</article>
+<!-- Content Card 2 -->
+<article class="flex flex-col gap-6 group">
+<div class="aspect-[4/5] bg-surface-container-high overflow-hidden">
+<img alt="Typewriter" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Close-up of a vintage black typewriter key with amber dust particles in a beam of sunlight" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCTJkaqrbtcY5rg9-IMfmjlpfrTCGuActahd6CWVqiUcmp25xIelwbTFp0SeV1d3_T5icGmSy6N8cHjudQ5VRkdTc0Fxnq8w_5ywlJ38veUg6Kcb-Qzj7PHUxHASegC9iZv5rdY6fMrZpjDN40KgQmYVRqKnRKvovVE3TDb13SF6DFUoBzWN2ZxzqmuBxKdKCKqa2AHscVtf5bzVH60PFBgnWIEnM1b_Ut0DGnjITdXLz8gTNxRcasnoVU-HjqJPt3VOhZQnO4DHKFN"/>
+</div>
+<div>
+<div class="font-label uppercase tracking-widest text-[10px] text-primary mb-3">Technology</div>
+<h4 class="font-headline text-2xl font-bold group-hover:text-primary transition-colors">The Mechanical Pulse: How Hardware Shapes Thought</h4>
+<div class="mt-4 flex gap-3">
+<span class="text-[9px] font-label uppercase tracking-tighter text-on-surface-variant bg-surface-container px-2 py-0.5">Editorial</span>
+<span class="text-[9px] font-label uppercase tracking-tighter text-on-surface-variant bg-surface-container px-2 py-0.5">15 min</span>
+</div>
+</div>
+</article>
+<!-- Content Card 3 -->
+<article class="flex flex-col gap-6 group">
+<div class="aspect-[4/5] bg-surface-container-high overflow-hidden">
+<img alt="Art" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Monochrome abstract art piece with sweeping textures resembling wind-blown sand dunes under a dark sky" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAZAMkOU0tnBaL5wxtnfzUp4yAKAQR1QNJSYTCvZfipaUdc_uAqecZ9Qhpr4kTzqbFQnrFKF6i0A1LcSuQUPmnZRUBONfnmMK04i1AiVWOAwZdzXFJllyhcpa2kHYlgQ7z2LneuGVS_8TLq6cnUEuCLnQo5zYjJwfZQnOfWjNlmpEMCv_Tspqg2HjEkUhQwTCuFsw3xLmdXC-bksvdIE0y3aExJLe4hKESwhH5iq43vSs5IzbffHomjeRjAXpUmegZLHZRcgsve5Xaw"/>
+</div>
+<div>
+<div class="font-label uppercase tracking-widest text-[10px] text-primary mb-3">Curation</div>
+<h4 class="font-headline text-2xl font-bold group-hover:text-primary transition-colors">Minimalism as a Radical Act in the Age of Noise</h4>
+<div class="mt-4 flex gap-3">
+<span class="text-[9px] font-label uppercase tracking-tighter text-on-surface-variant bg-surface-container px-2 py-0.5">Critique</span>
+<span class="text-[9px] font-label uppercase tracking-tighter text-on-surface-variant bg-surface-container px-2 py-0.5">12 min</span>
+</div>
+</div>
+</article>
+</section>
+</main>
+<!-- Footer from Shared Components JSON -->
+<footer class="bg-[#01170b] border-t border-[#0c2417] pt-20 pb-12 mt-24">
+<div class="max-w-7xl mx-auto px-12 flex flex-col md:flex-row justify-between items-center gap-8">
+<div class="text-lg font-black text-[#e8c265] font-headline">ARCHIVIST</div>
+<div class="flex gap-8">
+<a class="font-['Newsreader'] uppercase tracking-widest text-[10px] text-[#cde9d4]/60 hover:text-[#e8c265] transition-opacity" href="#">Privacy</a>
+<a class="font-['Newsreader'] uppercase tracking-widest text-[10px] text-[#cde9d4]/60 hover:text-[#e8c265] transition-opacity" href="#">Terms</a>
+<a class="font-['Newsreader'] uppercase tracking-widest text-[10px] text-[#cde9d4]/60 hover:text-[#e8c265] transition-opacity" href="#">Masthead</a>
+<a class="font-['Newsreader'] uppercase tracking-widest text-[10px] text-[#cde9d4]/60 hover:text-[#e8c265] transition-opacity" href="#">Contact</a>
+</div>
+<div class="font-['Newsreader'] uppercase tracking-widest text-[10px] text-[#cde9d4]/40">
+                © 2024 THE MODERN ARCHIVIST. ALL RIGHTS RESERVED.
+            </div>
+</div>
+</footer>
+<!-- Progress Serif (Signature Component) -->
+<div class="fixed left-6 top-1/2 -translate-y-1/2 hidden lg:flex flex-col items-center gap-4">
+<span class="font-label uppercase tracking-widest text-[8px] rotate-90 origin-center text-primary whitespace-nowrap mb-8">Reading Progress</span>
+<div class="h-48 w-[1px] bg-surface-container-highest relative">
+<div class="absolute top-0 left-0 w-full bg-primary h-1/3"></div>
+</div>
+</div>
+</body></html>
