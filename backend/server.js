@@ -30,6 +30,7 @@ const livekitRoutes = require('./routes/livekit');
 const zohoAuthRoutes = require('./routes/zohoAuth');
 const draftRoutes = require('./routes/draftRoutes');
 const chatbotRoutes = require('./routes/chatbot');
+const seoRoutes = require('./routes/seoRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { systemMonitor } = require('./middleware/monitoring');
 const { startDatabaseMonitor } = require('./utils/dbMonitor');
@@ -121,6 +122,9 @@ app.get('/api', (req, res) => {
 app.get('/api/test', (req, res) => {
   res.json({ success: true, message: 'Backend is working!', timestamp: new Date() });
 });
+
+// SEO + crawler routes
+app.use('/', seoRoutes);
 
 // Routes
 app.use('/api/auth/zoho', authLimiter, zohoAuthRoutes);
