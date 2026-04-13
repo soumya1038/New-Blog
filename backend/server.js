@@ -5,6 +5,9 @@ const compression = require('compression');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const mongoSanitize = require('express-mongo-sanitize');
 require('dotenv').config();
 
 const authRoutes = require('./routes/authRoutes');
@@ -39,6 +42,7 @@ const cleanupExpiredGuests = require('./jobs/cleanupExpiredGuests');
 
 const app = express();
 const server = http.createServer(app);
+app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : 0);
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
@@ -64,6 +68,41 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(compression());
+
+// Security middleware
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    hsts:
+      process.env.NODE_ENV === 'production'
+        ? { maxAge: 60 * 60 * 24 * 180, includeSubDomains: true, preload: false }
+        : false
+  })
+);
+app.use(mongoSanitize());
+
+const toPositiveInt = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const authLimiter = rateLimit({
+  windowMs: toPositiveInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+  max: toPositiveInt(process.env.AUTH_RATE_LIMIT_MAX, 12),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, message: 'Too many authentication attempts. Please try again later.' }
+});
+
+const apiLimiter = rateLimit({
+  windowMs: toPositiveInt(process.env.API_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+  max: toPositiveInt(process.env.API_RATE_LIMIT_MAX, 180),
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 app.use(systemMonitor);
 app.use('/uploads', express.static('uploads'));
 
@@ -84,26 +123,26 @@ app.get('/api/test', (req, res) => {
 });
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/blogs', blogRoutes);
-app.use('/api/articles', articleRoutes);
-app.use('/api/shorts', shortRoutes);
-app.use('/api/comments', commentRoutes);
-app.use('/api/social', socialRoutes);
-app.use('/api/external', apiRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/guest', guestRoutes);
-app.use('/api/messages', messageRoutes);
-app.use('/api/voice', voiceRoutes);
-app.use('/api/files', fileRoutes);
-app.use('/api/groups', groupRoutes);
-app.use('/api/calls', callRoutes);
-app.use('/api/livekit', livekitRoutes);
-app.use('/api/auth/zoho', zohoAuthRoutes);
-app.use('/api/drafts', draftRoutes);
-app.use('/api/chatbot', chatbotRoutes);
+app.use('/api/auth/zoho', authLimiter, zohoAuthRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/users', apiLimiter, userRoutes);
+app.use('/api/blogs', apiLimiter, blogRoutes);
+app.use('/api/articles', apiLimiter, articleRoutes);
+app.use('/api/shorts', apiLimiter, shortRoutes);
+app.use('/api/comments', apiLimiter, commentRoutes);
+app.use('/api/social', apiLimiter, socialRoutes);
+app.use('/api/external', apiLimiter, apiRoutes);
+app.use('/api/ai', apiLimiter, aiRoutes);
+app.use('/api/admin', apiLimiter, adminRoutes);
+app.use('/api/guest', apiLimiter, guestRoutes);
+app.use('/api/messages', apiLimiter, messageRoutes);
+app.use('/api/voice', apiLimiter, voiceRoutes);
+app.use('/api/files', apiLimiter, fileRoutes);
+app.use('/api/groups', apiLimiter, groupRoutes);
+app.use('/api/calls', apiLimiter, callRoutes);
+app.use('/api/livekit', apiLimiter, livekitRoutes);
+app.use('/api/drafts', apiLimiter, draftRoutes);
+app.use('/api/chatbot', apiLimiter, chatbotRoutes);
 
 // SPA fallback - MUST be AFTER all API routes
 if (process.env.NODE_ENV === 'production') {
