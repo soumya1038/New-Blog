@@ -1,6 +1,6 @@
 {
   "name": "blog-frontend",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -9,6 +9,7 @@
     "@livekit/components-styles": "^1.2.0",
     "@mui/icons-material": "^7.3.4",
     "@mui/material": "^7.3.4",
+    "@sentry/react": "^7.120.4",
     "axios": "^1.6.2",
     "crypto-js": "^4.2.0",
     "date-fns": "^4.1.0",

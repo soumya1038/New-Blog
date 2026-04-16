@@ -1,6 +1,9 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const { initializeBackgroundQueues, shutdownBackgroundQueues } = require('./queueService');
+const { initSentry } = require('../utils/sentry');
+
+initSentry();
 
 let shuttingDown = false;
 

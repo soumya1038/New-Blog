@@ -37,6 +37,7 @@ const { systemMonitor } = require('./middleware/monitoring');
 const { startDatabaseMonitor } = require('./utils/dbMonitor');
 const { initializeCacheStore } = require('./utils/cacheStore');
 const { ensureSearchIndexes } = require('./utils/searchIndexBootstrap');
+const { initSentry, attachSentryErrorHandler } = require('./utils/sentry');
 const chatSocket = require('./socket/chatSocket');
 const { cleanupOldNotifications } = require('./controllers/socialController');
 const cleanupExpiredStatuses = require('./utils/statusCleanup');
@@ -48,6 +49,8 @@ const { initializeBackgroundQueues } = require('./jobs/queueService');
 const app = express();
 const server = http.createServer(app);
 app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : 0);
+initSentry({ app });
+
 initializeCacheStore().catch((error) => {
   console.warn('[cache] Initialization warning:', error?.message || error);
 });
@@ -177,6 +180,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Error handler
+attachSentryErrorHandler(app);
 app.use(errorHandler);
 
 // Initialize Socket.io

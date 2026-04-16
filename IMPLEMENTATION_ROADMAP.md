@@ -3,8 +3,8 @@
 This roadmap is organized into small, reviewable PRs so we can ship safely without breaking existing behavior.
 
 Current status (development branch):
-- Completed: PR-1, PR-2, PR-3, PR-4, PR-5, PR-6, PR-7, PR-8
-- Next: PR-9 (Error tracking + runtime visibility)
+- Completed: PR-1, PR-2, PR-3, PR-4, PR-5, PR-6, PR-7, PR-8, PR-9
+- Next: PR-10 (Monitoring + CI/CD alignment)
 
 ## PR-1: Security Baseline Hardening (Low Risk)
 Goal: Add safer defaults for abuse prevention without changing user flows.

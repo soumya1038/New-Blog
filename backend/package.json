@@ -1,6 +1,6 @@
 {
   "name": "blog-backend",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,6 +11,7 @@
     "diagnose": "node check-startup.js"
   },
   "dependencies": {
+    "@sentry/node": "^7.120.4",
     "axios": "^1.13.1",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.74.1",

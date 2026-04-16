@@ -18,6 +18,7 @@ import { useRouteTracker } from './hooks/useRouteTracker';
 import guestTracker from './services/guestTracking';
 import { getCallState, clearCallState } from './utils/callStateManager';
 import { useGroupCall } from './context/GroupCallContext';
+import { captureFrontendException } from './utils/sentry';
 
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
@@ -280,7 +281,15 @@ function AppContent() {
   }
 
   return (
-    <ErrorBoundary FallbackComponent={ErrorFallback}>
+    <ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onError={(error, info) =>
+        captureFrontendException(error, {
+          tags: { area: 'react-error-boundary' },
+          extras: { componentStack: info?.componentStack }
+        })
+      }
+    >
       <div className="min-h-screen">
         <Navbar />
         {user && <GlobalGroupCallListener />}

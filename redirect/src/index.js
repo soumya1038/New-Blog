@@ -5,6 +5,9 @@ import './index.css';
 import './i18n';
 import App from './App';
 import { ThemeProvider } from './context/ThemeContext';
+import { initSentry } from './utils/sentry';
+
+initSentry();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
