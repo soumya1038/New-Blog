@@ -172,6 +172,8 @@ Ops playbook:
 - See `docs/ops/DEPLOY_MONITORING_PLAYBOOK.md` for secret setup, alert tuning, and incident triage.
 
 Overall app release versioning:
+- Overall app version lives in root:
+  - `package.json`
 - Keep component versions separate:
   - `backend/package.json`
   - `redirect/package.json`
@@ -179,7 +181,7 @@ Overall app release versioning:
   - `npm run release:overall -- <version> [--tag] [--push-tag]`
 - Before each push, apply your preferred version scheme:
   - `npm run version:push`
-  - Example: `1.0.2 -> 1.1.2`
+  - Example: `1.0.2 -> 1.1.2` (overall + backend + redirect)
 - Details:
   - `docs/releases/README.md`
 

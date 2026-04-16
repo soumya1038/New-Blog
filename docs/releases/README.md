@@ -2,7 +2,7 @@
 
 This project uses:
 - separate component versions (`backend/package.json`, `redirect/package.json`)
-- one overall app release version via Git tag + release notes
+- one overall app release version (`package.json`) via Git tag + release notes
 
 ## Command
 
@@ -20,6 +20,7 @@ npm run release:overall -- 1.1.0 --tag --push-tag
 
 What it does:
 1. Reads current component versions:
+   - overall (`package.json`)
    - backend
    - redirect
 2. Creates release note:
@@ -46,7 +47,10 @@ What it does:
 Before every push to GitHub:
 1. Run:
    - `npm run version:push`
-2. This bumps only the middle digit (minor) and keeps the last digit (patch) as commit counter style.
+2. This bumps only the middle digit (minor) and keeps the last digit (patch) as commit counter style for:
+   - overall app version
+   - backend version
+   - redirect version
 
 Example:
 - `1.0.2` -> `1.1.2`

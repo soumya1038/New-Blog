@@ -5,6 +5,7 @@ const { execSync } = require('child_process');
 
 const rootDir = path.resolve(__dirname, '..');
 const components = [
+  { name: 'overall', dir: rootDir },
   { name: 'backend', dir: path.join(rootDir, 'backend') },
   { name: 'redirect', dir: path.join(rootDir, 'redirect') }
 ];

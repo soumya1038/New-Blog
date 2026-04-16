@@ -10,10 +10,11 @@ const printUsage = () => {
   console.log(
     [
       'Usage:',
-      '  npm run release:overall -- <version> [--tag] [--push-tag]',
+      '  npm run release:overall -- [version] [--tag] [--push-tag]',
       '',
       'Examples:',
       '  npm run release:overall -- 1.1.0',
+      '  npm run release:overall --',
       '  npm run release:overall -- 1.1.0 --tag',
       '  npm run release:overall -- 1.1.0 --tag --push-tag'
     ].join('\n')
@@ -31,17 +32,6 @@ const versionArg = args.find((arg) => !arg.startsWith('--'));
 const shouldTag = args.includes('--tag') || args.includes('-t');
 const shouldPushTag = args.includes('--push-tag');
 
-if (!versionArg) {
-  printUsage();
-  process.exit(1);
-}
-
-const normalizedVersion = String(versionArg).replace(/^v/i, '');
-if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(normalizedVersion)) {
-  console.error(`Invalid version "${versionArg}". Use semver format like 1.2.3`);
-  process.exit(1);
-}
-
 if (shouldPushTag && !shouldTag) {
   console.error('--push-tag requires --tag.');
   process.exit(1);
@@ -51,14 +41,28 @@ const releaseTag = `v${normalizedVersion}`;
 
 const backendPkgPath = path.join(rootDir, 'backend', 'package.json');
 const redirectPkgPath = path.join(rootDir, 'redirect', 'package.json');
+const overallPkgPath = path.join(rootDir, 'package.json');
 
-if (!fs.existsSync(backendPkgPath) || !fs.existsSync(redirectPkgPath)) {
-  console.error('Cannot find backend/redirect package.json files.');
+if (!fs.existsSync(overallPkgPath) || !fs.existsSync(backendPkgPath) || !fs.existsSync(redirectPkgPath)) {
+  console.error('Cannot find root/backend/redirect package.json files.');
+  process.exit(1);
+}
+
+const overallVersionFromPkg = readJson(overallPkgPath).version || 'unknown';
+const normalizedVersion = String(versionArg || overallVersionFromPkg).replace(/^v/i, '');
+if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(normalizedVersion)) {
+  if (!versionArg) {
+    console.error('Root package.json does not have a valid semver "version".');
+  } else {
+    console.error(`Invalid version "${versionArg}". Use semver format like 1.2.3`);
+  }
+  printUsage();
   process.exit(1);
 }
 
 const backendVersion = readJson(backendPkgPath).version || 'unknown';
 const redirectVersion = readJson(redirectPkgPath).version || 'unknown';
+const overallVersion = normalizedVersion;
 const releaseDate = todayISO();
 
 ensureDir(releaseDir);
@@ -74,6 +78,7 @@ const releaseNotes = `# ${releaseTag}
 Release Date: ${releaseDate}
 
 ## Component Versions
+- Overall: \`${overallVersion}\`
 - Backend: \`${backendVersion}\`
 - Redirect: \`${redirectVersion}\`
 
@@ -105,7 +110,7 @@ if (fs.existsSync(releaseLogPath)) {
   if (!releaseLog.endsWith('\n')) releaseLog += '\n';
 }
 
-const releaseLine = `- ${releaseTag} (${releaseDate}) - backend ${backendVersion}, redirect ${redirectVersion} - [notes](./${releaseTag}.md)\n`;
+const releaseLine = `- ${releaseTag} (${releaseDate}) - overall ${overallVersion}, backend ${backendVersion}, redirect ${redirectVersion} - [notes](./${releaseTag}.md)\n`;
 if (!releaseLog.includes(releaseLine)) {
   if (!releaseLog.includes('\n- ')) {
     releaseLog += releaseLine;
@@ -124,7 +129,7 @@ if (!releaseLog.includes(releaseLine)) {
 
 console.log(`Created release note: ${path.relative(rootDir, releaseNotePath)}`);
 console.log(`Updated release log: ${path.relative(rootDir, releaseLogPath)}`);
-console.log(`Components: backend ${backendVersion}, redirect ${redirectVersion}`);
+console.log(`Components: overall ${overallVersion}, backend ${backendVersion}, redirect ${redirectVersion}`);
 
 if (shouldTag) {
   let tagExists = false;
@@ -140,7 +145,7 @@ if (shouldTag) {
     process.exit(1);
   }
 
-  const tagMessage = `${releaseTag} (backend ${backendVersion}, redirect ${redirectVersion})`;
+  const tagMessage = `${releaseTag} (overall ${overallVersion}, backend ${backendVersion}, redirect ${redirectVersion})`;
   execSync(`git tag -a ${releaseTag} -m "${tagMessage}"`, { cwd: rootDir, stdio: 'inherit' });
   console.log(`Created git tag: ${releaseTag}`);
 
