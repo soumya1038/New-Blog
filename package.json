@@ -13,7 +13,8 @@
     "test": "npm run test --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present",
     "release:overall": "node scripts/prepare-overall-release.js",
-    "version:push": "node scripts/bump-push-version.js"
+    "version:push": "node scripts/bump-push-version.js",
+    "version:release": "node scripts/bump-push-version.js --include-overall --require-main"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^6.21.0",

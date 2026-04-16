@@ -180,8 +180,9 @@ Overall app release versioning:
 - Create one overall release note/tag:
   - `npm run release:overall -- <version> [--tag] [--push-tag]`
 - Before each push, apply your preferred version scheme:
-  - `npm run version:push`
-  - Example: `1.0.2 -> 1.1.2` (overall + backend + redirect)
+  - Non-main branches: `npm run version:push` (backend + redirect only)
+  - Main branch: `npm run version:release` (overall + backend + redirect)
+  - Example: `1.0.2 -> 1.1.2`
 - Details:
   - `docs/releases/README.md`
 

@@ -38,6 +38,14 @@ if (shouldPushTag && !shouldTag) {
 }
 
 const releaseTag = `v${normalizedVersion}`;
+const currentBranch = safeExec('git rev-parse --abbrev-ref HEAD');
+
+if (shouldTag && currentBranch !== 'main') {
+  console.error(
+    `Tag creation is restricted to main branch. Current branch: ${currentBranch}.`
+  );
+  process.exit(1);
+}
 
 const backendPkgPath = path.join(rootDir, 'backend', 'package.json');
 const redirectPkgPath = path.join(rootDir, 'redirect', 'package.json');
@@ -130,6 +138,7 @@ if (!releaseLog.includes(releaseLine)) {
 console.log(`Created release note: ${path.relative(rootDir, releaseNotePath)}`);
 console.log(`Updated release log: ${path.relative(rootDir, releaseLogPath)}`);
 console.log(`Components: overall ${overallVersion}, backend ${backendVersion}, redirect ${redirectVersion}`);
+console.log(`Branch: ${currentBranch}`);
 
 if (shouldTag) {
   let tagExists = false;

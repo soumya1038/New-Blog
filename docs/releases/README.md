@@ -45,13 +45,18 @@ What it does:
 ## Team Versioning Rule (Your Preference)
 
 Before every push to GitHub:
-1. Run:
+1. On non-main branches (for example `development`):
    - `npm run version:push`
-2. This bumps only the middle digit (minor) and keeps the last digit (patch) as commit counter style for:
-   - overall app version
-   - backend version
-   - redirect version
+   - bumps: backend + redirect only
+2. On `main` branch release:
+   - `npm run version:release`
+   - bumps: overall + backend + redirect
+3. Middle digit (minor) increases while last digit (patch) is preserved.
 
 Example:
 - `1.0.2` -> `1.1.2`
 - `1.1.5` -> `1.2.5`
+
+Notes:
+- Overall app version bump is blocked on non-main branches.
+- `release:overall` with `--tag` is also restricted to `main`.
