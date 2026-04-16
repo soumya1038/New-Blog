@@ -2,6 +2,7 @@ const Article = require('../models/Article');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
 const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
+const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCursorFilter, extractNextCursor } = require('../utils/cursorPagination');
 
 exports.createArticle = async (req, res) => {
   try {
@@ -74,7 +75,9 @@ exports.createArticle = async (req, res) => {
 
 exports.getArticles = async (req, res) => {
   try {
-    const { author, tag, draft } = req.query;
+    const { author, tag, draft, cursor } = req.query;
+    const useCursor = shouldUseCursorPagination(req.query);
+    const limit = parseLimit(req.query.limit);
     const filter = {};
 
     if (author) filter.author = author;
@@ -112,12 +115,34 @@ exports.getArticles = async (req, res) => {
       filter.isDraft = false;
     }
 
-    const articles = await Article.find(filter)
+    if (useCursor) {
+      if (cursor) {
+        const decodedCursor = decodeCursor(cursor);
+        if (!decodedCursor) {
+          return res.status(400).json({ success: false, message: 'Invalid cursor token' });
+        }
+        const cursorFilter = buildDescendingCursorFilter(decodedCursor);
+        if (cursorFilter) {
+          filter.$or = cursorFilter.$or;
+        }
+      }
+    }
+
+    const query = Article.find(filter)
       .populate('author', 'username profileImage isGuest role isVerified statuses')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1, _id: -1 });
+
+    if (useCursor) {
+      query.limit(limit + 1);
+    }
+
+    const articles = await query;
+    const { pageItems: pagedArticles, hasMore, nextCursor } = useCursor
+      ? extractNextCursor(articles, limit)
+      : { pageItems: articles, hasMore: false, nextCursor: null };
 
     // Add commentCount and hasActiveStatus to each article
-    const articlesWithStatus = await Promise.all(articles.map(async (article) => {
+    const articlesWithStatus = await Promise.all(pagedArticles.map(async (article) => {
       const articleObj = article.toObject();
       articleObj.commentCount = await Comment.countDocuments({ article: article._id });
       if (articleObj.author && articleObj.author.statuses) {
@@ -130,7 +155,20 @@ exports.getArticles = async (req, res) => {
       return articleObj;
     }));
 
-    res.json({ success: true, articles: articlesWithStatus });
+    res.json({
+      success: true,
+      articles: articlesWithStatus,
+      ...(useCursor
+        ? {
+            pagination: {
+              mode: 'cursor',
+              limit,
+              hasMore,
+              nextCursor
+            }
+          }
+        : {})
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

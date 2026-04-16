@@ -2,6 +2,7 @@ const Blog = require('../models/Blog');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
 const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
+const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCursorFilter, extractNextCursor } = require('../utils/cursorPagination');
 
 // Create blog
 exports.createBlog = async (req, res) => {
@@ -85,7 +86,9 @@ exports.createBlog = async (req, res) => {
 // Get all blogs
 exports.getBlogs = async (req, res) => {
   try {
-    const { author, tag, draft } = req.query;
+    const { author, tag, draft, cursor } = req.query;
+    const useCursor = shouldUseCursorPagination(req.query);
+    const limit = parseLimit(req.query.limit);
     const filter = {};
 
     if (author) filter.author = author;
@@ -126,13 +129,35 @@ exports.getBlogs = async (req, res) => {
       filter.isDraft = false; // Default: only published blogs
     }
 
-    const blogs = await Blog.find(filter)
+    if (useCursor) {
+      if (cursor) {
+        const decodedCursor = decodeCursor(cursor);
+        if (!decodedCursor) {
+          return res.status(400).json({ success: false, message: 'Invalid cursor token' });
+        }
+        const cursorFilter = buildDescendingCursorFilter(decodedCursor);
+        if (cursorFilter) {
+          filter.$or = cursorFilter.$or;
+        }
+      }
+    }
+
+    const query = Blog.find(filter)
       .populate('author', 'username profileImage isGuest role isVerified statuses')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1, _id: -1 });
+
+    if (useCursor) {
+      query.limit(limit + 1);
+    }
+
+    const blogs = await query;
+    const { pageItems: pagedBlogs, hasMore, nextCursor } = useCursor
+      ? extractNextCursor(blogs, limit)
+      : { pageItems: blogs, hasMore: false, nextCursor: null };
 
     // Add commentCount and hasActiveStatus to each blog
     const Comment = require('../models/Comment');
-    const blogsWithStatus = await Promise.all(blogs.map(async (blog) => {
+    const blogsWithStatus = await Promise.all(pagedBlogs.map(async (blog) => {
       const blogObj = blog.toObject();
       blogObj.commentCount = await Comment.countDocuments({ blog: blog._id });
       if (blogObj.author && blogObj.author.statuses) {
@@ -145,7 +170,20 @@ exports.getBlogs = async (req, res) => {
       return blogObj;
     }));
 
-    res.json({ success: true, blogs: blogsWithStatus });
+    res.json({
+      success: true,
+      blogs: blogsWithStatus,
+      ...(useCursor
+        ? {
+            pagination: {
+              mode: 'cursor',
+              limit,
+              hasMore,
+              nextCursor
+            }
+          }
+        : {})
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

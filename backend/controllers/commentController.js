@@ -4,6 +4,14 @@ const Article = require('../models/Article');
 const Short = require('../models/Short');
 const Notification = require('../models/Notification');
 const { resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
+const {
+  parseLimit,
+  shouldUseCursorPagination,
+  decodeCursor,
+  buildDescendingCursorFilter,
+  buildAscendingCursorFilter,
+  extractNextCursor
+} = require('../utils/cursorPagination');
 
 // Create comment
 exports.createComment = async (req, res) => {
@@ -77,7 +85,9 @@ exports.createComment = async (req, res) => {
 exports.getComments = async (req, res) => {
   try {
     const { blogId } = req.params;
-    const { isShort, isArticle } = req.query;
+    const { isShort, isArticle, cursor } = req.query;
+    const useCursor = shouldUseCursorPagination(req.query);
+    const limit = parseLimit(req.query.limit);
 
     let contentFilterId = blogId;
 
@@ -104,13 +114,34 @@ exports.getComments = async (req, res) => {
     const filter = isArticle === 'true'
       ? { article: contentFilterId, parentComment: null }
       : (isShort === 'true' ? { short: contentFilterId, parentComment: null } : { blog: contentFilterId, parentComment: null });
-    const comments = await Comment.find(filter)
+
+    if (useCursor && cursor) {
+      const decodedCursor = decodeCursor(cursor);
+      if (!decodedCursor) {
+        return res.status(400).json({ success: false, message: 'Invalid cursor token' });
+      }
+      const cursorFilter = buildDescendingCursorFilter(decodedCursor);
+      if (cursorFilter) {
+        filter.$or = cursorFilter.$or;
+      }
+    }
+
+    const query = Comment.find(filter)
       .populate('author', 'username profileImage isGuest role isVerified')
       .populate('replyTo', 'username')
-      .sort({ isPinned: -1, createdAt: -1 });
+      .sort(useCursor ? { createdAt: -1, _id: -1 } : { isPinned: -1, createdAt: -1 });
+
+    if (useCursor) {
+      query.limit(limit + 1);
+    }
+
+    const comments = await query;
+    const { pageItems: pagedComments, hasMore, nextCursor } = useCursor
+      ? extractNextCursor(comments, limit)
+      : { pageItems: comments, hasMore: false, nextCursor: null };
 
     // Get reply counts for each comment
-    const commentsWithReplies = await Promise.all(comments.map(async (comment) => {
+    const commentsWithReplies = await Promise.all(pagedComments.map(async (comment) => {
       const replyCount = await Comment.countDocuments({ parentComment: comment._id });
       return {
         ...comment.toObject(),
@@ -118,7 +149,20 @@ exports.getComments = async (req, res) => {
       };
     }));
 
-    res.json({ success: true, comments: commentsWithReplies });
+    res.json({
+      success: true,
+      comments: commentsWithReplies,
+      ...(useCursor
+        ? {
+            pagination: {
+              mode: 'cursor',
+              limit,
+              hasMore,
+              nextCursor
+            }
+          }
+        : {})
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -128,13 +172,50 @@ exports.getComments = async (req, res) => {
 exports.getReplies = async (req, res) => {
   try {
     const { commentId } = req.params;
-    
-    const replies = await Comment.find({ parentComment: commentId })
+    const { cursor } = req.query;
+    const useCursor = shouldUseCursorPagination(req.query);
+    const limit = parseLimit(req.query.limit);
+    const filter = { parentComment: commentId };
+
+    if (useCursor && cursor) {
+      const decodedCursor = decodeCursor(cursor);
+      if (!decodedCursor) {
+        return res.status(400).json({ success: false, message: 'Invalid cursor token' });
+      }
+      const cursorFilter = buildAscendingCursorFilter(decodedCursor);
+      if (cursorFilter) {
+        filter.$or = cursorFilter.$or;
+      }
+    }
+
+    const query = Comment.find(filter)
       .populate('author', 'username profileImage isGuest role isVerified')
       .populate('replyTo', 'username')
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: 1, _id: 1 });
 
-    res.json({ success: true, replies });
+    if (useCursor) {
+      query.limit(limit + 1);
+    }
+
+    const replies = await query;
+    const { pageItems: pagedReplies, hasMore, nextCursor } = useCursor
+      ? extractNextCursor(replies, limit)
+      : { pageItems: replies, hasMore: false, nextCursor: null };
+
+    res.json({
+      success: true,
+      replies: pagedReplies,
+      ...(useCursor
+        ? {
+            pagination: {
+              mode: 'cursor',
+              limit,
+              hasMore,
+              nextCursor
+            }
+          }
+        : {})
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
