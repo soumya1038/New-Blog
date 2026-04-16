@@ -137,3 +137,6 @@ PR-1 -> PR-2 -> PR-3 -> PR-4 -> PR-5 -> PR-6 -> PR-7 -> PR-8 -> PR-9 -> PR-10
 - Each PR bumps version before commit.
 - Each PR is committed on `development`.
 - No push without explicit user approval.
+
+## Template Studio Track
+- Detailed roadmap for the article custom-builder is tracked at `docs/CUSTOM_TEMPLATE_STUDIO_ROADMAP.md`.

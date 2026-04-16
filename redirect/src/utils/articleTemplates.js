@@ -63,6 +63,51 @@ const LAYOUT_TO_STYLE = {
   briefing: 'briefing'
 };
 
+const CUSTOM_STUDIO_GRID_COLUMNS = 12;
+const CUSTOM_STUDIO_DEFAULT_ROWS = 28;
+const CUSTOM_STUDIO_MIN_ROWS = 18;
+const CUSTOM_STUDIO_MAX_ROWS = 60;
+const CUSTOM_STUDIO_DEFAULT_ROW_HEIGHT = 32;
+
+const CUSTOM_STUDIO_BLOCK_TYPES = [
+  { id: 'title', label: 'Title Block' },
+  { id: 'meta', label: 'Story Meta' },
+  { id: 'image', label: 'Hero Image' },
+  { id: 'content', label: 'Main Content' },
+  { id: 'highlights', label: 'Highlights' },
+  { id: 'tags', label: 'Tags' },
+  { id: 'video', label: 'Video Panel' },
+  { id: 'quote', label: 'Pull Quote' }
+];
+
+const CUSTOM_STUDIO_BLOCK_TYPE_IDS = CUSTOM_STUDIO_BLOCK_TYPES.map((item) => item.id);
+
+const CUSTOM_STUDIO_BORDER_STYLES = [
+  { id: 'solid', label: 'Solid' },
+  { id: 'dashed', label: 'Dashed' },
+  { id: 'dotted', label: 'Dotted' },
+  { id: 'double', label: 'Double' }
+];
+
+const CUSTOM_STUDIO_UNDERLINE_STYLES = [
+  { id: 'none', label: 'None' },
+  { id: 'solid', label: 'Solid' },
+  { id: 'dashed', label: 'Dashed' },
+  { id: 'wavy', label: 'Wavy' },
+  { id: 'highlight', label: 'Highlight' }
+];
+
+const CUSTOM_STUDIO_TEXT_ALIGN_OPTIONS = [
+  { id: 'left', label: 'Left' },
+  { id: 'center', label: 'Center' },
+  { id: 'right', label: 'Right' }
+];
+
+const CUSTOM_STUDIO_BLOCK_TYPE_LABELS = CUSTOM_STUDIO_BLOCK_TYPES.reduce((map, item) => {
+  map[item.id] = item.label;
+  return map;
+}, {});
+
 const TEMPLATE_PRESETS = [
   {
     id: DEFAULT_TEMPLATE_ID,
@@ -839,6 +884,15 @@ const cleanHex = (value, fallback) => {
 
 const cleanEnum = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
 
+const clampNumber = (value, min, max, fallback) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const clampInt = (value, min, max, fallback) =>
+  Math.round(clampNumber(value, min, max, fallback));
+
 const escapeHtml = (value = '') =>
   String(value)
     .replace(/&/g, '&amp;')
@@ -1298,22 +1352,280 @@ const estimateReadingMinutes = (content) => {
   return Math.max(1, Math.ceil(words / 220));
 };
 
-export const createDefaultCustomTemplate = () => ({
-  name: 'My Signature Layout',
-  layout: 'split',
-  headlineFont: 'heritage',
-  bodyFont: 'modern',
-  accentColor: '#9b4f2f',
-  accentSoftColor: '#ebc8b6',
-  backgroundStart: '#f4efe8',
-  backgroundEnd: '#e8dfd3',
-  surfaceColor: '#fffaf2',
-  textColor: '#1f1a16',
-  mutedColor: '#675d54',
-  borderColor: '#d9c9b8',
-  showDropCap: true,
-  showProgress: true
+const createDefaultCustomStudioBlockMap = () => ({
+  title: {
+    colStart: 1,
+    colSpan: 8,
+    rowStart: 1,
+    rowSpan: 4,
+    fontScale: 1.2,
+    textAlign: 'left',
+    backgroundColor: '#fffaf2',
+    textColor: '#1f1a16',
+    borderColor: '#d9c9b8',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderRadius: 18,
+    padding: 18,
+    shadowLevel: 1,
+    underlineStyle: 'solid',
+    underlineColor: '#9b4f2f'
+  },
+  meta: {
+    colStart: 9,
+    colSpan: 4,
+    rowStart: 1,
+    rowSpan: 4,
+    fontScale: 0.96,
+    textAlign: 'left',
+    backgroundColor: '#f4eee6',
+    textColor: '#675d54',
+    borderColor: '#d9c9b8',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    padding: 16,
+    shadowLevel: 0,
+    underlineStyle: 'none',
+    underlineColor: '#9b4f2f'
+  },
+  image: {
+    colStart: 1,
+    colSpan: 7,
+    rowStart: 5,
+    rowSpan: 8,
+    fontScale: 1,
+    textAlign: 'center',
+    backgroundColor: '#f4eee6',
+    textColor: '#675d54',
+    borderColor: '#d9c9b8',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderRadius: 18,
+    padding: 12,
+    shadowLevel: 1,
+    underlineStyle: 'none',
+    underlineColor: '#9b4f2f'
+  },
+  content: {
+    colStart: 8,
+    colSpan: 5,
+    rowStart: 5,
+    rowSpan: 14,
+    fontScale: 1,
+    textAlign: 'left',
+    backgroundColor: '#fffaf2',
+    textColor: '#1f1a16',
+    borderColor: '#d9c9b8',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderRadius: 18,
+    padding: 14,
+    shadowLevel: 1,
+    underlineStyle: 'none',
+    underlineColor: '#9b4f2f'
+  },
+  highlights: {
+    colStart: 1,
+    colSpan: 4,
+    rowStart: 13,
+    rowSpan: 6,
+    fontScale: 0.98,
+    textAlign: 'left',
+    backgroundColor: '#fff5eb',
+    textColor: '#5a463a',
+    borderColor: '#e1cfbf',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderRadius: 16,
+    padding: 14,
+    shadowLevel: 0,
+    underlineStyle: 'none',
+    underlineColor: '#9b4f2f'
+  },
+  tags: {
+    colStart: 5,
+    colSpan: 3,
+    rowStart: 13,
+    rowSpan: 6,
+    fontScale: 0.96,
+    textAlign: 'left',
+    backgroundColor: '#f7efe6',
+    textColor: '#5f4f43',
+    borderColor: '#d9c9b8',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderRadius: 16,
+    padding: 14,
+    shadowLevel: 0,
+    underlineStyle: 'none',
+    underlineColor: '#9b4f2f'
+  },
+  video: {
+    colStart: 1,
+    colSpan: 6,
+    rowStart: 19,
+    rowSpan: 8,
+    fontScale: 0.96,
+    textAlign: 'left',
+    backgroundColor: '#f8f0e6',
+    textColor: '#5d4a3f',
+    borderColor: '#d9c9b8',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderRadius: 16,
+    padding: 12,
+    shadowLevel: 1,
+    underlineStyle: 'none',
+    underlineColor: '#9b4f2f'
+  },
+  quote: {
+    colStart: 7,
+    colSpan: 6,
+    rowStart: 19,
+    rowSpan: 8,
+    fontScale: 1.08,
+    textAlign: 'left',
+    backgroundColor: '#fff1e5',
+    textColor: '#5c4539',
+    borderColor: '#e1c7b3',
+    borderWidth: 1,
+    borderStyle: 'double',
+    borderRadius: 16,
+    padding: 16,
+    shadowLevel: 0,
+    underlineStyle: 'highlight',
+    underlineColor: '#ebc8b6'
+  }
 });
+
+const createDefaultCustomStudioBlocks = () => {
+  const defaults = createDefaultCustomStudioBlockMap();
+  const baseOrder = ['title', 'meta', 'image', 'content', 'highlights', 'tags', 'video', 'quote'];
+
+  return baseOrder.map((type) => ({
+    id: `${type}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+    type,
+    label: CUSTOM_STUDIO_BLOCK_TYPE_LABELS[type] || type,
+    visible: true,
+    ...defaults[type]
+  }));
+};
+
+const createDefaultCustomStudio = () => ({
+  columns: CUSTOM_STUDIO_GRID_COLUMNS,
+  rows: CUSTOM_STUDIO_DEFAULT_ROWS,
+  rowHeight: CUSTOM_STUDIO_DEFAULT_ROW_HEIGHT,
+  blocks: createDefaultCustomStudioBlocks()
+});
+
+export const createCustomStudioBlock = (type) => {
+  const fallbackType = CUSTOM_STUDIO_BLOCK_TYPE_IDS.includes(type) ? type : 'content';
+  const defaults = createDefaultCustomStudioBlockMap()[fallbackType];
+  return {
+    id: `${fallbackType}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+    type: fallbackType,
+    label: CUSTOM_STUDIO_BLOCK_TYPE_LABELS[fallbackType] || fallbackType,
+    visible: true,
+    ...defaults
+  };
+};
+
+const normalizeCustomStudioBlock = (block, fallbackBlock, index) => {
+  const fallback = fallbackBlock || createCustomStudioBlock('content');
+  const blockType = cleanEnum(
+    cleanText(block?.type, fallback.type),
+    CUSTOM_STUDIO_BLOCK_TYPE_IDS,
+    fallback.type
+  );
+
+  return {
+    id: cleanText(block?.id, `block-${index + 1}`),
+    type: blockType,
+    label: cleanText(block?.label, CUSTOM_STUDIO_BLOCK_TYPE_LABELS[blockType] || fallback.label).slice(0, 36),
+    visible: block?.visible !== undefined ? Boolean(block.visible) : Boolean(fallback.visible),
+    colStart: clampInt(block?.colStart, 1, CUSTOM_STUDIO_GRID_COLUMNS, fallback.colStart),
+    colSpan: clampInt(block?.colSpan, 1, CUSTOM_STUDIO_GRID_COLUMNS, fallback.colSpan),
+    rowStart: clampInt(block?.rowStart, 1, CUSTOM_STUDIO_MAX_ROWS, fallback.rowStart),
+    rowSpan: clampInt(block?.rowSpan, 1, CUSTOM_STUDIO_MAX_ROWS, fallback.rowSpan),
+    fontScale: clampNumber(block?.fontScale, 0.72, 1.9, fallback.fontScale),
+    textAlign: cleanEnum(
+      cleanText(block?.textAlign, fallback.textAlign),
+      CUSTOM_STUDIO_TEXT_ALIGN_OPTIONS.map((item) => item.id),
+      fallback.textAlign
+    ),
+    backgroundColor: cleanHex(block?.backgroundColor, fallback.backgroundColor),
+    textColor: cleanHex(block?.textColor, fallback.textColor),
+    borderColor: cleanHex(block?.borderColor, fallback.borderColor),
+    borderWidth: clampInt(block?.borderWidth, 0, 8, fallback.borderWidth),
+    borderStyle: cleanEnum(
+      cleanText(block?.borderStyle, fallback.borderStyle),
+      CUSTOM_STUDIO_BORDER_STYLES.map((item) => item.id),
+      fallback.borderStyle
+    ),
+    borderRadius: clampInt(block?.borderRadius, 0, 44, fallback.borderRadius),
+    padding: clampInt(block?.padding, 6, 36, fallback.padding),
+    shadowLevel: clampInt(block?.shadowLevel, 0, 3, fallback.shadowLevel),
+    underlineStyle: cleanEnum(
+      cleanText(block?.underlineStyle, fallback.underlineStyle),
+      CUSTOM_STUDIO_UNDERLINE_STYLES.map((item) => item.id),
+      fallback.underlineStyle
+    ),
+    underlineColor: cleanHex(block?.underlineColor, fallback.underlineColor)
+  };
+};
+
+const normalizeCustomStudio = (studio, defaultStudio) => {
+  const fallback = defaultStudio || createDefaultCustomStudio();
+  const rows = clampInt(studio?.rows, CUSTOM_STUDIO_MIN_ROWS, CUSTOM_STUDIO_MAX_ROWS, fallback.rows);
+  const rowHeight = clampInt(studio?.rowHeight, 24, 54, fallback.rowHeight);
+
+  const fallbackByType = {};
+  fallback.blocks.forEach((block) => {
+    fallbackByType[block.type] = block;
+  });
+
+  let blocks = Array.isArray(studio?.blocks)
+    ? studio.blocks
+        .slice(0, 18)
+        .map((block, index) =>
+          normalizeCustomStudioBlock(block, fallbackByType[block?.type] || fallback.blocks[index], index)
+        )
+        .filter(Boolean)
+    : [];
+
+  if (!blocks.length) {
+    blocks = fallback.blocks.map((block, index) => normalizeCustomStudioBlock(block, block, index));
+  }
+
+  return {
+    columns: CUSTOM_STUDIO_GRID_COLUMNS,
+    rows,
+    rowHeight,
+    blocks
+  };
+};
+
+export const createDefaultCustomTemplate = () => {
+  const studio = createDefaultCustomStudio();
+  return {
+    name: 'My Signature Layout',
+    layout: 'split',
+    headlineFont: 'heritage',
+    bodyFont: 'modern',
+    accentColor: '#9b4f2f',
+    accentSoftColor: '#ebc8b6',
+    backgroundStart: '#f4efe8',
+    backgroundEnd: '#e8dfd3',
+    surfaceColor: '#fffaf2',
+    textColor: '#1f1a16',
+    mutedColor: '#675d54',
+    borderColor: '#d9c9b8',
+    showDropCap: true,
+    showProgress: true,
+    studio
+  };
+};
 
 export const normalizeCustomTemplate = (customTemplate) => {
   const defaults = createDefaultCustomTemplate();
@@ -1336,7 +1648,8 @@ export const normalizeCustomTemplate = (customTemplate) => {
     mutedColor: cleanHex(customTemplate.mutedColor, defaults.mutedColor),
     borderColor: cleanHex(customTemplate.borderColor, defaults.borderColor),
     showDropCap: customTemplate.showDropCap !== undefined ? Boolean(customTemplate.showDropCap) : defaults.showDropCap,
-    showProgress: customTemplate.showProgress !== undefined ? Boolean(customTemplate.showProgress) : defaults.showProgress
+    showProgress: customTemplate.showProgress !== undefined ? Boolean(customTemplate.showProgress) : defaults.showProgress,
+    studio: normalizeCustomStudio(customTemplate.studio, defaults.studio)
   };
 };
 
@@ -1822,11 +2135,12 @@ const runtimeTemplate = (templateId, customTemplate) => {
     ...preset,
     runtimeName: custom.name || preset.name,
     resolvedLayout: custom.layout,
-    style: LAYOUT_TO_STYLE[custom.layout] || 'split',
+    style: 'custom-canvas',
     titleFont: headline.title,
     bodyFont: body.body,
     showDropCap: custom.showDropCap,
     showProgress: custom.showProgress,
+    studio: custom.studio,
     palette: normalizePresetPalette({
       bg: custom.backgroundStart,
       bgAlt: custom.backgroundEnd,
@@ -2377,8 +2691,176 @@ const renderNoirWireLayout = (article, template, contentHtml) => `
   ${renderCover(article, 'wire-cover')}
 `;
 
+const renderCustomStudioMeta = (article, template) => `
+  <ul class="custom-studio-meta">
+    <li><span>Desk</span><strong>${escapeHtml(template.badge)}</strong></li>
+    <li><span>Author</span><strong>${escapeHtml(article.authorName)}</strong></li>
+    <li><span>Published</span><strong>${escapeHtml(formatDate(article.createdAt))}</strong></li>
+    <li><span>Read Time</span><strong>${article.readingMinutes} min</strong></li>
+    <li><span>Category</span><strong>${escapeHtml(article.category)}</strong></li>
+  </ul>
+`;
+
+const renderCustomStudioHighlights = (article) => `
+  <div class="custom-studio-list-wrap">
+    <h3>Highlights</h3>
+    <ul class="custom-studio-list">
+      ${
+        article.highlights.length
+          ? article.highlights.slice(0, 8).map((point) => `<li>${escapeHtml(point)}</li>`).join('')
+          : '<li>No highlights generated yet.</li>'
+      }
+    </ul>
+  </div>
+`;
+
+const renderCustomStudioTags = (article) => `
+  <div class="custom-studio-tags-wrap">
+    <h3>Tags</h3>
+    <div class="tag-wrap">${renderTagPills(article.tags)}</div>
+  </div>
+`;
+
+const renderCustomStudioQuote = (article) => `
+  <blockquote class="custom-studio-quote">
+    <p>${escapeHtml(article.highlights[0] || article.metaDescription || 'Every story deserves a signature layout.')}</p>
+    <cite>${escapeHtml(article.authorName)}</cite>
+  </blockquote>
+`;
+
+const renderCustomStudioImage = (article) => {
+  if (article.coverImage) {
+    return `<figure class="custom-studio-image"><img src="${escapeHtml(article.coverImage)}" alt="Article visual" loading="lazy" /></figure>`;
+  }
+  return '<div class="custom-studio-image-fallback"><p>Cover image not provided</p></div>';
+};
+
+const renderCustomStudioVideo = (article) => {
+  if (!article.videoUrls.length) {
+    return '<div class="custom-studio-video-fallback"><h3>Video Brief</h3><p>Add one or more video URLs to fill this section.</p></div>';
+  }
+
+  const embeds = article.videoUrls
+    .slice(0, 3)
+    .map((url) => {
+      const embedded = embedUrl(url);
+      if (embedded) {
+        return `<div class="custom-studio-video-card"><iframe src="${escapeHtml(embedded)}" title="Embedded video" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>`;
+      }
+      return `<div class="custom-studio-video-card"><video controls preload="metadata"><source src="${escapeHtml(url)}" /></video></div>`;
+    })
+    .join('');
+
+  return `<div class="custom-studio-video-grid">${embeds}</div>`;
+};
+
+const renderCustomStudioContentByType = (block, article, template, contentHtml) => {
+  switch (block.type) {
+    case 'title':
+      return `
+        <div class="custom-studio-title-wrap">
+          <p class="custom-studio-kicker">${escapeHtml(template.badge)} | ${escapeHtml(article.category)}</p>
+          <h1 class="custom-studio-headline">${escapeHtml(article.title)}</h1>
+          <p class="custom-studio-deck">${escapeHtml(article.metaDescription)}</p>
+          ${renderHeroMeta(article, template)}
+        </div>
+      `;
+    case 'meta':
+      return renderCustomStudioMeta(article, template);
+    case 'image':
+      return renderCustomStudioImage(article);
+    case 'content':
+      return renderReaderExperience(article, contentHtml, 'custom-studio-story');
+    case 'highlights':
+      return renderCustomStudioHighlights(article);
+    case 'tags':
+      return renderCustomStudioTags(article);
+    case 'video':
+      return renderCustomStudioVideo(article);
+    case 'quote':
+      return renderCustomStudioQuote(article);
+    default:
+      return `<div class="custom-studio-block-fallback"><p>${escapeHtml(article.metaDescription)}</p></div>`;
+  }
+};
+
+const renderCustomCanvasLayout = (article, template, contentHtml) => {
+  const normalizedTemplate = normalizeCustomTemplate({
+    name: template.runtimeName,
+    layout: template.resolvedLayout,
+    headlineFont: 'heritage',
+    bodyFont: 'modern',
+    accentColor: template.palette.accent,
+    accentSoftColor: template.palette.accentSoft,
+    backgroundStart: template.palette.bg,
+    backgroundEnd: template.palette.bgAlt,
+    surfaceColor: template.palette.surface,
+    textColor: template.palette.text,
+    mutedColor: template.palette.muted,
+    borderColor: template.palette.border,
+    showDropCap: template.showDropCap,
+    showProgress: template.showProgress,
+    studio: template.studio
+  });
+
+  const studio = normalizedTemplate.studio || createDefaultCustomStudio();
+  const rowCount = clampInt(studio.rows, CUSTOM_STUDIO_MIN_ROWS, CUSTOM_STUDIO_MAX_ROWS, CUSTOM_STUDIO_DEFAULT_ROWS);
+  const rowHeight = clampInt(studio.rowHeight, 24, 54, CUSTOM_STUDIO_DEFAULT_ROW_HEIGHT);
+  const visibleBlocks = (studio.blocks || [])
+    .filter((block) => block.visible !== false)
+    .sort((left, right) => left.rowStart - right.rowStart || left.colStart - right.colStart);
+
+  const blockHtml = visibleBlocks
+    .map((block) => {
+      const colStart = clampInt(block.colStart, 1, CUSTOM_STUDIO_GRID_COLUMNS, 1);
+      const maxSpan = CUSTOM_STUDIO_GRID_COLUMNS - colStart + 1;
+      const colSpan = clampInt(block.colSpan, 1, maxSpan, Math.min(4, maxSpan));
+      const rowStart = clampInt(block.rowStart, 1, CUSTOM_STUDIO_MAX_ROWS, 1);
+      const rowSpan = clampInt(block.rowSpan, 1, CUSTOM_STUDIO_MAX_ROWS, 4);
+
+      const underlineClass = `underline-${block.underlineStyle || 'none'}`;
+      const alignClass = `align-${block.textAlign || 'left'}`;
+      const shadowClass = `shadow-${clampInt(block.shadowLevel, 0, 3, 0)}`;
+
+      return `
+        <section
+          class="custom-studio-block custom-studio-type-${block.type} ${underlineClass} ${alignClass} ${shadowClass}"
+          style="
+            grid-column: ${colStart} / span ${colSpan};
+            grid-row: ${rowStart} / span ${rowSpan};
+            --studio-block-bg: ${block.backgroundColor};
+            --studio-block-text: ${block.textColor};
+            --studio-block-border: ${block.borderColor};
+            --studio-block-border-width: ${block.borderWidth}px;
+            --studio-block-border-style: ${block.borderStyle};
+            --studio-block-radius: ${block.borderRadius}px;
+            --studio-block-padding: ${block.padding}px;
+            --studio-block-font-scale: ${block.fontScale};
+            --studio-block-underline: ${block.underlineColor};
+          "
+        >
+          ${renderCustomStudioContentByType(block, article, template, contentHtml)}
+        </section>
+      `;
+    })
+    .join('');
+
+  return `
+    <section class="custom-canvas-shell frame-card reveal">
+      <div
+        class="custom-canvas-page"
+        style="--studio-grid-rows: ${rowCount}; --studio-row-height: ${rowHeight}px;"
+      >
+        ${blockHtml}
+      </div>
+    </section>
+  `;
+};
+
 const renderTemplateLayout = (article, template, contentHtml) => {
   switch (template.style) {
+    case 'custom-canvas':
+      return renderCustomCanvasLayout(article, template, contentHtml);
     case 'ledger-grid':
       return renderLedgerGridLayout(article, template, contentHtml);
     case 'data-board':
@@ -5513,6 +5995,311 @@ const renderTemplateHtml = (article, template) => {
       box-shadow: inset 0 0 0 1px var(--border);
     }
 
+    .custom-canvas-shell {
+      padding: 14px;
+      background: linear-gradient(140deg, color-mix(in srgb, var(--bg) 88%, white 12%), color-mix(in srgb, var(--bg-alt) 92%, black 8%));
+      border-color: color-mix(in srgb, var(--border) 86%, var(--accent) 14%);
+    }
+
+    .custom-canvas-page {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      grid-auto-rows: minmax(var(--studio-row-height, 30px), auto);
+      gap: 12px;
+      min-height: calc(var(--studio-grid-rows, 28) * var(--studio-row-height, 30px));
+      position: relative;
+    }
+
+    .custom-studio-block {
+      border-radius: var(--studio-block-radius, 16px);
+      border: var(--studio-block-border-width, 1px) var(--studio-block-border-style, solid) var(--studio-block-border, var(--border));
+      background: var(--studio-block-bg, var(--surface));
+      color: var(--studio-block-text, var(--text));
+      padding: var(--studio-block-padding, 14px);
+      font-size: clamp(0.88rem, calc(0.82rem * var(--studio-block-font-scale, 1)), 1.2rem);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .custom-studio-block.shadow-1 {
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+    }
+
+    .custom-studio-block.shadow-2 {
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.16);
+    }
+
+    .custom-studio-block.shadow-3 {
+      box-shadow: 0 18px 32px rgba(15, 23, 42, 0.22);
+    }
+
+    .custom-studio-block.align-center {
+      text-align: center;
+    }
+
+    .custom-studio-block.align-right {
+      text-align: right;
+    }
+
+    .custom-studio-block h1,
+    .custom-studio-block h2,
+    .custom-studio-block h3 {
+      margin-top: 0;
+      color: inherit;
+    }
+
+    .custom-studio-block p,
+    .custom-studio-block li,
+    .custom-studio-block blockquote,
+    .custom-studio-block cite,
+    .custom-studio-block span,
+    .custom-studio-block strong {
+      color: inherit;
+    }
+
+    .custom-studio-block.underline-solid h1,
+    .custom-studio-block.underline-solid h2,
+    .custom-studio-block.underline-solid h3,
+    .custom-studio-block.underline-solid .custom-studio-headline {
+      text-decoration: underline;
+      text-decoration-color: var(--studio-block-underline, var(--accent));
+      text-underline-offset: 0.28em;
+    }
+
+    .custom-studio-block.underline-dashed h1,
+    .custom-studio-block.underline-dashed h2,
+    .custom-studio-block.underline-dashed h3,
+    .custom-studio-block.underline-dashed .custom-studio-headline {
+      text-decoration: underline dashed;
+      text-decoration-color: var(--studio-block-underline, var(--accent));
+      text-underline-offset: 0.28em;
+    }
+
+    .custom-studio-block.underline-wavy h1,
+    .custom-studio-block.underline-wavy h2,
+    .custom-studio-block.underline-wavy h3,
+    .custom-studio-block.underline-wavy .custom-studio-headline {
+      text-decoration: underline wavy;
+      text-decoration-color: var(--studio-block-underline, var(--accent));
+      text-underline-offset: 0.3em;
+    }
+
+    .custom-studio-block.underline-highlight h1,
+    .custom-studio-block.underline-highlight h2,
+    .custom-studio-block.underline-highlight h3,
+    .custom-studio-block.underline-highlight .custom-studio-headline {
+      display: inline;
+      box-decoration-break: clone;
+      background: linear-gradient(180deg, transparent 58%, var(--studio-block-underline, var(--accent-soft)) 58%);
+      padding-inline: 0.08em;
+    }
+
+    .custom-studio-title-wrap {
+      display: grid;
+      gap: 10px;
+      height: 100%;
+      align-content: start;
+    }
+
+    .custom-studio-kicker {
+      margin: 0;
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      opacity: 0.78;
+      font-weight: 700;
+    }
+
+    .custom-studio-headline {
+      margin: 0;
+      font-family: var(--title-font);
+      font-size: clamp(1.6rem, 4.1vw, 3.2rem);
+      line-height: 1.06;
+      letter-spacing: -0.02em;
+    }
+
+    .custom-studio-deck {
+      margin: 0;
+      line-height: 1.55;
+      opacity: 0.88;
+    }
+
+    .custom-studio-meta {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 10px;
+      height: 100%;
+      align-content: start;
+    }
+
+    .custom-studio-meta li {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px dashed color-mix(in srgb, var(--studio-block-border, var(--border)) 80%, transparent 20%);
+      padding-bottom: 6px;
+      font-size: 0.92rem;
+    }
+
+    .custom-studio-meta li span {
+      opacity: 0.72;
+    }
+
+    .custom-studio-meta li strong {
+      font-weight: 700;
+    }
+
+    .custom-studio-image,
+    .custom-studio-image-fallback {
+      margin: 0;
+      border-radius: calc(var(--studio-block-radius, 16px) - 4px);
+      overflow: hidden;
+      min-height: 100%;
+      height: 100%;
+      border: 1px solid color-mix(in srgb, var(--studio-block-border, var(--border)) 82%, transparent 18%);
+      background: color-mix(in srgb, var(--studio-block-bg, var(--surface)) 84%, black 16%);
+      display: grid;
+      place-items: center;
+    }
+
+    .custom-studio-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .custom-studio-image-fallback p {
+      margin: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-size: 0.72rem;
+      opacity: 0.78;
+    }
+
+    .custom-studio-list-wrap h3,
+    .custom-studio-tags-wrap h3 {
+      margin: 0 0 10px;
+      font-family: var(--title-font);
+      font-size: 1.04rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .custom-studio-list {
+      margin: 0;
+      padding-left: 1.2rem;
+      display: grid;
+      gap: 8px;
+      line-height: 1.5;
+    }
+
+    .custom-studio-tags-wrap .tag-wrap {
+      gap: 8px;
+    }
+
+    .custom-studio-quote {
+      margin: 0;
+      display: grid;
+      gap: 14px;
+      height: 100%;
+      align-content: center;
+    }
+
+    .custom-studio-quote p {
+      margin: 0;
+      font-family: var(--title-font);
+      font-size: clamp(1.02rem, 2.3vw, 1.4rem);
+      font-style: italic;
+      line-height: 1.45;
+    }
+
+    .custom-studio-quote cite {
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      opacity: 0.72;
+      font-style: normal;
+    }
+
+    .custom-studio-video-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      height: 100%;
+      align-content: start;
+    }
+
+    .custom-studio-video-card {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid color-mix(in srgb, var(--studio-block-border, var(--border)) 84%, transparent 16%);
+      min-height: 126px;
+      background: color-mix(in srgb, var(--studio-block-bg, var(--surface)) 74%, black 26%);
+    }
+
+    .custom-studio-video-card iframe,
+    .custom-studio-video-card video {
+      display: block;
+      width: 100%;
+      height: 100%;
+      min-height: 126px;
+      border: 0;
+    }
+
+    .custom-studio-video-fallback {
+      display: grid;
+      gap: 8px;
+      align-content: center;
+      height: 100%;
+      text-align: left;
+    }
+
+    .custom-studio-video-fallback h3 {
+      margin: 0;
+      font-size: 1rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .custom-studio-video-fallback p {
+      margin: 0;
+      opacity: 0.82;
+      line-height: 1.5;
+    }
+
+    .custom-studio-type-content .reader-shell {
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      padding: 0;
+      background: transparent;
+      box-shadow: none;
+      min-height: 100%;
+    }
+
+    .custom-studio-type-content .reader-toolbar {
+      border-bottom-color: color-mix(in srgb, var(--studio-block-border, var(--border)) 78%, transparent 22%);
+      padding-top: 0;
+    }
+
+    .custom-studio-type-content .reader-content {
+      margin-top: 8px;
+      max-height: none;
+    }
+
+    .custom-studio-type-content .story {
+      margin: 0;
+      padding: 0;
+      max-width: 100%;
+    }
+
+    .custom-studio-type-content .story h2 {
+      margin-top: 1.1em;
+    }
+
     .longread .split-grid,
     .longread .newspaper-grid,
     .longread .spotlight-grid,
@@ -7430,6 +8217,15 @@ export const ARTICLE_TEMPLATE_FONT_OPTIONS = Object.entries(FONT_MAP).map(([id, 
 
 export const ARTICLE_TEMPLATE_LAYOUT_OPTIONS = TEMPLATE_LAYOUT_OPTIONS;
 export const ARTICLE_TEMPLATE_THEME_OPTIONS = TEMPLATE_THEME_OPTIONS;
+export const CUSTOM_TEMPLATE_BLOCK_OPTIONS = CUSTOM_STUDIO_BLOCK_TYPES;
+export const CUSTOM_TEMPLATE_BORDER_STYLE_OPTIONS = CUSTOM_STUDIO_BORDER_STYLES;
+export const CUSTOM_TEMPLATE_UNDERLINE_STYLE_OPTIONS = CUSTOM_STUDIO_UNDERLINE_STYLES;
+export const CUSTOM_TEMPLATE_TEXT_ALIGN_OPTIONS = CUSTOM_STUDIO_TEXT_ALIGN_OPTIONS;
+export const CUSTOM_TEMPLATE_GRID_LIMITS = {
+  columns: CUSTOM_STUDIO_GRID_COLUMNS,
+  minRows: CUSTOM_STUDIO_MIN_ROWS,
+  maxRows: CUSTOM_STUDIO_MAX_ROWS
+};
 
 export const articleTemplates = VISIBLE_TEMPLATE_PRESETS.map((template) => ({
   ...template,

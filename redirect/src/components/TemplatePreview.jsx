@@ -6,7 +6,6 @@ import {
   FaChevronLeft,
   FaChevronRight,
   FaCheckCircle,
-  FaSlidersH,
   FaPalette,
   FaMoon,
   FaSun,
@@ -19,11 +18,10 @@ import {
   CUSTOM_ARTICLE_TEMPLATE_ID,
   createDefaultCustomTemplate,
   normalizeCustomTemplate,
-  ARTICLE_TEMPLATE_FONT_OPTIONS,
-  ARTICLE_TEMPLATE_LAYOUT_OPTIONS,
   getArticleTemplateById,
   recommendArticleTemplate
 } from '../utils/articleTemplates';
+import CustomTemplateStudioPanel from './CustomTemplateStudioPanel';
 
 const TemplatePreview = ({
   article,
@@ -142,10 +140,6 @@ const TemplatePreview = ({
       currentTemplate.id,
       currentTemplate.id === CUSTOM_ARTICLE_TEMPLATE_ID ? customDraft : null
     );
-  };
-
-  const updateCustomDraft = (field, value) => {
-    setCustomDraft((prev) => normalizeCustomTemplate({ ...prev, [field]: value }));
   };
 
   const handlePrevTemplate = () => {
@@ -280,89 +274,12 @@ const TemplatePreview = ({
       )}
 
       <div className={`${isFullscreen ? 'h-full pt-0' : 'h-full pt-24 pb-16'}`}>
-        <div className={`h-full ${isCustomTemplate && !isFullscreen ? 'grid grid-cols-1 gap-3 lg:grid-cols-[320px_minmax(0,1fr)]' : ''}`}>
+        <div className={`h-full ${isCustomTemplate && !isFullscreen ? 'grid grid-cols-1 gap-3 lg:grid-cols-[400px_minmax(0,1fr)]' : ''}`}>
           {isCustomTemplate && !isFullscreen && (
-            <aside className="overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900/95 p-4">
-              <div className="mb-4 flex items-center gap-2 text-slate-100">
-                <FaSlidersH className="text-cyan-300" />
-                <h4 className="text-sm font-semibold uppercase tracking-[0.12em]">Custom Template Controls</h4>
-              </div>
-
-              <div className="space-y-3 text-sm">
-                <label className="block text-slate-300">
-                  Template Name
-                  <input
-                    type="text"
-                    value={customDraft.name}
-                    onChange={(event) => updateCustomDraft('name', event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100"
-                  />
-                </label>
-
-                <label className="block text-slate-300">
-                  Layout
-                  <select
-                    value={customDraft.layout}
-                    onChange={(event) => updateCustomDraft('layout', event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100"
-                  >
-                    {ARTICLE_TEMPLATE_LAYOUT_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block text-slate-300">
-                  Headline Font
-                  <select
-                    value={customDraft.headlineFont}
-                    onChange={(event) => updateCustomDraft('headlineFont', event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100"
-                  >
-                    {ARTICLE_TEMPLATE_FONT_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="block text-slate-300">
-                  Body Font
-                  <select
-                    value={customDraft.bodyFont}
-                    onChange={(event) => updateCustomDraft('bodyFont', event.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100"
-                  >
-                    {ARTICLE_TEMPLATE_FONT_OPTIONS.map((option) => (
-                      <option key={option.id} value={option.id}>{option.label}</option>
-                    ))}
-                  </select>
-                </label>
-
-                <div className="grid grid-cols-2 gap-2 text-slate-300">
-                  <label className="block">Accent
-                    <input type="color" value={customDraft.accentColor} onChange={(event) => updateCustomDraft('accentColor', event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-600 bg-slate-800" />
-                  </label>
-                  <label className="block">Accent Soft
-                    <input type="color" value={customDraft.accentSoftColor} onChange={(event) => updateCustomDraft('accentSoftColor', event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-600 bg-slate-800" />
-                  </label>
-                  <label className="block">Background 1
-                    <input type="color" value={customDraft.backgroundStart} onChange={(event) => updateCustomDraft('backgroundStart', event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-600 bg-slate-800" />
-                  </label>
-                  <label className="block">Background 2
-                    <input type="color" value={customDraft.backgroundEnd} onChange={(event) => updateCustomDraft('backgroundEnd', event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-600 bg-slate-800" />
-                  </label>
-                </div>
-
-                <label className="flex items-center gap-2 text-slate-300">
-                  <input type="checkbox" checked={customDraft.showDropCap} onChange={(event) => updateCustomDraft('showDropCap', event.target.checked)} />
-                  Enable drop cap
-                </label>
-                <label className="flex items-center gap-2 text-slate-300">
-                  <input type="checkbox" checked={customDraft.showProgress} onChange={(event) => updateCustomDraft('showProgress', event.target.checked)} />
-                  Show reading progress bar
-                </label>
-              </div>
-            </aside>
+            <CustomTemplateStudioPanel
+              customDraft={customDraft}
+              onChange={(nextDraft) => setCustomDraft(normalizeCustomTemplate(nextDraft))}
+            />
           )}
 
           <div className="relative h-full rounded-2xl border border-slate-700 bg-white">
