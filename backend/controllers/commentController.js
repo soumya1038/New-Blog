@@ -12,6 +12,44 @@ const {
   buildAscendingCursorFilter,
   extractNextCursor
 } = require('../utils/cursorPagination');
+const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
+
+const COMMENT_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
+  process.env.CACHE_TTL_COMMENT_LIST_SECONDS,
+  parsePositiveInt(process.env.CACHE_TTL_LIST_SECONDS, 90)
+);
+
+const COMMENT_REPLIES_CACHE_TTL_SECONDS = parsePositiveInt(
+  process.env.CACHE_TTL_COMMENT_REPLIES_SECONDS,
+  parsePositiveInt(process.env.CACHE_TTL_DETAIL_SECONDS, 90)
+);
+
+const toIdString = (value) => {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value._id) return value._id.toString();
+  return value.toString();
+};
+
+const getPostReferenceFromComment = (commentDoc) => {
+  if (commentDoc.article) return { type: 'article', id: toIdString(commentDoc.article) };
+  if (commentDoc.short) return { type: 'short', id: toIdString(commentDoc.short) };
+  if (commentDoc.blog) return { type: 'blog', id: toIdString(commentDoc.blog) };
+  return { type: null, id: null };
+};
+
+const getContentCachePrefixesByType = (contentType) => {
+  if (contentType === 'article') {
+    return ['articles:list:', 'article:detail:'];
+  }
+  if (contentType === 'short') {
+    return ['shorts:list:', 'short:detail:'];
+  }
+  if (contentType === 'blog') {
+    return ['blogs:list:', 'blog:detail:'];
+  }
+  return [];
+};
 
 // Create comment
 exports.createComment = async (req, res) => {
@@ -19,6 +57,7 @@ exports.createComment = async (req, res) => {
     const { content, parentComment, replyTo } = req.body;
     const { blogId } = req.params;
     const { isShort, isArticle } = req.query;
+    const contentType = isArticle === 'true' ? 'article' : (isShort === 'true' ? 'short' : 'blog');
 
     if (!content || !content.trim()) {
       return res.status(400).json({ success: false, message: 'Comment content required' });
@@ -75,6 +114,12 @@ exports.createComment = async (req, res) => {
       io.emit('comment:new', { blogId: resolvedPostId, comment: populatedComment });
     }
 
+    await invalidateCacheByPrefixes([
+      `comments:list:${contentType}:${resolvedPostId}:`,
+      ...(parentComment ? [`comments:replies:${parentComment}:`] : []),
+      ...getContentCachePrefixesByType(contentType)
+    ]);
+
     res.status(201).json({ success: true, comment: populatedComment });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -88,6 +133,7 @@ exports.getComments = async (req, res) => {
     const { isShort, isArticle, cursor } = req.query;
     const useCursor = shouldUseCursorPagination(req.query);
     const limit = parseLimit(req.query.limit);
+    const contentType = isArticle === 'true' ? 'article' : (isShort === 'true' ? 'short' : 'blog');
 
     let contentFilterId = blogId;
 
@@ -109,6 +155,12 @@ exports.getComments = async (req, res) => {
         return res.status(404).json({ success: false, message: 'Content not found' });
       }
       contentFilterId = resolved.doc._id.toString();
+    }
+
+    const listCacheKey = `comments:list:${contentType}:${contentFilterId}:${createQueryCacheKey(req.query)}`;
+    const cachedPayload = await getCache(listCacheKey);
+    if (cachedPayload) {
+      return res.json(cachedPayload);
     }
 
     const filter = isArticle === 'true'
@@ -149,7 +201,7 @@ exports.getComments = async (req, res) => {
       };
     }));
 
-    res.json({
+    const payload = {
       success: true,
       comments: commentsWithReplies,
       ...(useCursor
@@ -162,7 +214,11 @@ exports.getComments = async (req, res) => {
             }
           }
         : {})
-    });
+    };
+
+    await setCache(listCacheKey, payload, COMMENT_LIST_CACHE_TTL_SECONDS);
+
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -175,6 +231,11 @@ exports.getReplies = async (req, res) => {
     const { cursor } = req.query;
     const useCursor = shouldUseCursorPagination(req.query);
     const limit = parseLimit(req.query.limit);
+    const repliesCacheKey = `comments:replies:${commentId}:${createQueryCacheKey(req.query)}`;
+    const cachedPayload = await getCache(repliesCacheKey);
+    if (cachedPayload) {
+      return res.json(cachedPayload);
+    }
     const filter = { parentComment: commentId };
 
     if (useCursor && cursor) {
@@ -202,7 +263,7 @@ exports.getReplies = async (req, res) => {
       ? extractNextCursor(replies, limit)
       : { pageItems: replies, hasMore: false, nextCursor: null };
 
-    res.json({
+    const payload = {
       success: true,
       replies: pagedReplies,
       ...(useCursor
@@ -215,7 +276,11 @@ exports.getReplies = async (req, res) => {
             }
           }
         : {})
-    });
+    };
+
+    await setCache(repliesCacheKey, payload, COMMENT_REPLIES_CACHE_TTL_SECONDS);
+
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -237,6 +302,12 @@ exports.likeComment = async (req, res) => {
     }
 
     await comment.save();
+    const postRef = getPostReferenceFromComment(comment);
+    await invalidateCacheByPrefixes([
+      ...(postRef.type && postRef.id ? [`comments:list:${postRef.type}:${postRef.id}:`] : []),
+      ...(comment.parentComment ? [`comments:replies:${comment.parentComment.toString()}:`] : [])
+    ]);
+
     res.json({ success: true, likes: comment.likes });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -258,6 +329,12 @@ exports.heartComment = async (req, res) => {
 
     comment.isHearted = !comment.isHearted;
     await comment.save();
+
+    const postRef = getPostReferenceFromComment(comment);
+    await invalidateCacheByPrefixes([
+      ...(postRef.type && postRef.id ? [`comments:list:${postRef.type}:${postRef.id}:`] : []),
+      ...(comment.parentComment ? [`comments:replies:${comment.parentComment.toString()}:`] : [])
+    ]);
 
     res.json({ success: true, isHearted: comment.isHearted });
   } catch (error) {
@@ -281,6 +358,12 @@ exports.pinComment = async (req, res) => {
     comment.isPinned = !comment.isPinned;
     await comment.save();
 
+    const postRef = getPostReferenceFromComment(comment);
+    await invalidateCacheByPrefixes([
+      ...(postRef.type && postRef.id ? [`comments:list:${postRef.type}:${postRef.id}:`] : []),
+      ...(comment.parentComment ? [`comments:replies:${comment.parentComment.toString()}:`] : [])
+    ]);
+
     res.json({ success: true, isPinned: comment.isPinned });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -303,6 +386,12 @@ exports.editComment = async (req, res) => {
 
     comment.content = content;
     await comment.save();
+
+    const postRef = getPostReferenceFromComment(comment);
+    await invalidateCacheByPrefixes([
+      ...(postRef.type && postRef.id ? [`comments:list:${postRef.type}:${postRef.id}:`] : []),
+      ...(comment.parentComment ? [`comments:replies:${comment.parentComment.toString()}:`] : [])
+    ]);
 
     const populatedComment = await Comment.findById(comment._id)
       .populate('author', 'username profileImage isGuest role isVerified')
@@ -339,10 +428,19 @@ exports.deleteComment = async (req, res) => {
     }
 
     const blogId = comment.blog?._id || comment.article?._id || comment.short?._id;
+    const postRef = getPostReferenceFromComment(comment);
 
     // Delete all replies to this comment
     await Comment.deleteMany({ parentComment: comment._id });
     await Comment.findByIdAndDelete(comment._id);
+
+    await invalidateCacheByPrefixes([
+      ...(postRef.type && postRef.id ? [`comments:list:${postRef.type}:${postRef.id}:`] : []),
+      ...(comment.parentComment
+        ? [`comments:replies:${comment.parentComment.toString()}:`]
+        : [`comments:replies:${comment._id.toString()}:`]),
+      ...getContentCachePrefixesByType(postRef.type)
+    ]);
 
     // Emit socket event for real-time updates
     const io = req.app.get('io');

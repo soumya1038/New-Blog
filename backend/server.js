@@ -34,6 +34,7 @@ const seoRoutes = require('./routes/seoRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { systemMonitor } = require('./middleware/monitoring');
 const { startDatabaseMonitor } = require('./utils/dbMonitor');
+const { initializeCacheStore } = require('./utils/cacheStore');
 const chatSocket = require('./socket/chatSocket');
 const { cleanupOldNotifications } = require('./controllers/socialController');
 const cleanupExpiredStatuses = require('./utils/statusCleanup');
@@ -44,6 +45,9 @@ const cleanupExpiredGuests = require('./jobs/cleanupExpiredGuests');
 const app = express();
 const server = http.createServer(app);
 app.set('trust proxy', process.env.NODE_ENV === 'production' ? 1 : 0);
+initializeCacheStore().catch((error) => {
+  console.warn('[cache] Initialization warning:', error?.message || error);
+});
 const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',

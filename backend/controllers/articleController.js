@@ -3,6 +3,25 @@ const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
 const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCursorFilter, extractNextCursor } = require('../utils/cursorPagination');
+const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
+
+const ARTICLE_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
+  process.env.CACHE_TTL_ARTICLE_LIST_SECONDS,
+  parsePositiveInt(process.env.CACHE_TTL_LIST_SECONDS, 180)
+);
+
+const ARTICLE_DETAIL_CACHE_TTL_SECONDS = parsePositiveInt(
+  process.env.CACHE_TTL_ARTICLE_DETAIL_SECONDS,
+  parsePositiveInt(process.env.CACHE_TTL_DETAIL_SECONDS, 300)
+);
+
+const invalidateArticleReadCache = async () => {
+  await invalidateCacheByPrefixes(['articles:list:', 'article:detail:']);
+};
+
+const invalidateArticlePublishCache = async () => {
+  await invalidateCacheByPrefixes(['articles:list:', 'article:detail:', 'seo:sitemap', 'seo:feed']);
+};
 
 exports.createArticle = async (req, res) => {
   try {
@@ -66,6 +85,7 @@ exports.createArticle = async (req, res) => {
     });
 
     const populatedArticle = await Article.findById(article._id).populate('author', 'username profileImage isGuest role isVerified');
+    await invalidateArticlePublishCache();
 
     res.status(201).json({ success: true, article: populatedArticle });
   } catch (error) {
@@ -79,6 +99,15 @@ exports.getArticles = async (req, res) => {
     const useCursor = shouldUseCursorPagination(req.query);
     const limit = parseLimit(req.query.limit);
     const filter = {};
+    const canUseListCache = draft !== 'true';
+    const listCacheKey = `articles:list:${createQueryCacheKey(req.query)}`;
+
+    if (canUseListCache) {
+      const cachedPayload = await getCache(listCacheKey);
+      if (cachedPayload) {
+        return res.json(cachedPayload);
+      }
+    }
 
     if (author) filter.author = author;
     if (tag) filter.tags = tag;
@@ -155,7 +184,7 @@ exports.getArticles = async (req, res) => {
       return articleObj;
     }));
 
-    res.json({
+    const payload = {
       success: true,
       articles: articlesWithStatus,
       ...(useCursor
@@ -168,7 +197,13 @@ exports.getArticles = async (req, res) => {
             }
           }
         : {})
-    });
+    };
+
+    if (canUseListCache) {
+      await setCache(listCacheKey, payload, ARTICLE_LIST_CACHE_TTL_SECONDS);
+    }
+
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -176,6 +211,12 @@ exports.getArticles = async (req, res) => {
 
 exports.getArticle = async (req, res) => {
   try {
+    const detailCacheKey = `article:detail:${req.params.id}`;
+    const cachedPayload = await getCache(detailCacheKey);
+    if (cachedPayload) {
+      return res.json(cachedPayload);
+    }
+
     const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id, {
       populate: [
         { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses' },
@@ -201,7 +242,7 @@ exports.getArticle = async (req, res) => {
       articleObj.author.statuses = activeStatuses;
     }
 
-    res.json({
+    const payload = {
       success: true,
       article: {
         ...articleObj,
@@ -212,7 +253,11 @@ exports.getArticle = async (req, res) => {
         shouldRedirect: resolved.resolution === 'legacy_slug',
         to: `/article/${article.slug || article._id}`
       }
-    });
+    };
+
+    await setCache(detailCacheKey, payload, ARTICLE_DETAIL_CACHE_TTL_SECONDS);
+
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -290,6 +335,7 @@ exports.updateArticle = async (req, res) => {
     article.updatedAt = Date.now();
 
     await article.save();
+    await invalidateArticlePublishCache();
 
     const updatedArticle = await Article.findById(article._id).populate('author', 'username profileImage isGuest role isVerified');
 
@@ -324,6 +370,7 @@ exports.deleteArticle = async (req, res) => {
     await Comment.deleteMany({ article: article._id });
     await Notification.deleteMany({ article: article._id });
     await Article.findByIdAndDelete(article._id);
+    await invalidateArticlePublishCache();
 
     res.json({ success: true, message: 'Article deleted' });
   } catch (error) {
@@ -351,6 +398,7 @@ exports.trackView = async (req, res) => {
       article.views += 1;
       article.viewedBy.push({ user: userId, ip: userIp });
       await article.save();
+      await invalidateArticleReadCache();
     }
 
     res.json({ success: true, views: article.views });
@@ -373,10 +421,12 @@ exports.toggleLike = async (req, res) => {
     if (likeIndex > -1) {
       article.likes.splice(likeIndex, 1);
       await article.save();
+      await invalidateArticleReadCache();
       res.json({ success: true, liked: false, likes: article.likes });
     } else {
       article.likes.push(req.user._id);
       await article.save();
+      await invalidateArticleReadCache();
 
       if (article.author.toString() !== req.user._id.toString()) {
         await Notification.create({

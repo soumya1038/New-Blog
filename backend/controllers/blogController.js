@@ -3,6 +3,25 @@ const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
 const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCursorFilter, extractNextCursor } = require('../utils/cursorPagination');
+const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
+
+const BLOG_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
+  process.env.CACHE_TTL_BLOG_LIST_SECONDS,
+  parsePositiveInt(process.env.CACHE_TTL_LIST_SECONDS, 180)
+);
+
+const BLOG_DETAIL_CACHE_TTL_SECONDS = parsePositiveInt(
+  process.env.CACHE_TTL_BLOG_DETAIL_SECONDS,
+  parsePositiveInt(process.env.CACHE_TTL_DETAIL_SECONDS, 300)
+);
+
+const invalidateBlogReadCache = async () => {
+  await invalidateCacheByPrefixes(['blogs:list:', 'blog:detail:']);
+};
+
+const invalidateBlogPublishCache = async () => {
+  await invalidateCacheByPrefixes(['blogs:list:', 'blog:detail:', 'seo:sitemap', 'seo:feed']);
+};
 
 // Create blog
 exports.createBlog = async (req, res) => {
@@ -76,6 +95,7 @@ exports.createBlog = async (req, res) => {
     });
 
     const populatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage isGuest role isVerified');
+    await invalidateBlogPublishCache();
 
     res.status(201).json({ success: true, blog: populatedBlog });
   } catch (error) {
@@ -90,6 +110,15 @@ exports.getBlogs = async (req, res) => {
     const useCursor = shouldUseCursorPagination(req.query);
     const limit = parseLimit(req.query.limit);
     const filter = {};
+    const canUseListCache = draft !== 'true';
+    const listCacheKey = `blogs:list:${createQueryCacheKey(req.query)}`;
+
+    if (canUseListCache) {
+      const cachedPayload = await getCache(listCacheKey);
+      if (cachedPayload) {
+        return res.json(cachedPayload);
+      }
+    }
 
     if (author) filter.author = author;
     if (tag) filter.tags = tag;
@@ -170,7 +199,7 @@ exports.getBlogs = async (req, res) => {
       return blogObj;
     }));
 
-    res.json({
+    const payload = {
       success: true,
       blogs: blogsWithStatus,
       ...(useCursor
@@ -183,7 +212,13 @@ exports.getBlogs = async (req, res) => {
             }
           }
         : {})
-    });
+    };
+
+    if (canUseListCache) {
+      await setCache(listCacheKey, payload, BLOG_LIST_CACHE_TTL_SECONDS);
+    }
+
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -192,6 +227,12 @@ exports.getBlogs = async (req, res) => {
 // Get single blog
 exports.getBlog = async (req, res) => {
   try {
+    const detailCacheKey = `blog:detail:${req.params.id}`;
+    const cachedPayload = await getCache(detailCacheKey);
+    if (cachedPayload) {
+      return res.json(cachedPayload);
+    }
+
     const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id, {
       populate: [
         { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses' },
@@ -218,7 +259,7 @@ exports.getBlog = async (req, res) => {
       blogObj.author.statuses = activeStatuses; // Keep active statuses for viewing
     }
 
-    res.json({
+    const payload = {
       success: true,
       blog: {
         ...blogObj,
@@ -229,7 +270,11 @@ exports.getBlog = async (req, res) => {
         shouldRedirect: resolved.resolution === 'legacy_slug',
         to: `/blog/${blog.slug || blog._id}`
       }
-    });
+    };
+
+    await setCache(detailCacheKey, payload, BLOG_DETAIL_CACHE_TTL_SECONDS);
+
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -310,6 +355,7 @@ exports.updateBlog = async (req, res) => {
     blog.updatedAt = Date.now();
 
     await blog.save();
+    await invalidateBlogPublishCache();
 
     const updatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage isGuest role isVerified');
 
@@ -350,6 +396,7 @@ exports.deleteBlog = async (req, res) => {
     await Notification.deleteMany({ blog: blog._id });
 
     await Blog.findByIdAndDelete(blog._id);
+    await invalidateBlogPublishCache();
 
     res.json({ success: true, message: 'Blog deleted' });
   } catch (error) {
@@ -379,6 +426,7 @@ exports.trackView = async (req, res) => {
       blog.views += 1;
       blog.viewedBy.push({ user: userId, ip: userIp });
       await blog.save();
+      await invalidateBlogReadCache();
     }
 
     res.json({ success: true, views: blog.views });
@@ -424,11 +472,13 @@ exports.toggleLike = async (req, res) => {
       // Unlike
       blog.likes.splice(likeIndex, 1);
       await blog.save();
+      await invalidateBlogReadCache();
       res.json({ success: true, liked: false, likes: blog.likes });
     } else {
       // Like
       blog.likes.push(req.user._id);
       await blog.save();
+      await invalidateBlogReadCache();
 
       // Create notification for author
       if (blog.author.toString() !== req.user._id.toString()) {

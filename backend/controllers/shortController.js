@@ -1,6 +1,21 @@
 const Short = require('../models/Short');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
+const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
+
+const SHORT_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
+  process.env.CACHE_TTL_SHORT_LIST_SECONDS,
+  parsePositiveInt(process.env.CACHE_TTL_LIST_SECONDS, 120)
+);
+
+const SHORT_DETAIL_CACHE_TTL_SECONDS = parsePositiveInt(
+  process.env.CACHE_TTL_SHORT_DETAIL_SECONDS,
+  parsePositiveInt(process.env.CACHE_TTL_DETAIL_SECONDS, 180)
+);
+
+const invalidateShortCache = async () => {
+  await invalidateCacheByPrefixes(['shorts:list:', 'short:detail:']);
+};
 
 // Create short
 exports.createShort = async (req, res) => {
@@ -59,6 +74,7 @@ exports.createShort = async (req, res) => {
     });
 
     const populatedShort = await Short.findById(short._id).populate('author', 'username profileImage');
+    await invalidateShortCache();
 
     res.status(201).json({ success: true, short: populatedShort });
   } catch (error) {
@@ -71,6 +87,15 @@ exports.getShorts = async (req, res) => {
   try {
     const { author, tag, draft } = req.query;
     const filter = {};
+    const canUseListCache = draft !== 'true';
+    const listCacheKey = `shorts:list:${createQueryCacheKey(req.query)}`;
+
+    if (canUseListCache) {
+      const cachedPayload = await getCache(listCacheKey);
+      if (cachedPayload) {
+        return res.json(cachedPayload);
+      }
+    }
 
     if (author) filter.author = author;
     if (tag) filter.tags = tag;
@@ -125,7 +150,13 @@ exports.getShorts = async (req, res) => {
       return shortObj;
     });
 
-    res.json({ success: true, shorts: shortsWithStatus });
+    const payload = { success: true, shorts: shortsWithStatus };
+
+    if (canUseListCache) {
+      await setCache(listCacheKey, payload, SHORT_LIST_CACHE_TTL_SECONDS);
+    }
+
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -134,6 +165,12 @@ exports.getShorts = async (req, res) => {
 // Get single short
 exports.getShort = async (req, res) => {
   try {
+    const detailCacheKey = `short:detail:${req.params.id}`;
+    const cachedPayload = await getCache(detailCacheKey);
+    if (cachedPayload) {
+      return res.json(cachedPayload);
+    }
+
     const short = await Short.findById(req.params.id)
       .populate('author', 'username profileImage fullName bio statuses')
       .populate('likes', 'username profileImage');
@@ -154,14 +191,18 @@ exports.getShort = async (req, res) => {
       shortObj.author.statuses = activeStatuses;
     }
 
-    res.json({
+    const payload = {
       success: true,
       short: {
         ...shortObj,
         likeCount: short.likes.length,
         commentCount
       }
-    });
+    };
+
+    await setCache(detailCacheKey, payload, SHORT_DETAIL_CACHE_TTL_SECONDS);
+
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -229,6 +270,7 @@ exports.updateShort = async (req, res) => {
     short.updatedAt = Date.now();
 
     await short.save();
+    await invalidateShortCache();
 
     const updatedShort = await Short.findById(short._id).populate('author', 'username profileImage');
 
@@ -263,6 +305,7 @@ exports.deleteShort = async (req, res) => {
     await Comment.deleteMany({ short: short._id });
     await Notification.deleteMany({ short: short._id });
     await Short.findByIdAndDelete(short._id);
+    await invalidateShortCache();
 
     res.json({ success: true, message: 'Short deleted' });
   } catch (error) {
@@ -290,6 +333,7 @@ exports.trackView = async (req, res) => {
       short.views += 1;
       short.viewedBy.push({ user: userId, ip: userIp });
       await short.save();
+      await invalidateShortCache();
     }
 
     res.json({ success: true, views: short.views });
@@ -312,10 +356,12 @@ exports.toggleLike = async (req, res) => {
     if (likeIndex > -1) {
       short.likes.splice(likeIndex, 1);
       await short.save();
+      await invalidateShortCache();
       res.json({ success: true, liked: false, likes: short.likes });
     } else {
       short.likes.push(req.user._id);
       await short.save();
+      await invalidateShortCache();
 
       if (short.author.toString() !== req.user._id.toString()) {
         await Notification.create({

@@ -1,11 +1,13 @@
 const express = require('express');
 const Blog = require('../models/Blog');
 const Article = require('../models/Article');
+const { parsePositiveInt, getCache, setCache } = require('../utils/cacheStore');
 
 const router = express.Router();
 
 const MAX_FEED_ITEMS = 50;
 const MAX_SITEMAP_ITEMS = 5000;
+const SEO_CACHE_TTL_SECONDS = parsePositiveInt(process.env.CACHE_TTL_SEO_SECONDS, 600);
 
 const xmlEscape = (value = '') =>
   String(value)
@@ -56,6 +58,12 @@ router.get('/robots.txt', (req, res) => {
 
 router.get('/sitemap.xml', async (req, res) => {
   try {
+    const cachedSitemap = await getCache('seo:sitemap');
+    if (cachedSitemap) {
+      res.type('application/xml');
+      return res.send(cachedSitemap);
+    }
+
     const baseUrl = resolvePublicBaseUrl(req);
 
     const [blogs, articles] = await Promise.all([
@@ -104,6 +112,8 @@ ${urls
   .join('\n')}
 </urlset>`;
 
+    await setCache('seo:sitemap', xml, SEO_CACHE_TTL_SECONDS);
+
     res.type('application/xml');
     res.send(xml);
   } catch (error) {
@@ -113,6 +123,12 @@ ${urls
 
 router.get('/feed.xml', async (req, res) => {
   try {
+    const cachedFeed = await getCache('seo:feed');
+    if (cachedFeed) {
+      res.type('application/rss+xml');
+      return res.send(cachedFeed);
+    }
+
     const baseUrl = resolvePublicBaseUrl(req);
 
     const [blogs, articles] = await Promise.all([
@@ -169,6 +185,8 @@ ${items
   .join('\n')}
   </channel>
 </rss>`;
+
+    await setCache('seo:feed', xml, SEO_CACHE_TTL_SECONDS);
 
     res.type('application/rss+xml');
     res.send(xml);

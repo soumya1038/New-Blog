@@ -1,6 +1,6 @@
 {
   "name": "blog-backend",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -30,6 +30,7 @@
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.9",
     "openai": "^6.3.0",
+    "redis": "^4.7.1",
     "socket.io": "^4.8.1",
     "uuid": "^9.0.1"
   },
