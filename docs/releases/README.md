@@ -40,3 +40,14 @@ What it does:
 5. Commit the release note changes.
 6. Push branch.
 7. Push tag only when approved.
+
+## Team Versioning Rule (Your Preference)
+
+Before every push to GitHub:
+1. Run:
+   - `npm run version:push`
+2. This bumps only the middle digit (minor) and keeps the last digit (patch) as commit counter style.
+
+Example:
+- `1.0.2` -> `1.1.2`
+- `1.1.5` -> `1.2.5`
