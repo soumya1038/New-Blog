@@ -163,6 +163,14 @@ CI baseline checks (`.github/workflows/ci-cd.yml`):
 - Redirect production build
 - Backend smoke test (boot server + probe `/health` and `/ready`)
 
+CD deploy automation:
+- Workflow: `.github/workflows/deploy-render.yml`
+- Supports `development` and `main` deploy hooks for Render
+- Optional health probes after deploy hook triggers
+
+Ops playbook:
+- See `docs/ops/DEPLOY_MONITORING_PLAYBOOK.md` for secret setup, alert tuning, and incident triage.
+
 ## 📄 License
 
 MIT License

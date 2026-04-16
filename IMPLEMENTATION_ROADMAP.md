@@ -4,7 +4,8 @@ This roadmap is organized into small, reviewable PRs so we can ship safely witho
 
 Current status (development branch):
 - Completed: PR-1, PR-2, PR-3, PR-4, PR-5, PR-6, PR-7, PR-8, PR-9, PR-10
-- Next: Additional enhancements (CD deploy automation, dashboards, alert tuning)
+- Additional enhancements (phase 1 completed): CD deploy automation, ops dashboard expansion, alert tuning controls
+- Next: Optional phase 2 (Grafana/BetterStack dashboards + paging policies)
 
 ## PR-1: Security Baseline Hardening (Low Risk)
 Goal: Add safer defaults for abuse prevention without changing user flows.

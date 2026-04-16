@@ -1,0 +1,105 @@
+name: Deploy to Render
+
+on:
+  push:
+    branches: [development, main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: development
+        type: choice
+        options:
+          - development
+          - production
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-development:
+    name: Deploy Development
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/development') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'development')
+    env:
+      BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_DEVELOPMENT }}
+      REDIRECT_DEPLOY_HOOK: ${{ secrets.RENDER_REDIRECT_DEPLOY_HOOK_DEVELOPMENT }}
+      HEALTHCHECK_URL: ${{ secrets.RENDER_BACKEND_HEALTHCHECK_URL_DEVELOPMENT }}
+    steps:
+      - name: Trigger backend deploy hook
+        if: ${{ env.BACKEND_DEPLOY_HOOK != '' }}
+        run: |
+          curl -fsS -X POST "$BACKEND_DEPLOY_HOOK"
+          echo "Triggered backend deployment."
+
+      - name: Trigger redirect deploy hook
+        if: ${{ env.REDIRECT_DEPLOY_HOOK != '' }}
+        run: |
+          curl -fsS -X POST "$REDIRECT_DEPLOY_HOOK"
+          echo "Triggered redirect deployment."
+
+      - name: Skip deploy when hooks are missing
+        if: ${{ env.BACKEND_DEPLOY_HOOK == '' && env.REDIRECT_DEPLOY_HOOK == '' }}
+        run: |
+          echo "No Render deploy hooks configured for development."
+          echo "Set RENDER_BACKEND_DEPLOY_HOOK_DEVELOPMENT and/or RENDER_REDIRECT_DEPLOY_HOOK_DEVELOPMENT."
+
+      - name: Health probe
+        if: ${{ env.HEALTHCHECK_URL != '' && (env.BACKEND_DEPLOY_HOOK != '' || env.REDIRECT_DEPLOY_HOOK != '') }}
+        run: |
+          echo "Waiting for deployment health check..."
+          for i in {1..30}; do
+            if curl -fsS "$HEALTHCHECK_URL/health" >/tmp/dev-health.json; then
+              cat /tmp/dev-health.json
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Health check did not become ready in time."
+          exit 1
+
+  deploy-production:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    env:
+      BACKEND_DEPLOY_HOOK: ${{ secrets.RENDER_BACKEND_DEPLOY_HOOK_PRODUCTION }}
+      REDIRECT_DEPLOY_HOOK: ${{ secrets.RENDER_REDIRECT_DEPLOY_HOOK_PRODUCTION }}
+      HEALTHCHECK_URL: ${{ secrets.RENDER_BACKEND_HEALTHCHECK_URL_PRODUCTION }}
+    steps:
+      - name: Trigger backend deploy hook
+        if: ${{ env.BACKEND_DEPLOY_HOOK != '' }}
+        run: |
+          curl -fsS -X POST "$BACKEND_DEPLOY_HOOK"
+          echo "Triggered backend deployment."
+
+      - name: Trigger redirect deploy hook
+        if: ${{ env.REDIRECT_DEPLOY_HOOK != '' }}
+        run: |
+          curl -fsS -X POST "$REDIRECT_DEPLOY_HOOK"
+          echo "Triggered redirect deployment."
+
+      - name: Skip deploy when hooks are missing
+        if: ${{ env.BACKEND_DEPLOY_HOOK == '' && env.REDIRECT_DEPLOY_HOOK == '' }}
+        run: |
+          echo "No Render deploy hooks configured for production."
+          echo "Set RENDER_BACKEND_DEPLOY_HOOK_PRODUCTION and/or RENDER_REDIRECT_DEPLOY_HOOK_PRODUCTION."
+
+      - name: Health probe
+        if: ${{ env.HEALTHCHECK_URL != '' && (env.BACKEND_DEPLOY_HOOK != '' || env.REDIRECT_DEPLOY_HOOK != '') }}
+        run: |
+          echo "Waiting for deployment health check..."
+          for i in {1..30}; do
+            if curl -fsS "$HEALTHCHECK_URL/health" >/tmp/prod-health.json; then
+              cat /tmp/prod-health.json
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Health check did not become ready in time."
+          exit 1

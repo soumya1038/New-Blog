@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { TbBrandBlogger } from "react-icons/tb";
-import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes, FaServer } from 'react-icons/fa';
+import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes, FaServer, FaExclamationTriangle, FaChartLine, FaBug, FaTachometerAlt } from 'react-icons/fa';
 import { GoVerified, GoUnverified } from 'react-icons/go';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -371,6 +371,18 @@ const AdminDashboard = () => {
     wrapperStyle: { color: chartTheme.axisTick }
   };
 
+  const alertStatus = systemMetrics?.alerts?.status || 'healthy';
+  const alertItems = systemMetrics?.alerts?.items || [];
+  const statusBreakdown = systemMetrics?.statusBreakdown || {};
+  const topSlowRoutes = systemMetrics?.topSlowRoutes || [];
+
+  const alertStatusClasses =
+    alertStatus === 'critical'
+      ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border border-red-200 dark:border-red-700/60'
+      : alertStatus === 'warning'
+      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-200 dark:border-amber-700/60'
+      : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/60';
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--background-secondary)] via-[var(--background-primary)] to-[var(--background-secondary)] dark:from-[var(--background-primary)] dark:via-[var(--background-secondary)] dark:to-[var(--background-tertiary)] py-8">
       <div className="container mx-auto px-4">
@@ -618,10 +630,16 @@ const AdminDashboard = () => {
             {/* System Health Section */}
             {systemMetrics && (
               <div className="bg-[var(--surface-card)] rounded-xl shadow-lg p-6 border border-[var(--border-default)]">
-                <h3 className="text-xl font-bold mb-6 text-[var(--text-primary)] flex items-center gap-2">
-                  <FaServer className="text-blue-500" /> {t('System Health')}
-                </h3>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+                  <h3 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+                    <FaServer className="text-blue-500" /> {t('System Health')}
+                  </h3>
+                  <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${alertStatusClasses}`}>
+                    {alertStatus === 'critical' ? t('Critical') : alertStatus === 'warning' ? t('Warning') : t('Healthy')}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
                   <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 rounded-lg p-4 border border-blue-200 dark:border-blue-700">
                     <p className="text-xs font-medium text-blue-700 dark:text-blue-300 mb-2">{t('Uptime')}</p>
                     <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
@@ -632,6 +650,11 @@ const AdminDashboard = () => {
                   <div className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/30 dark:to-green-800/30 rounded-lg p-4 border border-green-200 dark:border-green-700">
                     <p className="text-xs font-medium text-green-700 dark:text-green-300 mb-2">{t('Total Requests')}</p>
                     <p className="text-2xl font-bold text-green-900 dark:text-green-100">{systemMetrics.requests.toLocaleString()}</p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-violet-50 to-violet-100 dark:from-violet-900/30 dark:to-violet-800/30 rounded-lg p-4 border border-violet-200 dark:border-violet-700">
+                    <p className="text-xs font-medium text-violet-700 dark:text-violet-300 mb-2">{t('Active Users')}</p>
+                    <p className="text-2xl font-bold text-violet-900 dark:text-violet-100">{systemMetrics.activeUsers || 0}</p>
                   </div>
                   
                   <div className={`bg-gradient-to-br rounded-lg p-4 border ${
@@ -655,6 +678,52 @@ const AdminDashboard = () => {
                         ? 'text-amber-900 dark:text-amber-100' 
                         : 'text-red-900 dark:text-red-100'
                     }`}>{systemMetrics.avgResponseTime}ms</p>
+                  </div>
+
+                  <div className={`bg-gradient-to-br rounded-lg p-4 border ${
+                    (systemMetrics.p95ResponseTime || 0) < 500
+                      ? 'from-indigo-50 to-indigo-100 dark:from-indigo-900/30 dark:to-indigo-800/30 border-indigo-200 dark:border-indigo-700'
+                      : (systemMetrics.p95ResponseTime || 0) < 1200
+                      ? 'from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-800/30 border-amber-200 dark:border-amber-700'
+                      : 'from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/30 border-red-200 dark:border-red-700'
+                  }`}>
+                    <p className={`text-xs font-medium mb-2 ${
+                      (systemMetrics.p95ResponseTime || 0) < 500
+                        ? 'text-indigo-700 dark:text-indigo-300'
+                        : (systemMetrics.p95ResponseTime || 0) < 1200
+                        ? 'text-amber-700 dark:text-amber-300'
+                        : 'text-red-700 dark:text-red-300'
+                    }`}>{t('P95 Response')}</p>
+                    <p className={`text-2xl font-bold ${
+                      (systemMetrics.p95ResponseTime || 0) < 500
+                        ? 'text-indigo-900 dark:text-indigo-100'
+                        : (systemMetrics.p95ResponseTime || 0) < 1200
+                        ? 'text-amber-900 dark:text-amber-100'
+                        : 'text-red-900 dark:text-red-100'
+                    }`}>{systemMetrics.p95ResponseTime || 0}ms</p>
+                  </div>
+
+                  <div className={`bg-gradient-to-br rounded-lg p-4 border ${
+                    (systemMetrics.errorRatePercent || 0) < 1
+                      ? 'from-lime-50 to-lime-100 dark:from-lime-900/30 dark:to-lime-800/30 border-lime-200 dark:border-lime-700'
+                      : (systemMetrics.errorRatePercent || 0) < 3
+                      ? 'from-amber-50 to-amber-100 dark:from-amber-900/30 dark:to-amber-800/30 border-amber-200 dark:border-amber-700'
+                      : 'from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/30 border-red-200 dark:border-red-700'
+                  }`}>
+                    <p className={`text-xs font-medium mb-2 ${
+                      (systemMetrics.errorRatePercent || 0) < 1
+                        ? 'text-lime-700 dark:text-lime-300'
+                        : (systemMetrics.errorRatePercent || 0) < 3
+                        ? 'text-amber-700 dark:text-amber-300'
+                        : 'text-red-700 dark:text-red-300'
+                    }`}>{t('5xx Error Rate')}</p>
+                    <p className={`text-2xl font-bold ${
+                      (systemMetrics.errorRatePercent || 0) < 1
+                        ? 'text-lime-900 dark:text-lime-100'
+                        : (systemMetrics.errorRatePercent || 0) < 3
+                        ? 'text-amber-900 dark:text-amber-100'
+                        : 'text-red-900 dark:text-red-100'
+                    }`}>{systemMetrics.errorRatePercent || 0}%</p>
                   </div>
                   
                   <div className={`bg-gradient-to-br rounded-lg p-4 border ${
@@ -707,6 +776,79 @@ const AdminDashboard = () => {
                         </span>
                       )}
                     </p>
+                  </div>
+                </div>
+
+                <div className="grid lg:grid-cols-2 gap-4 mt-5">
+                  <div className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] p-4">
+                    <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+                      <FaExclamationTriangle className={alertStatus === 'healthy' ? 'text-emerald-500' : alertStatus === 'warning' ? 'text-amber-500' : 'text-red-500'} />
+                      {t('Alert Summary')}
+                    </h4>
+                    {alertItems.length > 0 ? (
+                      <div className="space-y-2">
+                        {alertItems.map((item, idx) => (
+                          <div
+                            key={`${item.id}-${idx}`}
+                            className={`rounded-md px-3 py-2 text-sm border ${
+                              item.severity === 'critical'
+                                ? 'bg-red-100/80 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-700/60'
+                                : 'bg-amber-100/80 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700/60'
+                            }`}
+                          >
+                            <p className="font-semibold">{item.label}</p>
+                            <p>{item.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/60 rounded-md px-3 py-2">
+                        {t('No active alerts. All tracked thresholds are within healthy range.')}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] p-4">
+                    <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+                      <FaChartLine className="text-blue-500" />
+                      {t('Traffic and Latency Insights')}
+                    </h4>
+
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      <span className="text-xs font-semibold px-2 py-1 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                        2xx: {statusBreakdown['2xx'] || 0}
+                      </span>
+                      <span className="text-xs font-semibold px-2 py-1 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">
+                        3xx: {statusBreakdown['3xx'] || 0}
+                      </span>
+                      <span className="text-xs font-semibold px-2 py-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                        4xx: {statusBreakdown['4xx'] || 0}
+                      </span>
+                      <span className="text-xs font-semibold px-2 py-1 rounded bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                        5xx: {statusBreakdown['5xx'] || 0}
+                      </span>
+                    </div>
+
+                    {topSlowRoutes.length > 0 ? (
+                      <div className="space-y-2">
+                        {topSlowRoutes.slice(0, 3).map((route, idx) => (
+                          <div key={`${route.route}-${idx}`} className="rounded-md border border-[var(--border-default)] bg-[var(--surface-card)] px-3 py-2">
+                            <p className="text-xs font-semibold text-[var(--text-primary)] truncate flex items-center gap-2">
+                              <FaTachometerAlt className="text-indigo-500" />
+                              {route.route}
+                            </p>
+                            <p className="text-xs text-[var(--text-secondary)] mt-1">
+                              Avg: {route.avgResponseTime}ms | Max: {route.maxResponseTime}ms | Calls: {route.count}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[var(--text-secondary)] flex items-center gap-2">
+                        <FaBug className="text-[var(--text-muted)]" />
+                        {t('Route-level latency samples will appear as traffic increases.')}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

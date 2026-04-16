@@ -1,6 +1,6 @@
 const express = require('express');
 const { adminAuth, adminOrCoAdminAuth } = require('../middleware/auth');
-const { getMetrics } = require('../middleware/monitoring');
+const { getMetrics, getAlertThresholds } = require('../middleware/monitoring');
 const {
   getStats,
   getUsers,
@@ -24,7 +24,7 @@ const router = express.Router();
 // Health check endpoint (public)
 router.get('/health', (req, res) => {
   const metrics = getMetrics();
-  const isHealthy = metrics.database === 'connected' && metrics.memory < 450;
+  const isHealthy = metrics.database === 'connected' && metrics.alerts?.status !== 'critical';
   res.status(isHealthy ? 200 : 503).json({
     status: isHealthy ? 'healthy' : 'unhealthy',
     ...metrics
@@ -34,6 +34,17 @@ router.get('/health', (req, res) => {
 // System metrics (admin only)
 router.get('/metrics', adminOrCoAdminAuth, (req, res) => {
   res.json({ success: true, metrics: getMetrics() });
+});
+
+// Alert thresholds and current status (admin only)
+router.get('/metrics/alerts', adminOrCoAdminAuth, (req, res) => {
+  const metrics = getMetrics();
+  res.json({
+    success: true,
+    alerts: metrics.alerts,
+    thresholds: getAlertThresholds(),
+    generatedAt: new Date().toISOString()
+  });
 });
 
 // Read-only routes (admin or coAdmin)
