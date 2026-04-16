@@ -171,6 +171,15 @@ CD deploy automation:
 Ops playbook:
 - See `docs/ops/DEPLOY_MONITORING_PLAYBOOK.md` for secret setup, alert tuning, and incident triage.
 
+Overall app release versioning:
+- Keep component versions separate:
+  - `backend/package.json`
+  - `redirect/package.json`
+- Create one overall release note/tag:
+  - `npm run release:overall -- <version> [--tag] [--push-tag]`
+- Details:
+  - `docs/releases/README.md`
+
 ## 📄 License
 
 MIT License
