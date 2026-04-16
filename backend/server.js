@@ -33,7 +33,7 @@ const chatbotRoutes = require('./routes/chatbot');
 const seoRoutes = require('./routes/seoRoutes');
 const searchRoutes = require('./routes/searchRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
-const { systemMonitor } = require('./middleware/monitoring');
+const { systemMonitor, getMetrics } = require('./middleware/monitoring');
 const { startDatabaseMonitor } = require('./utils/dbMonitor');
 const { initializeCacheStore } = require('./utils/cacheStore');
 const { ensureSearchIndexes } = require('./utils/searchIndexBootstrap');
@@ -131,6 +131,31 @@ app.get('/api', (req, res) => {
 
 app.get('/api/test', (req, res) => {
   res.json({ success: true, message: 'Backend is working!', timestamp: new Date() });
+});
+
+// Public health endpoints for uptime probes and platform monitors
+app.get('/health', (req, res) => {
+  const metrics = getMetrics();
+  res.status(200).json({
+    status: 'ok',
+    service: 'lekhon-backend',
+    timestamp: new Date().toISOString(),
+    ...metrics
+  });
+});
+
+app.get('/ready', (req, res) => {
+  const metrics = getMetrics();
+  const isReady = metrics.database === 'connected';
+
+  res.status(isReady ? 200 : 503).json({
+    status: isReady ? 'ready' : 'not-ready',
+    service: 'lekhon-backend',
+    timestamp: new Date().toISOString(),
+    checks: {
+      database: metrics.database
+    }
+  });
 });
 
 // SEO + crawler routes

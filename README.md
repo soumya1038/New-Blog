@@ -104,7 +104,7 @@ npm run dev
 ### Frontend Setup
 
 ```bash
-cd frontend
+cd redirect
 npm install
 npm start
 ```
@@ -144,8 +144,24 @@ ifconfig  # Mac/Linux
 
 ## 🎨 Branding
 
-Logo location: `frontend/public/image/lekhon.png`  
+Logo location: `redirect/public/image/lekhon.png`  
 Upload to Cloudinary and set `LOGO_URL` in `.env` for emails
+
+## Operations and Monitoring
+
+Public health endpoints (backend):
+- `GET /health`: liveness endpoint for uptime probes.
+- `GET /ready`: readiness endpoint (returns `503` until MongoDB is connected).
+- `GET /api/admin/health`: detailed health metrics payload (legacy-compatible).
+
+Recommended uptime checks:
+- Probe `GET /health` every 1-5 minutes.
+- Alert when `GET /ready` returns non-`200` for 2+ consecutive checks.
+
+CI baseline checks (`.github/workflows/ci-cd.yml`):
+- Backend lint (merge-marker check + JS syntax check)
+- Redirect production build
+- Backend smoke test (boot server + probe `/health` and `/ready`)
 
 ## 📄 License
 
