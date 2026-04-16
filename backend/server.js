@@ -31,10 +31,12 @@ const zohoAuthRoutes = require('./routes/zohoAuth');
 const draftRoutes = require('./routes/draftRoutes');
 const chatbotRoutes = require('./routes/chatbot');
 const seoRoutes = require('./routes/seoRoutes');
+const searchRoutes = require('./routes/searchRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { systemMonitor } = require('./middleware/monitoring');
 const { startDatabaseMonitor } = require('./utils/dbMonitor');
 const { initializeCacheStore } = require('./utils/cacheStore');
+const { ensureSearchIndexes } = require('./utils/searchIndexBootstrap');
 const chatSocket = require('./socket/chatSocket');
 const { cleanupOldNotifications } = require('./controllers/socialController');
 const cleanupExpiredStatuses = require('./utils/statusCleanup');
@@ -151,6 +153,7 @@ app.use('/api/calls', apiLimiter, callRoutes);
 app.use('/api/livekit', apiLimiter, livekitRoutes);
 app.use('/api/drafts', apiLimiter, draftRoutes);
 app.use('/api/chatbot', apiLimiter, chatbotRoutes);
+app.use('/api/search', apiLimiter, searchRoutes);
 
 // SPA fallback - MUST be AFTER all API routes
 if (process.env.NODE_ENV === 'production') {
@@ -185,8 +188,14 @@ app.set('io', io);
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
+  .then(async () => {
     console.log('✅ MongoDB connected');
+    
+    try {
+      await ensureSearchIndexes();
+    } catch (indexError) {
+      console.warn('[search] Failed to ensure text indexes:', indexError?.message || indexError);
+    }
     server.listen(process.env.PORT, '0.0.0.0', () => {
       console.log(`✅ Server running on port ${process.env.PORT}`);
       console.log(`✅ Server accessible at http://0.0.0.0:${process.env.PORT}`);
@@ -222,3 +231,6 @@ mongoose.connect(process.env.MONGODB_URI)
     console.error('❌ MongoDB connection error:', err);
     process.exit(1);
   });
+
+
+

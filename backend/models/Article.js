@@ -36,5 +36,25 @@ articleSchema.pre('save', function(next) {
 });
 
 articleSchema.index({ slugHistory: 1 });
+articleSchema.index(
+  {
+    title: 'text',
+    content: 'text',
+    tags: 'text',
+    category: 'text',
+    metaDescription: 'text'
+  },
+  {
+    name: 'article_weighted_text_search',
+    weights: {
+      title: 14,
+      tags: 8,
+      metaDescription: 7,
+      category: 4,
+      content: 2
+    },
+    default_language: 'english'
+  }
+);
 
 module.exports = mongoose.model('Article', articleSchema);

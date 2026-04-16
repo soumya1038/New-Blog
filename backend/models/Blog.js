@@ -37,5 +37,25 @@ blogSchema.pre('save', function(next) {
 });
 
 blogSchema.index({ slugHistory: 1 });
+blogSchema.index(
+  {
+    title: 'text',
+    content: 'text',
+    tags: 'text',
+    category: 'text',
+    metaDescription: 'text'
+  },
+  {
+    name: 'blog_weighted_text_search',
+    weights: {
+      title: 12,
+      tags: 7,
+      metaDescription: 6,
+      category: 4,
+      content: 2
+    },
+    default_language: 'english'
+  }
+);
 
 module.exports = mongoose.model('Blog', blogSchema);
