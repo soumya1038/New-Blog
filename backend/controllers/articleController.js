@@ -4,6 +4,7 @@ const Notification = require('../models/Notification');
 const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCursorFilter, extractNextCursor } = require('../utils/cursorPagination');
 const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
+const { enqueueSearchIndexRefresh } = require('../jobs/queueService');
 
 const ARTICLE_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_ARTICLE_LIST_SECONDS,
@@ -21,6 +22,12 @@ const invalidateArticleReadCache = async () => {
 
 const invalidateArticlePublishCache = async () => {
   await invalidateCacheByPrefixes(['articles:list:', 'article:detail:', 'seo:sitemap', 'seo:feed']);
+};
+
+const triggerSearchIndexRefresh = (reason) => {
+  enqueueSearchIndexRefresh(reason).catch((error) => {
+    console.warn('[search] Failed to enqueue search index refresh:', error?.message || error);
+  });
 };
 
 exports.createArticle = async (req, res) => {
@@ -86,6 +93,7 @@ exports.createArticle = async (req, res) => {
 
     const populatedArticle = await Article.findById(article._id).populate('author', 'username profileImage isGuest role isVerified');
     await invalidateArticlePublishCache();
+    triggerSearchIndexRefresh('article:create');
 
     res.status(201).json({ success: true, article: populatedArticle });
   } catch (error) {
@@ -336,6 +344,7 @@ exports.updateArticle = async (req, res) => {
 
     await article.save();
     await invalidateArticlePublishCache();
+    triggerSearchIndexRefresh('article:update');
 
     const updatedArticle = await Article.findById(article._id).populate('author', 'username profileImage isGuest role isVerified');
 
@@ -371,6 +380,7 @@ exports.deleteArticle = async (req, res) => {
     await Notification.deleteMany({ article: article._id });
     await Article.findByIdAndDelete(article._id);
     await invalidateArticlePublishCache();
+    triggerSearchIndexRefresh('article:delete');
 
     res.json({ success: true, message: 'Article deleted' });
   } catch (error) {

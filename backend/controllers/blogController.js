@@ -4,6 +4,7 @@ const Notification = require('../models/Notification');
 const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCursorFilter, extractNextCursor } = require('../utils/cursorPagination');
 const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
+const { enqueueSearchIndexRefresh } = require('../jobs/queueService');
 
 const BLOG_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_BLOG_LIST_SECONDS,
@@ -21,6 +22,12 @@ const invalidateBlogReadCache = async () => {
 
 const invalidateBlogPublishCache = async () => {
   await invalidateCacheByPrefixes(['blogs:list:', 'blog:detail:', 'seo:sitemap', 'seo:feed']);
+};
+
+const triggerSearchIndexRefresh = (reason) => {
+  enqueueSearchIndexRefresh(reason).catch((error) => {
+    console.warn('[search] Failed to enqueue search index refresh:', error?.message || error);
+  });
 };
 
 // Create blog
@@ -96,6 +103,7 @@ exports.createBlog = async (req, res) => {
 
     const populatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage isGuest role isVerified');
     await invalidateBlogPublishCache();
+    triggerSearchIndexRefresh('blog:create');
 
     res.status(201).json({ success: true, blog: populatedBlog });
   } catch (error) {
@@ -356,6 +364,7 @@ exports.updateBlog = async (req, res) => {
 
     await blog.save();
     await invalidateBlogPublishCache();
+    triggerSearchIndexRefresh('blog:update');
 
     const updatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage isGuest role isVerified');
 
@@ -397,6 +406,7 @@ exports.deleteBlog = async (req, res) => {
 
     await Blog.findByIdAndDelete(blog._id);
     await invalidateBlogPublishCache();
+    triggerSearchIndexRefresh('blog:delete');
 
     res.json({ success: true, message: 'Blog deleted' });
   } catch (error) {

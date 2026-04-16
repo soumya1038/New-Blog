@@ -6,7 +6,7 @@ const Comment = require('../models/Comment');
 const bcrypt = require('bcryptjs');
 const generateApiKey = require('../utils/generateApiKey');
 const cloudinary = require('../utils/cloudinary');
-const { sendPasswordChangeConfirmation, sendAccountDeletionConfirmation, sendPasswordChangedSuccess, sendAccountDeletedSuccess } = require('../utils/mailService');
+const { enqueueEmailJob } = require('../jobs/queueService');
 
 // Get user profile
 exports.getProfile = async (req, res) => {
@@ -180,7 +180,11 @@ exports.requestPasswordChange = async (req, res) => {
       expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
     };
 
-    await sendPasswordChangeConfirmation(user.email, user.username, confirmationCode);
+    await enqueueEmailJob('password-change-confirmation', {
+      email: user.email,
+      username: user.username,
+      code: confirmationCode
+    });
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
   } catch (error) {
@@ -220,7 +224,10 @@ exports.confirmPasswordChange = async (req, res) => {
 
     // Send success email
     try {
-      await sendPasswordChangedSuccess(user.email, user.username);
+      await enqueueEmailJob('password-changed-success', {
+        email: user.email,
+        username: user.username
+      });
     } catch (error) {
       console.error('Failed to send success email:', error);
     }
@@ -256,7 +263,11 @@ exports.requestAccountDeletion = async (req, res) => {
       expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
     };
 
-    await sendAccountDeletionConfirmation(user.email, user.username, confirmationCode);
+    await enqueueEmailJob('account-deletion-confirmation', {
+      email: user.email,
+      username: user.username,
+      code: confirmationCode
+    });
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
   } catch (error) {
@@ -317,7 +328,10 @@ exports.confirmAccountDeletion = async (req, res) => {
 
     // Send success email
     try {
-      await sendAccountDeletedSuccess(userEmail, userName);
+      await enqueueEmailJob('account-deleted-success', {
+        email: userEmail,
+        username: userName
+      });
     } catch (error) {
       console.error('Failed to send success email:', error);
     }

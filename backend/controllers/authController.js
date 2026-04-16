@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const generateToken = require('../utils/generateToken');
-const { sendVerificationEmail, sendWelcomeEmail, sendPasswordChangedSuccess } = require('../utils/mailService');
 const { validateEmail } = require('../utils/emailValidator');
+const { enqueueEmailJob } = require('../jobs/queueService');
 const crypto = require('crypto');
 const { validationResult } = require('express-validator');
 
@@ -62,7 +62,7 @@ exports.register = async (req, res) => {
     // Send welcome email
     if (email) {
       try {
-        await sendWelcomeEmail(email, username);
+        await enqueueEmailJob('welcome-email', { email, username });
       } catch (error) {
         console.error('Failed to send welcome email:', error);
       }
@@ -191,8 +191,8 @@ exports.sendVerificationCode = async (req, res) => {
       expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
     };
 
-    // Send verification email using MailerSend
-    await sendVerificationEmail(email, 'User', verificationCode);
+    // Queue verification email send
+    await enqueueEmailJob('verification-code', { email, username: 'User', code: verificationCode });
 
     res.json({ success: true, message: 'Verification code sent to your email' });
   } catch (error) {
@@ -224,8 +224,7 @@ exports.sendPasswordResetCode = async (req, res) => {
       expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
     };
 
-    const { sendPasswordResetEmail } = require('../utils/mailService');
-    await sendPasswordResetEmail(email, user.username, resetCode);
+    await enqueueEmailJob('password-reset-code', { email, username: user.username, code: resetCode });
 
     res.json({ success: true, message: 'Password reset code sent to your email' });
   } catch (error) {
@@ -354,8 +353,7 @@ exports.requestForgotPassword = async (req, res) => {
       verified: false
     };
 
-    const { sendPasswordResetEmail } = require('../utils/mailService');
-    await sendPasswordResetEmail(email, user.username, verificationCode);
+    await enqueueEmailJob('password-reset-code', { email, username: user.username, code: verificationCode });
 
     res.json({ success: true, message: 'Verification code sent to your email' });
   } catch (error) {
@@ -426,8 +424,7 @@ exports.requestForgotPasswordChange = async (req, res) => {
     };
 
     const user = await User.findOne({ username, email });
-    const { sendPasswordChangeConfirmation } = require('../utils/mailService');
-    await sendPasswordChangeConfirmation(email, user.username, confirmCode);
+    await enqueueEmailJob('password-change-confirmation', { email, username: user.username, code: confirmCode });
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
   } catch (error) {
@@ -473,7 +470,7 @@ exports.confirmForgotPasswordChange = async (req, res) => {
 
     // Send success email
     try {
-      await sendPasswordChangedSuccess(email, username);
+      await enqueueEmailJob('password-changed-success', { email, username });
     } catch (error) {
       console.error('Failed to send success email:', error);
     }
@@ -512,8 +509,7 @@ exports.requestAuthenticatedPasswordChange = async (req, res) => {
       expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
     };
 
-    const { sendPasswordChangeConfirmation } = require('../utils/mailService');
-    await sendPasswordChangeConfirmation(user.email, user.username, confirmCode);
+    await enqueueEmailJob('password-change-confirmation', { email: user.email, username: user.username, code: confirmCode });
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
   } catch (error) {
@@ -559,7 +555,7 @@ exports.confirmAuthenticatedPasswordChange = async (req, res) => {
 
     // Send success email
     try {
-      await sendPasswordChangedSuccess(user.email, user.username);
+      await enqueueEmailJob('password-changed-success', { email: user.email, username: user.username });
     } catch (error) {
       console.error('Failed to send success email:', error);
     }

@@ -43,6 +43,7 @@ const cleanupExpiredStatuses = require('./utils/statusCleanup');
 const cleanupExpiredMessages = require('./jobs/cleanupExpiredMessages');
 const publishScheduledContent = require('./jobs/publishScheduledContent');
 const cleanupExpiredGuests = require('./jobs/cleanupExpiredGuests');
+const { initializeBackgroundQueues } = require('./jobs/queueService');
 
 const app = express();
 const server = http.createServer(app);
@@ -196,6 +197,13 @@ mongoose.connect(process.env.MONGODB_URI)
     } catch (indexError) {
       console.warn('[search] Failed to ensure text indexes:', indexError?.message || indexError);
     }
+
+    try {
+      await initializeBackgroundQueues({ startWorkers: process.env.QUEUE_START_WORKERS_IN_API !== 'false' });
+    } catch (queueError) {
+      console.warn('[queue] Failed to initialize background queues:', queueError?.message || queueError);
+    }
+
     server.listen(process.env.PORT, '0.0.0.0', () => {
       console.log(`✅ Server running on port ${process.env.PORT}`);
       console.log(`✅ Server accessible at http://0.0.0.0:${process.env.PORT}`);
