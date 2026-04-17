@@ -2388,11 +2388,19 @@ const renderReaderExperience = (article, contentHtml, storyClass = '') => {
         <article class="story ${storyClass}" id="reader-story">${contentHtml}</article>
         <nav class="story-pagination-nav" id="story-pagination-nav" aria-label="Article page navigation" hidden>
           <button type="button" class="story-page-btn" id="story-page-prev" aria-label="Previous page" aria-controls="reader-story">
-            <span class="story-page-btn-icon" aria-hidden="true">&#x27F5;</span>
+            <span class="story-page-btn-icon story-page-btn-icon-left" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" role="presentation">
+                <path d="M10.62 4.5L3.12 12l7.5 7.5v-4.8H21V9.3H10.62V4.5Z" fill="currentColor"></path>
+              </svg>
+            </span>
           </button>
           <span class="story-pagination-status" id="story-page-status" role="status" aria-live="polite">1 / 1</span>
           <button type="button" class="story-page-btn" id="story-page-next" aria-label="Next page" aria-controls="reader-story">
-            <span class="story-page-btn-icon" aria-hidden="true">&#x27F6;</span>
+            <span class="story-page-btn-icon story-page-btn-icon-right" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false" role="presentation">
+                <path d="M3 12h14.5M12.5 6.5 18 12l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </span>
           </button>
         </nav>
         <section class="reader-summary" id="reader-summary" aria-hidden="true">
@@ -3478,6 +3486,10 @@ const renderTemplateHtml = (article, template) => {
       transition: transform 0.18s ease, filter 0.18s ease, opacity 0.18s ease;
     }
 
+    .story-page-btn.is-hidden {
+      display: none !important;
+    }
+
     .story-page-btn#story-page-prev {
       justify-self: start;
     }
@@ -3487,8 +3499,18 @@ const renderTemplateHtml = (article, template) => {
     }
 
     .story-page-btn-icon {
+      width: 20px;
+      height: 20px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       line-height: 1;
-      transform: translateY(-0.5px);
+    }
+
+    .story-page-btn-icon svg {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
 
     .story-page-btn:hover {
@@ -5522,9 +5544,19 @@ const renderTemplateHtml = (article, template) => {
     }
 
     body.theme-dark .story-page-btn {
-      background: rgba(255, 255, 255, 0.07);
-      border-color: var(--border);
-      color: #dfe9fb;
+      background: linear-gradient(180deg, rgba(117, 156, 230, 0.24), rgba(117, 156, 230, 0.12));
+      border-color: rgba(186, 211, 255, 0.62);
+      color: #f5f9ff;
+      box-shadow: 0 8px 16px rgba(3, 9, 21, 0.35), inset 0 0 0 1px rgba(211, 227, 255, 0.2);
+    }
+
+    body.theme-dark .story-page-btn:hover {
+      background: linear-gradient(180deg, rgba(126, 166, 241, 0.32), rgba(126, 166, 241, 0.16));
+      filter: none;
+    }
+
+    body.theme-dark .story-page-btn-icon {
+      color: #f8fbff;
     }
 
     body.theme-dark .story-pagination-status {
@@ -7957,6 +7989,9 @@ const renderTemplateHtml = (article, template) => {
 
       var updateStoryPagination = function () {
         var totalPages = paginatedPages.length;
+        var hasMultiplePages = totalPages > 1;
+        var canGoPrev = hasMultiplePages && activePageIndex > 0;
+        var canGoNext = hasMultiplePages && activePageIndex < totalPages - 1;
 
         paginatedPages.forEach(function (page, index) {
           var isActive = index === activePageIndex;
@@ -7969,32 +8004,38 @@ const renderTemplateHtml = (article, template) => {
         }
 
         if (pagePrevBtn) {
-          var prevDisabled = activePageIndex <= 0;
-          pagePrevBtn.disabled = prevDisabled;
-          pagePrevBtn.setAttribute('aria-disabled', prevDisabled ? 'true' : 'false');
+          pagePrevBtn.classList.toggle('is-hidden', !canGoPrev);
+          pagePrevBtn.disabled = !canGoPrev;
+          pagePrevBtn.tabIndex = canGoPrev ? 0 : -1;
+          pagePrevBtn.setAttribute('aria-disabled', canGoPrev ? 'false' : 'true');
+          pagePrevBtn.setAttribute('aria-hidden', canGoPrev ? 'false' : 'true');
         }
 
         if (pageNextBtn) {
-          var nextDisabled = activePageIndex >= totalPages - 1;
-          pageNextBtn.disabled = nextDisabled;
-          pageNextBtn.setAttribute('aria-disabled', nextDisabled ? 'true' : 'false');
+          pageNextBtn.classList.toggle('is-hidden', !canGoNext);
+          pageNextBtn.disabled = !canGoNext;
+          pageNextBtn.tabIndex = canGoNext ? 0 : -1;
+          pageNextBtn.setAttribute('aria-disabled', canGoNext ? 'false' : 'true');
+          pageNextBtn.setAttribute('aria-hidden', canGoNext ? 'false' : 'true');
         }
 
         if (paginationNav) {
-          paginationNav.hidden = isSummaryMode || totalPages < 2;
+          paginationNav.hidden = isSummaryMode || !hasMultiplePages;
         }
 
         scheduleHeightSync();
         setTimeout(reportFrameHeight, 90);
       };
 
-      var splitLongParagraphBlocks = function () {
+      var splitLongParagraphBlocks = function (options) {
         if (!storyNode) return;
+        var minParagraphLength = options && options.minParagraphLength ? Number(options.minParagraphLength) : 900;
+        var chunkSize = options && options.chunkSize ? Number(options.chunkSize) : 420;
 
         var paragraphNodes = Array.prototype.slice.call(storyNode.querySelectorAll('p'));
         paragraphNodes.forEach(function (paragraph) {
           var text = (paragraph.textContent || '').replace(/\s+/g, ' ').trim();
-          if (text.length < 900) return;
+          if (text.length < minParagraphLength) return;
 
           var sentences = text.match(/[^.!?]+[.!?]*/g) || [text];
           if (sentences.length < 2) return;
@@ -8004,7 +8045,7 @@ const renderTemplateHtml = (article, template) => {
 
           sentences.forEach(function (sentence) {
             var candidate = (bucket + ' ' + sentence).trim();
-            if (candidate.length > 420 && bucket) {
+            if (candidate.length > chunkSize && bucket) {
               chunks.push(bucket.trim());
               bucket = sentence.trim();
             } else {
@@ -8034,7 +8075,11 @@ const renderTemplateHtml = (article, template) => {
         if (!paginationConfig || !paginationConfig.enabled) return false;
         if (!storyNode || storyNode.dataset.paginated === 'true') return false;
 
-        splitLongParagraphBlocks();
+        splitLongParagraphBlocks(
+          paginationConfig.forceManual
+            ? { minParagraphLength: 220, chunkSize: 180 }
+            : { minParagraphLength: 900, chunkSize: 420 }
+        );
 
         var blocks = Array.prototype.slice.call(storyNode.children || []);
         if (blocks.length < 2) return false;

@@ -336,6 +336,9 @@ const CustomTemplateStudioPanel = ({ customDraft, onChange }) => {
               />
             </label>
           </div>
+          <p className="text-[11px] text-slate-400">
+            Use <strong>Manual</strong> to force multi-page stories. Choose 2-6 pages, then preview with the arrow controls.
+          </p>
         </div>
 
         <div className="rounded-xl border border-slate-700 bg-slate-800/70 p-3">
