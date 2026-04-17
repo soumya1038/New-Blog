@@ -2390,7 +2390,7 @@ const renderReaderExperience = (article, contentHtml, storyClass = '') => {
           <button type="button" class="story-page-btn" id="story-page-prev" aria-label="Previous page" aria-controls="reader-story">
             <span class="story-page-btn-icon story-page-btn-icon-left" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false" role="presentation">
-                <path d="M10.62 4.5L3.12 12l7.5 7.5v-4.8H21V9.3H10.62V4.5Z" fill="currentColor"></path>
+                <path d="M8.3685 12L13.1162 3.03212L14.8838 3.9679L10.6315 12L14.8838 20.0321L13.1162 20.9679L8.3685 12Z" fill="currentColor"></path>
               </svg>
             </span>
           </button>
@@ -2398,7 +2398,7 @@ const renderReaderExperience = (article, contentHtml, storyClass = '') => {
           <button type="button" class="story-page-btn" id="story-page-next" aria-label="Next page" aria-controls="reader-story">
             <span class="story-page-btn-icon story-page-btn-icon-right" aria-hidden="true">
               <svg viewBox="0 0 24 24" focusable="false" role="presentation">
-                <path d="M3 12h14.5M12.5 6.5 18 12l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M15.6315 12L10.8838 3.03212L9.11622 3.9679L13.3685 12L9.11622 20.0321L10.8838 20.9679L15.6315 12Z" fill="currentColor"></path>
               </svg>
             </span>
           </button>
@@ -3461,22 +3461,22 @@ const renderTemplateHtml = (article, template) => {
     .story-pagination-nav {
       margin: 10px 6px 6px;
       display: grid;
-      grid-template-columns: minmax(40px, 1fr) auto minmax(40px, 1fr);
+      grid-template-columns: 44px 1fr 44px;
       align-items: center;
       gap: 12px;
       padding: 10px 14px;
       border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--surface-muted);
+      border: 1px solid #d4c5b5;
+      background: #ece6de;
     }
 
     .story-page-btn {
       width: 40px;
       height: 40px;
       border-radius: 999px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--ink);
+      border: 1px solid #d4c5b5;
+      background: #f7f2eb;
+      color: #2d241b;
       font-size: 1.04rem;
       font-weight: 700;
       cursor: pointer;
@@ -3487,7 +3487,9 @@ const renderTemplateHtml = (article, template) => {
     }
 
     .story-page-btn.is-hidden {
-      display: none !important;
+      visibility: hidden;
+      pointer-events: none;
+      opacity: 0;
     }
 
     .story-page-btn#story-page-prev {
@@ -3529,11 +3531,12 @@ const renderTemplateHtml = (article, template) => {
       font-size: 0.68rem;
       text-transform: uppercase;
       letter-spacing: 0.12em;
-      color: var(--muted);
+      color: #6e5b4a;
       font-family: "IBM Plex Sans", "Libre Franklin", sans-serif;
       font-weight: 700;
       min-width: 92px;
       text-align: center;
+      justify-self: center;
     }
 
     .reader-shell {
@@ -5536,31 +5539,6 @@ const renderTemplateHtml = (article, template) => {
         linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
         var(--surface);
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-    }
-
-    body.theme-dark .story-pagination-nav {
-      background: rgba(255, 255, 255, 0.05);
-      border-color: var(--border);
-    }
-
-    body.theme-dark .story-page-btn {
-      background: linear-gradient(180deg, rgba(117, 156, 230, 0.24), rgba(117, 156, 230, 0.12));
-      border-color: rgba(186, 211, 255, 0.62);
-      color: #f5f9ff;
-      box-shadow: 0 8px 16px rgba(3, 9, 21, 0.35), inset 0 0 0 1px rgba(211, 227, 255, 0.2);
-    }
-
-    body.theme-dark .story-page-btn:hover {
-      background: linear-gradient(180deg, rgba(126, 166, 241, 0.32), rgba(126, 166, 241, 0.16));
-      filter: none;
-    }
-
-    body.theme-dark .story-page-btn-icon {
-      color: #f8fbff;
-    }
-
-    body.theme-dark .story-pagination-status {
-      color: #c3d3ea;
     }
 
     body.theme-dark .template-metropolitan-ledger .newspaper-head {
