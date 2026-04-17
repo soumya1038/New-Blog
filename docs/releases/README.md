@@ -45,17 +45,19 @@ What it does:
 ## Team Versioning Rule (Your Preference)
 
 Before every push to GitHub:
-1. On non-main branches (for example `development`):
+1. During local commit prep (non-main):
    - `npm run version:push`
-   - bumps: backend + redirect only
-2. On `main` branch release:
+   - bumps patch only on backend + redirect.
+2. Just before push (non-main):
+   - `npm run version:prepush`
+   - bumps minor while preserving patch on backend + redirect.
+3. On `main` branch release:
    - `npm run version:release`
-   - bumps: overall + backend + redirect
-3. Middle digit (minor) increases while last digit (patch) is preserved.
+   - bumps overall + backend + redirect (minor promotion, patch preserved).
 
-Example:
-- `1.0.2` -> `1.1.2`
-- `1.1.5` -> `1.2.5`
+Example flow on `development`:
+- before commit: `1.5.12` -> `1.5.13`
+- before push: `1.5.13` -> `1.6.13`
 
 Notes:
 - Overall app version bump is blocked on non-main branches.

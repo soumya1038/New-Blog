@@ -23,6 +23,8 @@ import {
 } from '../utils/articleTemplates';
 import CustomTemplateStudioPanel from './CustomTemplateStudioPanel';
 
+const CUSTOM_TEMPLATE_NAME_STORAGE_KEY = 'lekhon:custom-template-saved-names';
+
 const TemplatePreview = ({
   article,
   onClose,
@@ -44,6 +46,9 @@ const TemplatePreview = ({
   );
   const [previewThemeMode, setPreviewThemeMode] = useState('auto');
   const [mobileStudioTab, setMobileStudioTab] = useState('preview');
+  const [showCustomSaveModal, setShowCustomSaveModal] = useState(false);
+  const [customTemplateNameInput, setCustomTemplateNameInput] = useState('');
+  const [savedCustomTemplateNames, setSavedCustomTemplateNames] = useState([]);
   const [customDraft, setCustomDraft] = useState(
     normalizeCustomTemplate(customTemplate || createDefaultCustomTemplate())
   );
@@ -60,6 +65,23 @@ const TemplatePreview = ({
   useEffect(() => {
     setCustomDraft(normalizeCustomTemplate(customTemplate || createDefaultCustomTemplate()));
   }, [customTemplate]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(CUSTOM_TEMPLATE_NAME_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return;
+      const normalized = parsed
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, 120);
+      setSavedCustomTemplateNames(normalized);
+    } catch (error) {
+      // Ignore local storage read issues.
+    }
+  }, []);
 
   useEffect(() => {
     const syncTheme = () => {
@@ -143,12 +165,69 @@ const TemplatePreview = ({
     [articleData, currentTemplate.id, isCustomTemplate, customDraft, effectiveThemeMode]
   );
 
+  const takenTemplateNameSet = useMemo(() => {
+    const systemNames = articleTemplates
+      .map((template) => String(template?.name || '').trim().toLowerCase())
+      .filter(Boolean);
+    const userNames = savedCustomTemplateNames
+      .map((name) => String(name || '').trim().toLowerCase())
+      .filter(Boolean);
+    return new Set([...systemNames, ...userNames]);
+  }, [savedCustomTemplateNames]);
+
+  const trimmedCustomTemplateName = customTemplateNameInput.trim();
+  const customTemplateNameIsUnique =
+    Boolean(trimmedCustomTemplateName)
+    && !takenTemplateNameSet.has(trimmedCustomTemplateName.toLowerCase());
+
   const applySelection = () => {
     if (!onApplyTemplate) return;
+    const normalizedDraft = normalizeCustomTemplate(customDraft);
     onApplyTemplate(
       currentTemplate.id,
-      currentTemplate.id === CUSTOM_ARTICLE_TEMPLATE_ID ? customDraft : null
+      currentTemplate.id === CUSTOM_ARTICLE_TEMPLATE_ID ? normalizedDraft : null
     );
+  };
+
+  const persistCustomTemplateName = (name) => {
+    const candidate = String(name || '').trim();
+    if (!candidate || typeof window === 'undefined') return;
+
+    try {
+      const nextNames = [...new Set([...savedCustomTemplateNames, candidate])].slice(0, 120);
+      window.localStorage.setItem(CUSTOM_TEMPLATE_NAME_STORAGE_KEY, JSON.stringify(nextNames));
+      setSavedCustomTemplateNames(nextNames);
+    } catch (error) {
+      // Ignore local storage write issues.
+    }
+  };
+
+  const handleUseTemplate = () => {
+    if (!isCustomTemplate) {
+      applySelection();
+      return;
+    }
+
+    setCustomTemplateNameInput(customDraft.name || '');
+    setShowCustomSaveModal(true);
+  };
+
+  const handleSaveCustomTemplateName = () => {
+    if (!customTemplateNameIsUnique) return;
+    const nextCustomDraft = normalizeCustomTemplate({
+      ...customDraft,
+      name: trimmedCustomTemplateName
+    });
+    setCustomDraft(nextCustomDraft);
+    persistCustomTemplateName(trimmedCustomTemplateName);
+    setShowCustomSaveModal(false);
+    if (!onApplyTemplate) return;
+    onApplyTemplate(currentTemplate.id, nextCustomDraft);
+  };
+
+  const handleCancelCustomTemplateSave = () => {
+    setShowCustomSaveModal(false);
+    applySelection();
   };
 
   const handlePrevTemplate = () => {
@@ -258,7 +337,7 @@ const TemplatePreview = ({
                 <FaChevronRight />
               </button>
               <button
-                onClick={applySelection}
+                onClick={handleUseTemplate}
                 className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 p-2 text-sm font-semibold text-white transition hover:bg-emerald-500 sm:gap-2 sm:px-3 sm:py-2"
                 title="Use this template"
               >
@@ -405,6 +484,57 @@ const TemplatePreview = ({
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {showCustomSaveModal && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-slate-950/70 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+            <h4 className="text-lg font-semibold text-slate-100">Save Custom Template Name</h4>
+            <p className="mt-1 text-sm text-slate-400">
+              Give this custom template a unique name to save it for reuse.
+            </p>
+
+            <label className="mt-4 block text-sm text-slate-300">
+              Template Name
+              <input
+                autoFocus
+                type="text"
+                placeholder="Enter a unique template name"
+                value={customTemplateNameInput}
+                onChange={(event) => setCustomTemplateNameInput(event.target.value)}
+                className="mt-2 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100"
+              />
+            </label>
+
+            {trimmedCustomTemplateName && !customTemplateNameIsUnique && (
+              <p className="mt-2 text-xs font-semibold text-rose-300">
+                This name is already used. Please choose a different one.
+              </p>
+            )}
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleCancelCustomTemplateSave}
+                className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCustomTemplateName}
+                disabled={!customTemplateNameIsUnique}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  customTemplateNameIsUnique
+                    ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                    : 'cursor-not-allowed bg-emerald-900/40 text-emerald-200/60'
+                }`}
+              >
+                Save
+              </button>
+            </div>
           </div>
         </div>
       )}

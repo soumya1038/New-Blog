@@ -103,6 +103,12 @@ const CUSTOM_STUDIO_TEXT_ALIGN_OPTIONS = [
   { id: 'right', label: 'Right' }
 ];
 
+const CUSTOM_TEMPLATE_PAGINATION_OPTIONS = [
+  { id: 'auto', label: 'Auto' },
+  { id: 'manual', label: 'Manual' },
+  { id: 'off', label: 'Off' }
+];
+
 const CUSTOM_STUDIO_BLOCK_TYPE_LABELS = CUSTOM_STUDIO_BLOCK_TYPES.reduce((map, item) => {
   map[item.id] = item.label;
   return map;
@@ -1360,6 +1366,8 @@ const createDefaultCustomStudioBlockMap = () => ({
     rowSpan: 4,
     fontScale: 1.2,
     textAlign: 'left',
+    shellBackgroundColor: '#f3ece4',
+    contentBackgroundColor: '#fffaf2',
     backgroundColor: '#fffaf2',
     textColor: '#1f1a16',
     borderColor: '#d9c9b8',
@@ -1367,6 +1375,10 @@ const createDefaultCustomStudioBlockMap = () => ({
     borderStyle: 'solid',
     borderRadius: 18,
     padding: 18,
+    shellShadowEnabled: true,
+    shellShadowLevel: 1,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
     shadowLevel: 1,
     underlineStyle: 'solid',
     underlineColor: '#9b4f2f'
@@ -1378,6 +1390,8 @@ const createDefaultCustomStudioBlockMap = () => ({
     rowSpan: 4,
     fontScale: 0.96,
     textAlign: 'left',
+    shellBackgroundColor: '#eef2f6',
+    contentBackgroundColor: '#f4eee6',
     backgroundColor: '#f4eee6',
     textColor: '#675d54',
     borderColor: '#d9c9b8',
@@ -1385,6 +1399,10 @@ const createDefaultCustomStudioBlockMap = () => ({
     borderStyle: 'dashed',
     borderRadius: 16,
     padding: 16,
+    shellShadowEnabled: false,
+    shellShadowLevel: 0,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
     shadowLevel: 0,
     underlineStyle: 'none',
     underlineColor: '#9b4f2f'
@@ -1396,6 +1414,8 @@ const createDefaultCustomStudioBlockMap = () => ({
     rowSpan: 8,
     fontScale: 1,
     textAlign: 'center',
+    shellBackgroundColor: '#ece8e1',
+    contentBackgroundColor: '#f4eee6',
     backgroundColor: '#f4eee6',
     textColor: '#675d54',
     borderColor: '#d9c9b8',
@@ -1403,6 +1423,10 @@ const createDefaultCustomStudioBlockMap = () => ({
     borderStyle: 'solid',
     borderRadius: 18,
     padding: 12,
+    shellShadowEnabled: true,
+    shellShadowLevel: 1,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
     shadowLevel: 1,
     underlineStyle: 'none',
     underlineColor: '#9b4f2f'
@@ -1414,6 +1438,8 @@ const createDefaultCustomStudioBlockMap = () => ({
     rowSpan: 14,
     fontScale: 1,
     textAlign: 'left',
+    shellBackgroundColor: '#f1ece5',
+    contentBackgroundColor: '#fffaf2',
     backgroundColor: '#fffaf2',
     textColor: '#1f1a16',
     borderColor: '#d9c9b8',
@@ -1421,6 +1447,10 @@ const createDefaultCustomStudioBlockMap = () => ({
     borderStyle: 'solid',
     borderRadius: 18,
     padding: 14,
+    shellShadowEnabled: true,
+    shellShadowLevel: 1,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
     shadowLevel: 1,
     underlineStyle: 'none',
     underlineColor: '#9b4f2f'
@@ -1432,6 +1462,8 @@ const createDefaultCustomStudioBlockMap = () => ({
     rowSpan: 6,
     fontScale: 0.98,
     textAlign: 'left',
+    shellBackgroundColor: '#f5e5d8',
+    contentBackgroundColor: '#fff5eb',
     backgroundColor: '#fff5eb',
     textColor: '#5a463a',
     borderColor: '#e1cfbf',
@@ -1439,6 +1471,10 @@ const createDefaultCustomStudioBlockMap = () => ({
     borderStyle: 'solid',
     borderRadius: 16,
     padding: 14,
+    shellShadowEnabled: false,
+    shellShadowLevel: 0,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
     shadowLevel: 0,
     underlineStyle: 'none',
     underlineColor: '#9b4f2f'
@@ -1450,6 +1486,8 @@ const createDefaultCustomStudioBlockMap = () => ({
     rowSpan: 6,
     fontScale: 0.96,
     textAlign: 'left',
+    shellBackgroundColor: '#efe4d8',
+    contentBackgroundColor: '#f7efe6',
     backgroundColor: '#f7efe6',
     textColor: '#5f4f43',
     borderColor: '#d9c9b8',
@@ -1457,6 +1495,10 @@ const createDefaultCustomStudioBlockMap = () => ({
     borderStyle: 'solid',
     borderRadius: 16,
     padding: 14,
+    shellShadowEnabled: false,
+    shellShadowLevel: 0,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
     shadowLevel: 0,
     underlineStyle: 'none',
     underlineColor: '#9b4f2f'
@@ -1468,6 +1510,8 @@ const createDefaultCustomStudioBlockMap = () => ({
     rowSpan: 8,
     fontScale: 0.96,
     textAlign: 'left',
+    shellBackgroundColor: '#efe3d7',
+    contentBackgroundColor: '#f8f0e6',
     backgroundColor: '#f8f0e6',
     textColor: '#5d4a3f',
     borderColor: '#d9c9b8',
@@ -1475,6 +1519,10 @@ const createDefaultCustomStudioBlockMap = () => ({
     borderStyle: 'solid',
     borderRadius: 16,
     padding: 12,
+    shellShadowEnabled: true,
+    shellShadowLevel: 1,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
     shadowLevel: 1,
     underlineStyle: 'none',
     underlineColor: '#9b4f2f'
@@ -1486,6 +1534,8 @@ const createDefaultCustomStudioBlockMap = () => ({
     rowSpan: 8,
     fontScale: 1.08,
     textAlign: 'left',
+    shellBackgroundColor: '#f6e1d2',
+    contentBackgroundColor: '#fff1e5',
     backgroundColor: '#fff1e5',
     textColor: '#5c4539',
     borderColor: '#e1c7b3',
@@ -1493,6 +1543,10 @@ const createDefaultCustomStudioBlockMap = () => ({
     borderStyle: 'double',
     borderRadius: 16,
     padding: 16,
+    shellShadowEnabled: false,
+    shellShadowLevel: 0,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
     shadowLevel: 0,
     underlineStyle: 'highlight',
     underlineColor: '#ebc8b6'
@@ -1538,6 +1592,16 @@ const normalizeCustomStudioBlock = (block, fallbackBlock, index) => {
     CUSTOM_STUDIO_BLOCK_TYPE_IDS,
     fallback.type
   );
+  const legacyBackground = cleanHex(
+    block?.backgroundColor,
+    fallback.contentBackgroundColor || fallback.backgroundColor
+  );
+  const legacyShadowLevel = clampInt(
+    block?.shadowLevel,
+    0,
+    3,
+    fallback.shellShadowLevel !== undefined ? fallback.shellShadowLevel : fallback.shadowLevel
+  );
 
   return {
     id: cleanText(block?.id, `block-${index + 1}`),
@@ -1554,7 +1618,18 @@ const normalizeCustomStudioBlock = (block, fallbackBlock, index) => {
       CUSTOM_STUDIO_TEXT_ALIGN_OPTIONS.map((item) => item.id),
       fallback.textAlign
     ),
-    backgroundColor: cleanHex(block?.backgroundColor, fallback.backgroundColor),
+    shellBackgroundColor: cleanHex(
+      block?.shellBackgroundColor,
+      fallback.shellBackgroundColor || legacyBackground
+    ),
+    contentBackgroundColor: cleanHex(
+      block?.contentBackgroundColor,
+      fallback.contentBackgroundColor || legacyBackground
+    ),
+    backgroundColor: cleanHex(
+      block?.contentBackgroundColor || block?.backgroundColor,
+      fallback.contentBackgroundColor || fallback.backgroundColor
+    ),
     textColor: cleanHex(block?.textColor, fallback.textColor),
     borderColor: cleanHex(block?.borderColor, fallback.borderColor),
     borderWidth: clampInt(block?.borderWidth, 0, 8, fallback.borderWidth),
@@ -1565,7 +1640,36 @@ const normalizeCustomStudioBlock = (block, fallbackBlock, index) => {
     ),
     borderRadius: clampInt(block?.borderRadius, 0, 44, fallback.borderRadius),
     padding: clampInt(block?.padding, 6, 36, fallback.padding),
-    shadowLevel: clampInt(block?.shadowLevel, 0, 3, fallback.shadowLevel),
+    shellShadowEnabled:
+      block?.shellShadowEnabled !== undefined
+        ? Boolean(block.shellShadowEnabled)
+        : fallback.shellShadowEnabled !== undefined
+        ? Boolean(fallback.shellShadowEnabled)
+        : legacyShadowLevel > 0,
+    shellShadowLevel: clampInt(
+      block?.shellShadowLevel,
+      0,
+      3,
+      fallback.shellShadowLevel !== undefined ? fallback.shellShadowLevel : legacyShadowLevel
+    ),
+    contentShadowEnabled:
+      block?.contentShadowEnabled !== undefined
+        ? Boolean(block.contentShadowEnabled)
+        : fallback.contentShadowEnabled !== undefined
+        ? Boolean(fallback.contentShadowEnabled)
+        : false,
+    contentShadowLevel: clampInt(
+      block?.contentShadowLevel,
+      0,
+      3,
+      fallback.contentShadowLevel !== undefined ? fallback.contentShadowLevel : 0
+    ),
+    shadowLevel: clampInt(
+      block?.shellShadowLevel !== undefined ? block.shellShadowLevel : block?.shadowLevel,
+      0,
+      3,
+      fallback.shellShadowLevel !== undefined ? fallback.shellShadowLevel : legacyShadowLevel
+    ),
     underlineStyle: cleanEnum(
       cleanText(block?.underlineStyle, fallback.underlineStyle),
       CUSTOM_STUDIO_UNDERLINE_STYLES.map((item) => item.id),
@@ -1623,6 +1727,8 @@ export const createDefaultCustomTemplate = () => {
     borderColor: '#d9c9b8',
     showDropCap: true,
     showProgress: true,
+    paginationMode: 'auto',
+    manualPageCount: 2,
     studio
   };
 };
@@ -1649,6 +1755,12 @@ export const normalizeCustomTemplate = (customTemplate) => {
     borderColor: cleanHex(customTemplate.borderColor, defaults.borderColor),
     showDropCap: customTemplate.showDropCap !== undefined ? Boolean(customTemplate.showDropCap) : defaults.showDropCap,
     showProgress: customTemplate.showProgress !== undefined ? Boolean(customTemplate.showProgress) : defaults.showProgress,
+    paginationMode: cleanEnum(
+      cleanText(customTemplate.paginationMode, defaults.paginationMode),
+      CUSTOM_TEMPLATE_PAGINATION_OPTIONS.map((option) => option.id),
+      defaults.paginationMode
+    ),
+    manualPageCount: clampInt(customTemplate.manualPageCount, 2, 6, defaults.manualPageCount),
     studio: normalizeCustomStudio(customTemplate.studio, defaults.studio)
   };
 };
@@ -2140,6 +2252,8 @@ const runtimeTemplate = (templateId, customTemplate) => {
     bodyFont: body.body,
     showDropCap: custom.showDropCap,
     showProgress: custom.showProgress,
+    paginationMode: custom.paginationMode,
+    manualPageCount: custom.manualPageCount,
     studio: custom.studio,
     palette: normalizePresetPalette({
       bg: custom.backgroundStart,
@@ -2274,11 +2388,11 @@ const renderReaderExperience = (article, contentHtml, storyClass = '') => {
         <article class="story ${storyClass}" id="reader-story">${contentHtml}</article>
         <nav class="story-pagination-nav" id="story-pagination-nav" aria-label="Article page navigation" hidden>
           <button type="button" class="story-page-btn" id="story-page-prev" aria-label="Previous page" aria-controls="reader-story">
-            <span aria-hidden="true">&larr;</span>
+            <span class="story-page-btn-icon" aria-hidden="true">&#x27F5;</span>
           </button>
           <span class="story-pagination-status" id="story-page-status" role="status" aria-live="polite">1 / 1</span>
           <button type="button" class="story-page-btn" id="story-page-next" aria-label="Next page" aria-controls="reader-story">
-            <span aria-hidden="true">&rarr;</span>
+            <span class="story-page-btn-icon" aria-hidden="true">&#x27F6;</span>
           </button>
         </nav>
         <section class="reader-summary" id="reader-summary" aria-hidden="true">
@@ -2820,15 +2934,30 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
 
       const underlineClass = `underline-${block.underlineStyle || 'none'}`;
       const alignClass = `align-${block.textAlign || 'left'}`;
-      const shadowClass = `shadow-${clampInt(block.shadowLevel, 0, 3, 0)}`;
+      const shellShadowLevel = clampInt(
+        block.shellShadowLevel !== undefined ? block.shellShadowLevel : block.shadowLevel,
+        0,
+        3,
+        0
+      );
+      const contentShadowLevel = clampInt(block.contentShadowLevel, 0, 3, 0);
+      const shellShadowEnabled = block.shellShadowEnabled !== undefined ? Boolean(block.shellShadowEnabled) : shellShadowLevel > 0;
+      const contentShadowEnabled = block.contentShadowEnabled !== undefined ? Boolean(block.contentShadowEnabled) : false;
+      const shellShadow = shellShadowEnabled && shellShadowLevel > 0
+        ? `0 ${4 + shellShadowLevel * 5}px ${12 + shellShadowLevel * 8}px rgba(15, 23, 42, ${(0.1 + shellShadowLevel * 0.08).toFixed(2)})`
+        : 'none';
+      const contentShadow = contentShadowEnabled && contentShadowLevel > 0
+        ? `0 ${3 + contentShadowLevel * 4}px ${10 + contentShadowLevel * 7}px rgba(15, 23, 42, ${(0.08 + contentShadowLevel * 0.07).toFixed(2)})`
+        : 'none';
 
       return `
         <section
-          class="custom-studio-block custom-studio-type-${block.type} ${underlineClass} ${alignClass} ${shadowClass}"
+          class="custom-studio-block custom-studio-type-${block.type} ${underlineClass} ${alignClass}"
           style="
             grid-column: ${colStart} / span ${colSpan};
             grid-row: ${rowStart} / span ${rowSpan};
-            --studio-block-bg: ${block.backgroundColor};
+            --studio-block-shell-bg: ${block.shellBackgroundColor || block.backgroundColor};
+            --studio-block-content-bg: ${block.contentBackgroundColor || block.backgroundColor};
             --studio-block-text: ${block.textColor};
             --studio-block-border: ${block.borderColor};
             --studio-block-border-width: ${block.borderWidth}px;
@@ -2837,9 +2966,13 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
             --studio-block-padding: ${block.padding}px;
             --studio-block-font-scale: ${block.fontScale};
             --studio-block-underline: ${block.underlineColor};
+            --studio-shell-shadow: ${shellShadow};
+            --studio-content-shadow: ${contentShadow};
           "
         >
-          ${renderCustomStudioContentByType(block, article, template, contentHtml)}
+          <div class="custom-studio-block-inner">
+            ${renderCustomStudioContentByType(block, article, template, contentHtml)}
+          </div>
         </section>
       `;
     })
@@ -2913,7 +3046,7 @@ const renderTemplateHtml = (article, template) => {
     || article.paragraphs.length >= 14
     || article.galleryImages.length >= 3
     || article.videoUrls.length >= 2;
-  const targetStoryPages =
+  const targetStoryPagesAuto =
     article.readingMinutes >= 14
     || article.paragraphs.length >= 24
     || article.galleryImages.length >= 5
@@ -2922,10 +3055,19 @@ const renderTemplateHtml = (article, template) => {
       : shouldPaginateStory
       ? 2
       : 1;
+  const paginationMode = cleanEnum(
+    cleanText(template.paginationMode, 'auto').toLowerCase(),
+    CUSTOM_TEMPLATE_PAGINATION_OPTIONS.map((option) => option.id),
+    'auto'
+  );
+  const manualPageCount = clampInt(template.manualPageCount, 2, 6, 2);
+  const paginationEnabled = paginationMode === 'off' ? false : paginationMode === 'manual' ? true : shouldPaginateStory;
+  const targetStoryPages = paginationMode === 'manual' ? manualPageCount : targetStoryPagesAuto;
   const paginationConfig = {
-    enabled: shouldPaginateStory,
+    enabled: paginationEnabled,
     targetPages: targetStoryPages,
-    hasRichMedia: article.galleryImages.length >= 3 || article.videoUrls.length >= 2
+    hasRichMedia: article.galleryImages.length >= 3 || article.videoUrls.length >= 2,
+    forceManual: paginationMode === 'manual'
   };
   const resolvedThemeMode = normalizeTemplateThemeMode(article.templateThemeMode, 'auto');
   const paletteModes = resolveThemePalettes(template.palette, template.id);
@@ -3310,30 +3452,43 @@ const renderTemplateHtml = (article, template) => {
 
     .story-pagination-nav {
       margin: 10px 6px 6px;
-      display: flex;
+      display: grid;
+      grid-template-columns: minmax(40px, 1fr) auto minmax(40px, 1fr);
       align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 8px 10px;
+      gap: 12px;
+      padding: 10px 14px;
       border-radius: 999px;
       border: 1px solid var(--border);
       background: var(--surface-muted);
     }
 
     .story-page-btn {
-      width: 36px;
-      height: 36px;
+      width: 40px;
+      height: 40px;
       border-radius: 999px;
       border: 1px solid var(--border);
       background: var(--surface);
       color: var(--ink);
-      font-size: 0.95rem;
+      font-size: 1.04rem;
       font-weight: 700;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       transition: transform 0.18s ease, filter 0.18s ease, opacity 0.18s ease;
+    }
+
+    .story-page-btn#story-page-prev {
+      justify-self: start;
+    }
+
+    .story-page-btn#story-page-next {
+      justify-self: end;
+    }
+
+    .story-page-btn-icon {
+      line-height: 1;
+      transform: translateY(-0.5px);
     }
 
     .story-page-btn:hover {
@@ -6013,24 +6168,13 @@ const renderTemplateHtml = (article, template) => {
     .custom-studio-block {
       border-radius: var(--studio-block-radius, 16px);
       border: var(--studio-block-border-width, 1px) var(--studio-block-border-style, solid) var(--studio-block-border, var(--border));
-      background: var(--studio-block-bg, var(--surface));
+      background: var(--studio-block-shell-bg, var(--surface));
       color: var(--studio-block-text, var(--text));
-      padding: var(--studio-block-padding, 14px);
+      padding: max(6px, calc(var(--studio-block-padding, 14px) * 0.42));
       font-size: clamp(0.88rem, calc(0.82rem * var(--studio-block-font-scale, 1)), 1.2rem);
       overflow: hidden;
       position: relative;
-    }
-
-    .custom-studio-block.shadow-1 {
-      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
-    }
-
-    .custom-studio-block.shadow-2 {
-      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.16);
-    }
-
-    .custom-studio-block.shadow-3 {
-      box-shadow: 0 18px 32px rgba(15, 23, 42, 0.22);
+      box-shadow: var(--studio-shell-shadow, none);
     }
 
     .custom-studio-block.align-center {
@@ -6039,6 +6183,16 @@ const renderTemplateHtml = (article, template) => {
 
     .custom-studio-block.align-right {
       text-align: right;
+    }
+
+    .custom-studio-block-inner {
+      min-height: 100%;
+      height: 100%;
+      border-radius: calc(var(--studio-block-radius, 16px) - 5px);
+      background: var(--studio-block-content-bg, var(--surface-muted));
+      padding: var(--studio-block-padding, 14px);
+      box-shadow: var(--studio-content-shadow, none);
+      overflow: hidden;
     }
 
     .custom-studio-block h1,
@@ -7887,40 +8041,59 @@ const renderTemplateHtml = (article, template) => {
 
         var totalText = (storyNode.textContent || '').replace(/\s+/g, ' ').trim().length;
         var minBlocks = paginationConfig.hasRichMedia ? 4 : 6;
-        if (blocks.length < minBlocks && totalText < 1000 && !paginationConfig.hasRichMedia) return false;
+        if (!paginationConfig.forceManual && blocks.length < minBlocks && totalText < 1000 && !paginationConfig.hasRichMedia) return false;
 
-        var desiredPages = Math.max(2, Math.min(3, paginationConfig.targetPages || 2));
-        var perPageTarget = Math.max(760, Math.ceil(totalText / desiredPages));
+        var desiredPages = Math.max(2, Math.min(paginationConfig.forceManual ? 6 : 3, paginationConfig.targetPages || 2));
         var pages = [];
-        var currentPage = document.createElement('section');
-        currentPage.className = 'story-page';
-        var currentBucket = 0;
-        var pageIndex = 0;
+        if (paginationConfig.forceManual) {
+          var blocksPerPage = Math.max(1, Math.ceil(blocks.length / desiredPages));
+          for (var pageCursor = 0; pageCursor < desiredPages; pageCursor += 1) {
+            var from = pageCursor * blocksPerPage;
+            var to = Math.min(blocks.length, from + blocksPerPage);
+            if (from >= blocks.length) break;
 
-        blocks.forEach(function (block) {
-          var blockSize = Math.max((block.textContent || '').trim().length, 70);
-          var tag = (block.tagName || '').toLowerCase();
-          var hasBoundaryWeight = tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'figure' || tag === 'blockquote';
-          var shouldStartNewPage =
-            pageIndex < desiredPages - 1
-            && (
-              (currentBucket >= perPageTarget && currentPage.children.length >= 3)
-              || (hasBoundaryWeight && currentBucket >= Math.floor(perPageTarget * 0.72) && currentPage.children.length >= 2)
-            );
+            var manualPage = document.createElement('section');
+            manualPage.className = 'story-page';
+            blocks.slice(from, to).forEach(function (block) {
+              manualPage.appendChild(block);
+            });
 
-          if (shouldStartNewPage) {
-            pages.push(currentPage);
-            currentPage = document.createElement('section');
-            currentPage.className = 'story-page';
-            currentBucket = 0;
-            pageIndex += 1;
+            if (manualPage.children.length) {
+              pages.push(manualPage);
+            }
           }
+        } else {
+          var perPageTarget = Math.max(760, Math.ceil(totalText / desiredPages));
+          var currentPage = document.createElement('section');
+          currentPage.className = 'story-page';
+          var currentBucket = 0;
+          var pageIndex = 0;
 
-          currentPage.appendChild(block);
-          currentBucket += blockSize;
-        });
+          blocks.forEach(function (block) {
+            var blockSize = Math.max((block.textContent || '').trim().length, 70);
+            var tag = (block.tagName || '').toLowerCase();
+            var hasBoundaryWeight = tag === 'h1' || tag === 'h2' || tag === 'h3' || tag === 'figure' || tag === 'blockquote';
+            var shouldStartNewPage =
+              pageIndex < desiredPages - 1
+              && (
+                (currentBucket >= perPageTarget && currentPage.children.length >= 3)
+                || (hasBoundaryWeight && currentBucket >= Math.floor(perPageTarget * 0.72) && currentPage.children.length >= 2)
+              );
 
-        if (currentPage.children.length) pages.push(currentPage);
+            if (shouldStartNewPage) {
+              pages.push(currentPage);
+              currentPage = document.createElement('section');
+              currentPage.className = 'story-page';
+              currentBucket = 0;
+              pageIndex += 1;
+            }
+
+            currentPage.appendChild(block);
+            currentBucket += blockSize;
+          });
+
+          if (currentPage.children.length) pages.push(currentPage);
+        }
         if (pages.length < 2) return false;
 
         storyNode.innerHTML = '';
@@ -8221,6 +8394,7 @@ export const CUSTOM_TEMPLATE_BLOCK_OPTIONS = CUSTOM_STUDIO_BLOCK_TYPES;
 export const CUSTOM_TEMPLATE_BORDER_STYLE_OPTIONS = CUSTOM_STUDIO_BORDER_STYLES;
 export const CUSTOM_TEMPLATE_UNDERLINE_STYLE_OPTIONS = CUSTOM_STUDIO_UNDERLINE_STYLES;
 export const CUSTOM_TEMPLATE_TEXT_ALIGN_OPTIONS = CUSTOM_STUDIO_TEXT_ALIGN_OPTIONS;
+export const CUSTOM_TEMPLATE_PAGINATION_MODE_OPTIONS = CUSTOM_TEMPLATE_PAGINATION_OPTIONS;
 export const CUSTOM_TEMPLATE_GRID_LIMITS = {
   columns: CUSTOM_STUDIO_GRID_COLUMNS,
   minRows: CUSTOM_STUDIO_MIN_ROWS,

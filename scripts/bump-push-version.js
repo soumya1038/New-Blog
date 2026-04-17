@@ -7,6 +7,7 @@ const rootDir = path.resolve(__dirname, '..');
 const args = process.argv.slice(2);
 const includeOverallFlag = args.includes('--include-overall');
 const requireMain = args.includes('--require-main');
+const promoteMinor = args.includes('--promote-minor');
 
 const parseSemver = (value) => {
   const match = String(value).trim().match(/^(\d+)\.(\d+)\.(\d+)$/);
@@ -24,6 +25,14 @@ const bumpMinorKeepPatch = (version) => {
     throw new Error(`Unsupported version format: ${version}`);
   }
   return `${parsed.major}.${parsed.minor + 1}.${parsed.patch}`;
+};
+
+const bumpPatch = (version) => {
+  const parsed = parseSemver(version);
+  if (!parsed) {
+    throw new Error(`Unsupported version format: ${version}`);
+  }
+  return `${parsed.major}.${parsed.minor}.${parsed.patch + 1}`;
 };
 
 const getCurrentBranch = () => {
@@ -61,7 +70,7 @@ const components = [
 ];
 
 console.log(
-  `[version] Branch: ${currentBranch} | Mode: ${includeOverall ? 'overall+components' : 'components-only'}`
+  `[version] Branch: ${currentBranch} | Mode: ${includeOverall ? 'overall+components' : 'components-only'} | Strategy: ${promoteMinor ? 'minor+keep-patch' : 'patch'}`
 );
 
 for (const component of components) {
@@ -72,7 +81,7 @@ for (const component of components) {
 
   const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
   const oldVersion = pkg.version;
-  const newVersion = bumpMinorKeepPatch(oldVersion);
+  const newVersion = promoteMinor ? bumpMinorKeepPatch(oldVersion) : bumpPatch(oldVersion);
 
   execSync(`npm version ${newVersion} --no-git-tag-version`, {
     cwd: component.dir,

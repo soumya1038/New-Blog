@@ -23,6 +23,7 @@ import {
   CUSTOM_TEMPLATE_BORDER_STYLE_OPTIONS,
   CUSTOM_TEMPLATE_UNDERLINE_STYLE_OPTIONS,
   CUSTOM_TEMPLATE_TEXT_ALIGN_OPTIONS,
+  CUSTOM_TEMPLATE_PAGINATION_MODE_OPTIONS,
   CUSTOM_TEMPLATE_GRID_LIMITS,
   createCustomStudioBlock,
   normalizeCustomTemplate
@@ -308,6 +309,33 @@ const CustomTemplateStudioPanel = ({ customDraft, onChange }) => {
               Progress Bar
             </label>
           </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block text-slate-300">
+              Pagination
+              <select
+                value={normalizedDraft.paginationMode || 'auto'}
+                onChange={(event) => updateTemplateField('paginationMode', event.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100"
+              >
+                {CUSTOM_TEMPLATE_PAGINATION_MODE_OPTIONS.map((option) => (
+                  <option key={option.id} value={option.id}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-slate-300">
+              Manual Pages
+              <input
+                type="number"
+                min={2}
+                max={6}
+                value={normalizedDraft.manualPageCount || 2}
+                disabled={(normalizedDraft.paginationMode || 'auto') !== 'manual'}
+                onChange={(event) => updateTemplateField('manualPageCount', toInt(event.target.value, 2, 6, normalizedDraft.manualPageCount || 2))}
+                className="mt-1 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+          </div>
         </div>
 
         <div className="rounded-xl border border-slate-700 bg-slate-800/70 p-3">
@@ -390,7 +418,7 @@ const CustomTemplateStudioPanel = ({ customDraft, onChange }) => {
                     width: `${width}%`,
                     top: `${top}%`,
                     height: `${height}%`,
-                    backgroundColor: block.backgroundColor,
+                    backgroundColor: block.shellBackgroundColor || block.backgroundColor,
                     color: block.textColor
                   }}
                 >
@@ -656,27 +684,100 @@ const CustomTemplateStudioPanel = ({ customDraft, onChange }) => {
                   </label>
 
                   <label className="text-xs text-slate-300">
-                    Shadow
-                    <input
-                      type="range"
-                      min={0}
-                      max={3}
-                      step={1}
-                      value={selectedBlock.shadowLevel}
-                      onChange={(event) => updateBlock(selectedBlock.id, { shadowLevel: toInt(event.target.value, 0, 3, selectedBlock.shadowLevel) })}
-                      className="mt-1 w-full"
-                    />
-                    <span className="mt-1 block text-[11px] text-slate-400">Level {selectedBlock.shadowLevel}</span>
+                    Shell Shadow
+                    <div className="mt-1 rounded-md border border-slate-600 bg-slate-900 px-2 py-2">
+                      <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={selectedBlock.shellShadowEnabled !== false}
+                          onChange={(event) =>
+                            updateBlock(selectedBlock.id, {
+                              shellShadowEnabled: event.target.checked
+                            })
+                          }
+                        />
+                        Enable
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={3}
+                        step={1}
+                        value={selectedBlock.shellShadowLevel ?? selectedBlock.shadowLevel ?? 0}
+                        disabled={selectedBlock.shellShadowEnabled === false}
+                        onChange={(event) =>
+                          updateBlock(selectedBlock.id, {
+                            shellShadowLevel: toInt(event.target.value, 0, 3, selectedBlock.shellShadowLevel ?? selectedBlock.shadowLevel ?? 0),
+                            shadowLevel: toInt(event.target.value, 0, 3, selectedBlock.shadowLevel ?? 0)
+                          })
+                        }
+                        className="mt-1 w-full disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                      <span className="mt-1 block text-[11px] text-slate-400">
+                        Level {selectedBlock.shellShadowLevel ?? selectedBlock.shadowLevel ?? 0}
+                      </span>
+                    </div>
+                  </label>
+
+                  <label className="text-xs text-slate-300">
+                    Content Shadow
+                    <div className="mt-1 rounded-md border border-slate-600 bg-slate-900 px-2 py-2">
+                      <label className="flex items-center gap-2 text-[11px] text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(selectedBlock.contentShadowEnabled)}
+                          onChange={(event) =>
+                            updateBlock(selectedBlock.id, {
+                              contentShadowEnabled: event.target.checked
+                            })
+                          }
+                        />
+                        Enable
+                      </label>
+                      <input
+                        type="range"
+                        min={0}
+                        max={3}
+                        step={1}
+                        value={selectedBlock.contentShadowLevel ?? 0}
+                        disabled={!selectedBlock.contentShadowEnabled}
+                        onChange={(event) =>
+                          updateBlock(selectedBlock.id, {
+                            contentShadowLevel: toInt(event.target.value, 0, 3, selectedBlock.contentShadowLevel ?? 0)
+                          })
+                        }
+                        className="mt-1 w-full disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                      <span className="mt-1 block text-[11px] text-slate-400">Level {selectedBlock.contentShadowLevel ?? 0}</span>
+                    </div>
                   </label>
                 </div>
 
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
                   <label>
-                    <span className="inline-flex items-center gap-1"><FaSwatchbook /> Section</span>
+                    <span className="inline-flex items-center gap-1"><FaSwatchbook /> Block Shell</span>
                     <input
                       type="color"
-                      value={selectedBlock.backgroundColor}
-                      onChange={(event) => updateBlock(selectedBlock.id, { backgroundColor: event.target.value })}
+                      value={selectedBlock.shellBackgroundColor || selectedBlock.backgroundColor}
+                      onChange={(event) =>
+                        updateBlock(selectedBlock.id, {
+                          shellBackgroundColor: event.target.value
+                        })
+                      }
+                      className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900"
+                    />
+                  </label>
+                  <label>
+                    Content Background
+                    <input
+                      type="color"
+                      value={selectedBlock.contentBackgroundColor || selectedBlock.backgroundColor}
+                      onChange={(event) =>
+                        updateBlock(selectedBlock.id, {
+                          contentBackgroundColor: event.target.value,
+                          backgroundColor: event.target.value
+                        })
+                      }
                       className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900"
                     />
                   </label>
