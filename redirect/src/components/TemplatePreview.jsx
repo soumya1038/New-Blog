@@ -47,6 +47,7 @@ const TemplatePreview = ({
   const [customDraft, setCustomDraft] = useState(
     normalizeCustomTemplate(customTemplate || createDefaultCustomTemplate())
   );
+  const toolbarActionsRef = useRef(null);
   const templateStripRef = useRef(null);
 
   useEffect(() => {
@@ -167,18 +168,32 @@ const TemplatePreview = ({
     event.preventDefault();
   };
 
+  const handleToolbarWheel = (event) => {
+    const strip = toolbarActionsRef.current;
+    if (!strip) return;
+
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    strip.scrollLeft += event.deltaY;
+    event.preventDefault();
+  };
+
   return (
     <div className={`fixed inset-0 z-[9999] bg-slate-950/95 ${isFullscreen ? '' : 'p-3 sm:p-5'}`}>
       {!isFullscreen && (
         <div className="absolute top-0 left-0 right-0 z-20 border-b border-slate-700 bg-slate-900/95 backdrop-blur-md">
-          <div className="mx-auto flex max-w-[1400px] items-center gap-2 px-3 py-2 sm:px-4 sm:py-3">
+          <div className="mx-auto flex max-w-[1400px] flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:gap-2 sm:px-4 sm:py-3">
             <div className="min-w-0 flex-1">
               <p className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-300 sm:text-xs">Template Preview Studio</p>
               <h3 className="truncate text-sm font-semibold text-slate-100 sm:text-lg">{currentTemplate.name}</h3>
               <p className="hidden truncate text-xs text-slate-400 md:block">{currentTemplate.description}</p>
             </div>
 
-            <div className="flex min-w-0 items-center justify-end gap-1 overflow-x-auto pb-1">
+            <div
+              ref={toolbarActionsRef}
+              onWheel={handleToolbarWheel}
+              className="flex w-full min-w-0 items-center gap-1 overflow-x-auto pb-1 sm:w-auto sm:justify-end"
+              title="Use mouse wheel here to scroll toolbar horizontally"
+            >
               <div className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 sm:px-3 sm:py-2">
                 <span className="hidden text-xs font-semibold uppercase tracking-[0.1em] text-slate-300 sm:inline">Theme</span>
                 <div className="flex items-center gap-1 shrink-0">
@@ -316,9 +331,13 @@ const TemplatePreview = ({
           </div>
         )}
 
-        <div className={`h-full ${isCustomTemplate && !isFullscreen ? 'grid grid-cols-1 gap-3 lg:grid-cols-[400px_minmax(0,1fr)]' : ''}`}>
+        <div className={`h-full min-h-0 ${isCustomTemplate && !isFullscreen ? 'grid grid-cols-1 gap-3 lg:grid-cols-[400px_minmax(0,1fr)]' : ''}`}>
           {isCustomTemplate && !isFullscreen && (
-            <div className={`${mobileStudioTab === 'builder' ? 'block' : 'hidden'} lg:block`}>
+            <div
+              className={`${
+                mobileStudioTab === 'builder' ? 'block' : 'hidden'
+              } h-[calc(100dvh-250px)] min-h-0 overflow-hidden lg:block lg:h-full`}
+            >
               <CustomTemplateStudioPanel
                 customDraft={customDraft}
                 onChange={(nextDraft) => setCustomDraft(normalizeCustomTemplate(nextDraft))}
@@ -329,7 +348,7 @@ const TemplatePreview = ({
           <div
             className={`relative rounded-2xl border border-slate-700 bg-white ${
               isCustomTemplate && !isFullscreen
-                ? `${mobileStudioTab === 'preview' ? 'block' : 'hidden'} min-h-[64vh] lg:block lg:h-full`
+                ? `${mobileStudioTab === 'preview' ? 'block' : 'hidden'} h-[calc(100dvh-250px)] min-h-0 lg:block lg:h-full`
                 : 'h-full'
             }`}
           >

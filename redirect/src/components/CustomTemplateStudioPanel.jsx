@@ -219,7 +219,7 @@ const CustomTemplateStudioPanel = ({ customDraft, onChange }) => {
   const stageHeight = Math.max(320, stageRows * 15);
 
   return (
-    <aside className="overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900/95 p-4">
+    <aside className="h-full overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900/95 p-4">
       <div className="mb-4 flex items-center gap-2 text-slate-100">
         <FaVectorSquare className="text-cyan-300" />
         <h4 className="text-sm font-semibold uppercase tracking-[0.12em]">Custom Studio Playground</h4>
