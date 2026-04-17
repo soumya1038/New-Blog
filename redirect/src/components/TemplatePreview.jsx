@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FaTimes,
   FaExpand,
@@ -43,9 +43,11 @@ const TemplatePreview = ({
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   );
   const [previewThemeMode, setPreviewThemeMode] = useState('auto');
+  const [mobileStudioTab, setMobileStudioTab] = useState('preview');
   const [customDraft, setCustomDraft] = useState(
     normalizeCustomTemplate(customTemplate || createDefaultCustomTemplate())
   );
+  const templateStripRef = useRef(null);
 
   useEffect(() => {
     const nextIndex = articleTemplates.findIndex((template) => template.id === selectedTemplateId);
@@ -95,6 +97,12 @@ const TemplatePreview = ({
   const currentTemplate = articleTemplates[currentTemplateIndex] || articleTemplates[0];
   const selectedTemplateMeta = getArticleTemplateById(selectedTemplateId);
   const isCustomTemplate = currentTemplate.id === CUSTOM_ARTICLE_TEMPLATE_ID;
+
+  useEffect(() => {
+    if (isCustomTemplate && !isFullscreen) {
+      setMobileStudioTab('preview');
+    }
+  }, [isCustomTemplate, isFullscreen, currentTemplate.id]);
 
   const articleData = useMemo(
     () => ({
@@ -148,6 +156,15 @@ const TemplatePreview = ({
 
   const handleNextTemplate = () => {
     setCurrentTemplateIndex((prev) => (prev === articleTemplates.length - 1 ? 0 : prev + 1));
+  };
+
+  const handleTemplateStripWheel = (event) => {
+    const strip = templateStripRef.current;
+    if (!strip) return;
+
+    if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+    strip.scrollLeft += event.deltaY;
+    event.preventDefault();
   };
 
   return (
@@ -274,15 +291,48 @@ const TemplatePreview = ({
       )}
 
       <div className={`${isFullscreen ? 'h-full pt-0' : 'h-full pt-24 pb-16'}`}>
+        {isCustomTemplate && !isFullscreen && (
+          <div className="mb-2 flex items-center gap-2 lg:hidden">
+            <button
+              onClick={() => setMobileStudioTab('preview')}
+              className={`inline-flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                mobileStudioTab === 'preview'
+                  ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100'
+                  : 'border-slate-600 bg-slate-800 text-slate-200'
+              }`}
+            >
+              Template Preview
+            </button>
+            <button
+              onClick={() => setMobileStudioTab('builder')}
+              className={`inline-flex flex-1 items-center justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                mobileStudioTab === 'builder'
+                  ? 'border-emerald-300 bg-emerald-500/20 text-emerald-100'
+                  : 'border-slate-600 bg-slate-800 text-slate-200'
+              }`}
+            >
+              Studio Controls
+            </button>
+          </div>
+        )}
+
         <div className={`h-full ${isCustomTemplate && !isFullscreen ? 'grid grid-cols-1 gap-3 lg:grid-cols-[400px_minmax(0,1fr)]' : ''}`}>
           {isCustomTemplate && !isFullscreen && (
-            <CustomTemplateStudioPanel
-              customDraft={customDraft}
-              onChange={(nextDraft) => setCustomDraft(normalizeCustomTemplate(nextDraft))}
-            />
+            <div className={`${mobileStudioTab === 'builder' ? 'block' : 'hidden'} lg:block`}>
+              <CustomTemplateStudioPanel
+                customDraft={customDraft}
+                onChange={(nextDraft) => setCustomDraft(normalizeCustomTemplate(nextDraft))}
+              />
+            </div>
           )}
 
-          <div className="relative h-full rounded-2xl border border-slate-700 bg-white">
+          <div
+            className={`relative rounded-2xl border border-slate-700 bg-white ${
+              isCustomTemplate && !isFullscreen
+                ? `${mobileStudioTab === 'preview' ? 'block' : 'hidden'} min-h-[64vh] lg:block lg:h-full`
+                : 'h-full'
+            }`}
+          >
             {!isFullscreen && (
               <div className="absolute left-3 top-3 z-10 rounded-full bg-slate-900/80 px-3 py-1 text-xs font-medium text-slate-100">
                 {currentTemplateIndex + 1} / {articleTemplates.length}
@@ -311,7 +361,12 @@ const TemplatePreview = ({
 
       {!isFullscreen && (
         <div className="absolute bottom-2 left-0 right-0 z-20 px-3">
-          <div className="mx-auto flex max-w-[1400px] gap-2 overflow-x-auto rounded-xl border border-slate-700 bg-slate-900/90 p-2">
+          <div
+            ref={templateStripRef}
+            onWheel={handleTemplateStripWheel}
+            className="mx-auto flex max-w-[1400px] gap-2 overflow-x-auto rounded-xl border border-slate-700 bg-slate-900/90 p-2"
+            title="Use mouse wheel here to scroll templates horizontally"
+          >
             {articleTemplates.map((template, index) => {
               const active = index === currentTemplateIndex;
               const isSuggested = template.id === activeSuggestedTemplateId;

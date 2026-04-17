@@ -5,11 +5,14 @@ import {
   FaAlignRight,
   FaArrowsAlt,
   FaBorderAll,
+  FaChevronDown,
+  FaChevronUp,
   FaFont,
   FaGripLines,
   FaMinusCircle,
   FaPlusCircle,
   FaRulerCombined,
+  FaSlidersH,
   FaSwatchbook,
   FaVectorSquare
 } from 'react-icons/fa';
@@ -45,6 +48,7 @@ const CustomTemplateStudioPanel = ({ customDraft, onChange }) => {
   const stageRef = useRef(null);
   const [selectedBlockId, setSelectedBlockId] = useState('');
   const [interaction, setInteraction] = useState(null);
+  const [showAdvancedStyles, setShowAdvancedStyles] = useState(false);
 
   const normalizedDraft = useMemo(() => normalizeCustomTemplate(customDraft), [customDraft]);
   const studio = normalizedDraft.studio;
@@ -450,6 +454,10 @@ const CustomTemplateStudioPanel = ({ customDraft, onChange }) => {
               </button>
             </div>
 
+            <p className="mb-2 text-[11px] text-slate-400">
+              Drag blocks on the canvas for quick layout changes. Use these values only for precise tuning.
+            </p>
+
             <div className="grid grid-cols-2 gap-2">
               <label className="text-xs text-slate-300">
                 Label
@@ -474,7 +482,7 @@ const CustomTemplateStudioPanel = ({ customDraft, onChange }) => {
               </label>
 
               <label className="text-xs text-slate-300">
-                Col Start
+                Column Start
                 <input
                   type="number"
                   min={1}
@@ -487,7 +495,7 @@ const CustomTemplateStudioPanel = ({ customDraft, onChange }) => {
                 />
               </label>
               <label className="text-xs text-slate-300">
-                Col Span
+                Column Span
                 <input
                   type="number"
                   min={1}
@@ -528,164 +536,180 @@ const CustomTemplateStudioPanel = ({ customDraft, onChange }) => {
               </label>
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-              <label className="text-slate-300">
-                <span className="inline-flex items-center gap-1"><FaFont /> Font Scale</span>
-                <input
-                  type="range"
-                  min={0.72}
-                  max={1.9}
-                  step={0.02}
-                  value={selectedBlock.fontScale}
-                  onChange={(event) => updateBlock(selectedBlock.id, { fontScale: clamp(event.target.value, 0.72, 1.9, selectedBlock.fontScale) })}
-                  className="mt-1 w-full"
-                />
-                <span className="mt-1 block text-[11px] text-slate-400">{selectedBlock.fontScale.toFixed(2)}x</span>
-              </label>
+            <button
+              type="button"
+              onClick={() => setShowAdvancedStyles((prev) => !prev)}
+              className="mt-3 inline-flex w-full items-center justify-between rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-slate-200 hover:bg-slate-700"
+            >
+              <span className="inline-flex items-center gap-2">
+                <FaSlidersH />
+                Advanced Style Controls
+              </span>
+              {showAdvancedStyles ? <FaChevronUp /> : <FaChevronDown />}
+            </button>
 
-              <label className="text-slate-300">
-                <span className="inline-flex items-center gap-1"><FaBorderAll /> Border Width</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={8}
-                  step={1}
-                  value={selectedBlock.borderWidth}
-                  onChange={(event) => updateBlock(selectedBlock.id, { borderWidth: toInt(event.target.value, 0, 8, selectedBlock.borderWidth) })}
-                  className="mt-1 w-full"
-                />
-                <span className="mt-1 block text-[11px] text-slate-400">{selectedBlock.borderWidth}px</span>
-              </label>
+            {showAdvancedStyles && (
+              <>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <label className="text-slate-300">
+                    <span className="inline-flex items-center gap-1"><FaFont /> Font Scale</span>
+                    <input
+                      type="range"
+                      min={0.72}
+                      max={1.9}
+                      step={0.02}
+                      value={selectedBlock.fontScale}
+                      onChange={(event) => updateBlock(selectedBlock.id, { fontScale: clamp(event.target.value, 0.72, 1.9, selectedBlock.fontScale) })}
+                      className="mt-1 w-full"
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">{selectedBlock.fontScale.toFixed(2)}x</span>
+                  </label>
 
-              <label className="text-slate-300">
-                Border Radius
-                <input
-                  type="range"
-                  min={0}
-                  max={44}
-                  step={1}
-                  value={selectedBlock.borderRadius}
-                  onChange={(event) => updateBlock(selectedBlock.id, { borderRadius: toInt(event.target.value, 0, 44, selectedBlock.borderRadius) })}
-                  className="mt-1 w-full"
-                />
-                <span className="mt-1 block text-[11px] text-slate-400">{selectedBlock.borderRadius}px</span>
-              </label>
+                  <label className="text-slate-300">
+                    <span className="inline-flex items-center gap-1"><FaBorderAll /> Border Width</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={8}
+                      step={1}
+                      value={selectedBlock.borderWidth}
+                      onChange={(event) => updateBlock(selectedBlock.id, { borderWidth: toInt(event.target.value, 0, 8, selectedBlock.borderWidth) })}
+                      className="mt-1 w-full"
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">{selectedBlock.borderWidth}px</span>
+                  </label>
 
-              <label className="text-slate-300">
-                Padding
-                <input
-                  type="range"
-                  min={6}
-                  max={36}
-                  step={1}
-                  value={selectedBlock.padding}
-                  onChange={(event) => updateBlock(selectedBlock.id, { padding: toInt(event.target.value, 6, 36, selectedBlock.padding) })}
-                  className="mt-1 w-full"
-                />
-                <span className="mt-1 block text-[11px] text-slate-400">{selectedBlock.padding}px</span>
-              </label>
-            </div>
+                  <label className="text-slate-300">
+                    Border Radius
+                    <input
+                      type="range"
+                      min={0}
+                      max={44}
+                      step={1}
+                      value={selectedBlock.borderRadius}
+                      onChange={(event) => updateBlock(selectedBlock.id, { borderRadius: toInt(event.target.value, 0, 44, selectedBlock.borderRadius) })}
+                      className="mt-1 w-full"
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">{selectedBlock.borderRadius}px</span>
+                  </label>
 
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <label className="text-xs text-slate-300">
-                Border Style
-                <select
-                  value={selectedBlock.borderStyle}
-                  onChange={(event) => updateBlock(selectedBlock.id, { borderStyle: event.target.value })}
-                  className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100"
-                >
-                  {CUSTOM_TEMPLATE_BORDER_STYLE_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-xs text-slate-300">
-                Underline Style
-                <select
-                  value={selectedBlock.underlineStyle}
-                  onChange={(event) => updateBlock(selectedBlock.id, { underlineStyle: event.target.value })}
-                  className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100"
-                >
-                  {CUSTOM_TEMPLATE_UNDERLINE_STYLE_OPTIONS.map((option) => (
-                    <option key={option.id} value={option.id}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="text-xs text-slate-300">
-                Text Align
-                <div className="mt-1 flex gap-1">
-                  {CUSTOM_TEMPLATE_TEXT_ALIGN_OPTIONS.map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      onClick={() => updateBlock(selectedBlock.id, { textAlign: option.id })}
-                      className={`inline-flex flex-1 items-center justify-center rounded-md border px-2 py-1 text-xs ${
-                        selectedBlock.textAlign === option.id
-                          ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100'
-                          : 'border-slate-600 bg-slate-900 text-slate-300 hover:bg-slate-700'
-                      }`}
-                    >
-                      {buildAlignIcon(option.id)}
-                    </button>
-                  ))}
+                  <label className="text-slate-300">
+                    Padding
+                    <input
+                      type="range"
+                      min={6}
+                      max={36}
+                      step={1}
+                      value={selectedBlock.padding}
+                      onChange={(event) => updateBlock(selectedBlock.id, { padding: toInt(event.target.value, 6, 36, selectedBlock.padding) })}
+                      className="mt-1 w-full"
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">{selectedBlock.padding}px</span>
+                  </label>
                 </div>
-              </label>
 
-              <label className="text-xs text-slate-300">
-                Shadow
-                <input
-                  type="range"
-                  min={0}
-                  max={3}
-                  step={1}
-                  value={selectedBlock.shadowLevel}
-                  onChange={(event) => updateBlock(selectedBlock.id, { shadowLevel: toInt(event.target.value, 0, 3, selectedBlock.shadowLevel) })}
-                  className="mt-1 w-full"
-                />
-                <span className="mt-1 block text-[11px] text-slate-400">Level {selectedBlock.shadowLevel}</span>
-              </label>
-            </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <label className="text-xs text-slate-300">
+                    Border Style
+                    <select
+                      value={selectedBlock.borderStyle}
+                      onChange={(event) => updateBlock(selectedBlock.id, { borderStyle: event.target.value })}
+                      className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100"
+                    >
+                      {CUSTOM_TEMPLATE_BORDER_STYLE_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
 
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
-              <label>
-                <span className="inline-flex items-center gap-1"><FaSwatchbook /> Section</span>
-                <input
-                  type="color"
-                  value={selectedBlock.backgroundColor}
-                  onChange={(event) => updateBlock(selectedBlock.id, { backgroundColor: event.target.value })}
-                  className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900"
-                />
-              </label>
-              <label>
-                Text
-                <input
-                  type="color"
-                  value={selectedBlock.textColor}
-                  onChange={(event) => updateBlock(selectedBlock.id, { textColor: event.target.value })}
-                  className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900"
-                />
-              </label>
-              <label>
-                Border
-                <input
-                  type="color"
-                  value={selectedBlock.borderColor}
-                  onChange={(event) => updateBlock(selectedBlock.id, { borderColor: event.target.value })}
-                  className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900"
-                />
-              </label>
-              <label>
-                Underline
-                <input
-                  type="color"
-                  value={selectedBlock.underlineColor}
-                  onChange={(event) => updateBlock(selectedBlock.id, { underlineColor: event.target.value })}
-                  className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900"
-                />
-              </label>
-            </div>
+                  <label className="text-xs text-slate-300">
+                    Underline Style
+                    <select
+                      value={selectedBlock.underlineStyle}
+                      onChange={(event) => updateBlock(selectedBlock.id, { underlineStyle: event.target.value })}
+                      className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100"
+                    >
+                      {CUSTOM_TEMPLATE_UNDERLINE_STYLE_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="text-xs text-slate-300">
+                    Text Align
+                    <div className="mt-1 flex gap-1">
+                      {CUSTOM_TEMPLATE_TEXT_ALIGN_OPTIONS.map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => updateBlock(selectedBlock.id, { textAlign: option.id })}
+                          className={`inline-flex flex-1 items-center justify-center rounded-md border px-2 py-1 text-xs ${
+                            selectedBlock.textAlign === option.id
+                              ? 'border-cyan-300 bg-cyan-500/20 text-cyan-100'
+                              : 'border-slate-600 bg-slate-900 text-slate-300 hover:bg-slate-700'
+                          }`}
+                        >
+                          {buildAlignIcon(option.id)}
+                        </button>
+                      ))}
+                    </div>
+                  </label>
+
+                  <label className="text-xs text-slate-300">
+                    Shadow
+                    <input
+                      type="range"
+                      min={0}
+                      max={3}
+                      step={1}
+                      value={selectedBlock.shadowLevel}
+                      onChange={(event) => updateBlock(selectedBlock.id, { shadowLevel: toInt(event.target.value, 0, 3, selectedBlock.shadowLevel) })}
+                      className="mt-1 w-full"
+                    />
+                    <span className="mt-1 block text-[11px] text-slate-400">Level {selectedBlock.shadowLevel}</span>
+                  </label>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
+                  <label>
+                    <span className="inline-flex items-center gap-1"><FaSwatchbook /> Section</span>
+                    <input
+                      type="color"
+                      value={selectedBlock.backgroundColor}
+                      onChange={(event) => updateBlock(selectedBlock.id, { backgroundColor: event.target.value })}
+                      className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900"
+                    />
+                  </label>
+                  <label>
+                    Text
+                    <input
+                      type="color"
+                      value={selectedBlock.textColor}
+                      onChange={(event) => updateBlock(selectedBlock.id, { textColor: event.target.value })}
+                      className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900"
+                    />
+                  </label>
+                  <label>
+                    Border
+                    <input
+                      type="color"
+                      value={selectedBlock.borderColor}
+                      onChange={(event) => updateBlock(selectedBlock.id, { borderColor: event.target.value })}
+                      className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900"
+                    />
+                  </label>
+                  <label>
+                    Underline
+                    <input
+                      type="color"
+                      value={selectedBlock.underlineColor}
+                      onChange={(event) => updateBlock(selectedBlock.id, { underlineColor: event.target.value })}
+                      className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900"
+                    />
+                  </label>
+                </div>
+              </>
+            )}
 
             <label className="mt-3 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs text-slate-300">
               <input
