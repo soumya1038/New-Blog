@@ -73,6 +73,8 @@ const CUSTOM_STUDIO_BLOCK_TYPES = [
   { id: 'title', label: 'Title Block' },
   { id: 'meta', label: 'Story Meta' },
   { id: 'image', label: 'Hero Image' },
+  { id: 'gallery', label: 'Gallery Strip' },
+  { id: 'collage', label: 'Collage Board' },
   { id: 'content', label: 'Main Content' },
   { id: 'highlights', label: 'Highlights' },
   { id: 'tags', label: 'Tags' },
@@ -107,6 +109,51 @@ const CUSTOM_TEMPLATE_PAGINATION_OPTIONS = [
   { id: 'auto', label: 'Auto' },
   { id: 'manual', label: 'Manual' },
   { id: 'off', label: 'Off' }
+];
+
+const CUSTOM_TEMPLATE_DEVICE_OPTIONS_LIST = [
+  { id: 'desktop', label: 'Desktop' },
+  { id: 'tablet', label: 'Tablet' },
+  { id: 'mobile', label: 'Mobile' }
+];
+
+const CUSTOM_STUDIO_IMAGE_FIT_OPTIONS = [
+  { id: 'cover', label: 'Cover' },
+  { id: 'contain', label: 'Contain' }
+];
+
+const CUSTOM_STUDIO_CAPTION_STYLE_OPTIONS = [
+  { id: 'strip', label: 'Strip' },
+  { id: 'boxed', label: 'Boxed' },
+  { id: 'minimal', label: 'Minimal' },
+  { id: 'hidden', label: 'Hidden' }
+];
+
+const CUSTOM_STUDIO_VIDEO_LAYOUT_OPTIONS = [
+  { id: 'grid', label: 'Grid' },
+  { id: 'split', label: 'Split' },
+  { id: 'single', label: 'Single' }
+];
+
+const CUSTOM_STUDIO_PAGE_PLACEMENT_OPTIONS = [
+  { id: 'all', label: 'All Pages' },
+  { id: 'first', label: 'First Page' },
+  { id: 'middle', label: 'Middle Pages' },
+  { id: 'last', label: 'Last Page' }
+];
+
+const CUSTOM_STUDIO_BORDER_PRESET_OPTIONS = [
+  { id: 'custom', label: 'Custom' },
+  { id: 'editorial', label: 'Editorial' },
+  { id: 'stitched', label: 'Stitched' },
+  { id: 'ribbon', label: 'Ribbon' }
+];
+
+const CUSTOM_STUDIO_HIGHLIGHT_PRESET_OPTIONS = [
+  { id: 'none', label: 'None' },
+  { id: 'marker', label: 'Marker' },
+  { id: 'spotlight', label: 'Spotlight' },
+  { id: 'quote-badge', label: 'Quote Badge' }
 ];
 
 const CUSTOM_STUDIO_BLOCK_TYPE_LABELS = CUSTOM_STUDIO_BLOCK_TYPES.reduce((map, item) => {
@@ -1431,6 +1478,54 @@ const createDefaultCustomStudioBlockMap = () => ({
     underlineStyle: 'none',
     underlineColor: '#9b4f2f'
   },
+  gallery: {
+    colStart: 1,
+    colSpan: 7,
+    rowStart: 5,
+    rowSpan: 8,
+    fontScale: 1,
+    textAlign: 'center',
+    shellBackgroundColor: '#ece8e1',
+    contentBackgroundColor: '#f4eee6',
+    backgroundColor: '#f4eee6',
+    textColor: '#675d54',
+    borderColor: '#d9c9b8',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderRadius: 18,
+    padding: 12,
+    shellShadowEnabled: true,
+    shellShadowLevel: 1,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
+    shadowLevel: 1,
+    underlineStyle: 'none',
+    underlineColor: '#9b4f2f'
+  },
+  collage: {
+    colStart: 1,
+    colSpan: 7,
+    rowStart: 5,
+    rowSpan: 8,
+    fontScale: 1,
+    textAlign: 'center',
+    shellBackgroundColor: '#ece8e1',
+    contentBackgroundColor: '#f4eee6',
+    backgroundColor: '#f4eee6',
+    textColor: '#675d54',
+    borderColor: '#d9c9b8',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderRadius: 18,
+    padding: 12,
+    shellShadowEnabled: true,
+    shellShadowLevel: 1,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
+    shadowLevel: 1,
+    underlineStyle: 'none',
+    underlineColor: '#9b4f2f'
+  },
   content: {
     colStart: 8,
     colSpan: 5,
@@ -1557,11 +1652,21 @@ const createDefaultCustomStudioBlocks = () => {
   const defaults = createDefaultCustomStudioBlockMap();
   const baseOrder = ['title', 'meta', 'image', 'content', 'highlights', 'tags', 'video', 'quote'];
 
-  return baseOrder.map((type) => ({
+  return baseOrder.map((type, index) => ({
     id: `${type}-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
     type,
     label: CUSTOM_STUDIO_BLOCK_TYPE_LABELS[type] || type,
     visible: true,
+    locked: false,
+    zIndex: index + 1,
+    imageFit: 'cover',
+    focalX: 50,
+    focalY: 50,
+    captionStyle: 'strip',
+    videoLayout: 'grid',
+    pagePlacement: 'all',
+    borderPreset: 'custom',
+    highlightPreset: 'none',
     ...defaults[type]
   }));
 };
@@ -1573,6 +1678,26 @@ const createDefaultCustomStudio = () => ({
   blocks: createDefaultCustomStudioBlocks()
 });
 
+const cloneStudio = (studio) =>
+  JSON.parse(JSON.stringify(studio || createDefaultCustomStudio()));
+
+const createDefaultCustomStudios = () => {
+  const desktop = createDefaultCustomStudio();
+  const tablet = cloneStudio(desktop);
+  const mobile = cloneStudio(desktop);
+
+  tablet.rows = clampInt(tablet.rows - 4, CUSTOM_STUDIO_MIN_ROWS, CUSTOM_STUDIO_MAX_ROWS, tablet.rows);
+  mobile.rows = clampInt(mobile.rows - 6, CUSTOM_STUDIO_MIN_ROWS, CUSTOM_STUDIO_MAX_ROWS, mobile.rows);
+
+  mobile.blocks = (mobile.blocks || []).map((block) => ({
+    ...block,
+    colStart: clampInt(block.colStart, 1, 6, 1),
+    colSpan: clampInt(Math.max(6, Math.min(12, block.colSpan + 2)), 1, 12, 12)
+  }));
+
+  return { desktop, tablet, mobile };
+};
+
 export const createCustomStudioBlock = (type) => {
   const fallbackType = CUSTOM_STUDIO_BLOCK_TYPE_IDS.includes(type) ? type : 'content';
   const defaults = createDefaultCustomStudioBlockMap()[fallbackType];
@@ -1581,6 +1706,16 @@ export const createCustomStudioBlock = (type) => {
     type: fallbackType,
     label: CUSTOM_STUDIO_BLOCK_TYPE_LABELS[fallbackType] || fallbackType,
     visible: true,
+    locked: false,
+    zIndex: 1,
+    imageFit: 'cover',
+    focalX: 50,
+    focalY: 50,
+    captionStyle: 'strip',
+    videoLayout: 'grid',
+    pagePlacement: 'all',
+    borderPreset: 'custom',
+    highlightPreset: 'none',
     ...defaults
   };
 };
@@ -1675,7 +1810,46 @@ const normalizeCustomStudioBlock = (block, fallbackBlock, index) => {
       CUSTOM_STUDIO_UNDERLINE_STYLES.map((item) => item.id),
       fallback.underlineStyle
     ),
-    underlineColor: cleanHex(block?.underlineColor, fallback.underlineColor)
+    underlineColor: cleanHex(block?.underlineColor, fallback.underlineColor),
+    locked:
+      block?.locked !== undefined
+        ? Boolean(block.locked)
+        : fallback?.locked !== undefined
+        ? Boolean(fallback.locked)
+        : false,
+    zIndex: clampInt(block?.zIndex, 1, 120, fallback?.zIndex !== undefined ? fallback.zIndex : index + 1),
+    imageFit: cleanEnum(
+      cleanText(block?.imageFit, fallback?.imageFit || 'cover'),
+      CUSTOM_STUDIO_IMAGE_FIT_OPTIONS.map((item) => item.id),
+      fallback?.imageFit || 'cover'
+    ),
+    focalX: clampInt(block?.focalX, 0, 100, fallback?.focalX !== undefined ? fallback.focalX : 50),
+    focalY: clampInt(block?.focalY, 0, 100, fallback?.focalY !== undefined ? fallback.focalY : 50),
+    captionStyle: cleanEnum(
+      cleanText(block?.captionStyle, fallback?.captionStyle || 'strip'),
+      CUSTOM_STUDIO_CAPTION_STYLE_OPTIONS.map((item) => item.id),
+      fallback?.captionStyle || 'strip'
+    ),
+    videoLayout: cleanEnum(
+      cleanText(block?.videoLayout, fallback?.videoLayout || 'grid'),
+      CUSTOM_STUDIO_VIDEO_LAYOUT_OPTIONS.map((item) => item.id),
+      fallback?.videoLayout || 'grid'
+    ),
+    pagePlacement: cleanEnum(
+      cleanText(block?.pagePlacement, fallback?.pagePlacement || 'all'),
+      CUSTOM_STUDIO_PAGE_PLACEMENT_OPTIONS.map((item) => item.id),
+      fallback?.pagePlacement || 'all'
+    ),
+    borderPreset: cleanEnum(
+      cleanText(block?.borderPreset, fallback?.borderPreset || 'custom'),
+      CUSTOM_STUDIO_BORDER_PRESET_OPTIONS.map((item) => item.id),
+      fallback?.borderPreset || 'custom'
+    ),
+    highlightPreset: cleanEnum(
+      cleanText(block?.highlightPreset, fallback?.highlightPreset || 'none'),
+      CUSTOM_STUDIO_HIGHLIGHT_PRESET_OPTIONS.map((item) => item.id),
+      fallback?.highlightPreset || 'none'
+    )
   };
 };
 
@@ -1710,8 +1884,29 @@ const normalizeCustomStudio = (studio, defaultStudio) => {
   };
 };
 
+const normalizeCustomStudios = (studios, fallbackStudios) => {
+  const fallback = fallbackStudios || createDefaultCustomStudios();
+  const source = studios && typeof studios === 'object' ? studios : {};
+
+  return {
+    desktop: normalizeCustomStudio(source.desktop, fallback.desktop),
+    tablet: normalizeCustomStudio(source.tablet || source.desktop, fallback.tablet),
+    mobile: normalizeCustomStudio(source.mobile || source.tablet || source.desktop, fallback.mobile)
+  };
+};
+
+const resolveRuntimeStudioDevice = (studios) => {
+  if (!studios || typeof studios !== 'object') return 'desktop';
+  if (typeof window === 'undefined') return 'desktop';
+
+  const width = Number(window.innerWidth || 0);
+  if (width > 0 && width < 768 && studios.mobile) return 'mobile';
+  if (width > 0 && width < 1180 && studios.tablet) return 'tablet';
+  return 'desktop';
+};
+
 export const createDefaultCustomTemplate = () => {
-  const studio = createDefaultCustomStudio();
+  const studios = createDefaultCustomStudios();
   return {
     name: 'My Signature Layout',
     layout: 'split',
@@ -1729,7 +1924,8 @@ export const createDefaultCustomTemplate = () => {
     showProgress: true,
     paginationMode: 'auto',
     manualPageCount: 2,
-    studio
+    studio: studios.desktop,
+    studios
   };
 };
 
@@ -1739,6 +1935,23 @@ export const normalizeCustomTemplate = (customTemplate) => {
 
   const fontKeys = Object.keys(FONT_MAP);
   const layoutKeys = TEMPLATE_LAYOUT_OPTIONS.map((option) => option.id);
+
+  const studioSource =
+    customTemplate.studios && typeof customTemplate.studios === 'object'
+      ? customTemplate.studios
+      : customTemplate.studio
+      ? {
+          desktop: customTemplate.studio,
+          tablet: customTemplate.studio,
+          mobile: customTemplate.studio
+        }
+      : defaults.studios;
+
+  const normalizedStudios = normalizeCustomStudios(studioSource, defaults.studios);
+  const normalizedDesktopStudio = normalizeCustomStudio(
+    customTemplate.studio || normalizedStudios.desktop,
+    normalizedStudios.desktop
+  );
 
   return {
     name: cleanText(customTemplate.name, defaults.name).slice(0, 56),
@@ -1761,7 +1974,11 @@ export const normalizeCustomTemplate = (customTemplate) => {
       defaults.paginationMode
     ),
     manualPageCount: clampInt(customTemplate.manualPageCount, 2, 6, defaults.manualPageCount),
-    studio: normalizeCustomStudio(customTemplate.studio, defaults.studio)
+    studio: normalizedDesktopStudio,
+    studios: {
+      ...normalizedStudios,
+      desktop: normalizedDesktopStudio
+    }
   };
 };
 
@@ -2242,6 +2459,9 @@ const runtimeTemplate = (templateId, customTemplate) => {
   const custom = normalizeCustomTemplate(customTemplate);
   const headline = FONT_MAP[custom.headlineFont] || FONT_MAP.heritage;
   const body = FONT_MAP[custom.bodyFont] || FONT_MAP.modern;
+  const runtimeStudios = normalizeCustomStudios(custom.studios, createDefaultCustomStudios());
+  const runtimeDevice = resolveRuntimeStudioDevice(runtimeStudios);
+  const runtimeStudio = runtimeStudios[runtimeDevice] || runtimeStudios.desktop || custom.studio;
 
   return {
     ...preset,
@@ -2254,7 +2474,9 @@ const runtimeTemplate = (templateId, customTemplate) => {
     showProgress: custom.showProgress,
     paginationMode: custom.paginationMode,
     manualPageCount: custom.manualPageCount,
-    studio: custom.studio,
+    studio: runtimeStudio,
+    studios: runtimeStudios,
+    runtimeStudioDevice: runtimeDevice,
     palette: normalizePresetPalette({
       bg: custom.backgroundStart,
       bgAlt: custom.backgroundEnd,
@@ -2850,20 +3072,132 @@ const renderCustomStudioQuote = (article) => `
   </blockquote>
 `;
 
-const renderCustomStudioImage = (article) => {
-  if (article.coverImage) {
-    return `<figure class="custom-studio-image"><img src="${escapeHtml(article.coverImage)}" alt="Article visual" loading="lazy" /></figure>`;
+const buildCustomMediaCaption = (article, block, fallback) => {
+  const captionStyle = cleanEnum(
+    cleanText(block?.captionStyle, 'strip'),
+    CUSTOM_STUDIO_CAPTION_STYLE_OPTIONS.map((item) => item.id),
+    'strip'
+  );
+  if (captionStyle === 'hidden') return '';
+  const captionText = cleanText(
+    article.metaDescription,
+    `${cleanText(article.category, 'Story')} | ${fallback}`
+  ).slice(0, 200);
+  return `<figcaption class="custom-studio-caption custom-studio-caption-${captionStyle}">${escapeHtml(captionText)}</figcaption>`;
+};
+
+const renderCustomStudioImage = (article, block) => {
+  const imageSource = cleanText(article.coverImage, article.galleryImages[0] || '');
+  const imageFit = cleanEnum(
+    cleanText(block?.imageFit, 'cover'),
+    CUSTOM_STUDIO_IMAGE_FIT_OPTIONS.map((item) => item.id),
+    'cover'
+  );
+  const focalX = clampInt(block?.focalX, 0, 100, 50);
+  const focalY = clampInt(block?.focalY, 0, 100, 50);
+
+  if (imageSource) {
+    return `
+      <figure class="custom-studio-image">
+        <img
+          src="${escapeHtml(imageSource)}"
+          alt="Article visual"
+          loading="lazy"
+          style="object-fit:${imageFit};object-position:${focalX}% ${focalY}%;"
+        />
+        ${buildCustomMediaCaption(article, block, 'Feature visual')}
+      </figure>
+    `;
   }
   return '<div class="custom-studio-image-fallback"><p>Cover image not provided</p></div>';
 };
 
-const renderCustomStudioVideo = (article) => {
+const collectGallerySources = (article) =>
+  [article.coverImage, ...(article.galleryImages || [])]
+    .map((item) => cleanText(item))
+    .filter((item, index, list) => item && list.indexOf(item) === index);
+
+const renderCustomStudioGallery = (article, block) => {
+  const gallery = collectGallerySources(article).slice(0, 6);
+  const imageFit = cleanEnum(
+    cleanText(block?.imageFit, 'cover'),
+    CUSTOM_STUDIO_IMAGE_FIT_OPTIONS.map((item) => item.id),
+    'cover'
+  );
+  const focalX = clampInt(block?.focalX, 0, 100, 50);
+  const focalY = clampInt(block?.focalY, 0, 100, 50);
+
+  if (!gallery.length) {
+    return '<div class="custom-studio-image-fallback"><p>Add gallery images for strip mode</p></div>';
+  }
+
+  return `
+    <figure class="custom-studio-gallery">
+      <div class="custom-studio-gallery-track">
+        ${gallery
+          .map(
+            (src, index) => `
+              <img
+                src="${escapeHtml(src)}"
+                alt="Gallery visual ${index + 1}"
+                loading="lazy"
+                style="object-fit:${imageFit};object-position:${focalX}% ${focalY}%;"
+              />`
+          )
+          .join('')}
+      </div>
+      ${buildCustomMediaCaption(article, block, 'Gallery strip')}
+    </figure>
+  `;
+};
+
+const renderCustomStudioCollage = (article, block) => {
+  const gallery = collectGallerySources(article).slice(0, 4);
+  const imageFit = cleanEnum(
+    cleanText(block?.imageFit, 'cover'),
+    CUSTOM_STUDIO_IMAGE_FIT_OPTIONS.map((item) => item.id),
+    'cover'
+  );
+  const focalX = clampInt(block?.focalX, 0, 100, 50);
+  const focalY = clampInt(block?.focalY, 0, 100, 50);
+
+  if (!gallery.length) {
+    return '<div class="custom-studio-image-fallback"><p>Add images for collage mode</p></div>';
+  }
+
+  return `
+    <figure class="custom-studio-collage">
+      ${gallery
+        .map(
+          (src, index) => `
+            <div class="custom-studio-collage-cell custom-studio-collage-cell-${index + 1}">
+              <img
+                src="${escapeHtml(src)}"
+                alt="Collage visual ${index + 1}"
+                loading="lazy"
+                style="object-fit:${imageFit};object-position:${focalX}% ${focalY}%;"
+              />
+            </div>`
+        )
+        .join('')}
+      ${buildCustomMediaCaption(article, block, 'Collage board')}
+    </figure>
+  `;
+};
+
+const renderCustomStudioVideo = (article, block) => {
   if (!article.videoUrls.length) {
     return '<div class="custom-studio-video-fallback"><h3>Video Brief</h3><p>Add one or more video URLs to fill this section.</p></div>';
   }
 
+  const layoutMode = cleanEnum(
+    cleanText(block?.videoLayout, 'grid'),
+    CUSTOM_STUDIO_VIDEO_LAYOUT_OPTIONS.map((item) => item.id),
+    'grid'
+  );
+  const maxVideos = layoutMode === 'single' ? 1 : layoutMode === 'split' ? 2 : 4;
   const embeds = article.videoUrls
-    .slice(0, 3)
+    .slice(0, maxVideos)
     .map((url) => {
       const embedded = embedUrl(url);
       if (embedded) {
@@ -2873,7 +3207,7 @@ const renderCustomStudioVideo = (article) => {
     })
     .join('');
 
-  return `<div class="custom-studio-video-grid">${embeds}</div>`;
+  return `<div class="custom-studio-video-grid layout-${layoutMode}">${embeds}</div>`;
 };
 
 const renderCustomStudioContentByType = (block, article, template, contentHtml) => {
@@ -2890,7 +3224,11 @@ const renderCustomStudioContentByType = (block, article, template, contentHtml) 
     case 'meta':
       return renderCustomStudioMeta(article, template);
     case 'image':
-      return renderCustomStudioImage(article);
+      return renderCustomStudioImage(article, block);
+    case 'gallery':
+      return renderCustomStudioGallery(article, block);
+    case 'collage':
+      return renderCustomStudioCollage(article, block);
     case 'content':
       return renderReaderExperience(article, contentHtml, 'custom-studio-story');
     case 'highlights':
@@ -2898,7 +3236,7 @@ const renderCustomStudioContentByType = (block, article, template, contentHtml) 
     case 'tags':
       return renderCustomStudioTags(article);
     case 'video':
-      return renderCustomStudioVideo(article);
+      return renderCustomStudioVideo(article, block);
     case 'quote':
       return renderCustomStudioQuote(article);
     default:
@@ -2922,7 +3260,8 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
     borderColor: template.palette.border,
     showDropCap: template.showDropCap,
     showProgress: template.showProgress,
-    studio: template.studio
+    studio: template.studio,
+    studios: template.studios
   });
 
   const studio = normalizedTemplate.studio || createDefaultCustomStudio();
@@ -2961,9 +3300,11 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
       return `
         <section
           class="custom-studio-block custom-studio-type-${block.type} ${underlineClass} ${alignClass}"
+          data-page-placement="${escapeHtml(cleanText(block.pagePlacement, 'all').toLowerCase())}"
           style="
             grid-column: ${colStart} / span ${colSpan};
             grid-row: ${rowStart} / span ${rowSpan};
+            z-index: ${clampInt(block.zIndex, 1, 120, 1)};
             --studio-block-shell-bg: ${block.shellBackgroundColor || block.backgroundColor};
             --studio-block-content-bg: ${block.contentBackgroundColor || block.backgroundColor};
             --studio-block-text: ${block.textColor};
@@ -6316,6 +6657,8 @@ const renderTemplateHtml = (article, template) => {
     }
 
     .custom-studio-image,
+    .custom-studio-gallery,
+    .custom-studio-collage,
     .custom-studio-image-fallback {
       margin: 0;
       border-radius: calc(var(--studio-block-radius, 16px) - 4px);
@@ -6323,16 +6666,72 @@ const renderTemplateHtml = (article, template) => {
       min-height: 100%;
       height: 100%;
       border: 1px solid color-mix(in srgb, var(--studio-block-border, var(--border)) 82%, transparent 18%);
-      background: color-mix(in srgb, var(--studio-block-bg, var(--surface)) 84%, black 16%);
+      background: color-mix(in srgb, var(--studio-block-content-bg, var(--surface)) 84%, black 16%);
       display: grid;
       place-items: center;
+      position: relative;
     }
 
-    .custom-studio-image img {
+    .custom-studio-image img,
+    .custom-studio-gallery img,
+    .custom-studio-collage img {
       width: 100%;
       height: 100%;
       object-fit: cover;
       display: block;
+    }
+
+    .custom-studio-gallery {
+      grid-template-rows: 1fr auto;
+      align-content: stretch;
+    }
+
+    .custom-studio-gallery-track {
+      display: grid;
+      gap: 8px;
+      height: 100%;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      align-content: stretch;
+    }
+
+    .custom-studio-gallery-track img {
+      border-radius: 10px;
+      min-height: 96px;
+    }
+
+    .custom-studio-collage {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-rows: repeat(2, minmax(80px, 1fr)) auto;
+      gap: 8px;
+      align-content: stretch;
+      padding: 8px;
+    }
+
+    .custom-studio-collage-cell {
+      overflow: hidden;
+      border-radius: 10px;
+      min-height: 82px;
+    }
+
+    .custom-studio-collage-cell-1 {
+      grid-column: 1 / span 2;
+      grid-row: 1 / span 2;
+    }
+
+    .custom-studio-collage-cell-2 {
+      grid-column: 3;
+      grid-row: 1;
+    }
+
+    .custom-studio-collage-cell-3 {
+      grid-column: 3;
+      grid-row: 2;
+    }
+
+    .custom-studio-collage-cell-4 {
+      grid-column: 1 / span 3;
+      grid-row: 3;
+      min-height: 84px;
     }
 
     .custom-studio-image-fallback p {
@@ -6341,6 +6740,38 @@ const renderTemplateHtml = (article, template) => {
       letter-spacing: 0.1em;
       font-size: 0.72rem;
       opacity: 0.78;
+    }
+
+    .custom-studio-caption {
+      margin: 0;
+      width: 100%;
+      font-size: 0.72rem;
+      line-height: 1.4;
+      letter-spacing: 0.03em;
+      color: color-mix(in srgb, var(--studio-block-text, var(--text)) 86%, white 14%);
+    }
+
+    .custom-studio-caption-strip {
+      padding: 7px 10px;
+      background: color-mix(in srgb, var(--studio-block-content-bg, var(--surface)) 64%, black 36%);
+      border-top: 1px solid color-mix(in srgb, var(--studio-block-border, var(--border)) 80%, transparent 20%);
+    }
+
+    .custom-studio-caption-boxed {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      max-width: min(86%, 380px);
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--studio-block-content-bg, var(--surface)) 48%, black 52%);
+      border: 1px solid color-mix(in srgb, var(--studio-block-border, var(--border)) 82%, transparent 18%);
+    }
+
+    .custom-studio-caption-minimal {
+      margin-top: 6px;
+      opacity: 0.82;
+      text-align: left;
     }
 
     .custom-studio-list-wrap h3,
@@ -6401,7 +6832,7 @@ const renderTemplateHtml = (article, template) => {
       overflow: hidden;
       border: 1px solid color-mix(in srgb, var(--studio-block-border, var(--border)) 84%, transparent 16%);
       min-height: 126px;
-      background: color-mix(in srgb, var(--studio-block-bg, var(--surface)) 74%, black 26%);
+      background: color-mix(in srgb, var(--studio-block-content-bg, var(--surface)) 74%, black 26%);
     }
 
     .custom-studio-video-card iframe,
@@ -6432,6 +6863,14 @@ const renderTemplateHtml = (article, template) => {
       margin: 0;
       opacity: 0.82;
       line-height: 1.5;
+    }
+
+    .custom-studio-video-grid.layout-single {
+      grid-template-columns: 1fr;
+    }
+
+    .custom-studio-video-grid.layout-split {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .custom-studio-type-content .reader-shell {
@@ -7964,6 +8403,29 @@ const renderTemplateHtml = (article, template) => {
       var setStatus = function (message) {
         if (statusNode) statusNode.textContent = message;
       };
+      var pageScopedBlocks = Array.prototype.slice.call(
+        document.querySelectorAll('[data-page-placement]')
+      );
+      var syncPageScopedBlockVisibility = function () {
+        if (!pageScopedBlocks.length) return;
+
+        var totalPages = Math.max(paginatedPages.length, 1);
+        var activePage = Math.min(activePageIndex + 1, totalPages);
+
+        pageScopedBlocks.forEach(function (blockNode) {
+          if (!blockNode || !blockNode.getAttribute) return;
+          var mode = String(blockNode.getAttribute('data-page-placement') || 'all').toLowerCase();
+          var shouldShow = true;
+
+          if (mode === 'first') shouldShow = activePage === 1;
+          else if (mode === 'last') shouldShow = activePage === totalPages;
+          else if (mode === 'middle') shouldShow = totalPages > 2 && activePage > 1 && activePage < totalPages;
+
+          blockNode.hidden = !shouldShow;
+          blockNode.style.display = shouldShow ? '' : 'none';
+          blockNode.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+        });
+      };
 
       var updateStoryPagination = function () {
         var totalPages = paginatedPages.length;
@@ -8001,6 +8463,7 @@ const renderTemplateHtml = (article, template) => {
           paginationNav.hidden = isSummaryMode || !hasMultiplePages;
         }
 
+        syncPageScopedBlockVisibility();
         scheduleHeightSync();
         setTimeout(reportFrameHeight, 90);
       };
@@ -8173,7 +8636,7 @@ const renderTemplateHtml = (article, template) => {
         }
 
         if (paginationNav) {
-          paginationNav.hidden = isSummaryMode || paginatedPages.length < 2;
+          paginationNav.hidden = isSummaryMode || Math.max(paginatedPages.length, 1) < 2;
         }
 
         if (summaryBtn) summaryBtn.textContent = isSummaryMode ? 'Original' : 'Summary';
@@ -8193,6 +8656,8 @@ const renderTemplateHtml = (article, template) => {
 
         if (paginatedPages.length) {
           updateStoryPagination();
+        } else {
+          syncPageScopedBlockVisibility();
         }
 
         requestAnimationFrame(function () {
@@ -8352,6 +8817,7 @@ const renderTemplateHtml = (article, template) => {
       }
 
       paginateStory();
+      syncPageScopedBlockVisibility();
       updateControlLabels();
 
       var onScroll = function () {
@@ -8418,6 +8884,13 @@ export const CUSTOM_TEMPLATE_BORDER_STYLE_OPTIONS = CUSTOM_STUDIO_BORDER_STYLES;
 export const CUSTOM_TEMPLATE_UNDERLINE_STYLE_OPTIONS = CUSTOM_STUDIO_UNDERLINE_STYLES;
 export const CUSTOM_TEMPLATE_TEXT_ALIGN_OPTIONS = CUSTOM_STUDIO_TEXT_ALIGN_OPTIONS;
 export const CUSTOM_TEMPLATE_PAGINATION_MODE_OPTIONS = CUSTOM_TEMPLATE_PAGINATION_OPTIONS;
+export const CUSTOM_TEMPLATE_DEVICE_OPTIONS = CUSTOM_TEMPLATE_DEVICE_OPTIONS_LIST;
+export const CUSTOM_TEMPLATE_IMAGE_FIT_OPTIONS = CUSTOM_STUDIO_IMAGE_FIT_OPTIONS;
+export const CUSTOM_TEMPLATE_CAPTION_STYLE_OPTIONS = CUSTOM_STUDIO_CAPTION_STYLE_OPTIONS;
+export const CUSTOM_TEMPLATE_VIDEO_LAYOUT_OPTIONS = CUSTOM_STUDIO_VIDEO_LAYOUT_OPTIONS;
+export const CUSTOM_TEMPLATE_PAGE_PLACEMENT_OPTIONS = CUSTOM_STUDIO_PAGE_PLACEMENT_OPTIONS;
+export const CUSTOM_TEMPLATE_BORDER_PRESET_OPTIONS = CUSTOM_STUDIO_BORDER_PRESET_OPTIONS;
+export const CUSTOM_TEMPLATE_HIGHLIGHT_PRESET_OPTIONS = CUSTOM_STUDIO_HIGHLIGHT_PRESET_OPTIONS;
 export const CUSTOM_TEMPLATE_GRID_LIMITS = {
   columns: CUSTOM_STUDIO_GRID_COLUMNS,
   minRows: CUSTOM_STUDIO_MIN_ROWS,

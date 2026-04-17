@@ -24,6 +24,7 @@ import {
 import CustomTemplateStudioPanel from './CustomTemplateStudioPanel';
 
 const CUSTOM_TEMPLATE_NAME_STORAGE_KEY = 'lekhon:custom-template-saved-names';
+const CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY = 'lekhon:custom-template-presets:v1';
 
 const TemplatePreview = ({
   article,
@@ -49,6 +50,7 @@ const TemplatePreview = ({
   const [showCustomSaveModal, setShowCustomSaveModal] = useState(false);
   const [customTemplateNameInput, setCustomTemplateNameInput] = useState('');
   const [savedCustomTemplateNames, setSavedCustomTemplateNames] = useState([]);
+  const [customPresets, setCustomPresets] = useState([]);
   const [customDraft, setCustomDraft] = useState(
     normalizeCustomTemplate(customTemplate || createDefaultCustomTemplate())
   );
@@ -78,6 +80,33 @@ const TemplatePreview = ({
         .filter(Boolean)
         .slice(0, 120);
       setSavedCustomTemplateNames(normalized);
+    } catch (error) {
+      // Ignore local storage read issues.
+    }
+
+    try {
+      const rawPresets = window.localStorage.getItem(CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY);
+      if (!rawPresets) return;
+      const parsedPresets = JSON.parse(rawPresets);
+      if (!Array.isArray(parsedPresets)) return;
+
+      const normalizedPresets = parsedPresets
+        .map((preset) => {
+          const id = String(preset?.id || '').trim();
+          const name = String(preset?.name || '').trim();
+          if (!id || !name || typeof preset?.template !== 'object') return null;
+          return {
+            id,
+            name,
+            template: normalizeCustomTemplate(preset.template),
+            createdAt: preset?.createdAt || new Date().toISOString(),
+            updatedAt: preset?.updatedAt || new Date().toISOString()
+          };
+        })
+        .filter(Boolean)
+        .slice(0, 120);
+
+      setCustomPresets(normalizedPresets);
     } catch (error) {
       // Ignore local storage read issues.
     }
@@ -172,8 +201,11 @@ const TemplatePreview = ({
     const userNames = savedCustomTemplateNames
       .map((name) => String(name || '').trim().toLowerCase())
       .filter(Boolean);
-    return new Set([...systemNames, ...userNames]);
-  }, [savedCustomTemplateNames]);
+    const presetNames = customPresets
+      .map((preset) => String(preset?.name || '').trim().toLowerCase())
+      .filter(Boolean);
+    return new Set([...systemNames, ...userNames, ...presetNames]);
+  }, [savedCustomTemplateNames, customPresets]);
 
   const trimmedCustomTemplateName = customTemplateNameInput.trim();
   const customTemplateNameIsUnique =
@@ -202,6 +234,122 @@ const TemplatePreview = ({
     }
   };
 
+  const persistCustomPresets = (nextPresets) => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY, JSON.stringify(nextPresets));
+    } catch (error) {
+      // Ignore local storage write issues.
+    }
+  };
+
+  const upsertCustomPreset = (templateInput) => {
+    const nextTemplate = normalizeCustomTemplate(templateInput);
+    const normalizedName = String(nextTemplate.name || '').trim();
+    if (!normalizedName) return null;
+
+    const now = new Date().toISOString();
+    const existing = customPresets.find(
+      (preset) => String(preset?.name || '').trim().toLowerCase() === normalizedName.toLowerCase()
+    );
+
+    let nextPresets;
+    let savedPreset;
+    if (existing) {
+      savedPreset = {
+        ...existing,
+        name: normalizedName,
+        template: nextTemplate,
+        updatedAt: now
+      };
+      nextPresets = customPresets.map((preset) => (preset.id === existing.id ? savedPreset : preset));
+    } else {
+      savedPreset = {
+        id: `preset-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+        name: normalizedName,
+        template: nextTemplate,
+        createdAt: now,
+        updatedAt: now
+      };
+      nextPresets = [...customPresets, savedPreset].slice(0, 120);
+    }
+
+    setCustomPresets(nextPresets);
+    persistCustomPresets(nextPresets);
+    persistCustomTemplateName(normalizedName);
+    return savedPreset;
+  };
+
+  const handleApplyCustomPreset = (preset) => {
+    if (!preset?.template) return;
+    const nextDraft = normalizeCustomTemplate(preset.template);
+    setCustomDraft(nextDraft);
+    const customTemplateIndex = articleTemplates.findIndex(
+      (template) => template.id === CUSTOM_ARTICLE_TEMPLATE_ID
+    );
+    if (customTemplateIndex >= 0) {
+      setCurrentTemplateIndex(customTemplateIndex);
+    }
+  };
+
+  const handleSaveCustomPresetFromStudio = (templateInput) => {
+    const sourceTemplate = normalizeCustomTemplate(templateInput || customDraft);
+    const nextName = String(sourceTemplate.name || '').trim();
+    if (!nextName) return;
+    const nextDraft = normalizeCustomTemplate({
+      ...sourceTemplate,
+      name: nextName
+    });
+    setCustomDraft(nextDraft);
+    upsertCustomPreset(nextDraft);
+  };
+
+  const handleDeleteCustomPreset = (presetId) => {
+    const nextPresets = customPresets.filter((preset) => preset.id !== presetId);
+    setCustomPresets(nextPresets);
+    persistCustomPresets(nextPresets);
+  };
+
+  const handleDuplicateCustomPreset = (preset) => {
+    if (!preset?.template) return;
+    const baseName = String(preset.name || 'Custom Preset').trim() || 'Custom Preset';
+    let candidate = `${baseName} Copy`;
+    let step = 2;
+    while (takenTemplateNameSet.has(candidate.toLowerCase())) {
+      candidate = `${baseName} Copy ${step}`;
+      step += 1;
+    }
+
+    const duplicatedTemplate = normalizeCustomTemplate({
+      ...preset.template,
+      name: candidate
+    });
+
+    upsertCustomPreset(duplicatedTemplate);
+  };
+
+  const handleExportCustomPreset = async (preset) => {
+    if (!preset?.template) return;
+    const payload = JSON.stringify(
+      {
+        id: preset.id,
+        name: preset.name,
+        template: preset.template,
+        exportedAt: new Date().toISOString()
+      },
+      null,
+      2
+    );
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(payload);
+      } catch (error) {
+        // Clipboard may be blocked; ignore silently.
+      }
+    }
+  };
+
   const handleUseTemplate = () => {
     if (!isCustomTemplate) {
       applySelection();
@@ -219,7 +367,7 @@ const TemplatePreview = ({
       name: trimmedCustomTemplateName
     });
     setCustomDraft(nextCustomDraft);
-    persistCustomTemplateName(trimmedCustomTemplateName);
+    upsertCustomPreset(nextCustomDraft);
     setShowCustomSaveModal(false);
     if (!onApplyTemplate) return;
     onApplyTemplate(currentTemplate.id, nextCustomDraft);
@@ -420,6 +568,12 @@ const TemplatePreview = ({
               <CustomTemplateStudioPanel
                 customDraft={customDraft}
                 onChange={(nextDraft) => setCustomDraft(normalizeCustomTemplate(nextDraft))}
+                customPresets={customPresets}
+                onApplyPreset={handleApplyCustomPreset}
+                onSavePreset={handleSaveCustomPresetFromStudio}
+                onDeletePreset={handleDeleteCustomPreset}
+                onDuplicatePreset={handleDuplicateCustomPreset}
+                onExportPreset={handleExportCustomPreset}
               />
             </div>
           )}
