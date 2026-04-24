@@ -63,7 +63,9 @@ const LAYOUT_TO_STYLE = {
   briefing: 'briefing'
 };
 
-const CUSTOM_STUDIO_GRID_COLUMNS = 12;
+const CUSTOM_STUDIO_DEFAULT_COLUMNS = 12;
+const CUSTOM_STUDIO_MIN_COLUMNS = 8;
+const CUSTOM_STUDIO_MAX_COLUMNS = 48;
 const CUSTOM_STUDIO_DEFAULT_ROWS = 28;
 const CUSTOM_STUDIO_MIN_ROWS = 18;
 const CUSTOM_STUDIO_MAX_ROWS = 60;
@@ -156,10 +158,234 @@ const CUSTOM_STUDIO_HIGHLIGHT_PRESET_OPTIONS = [
   { id: 'quote-badge', label: 'Quote Badge' }
 ];
 
+const CUSTOM_STUDIO_SHAPE_PRESET_OPTIONS = [
+  { id: 'rect', label: 'Rectangle' },
+  { id: 'step-lr', label: 'Stepped (Left -> Right)' },
+  { id: 'step-rl', label: 'Stepped (Right -> Left)' },
+  { id: 'cells', label: 'Cell Paint (Custom)' }
+];
+
+const CUSTOM_STUDIO_SHAPE_PRESET_IDS = CUSTOM_STUDIO_SHAPE_PRESET_OPTIONS.map((item) => item.id);
+const CUSTOM_STUDIO_SHAPE_ELIGIBLE_TYPES = ['title', 'meta', 'content', 'highlights', 'tags', 'quote'];
+const CUSTOM_STUDIO_SHAPE_GRID_MIN = 1;
+const CUSTOM_STUDIO_SHAPE_GRID_MAX = 18;
+
 const CUSTOM_STUDIO_BLOCK_TYPE_LABELS = CUSTOM_STUDIO_BLOCK_TYPES.reduce((map, item) => {
   map[item.id] = item.label;
   return map;
 }, {});
+
+const isCustomStudioShapeEligibleTypeInternal = (blockType) =>
+  CUSTOM_STUDIO_SHAPE_ELIGIBLE_TYPES.includes(cleanText(blockType, '').toLowerCase());
+
+const shapeCellToken = (row, col) => `${row}:${col}`;
+
+const parseShapeCellToken = (token) => {
+  const raw = String(token || '').trim();
+  const match = raw.match(/^(\d+):(\d+)$/);
+  if (!match) return null;
+  return { row: Number(match[1]), col: Number(match[2]) };
+};
+
+const buildFullCustomStudioShapeMaskCells = (cols, rows) => {
+  const normalizedCols = clampInt(cols, CUSTOM_STUDIO_SHAPE_GRID_MIN, CUSTOM_STUDIO_SHAPE_GRID_MAX, 6);
+  const normalizedRows = clampInt(rows, CUSTOM_STUDIO_SHAPE_GRID_MIN, CUSTOM_STUDIO_SHAPE_GRID_MAX, 6);
+  const result = [];
+  for (let row = 0; row < normalizedRows; row += 1) {
+    for (let col = 0; col < normalizedCols; col += 1) {
+      result.push(shapeCellToken(row, col));
+    }
+  }
+  return result;
+};
+
+const sortCustomStudioShapeMaskCells = (cells) =>
+  [...cells].sort((left, right) => {
+    const parsedLeft = parseShapeCellToken(left);
+    const parsedRight = parseShapeCellToken(right);
+    if (!parsedLeft || !parsedRight) return String(left).localeCompare(String(right));
+    if (parsedLeft.row !== parsedRight.row) return parsedLeft.row - parsedRight.row;
+    return parsedLeft.col - parsedRight.col;
+  });
+
+const normalizeCustomStudioShapeMaskCells = (cells, cols, rows, fallbackCells = []) => {
+  const normalizedCols = clampInt(cols, CUSTOM_STUDIO_SHAPE_GRID_MIN, CUSTOM_STUDIO_SHAPE_GRID_MAX, 6);
+  const normalizedRows = clampInt(rows, CUSTOM_STUDIO_SHAPE_GRID_MIN, CUSTOM_STUDIO_SHAPE_GRID_MAX, 6);
+  const source = Array.isArray(cells) ? cells : fallbackCells;
+  const seen = new Set();
+
+  source.forEach((token) => {
+    const parsed = parseShapeCellToken(token);
+    if (!parsed) return;
+    if (parsed.row < 0 || parsed.row >= normalizedRows) return;
+    if (parsed.col < 0 || parsed.col >= normalizedCols) return;
+    seen.add(shapeCellToken(parsed.row, parsed.col));
+  });
+
+  return sortCustomStudioShapeMaskCells([...seen]);
+};
+
+const simplifyOrthogonalPolygon = (points) => {
+  if (!Array.isArray(points) || points.length < 4) return points;
+  const normalized = points.slice();
+  if (normalized.length > 1) {
+    const first = normalized[0];
+    const last = normalized[normalized.length - 1];
+    if (first.x === last.x && first.y === last.y) normalized.pop();
+  }
+  if (normalized.length < 3) return points;
+
+  const simplified = [];
+  for (let index = 0; index < normalized.length; index += 1) {
+    const prev = normalized[(index - 1 + normalized.length) % normalized.length];
+    const current = normalized[index];
+    const next = normalized[(index + 1) % normalized.length];
+    const collinear = (prev.x === current.x && current.x === next.x) || (prev.y === current.y && current.y === next.y);
+    if (!collinear) simplified.push(current);
+  }
+
+  if (simplified.length < 3) return points;
+  return [...simplified, simplified[0]];
+};
+
+const polygonAreaAbs = (points) => {
+  if (!Array.isArray(points) || points.length < 3) return 0;
+  let area = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    area += current.x * next.y - next.x * current.y;
+  }
+  return Math.abs(area / 2);
+};
+
+const buildCustomStudioShapeClipPathFromMask = (cols, rows, maskCells) => {
+  const normalizedCols = clampInt(cols, CUSTOM_STUDIO_SHAPE_GRID_MIN, CUSTOM_STUDIO_SHAPE_GRID_MAX, 6);
+  const normalizedRows = clampInt(rows, CUSTOM_STUDIO_SHAPE_GRID_MIN, CUSTOM_STUDIO_SHAPE_GRID_MAX, 6);
+  const normalizedMask = normalizeCustomStudioShapeMaskCells(maskCells, normalizedCols, normalizedRows);
+  if (!normalizedMask.length) return 'none';
+
+  const maskSet = new Set(normalizedMask);
+  const hasCell = (row, col) => maskSet.has(shapeCellToken(row, col));
+  const makePointKey = (x, y) => `${x},${y}`;
+  const edges = [];
+
+  normalizedMask.forEach((token) => {
+    const parsed = parseShapeCellToken(token);
+    if (!parsed) return;
+    const { row, col } = parsed;
+
+    if (!hasCell(row - 1, col)) {
+      edges.push({ from: makePointKey(col, row), to: makePointKey(col + 1, row) });
+    }
+    if (!hasCell(row, col + 1)) {
+      edges.push({ from: makePointKey(col + 1, row), to: makePointKey(col + 1, row + 1) });
+    }
+    if (!hasCell(row + 1, col)) {
+      edges.push({ from: makePointKey(col + 1, row + 1), to: makePointKey(col, row + 1) });
+    }
+    if (!hasCell(row, col - 1)) {
+      edges.push({ from: makePointKey(col, row + 1), to: makePointKey(col, row) });
+    }
+  });
+
+  if (!edges.length) return 'none';
+
+  const outgoing = new Map();
+  edges.forEach((edge, index) => {
+    if (!outgoing.has(edge.from)) outgoing.set(edge.from, []);
+    outgoing.get(edge.from).push({ ...edge, index });
+  });
+
+  const visited = new Set();
+  const loops = [];
+  const edgeVisitedKey = (index) => `edge:${index}`;
+
+  edges.forEach((edge, edgeIndex) => {
+    const edgeKey = edgeVisitedKey(edgeIndex);
+    if (visited.has(edgeKey)) return;
+
+    const start = edge.from;
+    let currentFrom = edge.from;
+    let currentTo = edge.to;
+    let guard = 0;
+    const loop = [start, currentTo];
+    visited.add(edgeKey);
+
+    while (currentTo !== start && guard < 10000) {
+      guard += 1;
+      const candidates = (outgoing.get(currentTo) || []).filter(
+        (candidate) => !visited.has(edgeVisitedKey(candidate.index))
+      );
+      if (!candidates.length) break;
+
+      let nextEdge = candidates[0];
+      if (candidates.length > 1) {
+        const nonReverse = candidates.find((candidate) => candidate.to !== currentFrom);
+        if (nonReverse) nextEdge = nonReverse;
+      }
+
+      visited.add(edgeVisitedKey(nextEdge.index));
+      currentFrom = nextEdge.from;
+      currentTo = nextEdge.to;
+      loop.push(currentTo);
+    }
+
+    if (loop.length >= 4 && loop[loop.length - 1] === start) {
+      const points = loop
+        .map((pointToken) => {
+          const [xText, yText] = pointToken.split(',');
+          return { x: Number(xText), y: Number(yText) };
+        })
+        .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+      if (points.length >= 4) loops.push(simplifyOrthogonalPolygon(points));
+    }
+  });
+
+  if (!loops.length) return 'none';
+  const selectedLoop = loops.sort((left, right) => polygonAreaAbs(right) - polygonAreaAbs(left))[0];
+  if (!selectedLoop || selectedLoop.length < 4) return 'none';
+
+  const points = selectedLoop.map((point) => {
+    const x = ((point.x / normalizedCols) * 100).toFixed(3).replace(/\.?0+$/, '');
+    const y = ((point.y / normalizedRows) * 100).toFixed(3).replace(/\.?0+$/, '');
+    return `${x}% ${y}%`;
+  });
+
+  return `polygon(${points.join(', ')})`;
+};
+
+const resolveCustomStudioShapeClipPath = (
+  shapePreset,
+  shapeNotch,
+  shapeOffset,
+  shapeGridCols = 6,
+  shapeGridRows = 6,
+  shapeMaskCells = []
+) => {
+  const preset = cleanEnum(cleanText(shapePreset, 'rect'), CUSTOM_STUDIO_SHAPE_PRESET_IDS, 'rect');
+  if (preset === 'rect') return 'none';
+  if (preset === 'cells') {
+    const cols = clampInt(shapeGridCols, CUSTOM_STUDIO_SHAPE_GRID_MIN, CUSTOM_STUDIO_SHAPE_GRID_MAX, 6);
+    const rows = clampInt(shapeGridRows, CUSTOM_STUDIO_SHAPE_GRID_MIN, CUSTOM_STUDIO_SHAPE_GRID_MAX, 6);
+    const fallbackMask = buildFullCustomStudioShapeMaskCells(cols, rows);
+    const normalizedMask = normalizeCustomStudioShapeMaskCells(shapeMaskCells, cols, rows, fallbackMask);
+    return buildCustomStudioShapeClipPathFromMask(cols, rows, normalizedMask.length ? normalizedMask : fallbackMask);
+  }
+
+  const notch = clampInt(shapeNotch, 10, 38, 24);
+  const topStepDepth = clampInt(Math.round(notch * 0.85), 8, 34, 20);
+  const middleNotchX = clampInt(100 - (notch + 14), 50, 88, 62);
+  const middleStepDepth = clampInt(shapeOffset, 28, 72, 45);
+
+  if (preset === 'step-rl') {
+    const mirroredTopNotchX = clampInt(100 - notch, 62, 92, 76);
+    const mirroredMiddleNotchX = clampInt(100 - middleNotchX, 12, 50, 38);
+    return `polygon(0 0, ${mirroredTopNotchX}% 0, ${mirroredTopNotchX}% ${topStepDepth}%, 100% ${topStepDepth}%, 100% 100%, ${mirroredMiddleNotchX}% 100%, ${mirroredMiddleNotchX}% ${middleStepDepth}%, 0 ${middleStepDepth}%)`;
+  }
+
+  return `polygon(${notch}% 0, 100% 0, 100% ${middleStepDepth}%, ${middleNotchX}% ${middleStepDepth}%, ${middleNotchX}% 100%, 0 100%, 0 ${topStepDepth}%, ${notch}% ${topStepDepth}%)`;
+};
 
 const TEMPLATE_PRESETS = [
   {
@@ -1657,6 +1883,7 @@ const createDefaultCustomStudioBlocks = () => {
     type,
     label: CUSTOM_STUDIO_BLOCK_TYPE_LABELS[type] || type,
     visible: true,
+    borderEnabled: true,
     locked: false,
     zIndex: index + 1,
     imageFit: 'cover',
@@ -1667,12 +1894,18 @@ const createDefaultCustomStudioBlocks = () => {
     pagePlacement: 'all',
     borderPreset: 'custom',
     highlightPreset: 'none',
+    shapePreset: 'rect',
+    shapeNotch: 24,
+    shapeOffset: 45,
+    shapeGridCols: 6,
+    shapeGridRows: 6,
+    shapeMaskCells: [],
     ...defaults[type]
   }));
 };
 
 const createDefaultCustomStudio = () => ({
-  columns: CUSTOM_STUDIO_GRID_COLUMNS,
+  columns: CUSTOM_STUDIO_DEFAULT_COLUMNS,
   rows: CUSTOM_STUDIO_DEFAULT_ROWS,
   rowHeight: CUSTOM_STUDIO_DEFAULT_ROW_HEIGHT,
   blocks: createDefaultCustomStudioBlocks()
@@ -1689,10 +1922,12 @@ const createDefaultCustomStudios = () => {
   tablet.rows = clampInt(tablet.rows - 4, CUSTOM_STUDIO_MIN_ROWS, CUSTOM_STUDIO_MAX_ROWS, tablet.rows);
   mobile.rows = clampInt(mobile.rows - 6, CUSTOM_STUDIO_MIN_ROWS, CUSTOM_STUDIO_MAX_ROWS, mobile.rows);
 
+  const mobileColumns = clampInt(mobile.columns, CUSTOM_STUDIO_MIN_COLUMNS, CUSTOM_STUDIO_MAX_COLUMNS, CUSTOM_STUDIO_DEFAULT_COLUMNS);
+  const mobileMinSpan = Math.max(4, Math.ceil(mobileColumns / 3));
   mobile.blocks = (mobile.blocks || []).map((block) => ({
     ...block,
-    colStart: clampInt(block.colStart, 1, 6, 1),
-    colSpan: clampInt(Math.max(6, Math.min(12, block.colSpan + 2)), 1, 12, 12)
+    colStart: clampInt(block.colStart, 1, Math.max(1, Math.floor(mobileColumns / 2)), 1),
+    colSpan: clampInt(Math.max(mobileMinSpan, Math.min(mobileColumns, block.colSpan + 2)), 1, mobileColumns, mobileColumns)
   }));
 
   return { desktop, tablet, mobile };
@@ -1706,6 +1941,7 @@ export const createCustomStudioBlock = (type) => {
     type: fallbackType,
     label: CUSTOM_STUDIO_BLOCK_TYPE_LABELS[fallbackType] || fallbackType,
     visible: true,
+    borderEnabled: true,
     locked: false,
     zIndex: 1,
     imageFit: 'cover',
@@ -1716,16 +1952,57 @@ export const createCustomStudioBlock = (type) => {
     pagePlacement: 'all',
     borderPreset: 'custom',
     highlightPreset: 'none',
+    shapePreset: 'rect',
+    shapeNotch: 24,
+    shapeOffset: 45,
+    shapeGridCols: 6,
+    shapeGridRows: 6,
+    shapeMaskCells: [],
     ...defaults
   };
 };
 
-const normalizeCustomStudioBlock = (block, fallbackBlock, index) => {
+const normalizeCustomStudioBlock = (block, fallbackBlock, index, columns = CUSTOM_STUDIO_DEFAULT_COLUMNS) => {
   const fallback = fallbackBlock || createCustomStudioBlock('content');
   const blockType = cleanEnum(
     cleanText(block?.type, fallback.type),
     CUSTOM_STUDIO_BLOCK_TYPE_IDS,
     fallback.type
+  );
+  const shapeEligible = isCustomStudioShapeEligibleTypeInternal(blockType);
+  const fallbackShapePreset = cleanEnum(
+    cleanText(fallback?.shapePreset, 'rect'),
+    CUSTOM_STUDIO_SHAPE_PRESET_IDS,
+    'rect'
+  );
+  const normalizedShapePreset = cleanEnum(
+    cleanText(block?.shapePreset, fallbackShapePreset),
+    CUSTOM_STUDIO_SHAPE_PRESET_IDS,
+    fallbackShapePreset
+  );
+  const shapeGridCols = clampInt(
+    block?.shapeGridCols,
+    CUSTOM_STUDIO_SHAPE_GRID_MIN,
+    CUSTOM_STUDIO_SHAPE_GRID_MAX,
+    fallback?.shapeGridCols !== undefined ? fallback.shapeGridCols : 6
+  );
+  const shapeGridRows = clampInt(
+    block?.shapeGridRows,
+    CUSTOM_STUDIO_SHAPE_GRID_MIN,
+    CUSTOM_STUDIO_SHAPE_GRID_MAX,
+    fallback?.shapeGridRows !== undefined ? fallback.shapeGridRows : 6
+  );
+  const fallbackShapeMaskCells = normalizeCustomStudioShapeMaskCells(
+    fallback?.shapeMaskCells,
+    shapeGridCols,
+    shapeGridRows,
+    buildFullCustomStudioShapeMaskCells(shapeGridCols, shapeGridRows)
+  );
+  const normalizedShapeMaskCells = normalizeCustomStudioShapeMaskCells(
+    block?.shapeMaskCells,
+    shapeGridCols,
+    shapeGridRows,
+    fallbackShapeMaskCells
   );
   const legacyBackground = cleanHex(
     block?.backgroundColor,
@@ -1743,8 +2020,14 @@ const normalizeCustomStudioBlock = (block, fallbackBlock, index) => {
     type: blockType,
     label: cleanText(block?.label, CUSTOM_STUDIO_BLOCK_TYPE_LABELS[blockType] || fallback.label).slice(0, 36),
     visible: block?.visible !== undefined ? Boolean(block.visible) : Boolean(fallback.visible),
-    colStart: clampInt(block?.colStart, 1, CUSTOM_STUDIO_GRID_COLUMNS, fallback.colStart),
-    colSpan: clampInt(block?.colSpan, 1, CUSTOM_STUDIO_GRID_COLUMNS, fallback.colSpan),
+    borderEnabled:
+      block?.borderEnabled !== undefined
+        ? Boolean(block.borderEnabled)
+        : fallback?.borderEnabled !== undefined
+        ? Boolean(fallback.borderEnabled)
+        : clampInt(block?.borderWidth, 0, 8, fallback.borderWidth) > 0,
+    colStart: clampInt(block?.colStart, 1, columns, fallback.colStart),
+    colSpan: clampInt(block?.colSpan, 1, columns, fallback.colSpan),
     rowStart: clampInt(block?.rowStart, 1, CUSTOM_STUDIO_MAX_ROWS, fallback.rowStart),
     rowSpan: clampInt(block?.rowSpan, 1, CUSTOM_STUDIO_MAX_ROWS, fallback.rowSpan),
     fontScale: clampNumber(block?.fontScale, 0.72, 1.9, fallback.fontScale),
@@ -1849,12 +2132,29 @@ const normalizeCustomStudioBlock = (block, fallbackBlock, index) => {
       cleanText(block?.highlightPreset, fallback?.highlightPreset || 'none'),
       CUSTOM_STUDIO_HIGHLIGHT_PRESET_OPTIONS.map((item) => item.id),
       fallback?.highlightPreset || 'none'
-    )
+    ),
+    shapePreset: shapeEligible ? normalizedShapePreset : 'rect',
+    shapeNotch: clampInt(block?.shapeNotch, 10, 38, fallback?.shapeNotch !== undefined ? fallback.shapeNotch : 24),
+    shapeOffset: clampInt(block?.shapeOffset, 28, 72, fallback?.shapeOffset !== undefined ? fallback.shapeOffset : 45),
+    shapeGridCols,
+    shapeGridRows,
+    shapeMaskCells:
+      shapeEligible && normalizedShapePreset === 'cells'
+        ? normalizedShapeMaskCells.length
+          ? normalizedShapeMaskCells
+          : buildFullCustomStudioShapeMaskCells(shapeGridCols, shapeGridRows)
+        : normalizedShapeMaskCells
   };
 };
 
 const normalizeCustomStudio = (studio, defaultStudio) => {
   const fallback = defaultStudio || createDefaultCustomStudio();
+  const columns = clampInt(
+    studio?.columns,
+    CUSTOM_STUDIO_MIN_COLUMNS,
+    CUSTOM_STUDIO_MAX_COLUMNS,
+    clampInt(fallback.columns, CUSTOM_STUDIO_MIN_COLUMNS, CUSTOM_STUDIO_MAX_COLUMNS, CUSTOM_STUDIO_DEFAULT_COLUMNS)
+  );
   const rows = clampInt(studio?.rows, CUSTOM_STUDIO_MIN_ROWS, CUSTOM_STUDIO_MAX_ROWS, fallback.rows);
   const rowHeight = clampInt(studio?.rowHeight, 24, 54, fallback.rowHeight);
 
@@ -1867,17 +2167,17 @@ const normalizeCustomStudio = (studio, defaultStudio) => {
     ? studio.blocks
         .slice(0, 18)
         .map((block, index) =>
-          normalizeCustomStudioBlock(block, fallbackByType[block?.type] || fallback.blocks[index], index)
+          normalizeCustomStudioBlock(block, fallbackByType[block?.type] || fallback.blocks[index], index, columns)
         )
         .filter(Boolean)
     : [];
 
   if (!blocks.length) {
-    blocks = fallback.blocks.map((block, index) => normalizeCustomStudioBlock(block, block, index));
+    blocks = fallback.blocks.map((block, index) => normalizeCustomStudioBlock(block, block, index, columns));
   }
 
   return {
-    columns: CUSTOM_STUDIO_GRID_COLUMNS,
+    columns,
     rows,
     rowHeight,
     blocks
@@ -3210,7 +3510,46 @@ const renderCustomStudioVideo = (article, block) => {
   return `<div class="custom-studio-video-grid layout-${layoutMode}">${embeds}</div>`;
 };
 
-const renderCustomStudioContentByType = (block, article, template, contentHtml) => {
+const splitContentIntoStudioSegments = (content, segmentCount) => {
+  const normalizedCount = clampInt(segmentCount, 1, 8, 1);
+  const raw = cleanText(content).replace(/\r\n/g, '\n').trim();
+  if (!raw) {
+    return Array.from({ length: normalizedCount }, (_, index) =>
+      index === 0 ? 'Write your story to see this layout in action.' : ''
+    );
+  }
+
+  const blocks = raw
+    .split(/\n\s*\n/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+
+  if (!blocks.length) {
+    return Array.from({ length: normalizedCount }, (_, index) =>
+      index === 0 ? raw : ''
+    );
+  }
+
+  return Array.from({ length: normalizedCount }, (_, index) => {
+    const from = Math.floor((index * blocks.length) / normalizedCount);
+    const to = Math.floor(((index + 1) * blocks.length) / normalizedCount);
+    const slice = blocks.slice(from, Math.max(to, from + 1));
+    return slice.join('\n\n').trim();
+  });
+};
+
+const renderCustomStudioStorySlice = (contentHtml, partIndex, partCount) => `
+  <section class="reader-shell frame-card custom-studio-slice-shell">
+    <p class="reader-status custom-studio-slice-status">
+      ${partCount > 1 ? `Reading segment ${partIndex + 1} of ${partCount}` : 'Reading full article'}
+    </p>
+    <div class="reader-content custom-studio-slice-content">
+      <article class="story custom-studio-story custom-studio-story-fragment">${contentHtml}</article>
+    </div>
+  </section>
+`;
+
+const renderCustomStudioContentByType = (block, article, template, contentHtml, runtime = {}) => {
   switch (block.type) {
     case 'title':
       return `
@@ -3229,8 +3568,18 @@ const renderCustomStudioContentByType = (block, article, template, contentHtml) 
       return renderCustomStudioGallery(article, block);
     case 'collage':
       return renderCustomStudioCollage(article, block);
-    case 'content':
-      return renderReaderExperience(article, contentHtml, 'custom-studio-story');
+    case 'content': {
+      const blockContentHtml = runtime.contentHtmlByBlockId?.[block.id] || contentHtml;
+      const primaryContentBlockId = runtime.primaryContentBlockId || null;
+      const isPrimaryContentBlock = !primaryContentBlockId || primaryContentBlockId === block.id;
+      if (isPrimaryContentBlock) {
+        return renderReaderExperience(article, blockContentHtml, 'custom-studio-story');
+      }
+
+      const partIndex = runtime.contentPartIndexByBlockId?.[block.id] || 0;
+      const partCount = runtime.contentPartCount || 1;
+      return renderCustomStudioStorySlice(blockContentHtml, partIndex, partCount);
+    }
     case 'highlights':
       return renderCustomStudioHighlights(article);
     case 'tags':
@@ -3265,16 +3614,39 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
   });
 
   const studio = normalizedTemplate.studio || createDefaultCustomStudio();
+  const columnCount = clampInt(
+    studio.columns,
+    CUSTOM_STUDIO_MIN_COLUMNS,
+    CUSTOM_STUDIO_MAX_COLUMNS,
+    CUSTOM_STUDIO_DEFAULT_COLUMNS
+  );
   const rowCount = clampInt(studio.rows, CUSTOM_STUDIO_MIN_ROWS, CUSTOM_STUDIO_MAX_ROWS, CUSTOM_STUDIO_DEFAULT_ROWS);
   const rowHeight = clampInt(studio.rowHeight, 24, 54, CUSTOM_STUDIO_DEFAULT_ROW_HEIGHT);
   const visibleBlocks = (studio.blocks || [])
     .filter((block) => block.visible !== false)
     .sort((left, right) => left.rowStart - right.rowStart || left.colStart - right.colStart);
 
+  const contentBlocks = visibleBlocks.filter((block) => block.type === 'content');
+  const studioSegments = splitContentIntoStudioSegments(article.content, Math.max(contentBlocks.length, 1));
+  const contentHtmlByBlockId = {};
+  const contentPartIndexByBlockId = {};
+
+  if (contentBlocks.length) {
+    contentBlocks.forEach((block, index) => {
+      const segmentRaw = studioSegments[index] || '';
+      const segmentHtml = renderContent(segmentRaw, template.showDropCap && index === 0, [], {
+        preferEarlyBreak: false,
+        maxInlineMedia: 0
+      });
+      contentHtmlByBlockId[block.id] = segmentHtml;
+      contentPartIndexByBlockId[block.id] = index;
+    });
+  }
+
   const blockHtml = visibleBlocks
     .map((block) => {
-      const colStart = clampInt(block.colStart, 1, CUSTOM_STUDIO_GRID_COLUMNS, 1);
-      const maxSpan = CUSTOM_STUDIO_GRID_COLUMNS - colStart + 1;
+      const colStart = clampInt(block.colStart, 1, columnCount, 1);
+      const maxSpan = columnCount - colStart + 1;
       const colSpan = clampInt(block.colSpan, 1, maxSpan, Math.min(4, maxSpan));
       const rowStart = clampInt(block.rowStart, 1, CUSTOM_STUDIO_MAX_ROWS, 1);
       const rowSpan = clampInt(block.rowSpan, 1, CUSTOM_STUDIO_MAX_ROWS, 4);
@@ -3296,11 +3668,23 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
       const contentShadow = contentShadowEnabled && contentShadowLevel > 0
         ? `0 ${3 + contentShadowLevel * 4}px ${10 + contentShadowLevel * 7}px rgba(15, 23, 42, ${(0.08 + contentShadowLevel * 0.07).toFixed(2)})`
         : 'none';
+      const shapePreset = isCustomStudioShapeEligibleTypeInternal(block.type)
+        ? cleanEnum(cleanText(block.shapePreset, 'rect'), CUSTOM_STUDIO_SHAPE_PRESET_IDS, 'rect')
+        : 'rect';
+      const shapeClipPath = resolveCustomStudioShapeClipPath(
+        shapePreset,
+        block.shapeNotch,
+        block.shapeOffset,
+        block.shapeGridCols,
+        block.shapeGridRows,
+        block.shapeMaskCells
+      );
 
       return `
         <section
           class="custom-studio-block custom-studio-type-${block.type} ${underlineClass} ${alignClass}"
           data-page-placement="${escapeHtml(cleanText(block.pagePlacement, 'all').toLowerCase())}"
+          data-shape="${shapePreset}"
           style="
             grid-column: ${colStart} / span ${colSpan};
             grid-row: ${rowStart} / span ${rowSpan};
@@ -3309,7 +3693,7 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
             --studio-block-content-bg: ${block.contentBackgroundColor || block.backgroundColor};
             --studio-block-text: ${block.textColor};
             --studio-block-border: ${block.borderColor};
-            --studio-block-border-width: ${block.borderWidth}px;
+            --studio-block-border-width: ${block.borderEnabled === false ? 0 : block.borderWidth}px;
             --studio-block-border-style: ${block.borderStyle};
             --studio-block-radius: ${block.borderRadius}px;
             --studio-block-padding: ${block.padding}px;
@@ -3317,10 +3701,16 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
             --studio-block-underline: ${block.underlineColor};
             --studio-shell-shadow: ${shellShadow};
             --studio-content-shadow: ${contentShadow};
+            --studio-block-shape-clip: ${shapeClipPath};
           "
         >
           <div class="custom-studio-block-inner">
-            ${renderCustomStudioContentByType(block, article, template, contentHtml)}
+            ${renderCustomStudioContentByType(block, article, template, contentHtml, {
+              contentHtmlByBlockId,
+              primaryContentBlockId: contentBlocks[0]?.id || null,
+              contentPartIndexByBlockId,
+              contentPartCount: contentBlocks.length
+            })}
           </div>
         </section>
       `;
@@ -3331,7 +3721,7 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
     <section class="custom-canvas-shell frame-card reveal">
       <div
         class="custom-canvas-page"
-        style="--studio-grid-rows: ${rowCount}; --studio-row-height: ${rowHeight}px;"
+        style="--studio-grid-columns: ${columnCount}; --studio-grid-rows: ${rowCount}; --studio-row-height: ${rowHeight}px;"
       >
         ${blockHtml}
       </div>
@@ -6509,7 +6899,7 @@ const renderTemplateHtml = (article, template) => {
 
     .custom-canvas-page {
       display: grid;
-      grid-template-columns: repeat(12, minmax(0, 1fr));
+      grid-template-columns: repeat(var(--studio-grid-columns, 12), minmax(0, 1fr));
       grid-auto-rows: minmax(var(--studio-row-height, 30px), auto);
       gap: 12px;
       min-height: calc(var(--studio-grid-rows, 28) * var(--studio-row-height, 30px));
@@ -6528,6 +6918,11 @@ const renderTemplateHtml = (article, template) => {
       box-shadow: var(--studio-shell-shadow, none);
     }
 
+    .custom-studio-block[data-shape]:not([data-shape="rect"]) {
+      clip-path: var(--studio-block-shape-clip, none);
+      border-radius: 0;
+    }
+
     .custom-studio-block.align-center {
       text-align: center;
     }
@@ -6544,6 +6939,11 @@ const renderTemplateHtml = (article, template) => {
       padding: var(--studio-block-padding, 14px);
       box-shadow: var(--studio-content-shadow, none);
       overflow: hidden;
+    }
+
+    .custom-studio-block[data-shape]:not([data-shape="rect"]) .custom-studio-block-inner {
+      clip-path: var(--studio-block-shape-clip, none);
+      border-radius: 0;
     }
 
     .custom-studio-block h1,
@@ -8891,10 +9291,33 @@ export const CUSTOM_TEMPLATE_VIDEO_LAYOUT_OPTIONS = CUSTOM_STUDIO_VIDEO_LAYOUT_O
 export const CUSTOM_TEMPLATE_PAGE_PLACEMENT_OPTIONS = CUSTOM_STUDIO_PAGE_PLACEMENT_OPTIONS;
 export const CUSTOM_TEMPLATE_BORDER_PRESET_OPTIONS = CUSTOM_STUDIO_BORDER_PRESET_OPTIONS;
 export const CUSTOM_TEMPLATE_HIGHLIGHT_PRESET_OPTIONS = CUSTOM_STUDIO_HIGHLIGHT_PRESET_OPTIONS;
+export const CUSTOM_TEMPLATE_SHAPE_PRESET_OPTIONS = CUSTOM_STUDIO_SHAPE_PRESET_OPTIONS;
+export const canUseCustomTemplateShapeForBlockType = (blockType) =>
+  isCustomStudioShapeEligibleTypeInternal(blockType);
+export const getCustomTemplateShapeClipPath = (
+  shapePreset,
+  shapeNotch,
+  shapeOffset,
+  shapeGridCols,
+  shapeGridRows,
+  shapeMaskCells
+) =>
+  resolveCustomStudioShapeClipPath(
+    shapePreset,
+    shapeNotch,
+    shapeOffset,
+    shapeGridCols,
+    shapeGridRows,
+    shapeMaskCells
+  );
 export const CUSTOM_TEMPLATE_GRID_LIMITS = {
-  columns: CUSTOM_STUDIO_GRID_COLUMNS,
+  columns: CUSTOM_STUDIO_DEFAULT_COLUMNS,
+  minColumns: CUSTOM_STUDIO_MIN_COLUMNS,
+  maxColumns: CUSTOM_STUDIO_MAX_COLUMNS,
   minRows: CUSTOM_STUDIO_MIN_ROWS,
-  maxRows: CUSTOM_STUDIO_MAX_ROWS
+  maxRows: CUSTOM_STUDIO_MAX_ROWS,
+  minRowHeight: 24,
+  maxRowHeight: 54
 };
 
 export const articleTemplates = VISIBLE_TEMPLATE_PRESETS.map((template) => ({

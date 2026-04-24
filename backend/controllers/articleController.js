@@ -30,9 +30,88 @@ const triggerSearchIndexRefresh = (reason) => {
   });
 };
 
+const MAX_TEMPLATE_PAYLOAD_BYTES = 450000;
+
+const parseJsonArrayField = (value) => {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null) return [];
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+      return [parsed];
+    } catch (error) {
+      if (trimmed.includes(',')) {
+        return trimmed.split(',').map((item) => item.trim());
+      }
+      return [trimmed];
+    }
+  }
+
+  return [];
+};
+
+const normalizeStringArray = (value) =>
+  parseJsonArrayField(value)
+    .map((item) => String(item || '').trim())
+    .filter(Boolean);
+
+const normalizeTemplateThemeMode = (value, fallback = 'auto') =>
+  ['auto', 'light', 'dark'].includes(String(value || '').trim()) ? String(value).trim() : fallback;
+
+const normalizeTemplatePayload = (rawTemplate) => {
+  if (rawTemplate === undefined || rawTemplate === null || rawTemplate === '') {
+    return { value: null };
+  }
+
+  let parsed = rawTemplate;
+  if (typeof rawTemplate === 'string') {
+    try {
+      parsed = JSON.parse(rawTemplate);
+    } catch (error) {
+      return { error: 'Invalid custom template payload' };
+    }
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { error: 'Custom template payload must be an object' };
+  }
+
+  try {
+    const asJson = JSON.stringify(parsed);
+    if (!asJson || Buffer.byteLength(asJson, 'utf8') > MAX_TEMPLATE_PAYLOAD_BYTES) {
+      return { error: 'Custom template payload is too large' };
+    }
+    return { value: JSON.parse(asJson) };
+  } catch (error) {
+    return { error: 'Invalid custom template payload' };
+  }
+};
+
 exports.createArticle = async (req, res) => {
   try {
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls } = req.body;
+    const {
+      title,
+      content,
+      tags,
+      isDraft,
+      category,
+      coverImage,
+      cloudinaryPublicId,
+      galleryImages,
+      galleryImagePublicIds,
+      metaDescription,
+      slug,
+      isScheduled,
+      scheduledPublishDate,
+      videoUrls,
+      templateId,
+      customTemplate,
+      templateThemeMode
+    } = req.body;
 
     if (!title || !content) {
       return res.status(400).json({ success: false, message: 'Title and content required' });
@@ -45,8 +124,16 @@ exports.createArticle = async (req, res) => {
       }
     }
 
-    const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-    const videoUrlsArray = videoUrls ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : [];
+    const tagArray = normalizeStringArray(tags);
+    const videoUrlsArray = normalizeStringArray(videoUrls);
+    const galleryImagesArray = normalizeStringArray(galleryImages);
+    const galleryImagePublicIdsArray = normalizeStringArray(galleryImagePublicIds);
+    const templateIdValue = String(templateId || 'city-gazette').trim().slice(0, 64) || 'city-gazette';
+    const customTemplateResult = normalizeTemplatePayload(customTemplate);
+    if (customTemplateResult.error) {
+      return res.status(400).json({ success: false, message: customTemplateResult.error });
+    }
+    const templateThemeModeValue = normalizeTemplateThemeMode(templateThemeMode, 'auto');
 
     if (!isDraft && !isScheduled) {
       const existingDraft = await Article.findOne({ 
@@ -82,7 +169,12 @@ exports.createArticle = async (req, res) => {
       category: category || 'General',
       coverImage: coverImage || null,
       cloudinaryPublicId: cloudinaryPublicId || null,
+      galleryImages: galleryImagesArray,
+      galleryImagePublicIds: galleryImagePublicIdsArray,
       videoUrls: videoUrlsArray,
+      templateId: templateIdValue,
+      customTemplate: customTemplateResult.value,
+      templateThemeMode: templateThemeModeValue,
       metaDescription: metaDescription || null,
       slug: generatedSlug,
       slugHistory: [],
@@ -284,7 +376,25 @@ exports.updateArticle = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls } = req.body;
+    const {
+      title,
+      content,
+      tags,
+      isDraft,
+      category,
+      coverImage,
+      cloudinaryPublicId,
+      galleryImages,
+      galleryImagePublicIds,
+      metaDescription,
+      slug,
+      isScheduled,
+      scheduledPublishDate,
+      videoUrls,
+      templateId,
+      customTemplate,
+      templateThemeMode
+    } = req.body;
     
     if (isScheduled && scheduledPublishDate) {
       const scheduleDate = new Date(scheduledPublishDate);
@@ -293,8 +403,28 @@ exports.updateArticle = async (req, res) => {
       }
     }
     
-    const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : article.tags;
-    const videoUrlsArray = videoUrls !== undefined ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : article.videoUrls;
+    const tagArray = tags !== undefined ? normalizeStringArray(tags) : article.tags;
+    const videoUrlsArray = videoUrls !== undefined ? normalizeStringArray(videoUrls) : article.videoUrls;
+    const galleryImagesArray = galleryImages !== undefined ? normalizeStringArray(galleryImages) : article.galleryImages;
+    const galleryImagePublicIdsArray =
+      galleryImagePublicIds !== undefined
+        ? normalizeStringArray(galleryImagePublicIds)
+        : article.galleryImagePublicIds;
+    const templateIdValue =
+      templateId !== undefined
+        ? (String(templateId || '').trim().slice(0, 64) || 'city-gazette')
+        : article.templateId;
+    const customTemplateResult =
+      customTemplate !== undefined
+        ? normalizeTemplatePayload(customTemplate)
+        : { value: article.customTemplate };
+    if (customTemplateResult.error) {
+      return res.status(400).json({ success: false, message: customTemplateResult.error });
+    }
+    const templateThemeModeValue =
+      templateThemeMode !== undefined
+        ? normalizeTemplateThemeMode(templateThemeMode, article.templateThemeMode || 'auto')
+        : article.templateThemeMode;
 
     if ((article.isDraft || article.isScheduled) && isDraft === false && !isScheduled) {
       const otherDraft = await Article.findOne({ 
@@ -323,7 +453,12 @@ exports.updateArticle = async (req, res) => {
     article.category = category || article.category;
     article.coverImage = coverImage !== undefined ? coverImage : article.coverImage;
     article.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : article.cloudinaryPublicId;
+    article.galleryImages = galleryImagesArray;
+    article.galleryImagePublicIds = galleryImagePublicIdsArray;
     article.videoUrls = videoUrlsArray;
+    article.templateId = templateIdValue;
+    article.customTemplate = customTemplateResult.value;
+    article.templateThemeMode = templateThemeModeValue;
     article.metaDescription = metaDescription !== undefined ? metaDescription : article.metaDescription;
 
     const shouldRefreshSlug = slug !== undefined || Boolean(title) || !article.slug;

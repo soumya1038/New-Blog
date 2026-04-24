@@ -40,6 +40,14 @@ coverage/
 .Trashes
 ehthumbs.db
 Thumbs.db
+desktop.ini
+**/desktop.ini
+
+# Local temp / merge leftovers
+*.tmp
+*.temp
+*.orig
+*.rej
 
 # IDE
 .vscode/

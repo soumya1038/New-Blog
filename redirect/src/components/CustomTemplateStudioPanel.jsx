@@ -23,6 +23,7 @@ import {
   FaPlusCircle,
   FaRulerCombined,
   FaSave,
+  FaShareAlt,
   FaSlidersH,
   FaSwatchbook,
   FaTabletAlt,
@@ -44,12 +45,13 @@ import {
   CUSTOM_TEMPLATE_PAGE_PLACEMENT_OPTIONS,
   CUSTOM_TEMPLATE_BORDER_PRESET_OPTIONS,
   CUSTOM_TEMPLATE_HIGHLIGHT_PRESET_OPTIONS,
+  CUSTOM_TEMPLATE_SHAPE_PRESET_OPTIONS,
   CUSTOM_TEMPLATE_GRID_LIMITS,
+  canUseCustomTemplateShapeForBlockType,
+  getCustomTemplateShapeClipPath,
   createCustomStudioBlock,
   normalizeCustomTemplate
 } from '../utils/articleTemplates';
-
-const GRID_COLUMNS = CUSTOM_TEMPLATE_GRID_LIMITS.columns;
 
 const clamp = (value, min, max, fallback) => {
   const parsed = Number(value);
@@ -68,6 +70,7 @@ const buildAlignIcon = (align) => {
 };
 
 const isMediaBlockType = (type) => ['image', 'gallery', 'collage', 'video'].includes(type);
+const isShapeEligibleBlockType = (type) => canUseCustomTemplateShapeForBlockType(type);
 
 const borderPresetPatch = (presetId) => {
   switch (presetId) {
@@ -104,6 +107,176 @@ const compactSelection = (values) => {
   return next;
 };
 
+const SHAPE_GRID_MIN = 1;
+const SHAPE_GRID_MAX = 18;
+
+const shapeCellToken = (row, col) => `${row}:${col}`;
+
+const parseShapeCellToken = (token) => {
+  const match = String(token || '').trim().match(/^(\d+):(\d+)$/);
+  if (!match) return null;
+  return { row: Number(match[1]), col: Number(match[2]) };
+};
+
+const sortShapeMaskCells = (cells) =>
+  [...cells].sort((left, right) => {
+    const a = parseShapeCellToken(left);
+    const b = parseShapeCellToken(right);
+    if (!a || !b) return String(left).localeCompare(String(right));
+    if (a.row !== b.row) return a.row - b.row;
+    return a.col - b.col;
+  });
+
+const buildFullShapeMaskCells = (cols, rows) => {
+  const normalizedCols = toInt(cols, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const normalizedRows = toInt(rows, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const result = [];
+  for (let row = 0; row < normalizedRows; row += 1) {
+    for (let col = 0; col < normalizedCols; col += 1) {
+      result.push(shapeCellToken(row, col));
+    }
+  }
+  return result;
+};
+
+const normalizeShapeMaskCells = (cells, cols, rows, fallback = []) => {
+  const normalizedCols = toInt(cols, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const normalizedRows = toInt(rows, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const source = Array.isArray(cells) ? cells : fallback;
+  const set = new Set();
+
+  source.forEach((token) => {
+    const parsed = parseShapeCellToken(token);
+    if (!parsed) return;
+    if (parsed.row < 0 || parsed.row >= normalizedRows) return;
+    if (parsed.col < 0 || parsed.col >= normalizedCols) return;
+    set.add(shapeCellToken(parsed.row, parsed.col));
+  });
+
+  return sortShapeMaskCells([...set]);
+};
+
+const remapShapeMaskCells = (cells, oldCols, oldRows, nextCols, nextRows) => {
+  const normalizedOldCols = toInt(oldCols, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const normalizedOldRows = toInt(oldRows, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const normalizedNextCols = toInt(nextCols, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const normalizedNextRows = toInt(nextRows, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const current = normalizeShapeMaskCells(cells, normalizedOldCols, normalizedOldRows, []);
+  if (!current.length) return buildFullShapeMaskCells(normalizedNextCols, normalizedNextRows);
+
+  const next = new Set();
+  current.forEach((token) => {
+    const parsed = parseShapeCellToken(token);
+    if (!parsed) return;
+    const mappedCol = toInt(
+      Math.floor(((parsed.col + 0.5) / normalizedOldCols) * normalizedNextCols),
+      0,
+      normalizedNextCols - 1,
+      0
+    );
+    const mappedRow = toInt(
+      Math.floor(((parsed.row + 0.5) / normalizedOldRows) * normalizedNextRows),
+      0,
+      normalizedNextRows - 1,
+      0
+    );
+    next.add(shapeCellToken(mappedRow, mappedCol));
+  });
+
+  return sortShapeMaskCells([...next]);
+};
+
+const buildRowProfilesFromMask = (maskCells, cols, rows) => {
+  const normalizedCols = toInt(cols, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const normalizedRows = toInt(rows, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const normalizedMask = normalizeShapeMaskCells(
+    maskCells,
+    normalizedCols,
+    normalizedRows,
+    buildFullShapeMaskCells(normalizedCols, normalizedRows)
+  );
+  const maskSet = new Set(normalizedMask);
+  const left = Array.from({ length: normalizedRows }, () => null);
+  const right = Array.from({ length: normalizedRows }, () => null);
+
+  for (let row = 0; row < normalizedRows; row += 1) {
+    let min = normalizedCols;
+    let max = -1;
+    for (let col = 0; col < normalizedCols; col += 1) {
+      if (!maskSet.has(shapeCellToken(row, col))) continue;
+      min = Math.min(min, col);
+      max = Math.max(max, col);
+    }
+
+    if (max >= min) {
+      left[row] = min;
+      right[row] = max;
+    }
+  }
+
+  return { left, right };
+};
+
+const buildColumnProfilesFromMask = (maskCells, cols, rows) => {
+  const normalizedCols = toInt(cols, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const normalizedRows = toInt(rows, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const normalizedMask = normalizeShapeMaskCells(
+    maskCells,
+    normalizedCols,
+    normalizedRows,
+    buildFullShapeMaskCells(normalizedCols, normalizedRows)
+  );
+  const maskSet = new Set(normalizedMask);
+  const top = Array.from({ length: normalizedCols }, () => null);
+  const bottom = Array.from({ length: normalizedCols }, () => null);
+
+  for (let col = 0; col < normalizedCols; col += 1) {
+    let min = normalizedRows;
+    let max = -1;
+    for (let row = 0; row < normalizedRows; row += 1) {
+      if (!maskSet.has(shapeCellToken(row, col))) continue;
+      min = Math.min(min, row);
+      max = Math.max(max, row);
+    }
+
+    if (max >= min) {
+      top[col] = min;
+      bottom[col] = max;
+    }
+  }
+
+  return { top, bottom };
+};
+
+const buildMaskFromProfiles = (leftProfile, rightProfile, topProfile, bottomProfile, cols, rows) => {
+  const normalizedCols = toInt(cols, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const normalizedRows = toInt(rows, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+  const tokens = [];
+
+  for (let row = 0; row < normalizedRows; row += 1) {
+    const rowLeft = leftProfile?.[row];
+    const rowRight = rightProfile?.[row];
+    if (rowLeft === null || rowLeft === undefined || rowRight === null || rowRight === undefined) continue;
+    const left = toInt(rowLeft, 0, normalizedCols - 1, 0);
+    const right = toInt(rowRight, 0, normalizedCols - 1, normalizedCols - 1);
+    const start = Math.min(left, right);
+    const end = Math.max(left, right);
+    for (let col = start; col <= end; col += 1) {
+      const colTop = topProfile?.[col];
+      const colBottom = bottomProfile?.[col];
+      if (colTop === null || colTop === undefined || colBottom === null || colBottom === undefined) continue;
+      const top = toInt(colTop, 0, normalizedRows - 1, 0);
+      const bottom = toInt(colBottom, 0, normalizedRows - 1, normalizedRows - 1);
+      const topBound = Math.min(top, bottom);
+      const bottomBound = Math.max(top, bottom);
+      if (row < topBound || row > bottomBound) continue;
+      tokens.push(shapeCellToken(row, col));
+    }
+  }
+
+  return sortShapeMaskCells(tokens);
+};
+
 const CustomTemplateStudioPanel = ({
   customDraft,
   onChange,
@@ -112,12 +285,17 @@ const CustomTemplateStudioPanel = ({
   onSavePreset,
   onDeletePreset,
   onDuplicatePreset,
-  onExportPreset
+  onExportPreset,
+  onTogglePresetShare,
+  canSharePresets = false,
+  presetSyncing = false
 }) => {
   const stageRef = useRef(null);
   const [activeDevice, setActiveDevice] = useState('desktop');
   const [selectedBlockIds, setSelectedBlockIds] = useState([]);
   const [interaction, setInteraction] = useState(null);
+  const [shapeEdgeSession, setShapeEdgeSession] = useState(null);
+  const [canvasShapeEditing, setCanvasShapeEditing] = useState(false);
   const [showAdvancedStyles, setShowAdvancedStyles] = useState(false);
 
   const normalizedDraft = useMemo(() => normalizeCustomTemplate(customDraft), [customDraft]);
@@ -128,6 +306,14 @@ const CustomTemplateStudioPanel = ({
   };
   const studio = studios[activeDevice] || studios.desktop;
   const blocks = Array.isArray(studio?.blocks) ? studio.blocks : [];
+  const stageColumns = toInt(
+    studio?.columns,
+    CUSTOM_TEMPLATE_GRID_LIMITS.minColumns || 8,
+    CUSTOM_TEMPLATE_GRID_LIMITS.maxColumns || 48,
+    CUSTOM_TEMPLATE_GRID_LIMITS.columns
+  );
+  const stageRows = studio?.rows || CUSTOM_TEMPLATE_GRID_LIMITS.minRows;
+  const stageHeight = Math.max(320, stageRows * 15);
 
   useEffect(() => {
     if (!blocks.length) {
@@ -154,6 +340,71 @@ const CustomTemplateStudioPanel = ({
   }, [blocks, selectedBlockIds]);
 
   const selectedBlock = selectedBlocks[selectedBlocks.length - 1] || null;
+  const selectedBlockSupportsShapeCanvas = Boolean(
+    selectedBlock
+    && isShapeEligibleBlockType(selectedBlock.type)
+    && !isMediaBlockType(selectedBlock.type)
+  );
+  const canvasShapeGridCols = toInt(selectedBlock?.colSpan ?? 1, 1, stageColumns, 1);
+  const canvasShapeGridRows = toInt(selectedBlock?.rowSpan ?? 1, 1, stageRows, 1);
+  const selectedCanvasShapeMask = useMemo(() => {
+    if (!selectedBlock || !selectedBlockSupportsShapeCanvas) return [];
+    const sourceShapeCols = toInt(
+      selectedBlock.shapeGridCols ?? selectedBlock.colSpan ?? 1,
+      SHAPE_GRID_MIN,
+      SHAPE_GRID_MAX,
+      Math.max(1, selectedBlock.colSpan || 1)
+    );
+    const sourceShapeRows = toInt(
+      selectedBlock.shapeGridRows ?? selectedBlock.rowSpan ?? 1,
+      SHAPE_GRID_MIN,
+      SHAPE_GRID_MAX,
+      Math.max(1, selectedBlock.rowSpan || 1)
+    );
+    const remapped = remapShapeMaskCells(
+      selectedBlock.shapeMaskCells,
+      sourceShapeCols,
+      sourceShapeRows,
+      canvasShapeGridCols,
+      canvasShapeGridRows
+    );
+    return normalizeShapeMaskCells(remapped, canvasShapeGridCols, canvasShapeGridRows, buildFullShapeMaskCells(canvasShapeGridCols, canvasShapeGridRows));
+  }, [
+    selectedBlock,
+    selectedBlockSupportsShapeCanvas,
+    canvasShapeGridCols,
+    canvasShapeGridRows
+  ]);
+  const selectedCanvasShapeMaskSet = useMemo(() => new Set(selectedCanvasShapeMask), [selectedCanvasShapeMask]);
+  const selectedCanvasRowProfiles = useMemo(
+    () => buildRowProfilesFromMask(selectedCanvasShapeMask, canvasShapeGridCols, canvasShapeGridRows),
+    [selectedCanvasShapeMask, canvasShapeGridCols, canvasShapeGridRows]
+  );
+  const selectedCanvasColumnProfiles = useMemo(
+    () => buildColumnProfilesFromMask(selectedCanvasShapeMask, canvasShapeGridCols, canvasShapeGridRows),
+    [selectedCanvasShapeMask, canvasShapeGridCols, canvasShapeGridRows]
+  );
+
+  useEffect(() => {
+    if (!shapeEdgeSession) return;
+    const currentBlockId = selectedBlock?.id || null;
+    if (shapeEdgeSession.blockId !== currentBlockId) {
+      setShapeEdgeSession(null);
+    }
+  }, [shapeEdgeSession, selectedBlock]);
+
+  useEffect(() => {
+    if (!canvasShapeEditing) return;
+    if (!selectedBlockSupportsShapeCanvas || selectedBlocks.length !== 1) {
+      setCanvasShapeEditing(false);
+    }
+  }, [canvasShapeEditing, selectedBlockSupportsShapeCanvas, selectedBlocks.length]);
+
+  useEffect(() => {
+    if (!canvasShapeEditing) {
+      if (shapeEdgeSession) setShapeEdgeSession(null);
+    }
+  }, [canvasShapeEditing, shapeEdgeSession]);
 
   const commitDraft = (nextDraft) => {
     if (!onChange) return;
@@ -229,6 +480,7 @@ const CustomTemplateStudioPanel = ({
 
     const placed = {
       ...next,
+      colStart: toInt(next.colStart, 1, Math.max(1, stageColumns - next.colSpan + 1), next.colStart),
       rowStart: toInt(maxRowEnd + 1, 1, Math.max(1, rows - next.rowSpan + 1), next.rowStart),
       zIndex: maxZ + 1
     };
@@ -250,7 +502,7 @@ const CustomTemplateStudioPanel = ({
       ...clone(block),
       id: `${block.type}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
       label: `${block.label.slice(0, 28)} Copy`,
-      colStart: toInt(block.colStart + 1, 1, Math.max(1, GRID_COLUMNS - block.colSpan + 1), block.colStart),
+      colStart: toInt(block.colStart + 1, 1, Math.max(1, stageColumns - block.colSpan + 1), block.colStart),
       rowStart: toInt(block.rowStart + 1, 1, Math.max(1, rows - block.rowSpan + 1), block.rowStart),
       zIndex: maxZ + index + 1,
       locked: false
@@ -316,17 +568,17 @@ const CustomTemplateStudioPanel = ({
         (block) => {
           if (mode === 'left') {
             return {
-              colStart: toInt(minStart, 1, Math.max(1, GRID_COLUMNS - block.colSpan + 1), block.colStart)
+              colStart: toInt(minStart, 1, Math.max(1, stageColumns - block.colSpan + 1), block.colStart)
             };
           }
           if (mode === 'right') {
             return {
-              colStart: toInt(maxEnd - block.colSpan + 1, 1, Math.max(1, GRID_COLUMNS - block.colSpan + 1), block.colStart)
+              colStart: toInt(maxEnd - block.colSpan + 1, 1, Math.max(1, stageColumns - block.colSpan + 1), block.colStart)
             };
           }
           const centeredStart = Math.round(center - block.colSpan / 2 + 0.5);
           return {
-            colStart: toInt(centeredStart, 1, Math.max(1, GRID_COLUMNS - block.colSpan + 1), block.colStart)
+            colStart: toInt(centeredStart, 1, Math.max(1, stageColumns - block.colSpan + 1), block.colStart)
           };
         }
       );
@@ -396,10 +648,219 @@ const CustomTemplateStudioPanel = ({
     );
   };
 
+  const syncShapeMaskToBlockSpan = (block, nextColSpan, nextRowSpan) => {
+    if (!block || block.shapePreset !== 'cells' || !isShapeEligibleBlockType(block.type)) return {};
+    const oldCols = toInt(block.shapeGridCols ?? block.colSpan ?? 1, SHAPE_GRID_MIN, SHAPE_GRID_MAX, Math.max(1, block.colSpan || 1));
+    const oldRows = toInt(block.shapeGridRows ?? block.rowSpan ?? 1, SHAPE_GRID_MIN, SHAPE_GRID_MAX, Math.max(1, block.rowSpan || 1));
+    const targetCols = toInt(nextColSpan ?? block.colSpan ?? oldCols, SHAPE_GRID_MIN, SHAPE_GRID_MAX, oldCols);
+    const targetRows = toInt(nextRowSpan ?? block.rowSpan ?? oldRows, SHAPE_GRID_MIN, SHAPE_GRID_MAX, oldRows);
+    const remappedMask = remapShapeMaskCells(block.shapeMaskCells, oldCols, oldRows, targetCols, targetRows);
+    return {
+      shapeGridCols: targetCols,
+      shapeGridRows: targetRows,
+      shapeMaskCells: normalizeShapeMaskCells(
+        remappedMask,
+        targetCols,
+        targetRows,
+        buildFullShapeMaskCells(targetCols, targetRows)
+      )
+    };
+  };
+
+  const updateSelectedBlockShapeMask = (nextCells, nextCols, nextRows) => {
+    if (!selectedBlock) return;
+    const maskCols = toInt(nextCols ?? selectedBlock.shapeGridCols ?? 6, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+    const maskRows = toInt(nextRows ?? selectedBlock.shapeGridRows ?? 6, SHAPE_GRID_MIN, SHAPE_GRID_MAX, 6);
+    const fallback = buildFullShapeMaskCells(maskCols, maskRows);
+    const normalizedMask = normalizeShapeMaskCells(nextCells, maskCols, maskRows, fallback);
+
+    updateBlock(selectedBlock.id, {
+      shapePreset: 'cells',
+      shapeGridCols: maskCols,
+      shapeGridRows: maskRows,
+      shapeMaskCells: normalizedMask.length ? normalizedMask : fallback
+    });
+  };
+
+  const beginCanvasShapeEdgeDrag = (event, axis, index, edge) => {
+    if (!selectedBlock || !selectedBlockSupportsShapeCanvas || !canvasShapeEditing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const blockNode = event.currentTarget.closest('[data-canvas-block-id]');
+    if (!blockNode) return;
+    const blockRect = blockNode.getBoundingClientRect();
+    if (!blockRect.width || !blockRect.height) return;
+
+    const snapshot = {
+      left: selectedCanvasRowProfiles.left.slice(),
+      right: selectedCanvasRowProfiles.right.slice(),
+      top: selectedCanvasColumnProfiles.top.slice(),
+      bottom: selectedCanvasColumnProfiles.bottom.slice()
+    };
+
+    setShapeEdgeSession({
+      blockId: selectedBlock.id,
+      axis: axis === 'col' ? 'col' : 'row',
+      index: axis === 'col'
+        ? toInt(index, 0, Math.max(0, canvasShapeGridCols - 1), 0)
+        : toInt(index, 0, Math.max(0, canvasShapeGridRows - 1), 0),
+      edge:
+        edge === 'right' || edge === 'left' || edge === 'top' || edge === 'bottom'
+          ? edge
+          : 'left',
+      blockRect: {
+        left: blockRect.left,
+        top: blockRect.top,
+        width: blockRect.width,
+        height: blockRect.height
+      },
+      startProfiles: snapshot
+    });
+  };
+
+  const applyCanvasShapeEdgeDrag = (clientX, clientY) => {
+    if (!shapeEdgeSession || !selectedBlock || shapeEdgeSession.blockId !== selectedBlock.id) return;
+    const { blockRect, startProfiles } = shapeEdgeSession;
+    if (!blockRect?.width || !blockRect?.height) return;
+
+    const relativeX = clientX - blockRect.left;
+    const relativeY = clientY - blockRect.top;
+    const nextCol = toInt(
+      Math.floor((relativeX / blockRect.width) * canvasShapeGridCols),
+      0,
+      Math.max(0, canvasShapeGridCols - 1),
+      shapeEdgeSession.edge === 'left' ? 0 : Math.max(0, canvasShapeGridCols - 1)
+    );
+    const nextRow = toInt(
+      Math.floor((relativeY / blockRect.height) * canvasShapeGridRows),
+      0,
+      Math.max(0, canvasShapeGridRows - 1),
+      shapeEdgeSession.axis === 'row' ? shapeEdgeSession.index : 0
+    );
+
+    const nextLeft = (startProfiles?.left || []).slice();
+    const nextRight = (startProfiles?.right || []).slice();
+    const nextTop = (startProfiles?.top || []).slice();
+    const nextBottom = (startProfiles?.bottom || []).slice();
+
+    if (shapeEdgeSession.axis === 'row') {
+      const fromRow = Math.min(shapeEdgeSession.index, nextRow);
+      const toRow = Math.max(shapeEdgeSession.index, nextRow);
+      for (let row = fromRow; row <= toRow; row += 1) {
+        let rowLeft = nextLeft[row];
+        let rowRight = nextRight[row];
+        if (rowLeft === null || rowLeft === undefined || rowRight === null || rowRight === undefined) {
+          rowLeft = 0;
+          rowRight = Math.max(0, canvasShapeGridCols - 1);
+        }
+
+        if (shapeEdgeSession.edge === 'left') {
+          nextLeft[row] = toInt(nextCol, 0, rowRight, rowLeft);
+        } else if (shapeEdgeSession.edge === 'right') {
+          nextRight[row] = toInt(nextCol, rowLeft, Math.max(0, canvasShapeGridCols - 1), rowRight);
+        }
+      }
+    } else {
+      const fromCol = Math.min(shapeEdgeSession.index, nextCol);
+      const toCol = Math.max(shapeEdgeSession.index, nextCol);
+      for (let col = fromCol; col <= toCol; col += 1) {
+        let colTop = nextTop[col];
+        let colBottom = nextBottom[col];
+        if (colTop === null || colTop === undefined || colBottom === null || colBottom === undefined) {
+          colTop = 0;
+          colBottom = Math.max(0, canvasShapeGridRows - 1);
+        }
+
+        if (shapeEdgeSession.edge === 'top') {
+          nextTop[col] = toInt(nextRow, 0, colBottom, colTop);
+        } else if (shapeEdgeSession.edge === 'bottom') {
+          nextBottom[col] = toInt(nextRow, colTop, Math.max(0, canvasShapeGridRows - 1), colBottom);
+        }
+      }
+    }
+
+    const nextMask = buildMaskFromProfiles(
+      nextLeft,
+      nextRight,
+      nextTop,
+      nextBottom,
+      canvasShapeGridCols,
+      canvasShapeGridRows
+    );
+    const fallback = buildFullShapeMaskCells(canvasShapeGridCols, canvasShapeGridRows);
+    updateSelectedBlockShapeMask(nextMask.length ? nextMask : fallback, canvasShapeGridCols, canvasShapeGridRows);
+  };
+
+  const toggleCanvasShapeEditingMode = () => {
+    if (!selectedBlock || !selectedBlockSupportsShapeCanvas) return;
+
+    if (!canvasShapeEditing) {
+      const nextCols = toInt(selectedBlock.colSpan, SHAPE_GRID_MIN, SHAPE_GRID_MAX, selectedBlock.colSpan);
+      const nextRows = toInt(selectedBlock.rowSpan, SHAPE_GRID_MIN, SHAPE_GRID_MAX, selectedBlock.rowSpan);
+      const fullMask = buildFullShapeMaskCells(nextCols, nextRows);
+      const preserveExistingShape =
+        (selectedBlock.shapePreset || 'rect') === 'cells'
+        && Array.isArray(selectedBlock.shapeMaskCells)
+        && selectedBlock.shapeMaskCells.length > 0;
+      const syncedMask = preserveExistingShape
+        ? remapShapeMaskCells(
+            selectedBlock.shapeMaskCells,
+            toInt(selectedBlock.shapeGridCols ?? nextCols, SHAPE_GRID_MIN, SHAPE_GRID_MAX, nextCols),
+            toInt(selectedBlock.shapeGridRows ?? nextRows, SHAPE_GRID_MIN, SHAPE_GRID_MAX, nextRows),
+            nextCols,
+            nextRows
+          )
+        : fullMask;
+      const rowProfiles = buildRowProfilesFromMask(syncedMask, nextCols, nextRows);
+      const colProfiles = buildColumnProfilesFromMask(syncedMask, nextCols, nextRows);
+      const stabilizedMask = buildMaskFromProfiles(
+        rowProfiles.left,
+        rowProfiles.right,
+        colProfiles.top,
+        colProfiles.bottom,
+        nextCols,
+        nextRows
+      );
+      updateBlock(selectedBlock.id, {
+        shapePreset: 'cells',
+        shapeGridCols: nextCols,
+        shapeGridRows: nextRows,
+        shapeMaskCells: normalizeShapeMaskCells(
+          stabilizedMask.length ? stabilizedMask : fullMask,
+          nextCols,
+          nextRows,
+          fullMask
+        )
+      });
+    }
+
+    setShapeEdgeSession(null);
+    setCanvasShapeEditing((prev) => !prev);
+  };
+
   const copyDesktopToActiveDevice = () => {
     if (activeDevice === 'desktop') return;
     commitActiveStudio(clone(studios.desktop));
   };
+
+  useEffect(() => {
+    if (!shapeEdgeSession) return undefined;
+
+    const handleMouseMove = (event) => {
+      applyCanvasShapeEdgeDrag(event.clientX, event.clientY);
+    };
+
+    const handleMouseUp = () => {
+      setShapeEdgeSession(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [shapeEdgeSession, applyCanvasShapeEdgeDrag]);
 
   useEffect(() => {
     if (!interaction) return;
@@ -412,7 +873,7 @@ const CustomTemplateStudioPanel = ({
       if (!rect.width || !rect.height) return;
 
       const rows = studio?.rows || CUSTOM_TEMPLATE_GRID_LIMITS.minRows;
-      const colWidth = rect.width / GRID_COLUMNS;
+      const colWidth = rect.width / stageColumns;
       const rowHeight = rect.height / rows;
       const deltaCols = Math.round((event.clientX - interaction.startX) / colWidth);
       const deltaRows = Math.round((event.clientY - interaction.startY) / rowHeight);
@@ -428,7 +889,7 @@ const CustomTemplateStudioPanel = ({
             colStart: toInt(
               initial.colStart + deltaCols,
               1,
-              Math.max(1, GRID_COLUMNS - initial.colSpan + 1),
+              Math.max(1, stageColumns - initial.colSpan + 1),
               block.colStart
             ),
             rowStart: toInt(
@@ -448,22 +909,62 @@ const CustomTemplateStudioPanel = ({
 
       if (interaction.mode === 'resize' && interaction.blockId) {
         const start = interaction.initial;
+        const edge = interaction.resizeEdge || 'se';
         const nextBlocks = blocks.map((block) => {
           if (block.id !== interaction.blockId || block.locked) return block;
-          return {
-            ...block,
-            colSpan: toInt(
+
+          let nextColStart = start.colStart;
+          let nextRowStart = start.rowStart;
+          let nextColSpan = start.colSpan;
+          let nextRowSpan = start.rowSpan;
+
+          if (edge.includes('e')) {
+            nextColSpan = toInt(
               start.colSpan + deltaCols,
               1,
-              Math.max(1, GRID_COLUMNS - start.colStart + 1),
+              Math.max(1, stageColumns - start.colStart + 1),
               block.colSpan
-            ),
-            rowSpan: toInt(
+            );
+          }
+
+          if (edge.includes('s')) {
+            nextRowSpan = toInt(
               start.rowSpan + deltaRows,
               1,
               Math.max(1, rows - start.rowStart + 1),
               block.rowSpan
-            )
+            );
+          }
+
+          if (edge.includes('w')) {
+            const maxStart = start.colStart + start.colSpan - 1;
+            nextColStart = toInt(start.colStart + deltaCols, 1, maxStart, start.colStart);
+            nextColSpan = toInt(
+              start.colSpan + (start.colStart - nextColStart),
+              1,
+              Math.max(1, stageColumns - nextColStart + 1),
+              start.colSpan
+            );
+          }
+
+          if (edge.includes('n')) {
+            const maxStart = start.rowStart + start.rowSpan - 1;
+            nextRowStart = toInt(start.rowStart + deltaRows, 1, maxStart, start.rowStart);
+            nextRowSpan = toInt(
+              start.rowSpan + (start.rowStart - nextRowStart),
+              1,
+              Math.max(1, rows - nextRowStart + 1),
+              start.rowSpan
+            );
+          }
+
+          return {
+            ...block,
+            colStart: nextColStart,
+            rowStart: nextRowStart,
+            colSpan: nextColSpan,
+            rowSpan: nextRowSpan,
+            ...syncShapeMaskToBlockSpan(block, nextColSpan, nextRowSpan)
           };
         });
 
@@ -483,10 +984,7 @@ const CustomTemplateStudioPanel = ({
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleUp);
     };
-  }, [blocks, interaction, studio]);
-
-  const stageRows = studio?.rows || CUSTOM_TEMPLATE_GRID_LIMITS.minRows;
-  const stageHeight = Math.max(320, stageRows * 15);
+  }, [blocks, interaction, stageColumns, studio]);
 
   const sortedBlocksForCanvas = useMemo(
     () => [...blocks].sort((left, right) => Number(left.zIndex || 1) - Number(right.zIndex || 1)),
@@ -500,7 +998,7 @@ const CustomTemplateStudioPanel = ({
     const rows = stageRows;
 
     const overflowBlocks = blocks.filter(
-      (block) => block.colStart + block.colSpan - 1 > GRID_COLUMNS || block.rowStart + block.rowSpan - 1 > rows
+      (block) => block.colStart + block.colSpan - 1 > stageColumns || block.rowStart + block.rowSpan - 1 > rows
     );
     if (overflowBlocks.length) {
       warnings.push(`${overflowBlocks.length} block(s) overflow grid bounds on ${activeDevice}.`);
@@ -512,7 +1010,7 @@ const CustomTemplateStudioPanel = ({
     blocks.forEach((block) => {
       if (block.visible === false) return;
       const rowEnd = Math.min(rows, block.rowStart + block.rowSpan - 1);
-      const colEnd = Math.min(GRID_COLUMNS, block.colStart + block.colSpan - 1);
+      const colEnd = Math.min(stageColumns, block.colStart + block.colSpan - 1);
 
       for (let row = block.rowStart; row <= rowEnd; row += 1) {
         for (let col = block.colStart; col <= colEnd; col += 1) {
@@ -528,7 +1026,7 @@ const CustomTemplateStudioPanel = ({
     if (tinyBlocks.length) warnings.push(`${tinyBlocks.length} block(s) are very small and may clip content.`);
 
     return warnings;
-  }, [activeDevice, blocks, stageRows]);
+  }, [activeDevice, blocks, stageColumns, stageRows]);
 
   const matchingPreset = useMemo(() => {
     const name = String(normalizedDraft.name || '').trim().toLowerCase();
@@ -555,6 +1053,9 @@ const CustomTemplateStudioPanel = ({
               <FaSave /> {matchingPreset ? 'Update' : 'Save'} Preset
             </button>
           </div>
+          {presetSyncing && (
+            <p className="mb-2 text-[11px] text-slate-400">Syncing presets from your account...</p>
+          )}
 
           {customPresets.length ? (
             <div className="max-h-36 space-y-2 overflow-y-auto pr-1">
@@ -577,7 +1078,26 @@ const CustomTemplateStudioPanel = ({
                       >
                         {preset.name}
                       </button>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                          preset.visibility === 'public'
+                            ? 'border border-emerald-400/60 bg-emerald-500/15 text-emerald-200'
+                            : 'border border-slate-500/80 bg-slate-800 text-slate-300'
+                        }`}
+                      >
+                        {preset.visibility === 'public' ? 'Public' : 'Private'}
+                      </span>
                       <div className="flex items-center gap-1">
+                        {canSharePresets && (
+                          <button
+                            type="button"
+                            onClick={() => onTogglePresetShare && onTogglePresetShare(preset)}
+                            className="rounded border border-slate-500/70 bg-slate-800 px-1.5 py-1 text-[10px] text-slate-200 hover:bg-slate-700"
+                            title={preset.visibility === 'public' ? 'Make private' : 'Share publicly'}
+                          >
+                            <FaShareAlt />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onDuplicatePreset && onDuplicatePreset(preset)}
@@ -776,12 +1296,69 @@ const CustomTemplateStudioPanel = ({
         </div>
 
         <div className="rounded-xl border border-slate-700 bg-slate-800/70 p-3">
-          <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-200">
-            <FaArrowsAlt />
-            Drag & Resize Layout ({activeDevice})
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-cyan-200">
+            <span className="inline-flex items-center gap-2">
+              <FaArrowsAlt />
+              Drag & Resize Layout ({activeDevice})
+            </span>
+            {selectedBlockSupportsShapeCanvas && selectedBlocks.length === 1 && (
+              <div className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={toggleCanvasShapeEditingMode}
+                  className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold ${
+                    canvasShapeEditing
+                      ? 'border-violet-300 bg-violet-500/25 text-violet-100'
+                      : 'border-slate-600 bg-slate-900 text-slate-200 hover:bg-slate-700'
+                  }`}
+                >
+                  <FaVectorSquare />
+                  {canvasShapeEditing ? 'Exit Canvas Shape' : 'Canvas Shape Edit'}
+                </button>
+                {canvasShapeEditing && (
+                  <span className="inline-flex items-center gap-1 rounded-md border border-cyan-300/60 bg-cyan-500/15 px-2 py-1 text-[10px] font-semibold text-cyan-100">
+                    <FaArrowsAlt /> Edge Drag Active
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="mb-3 grid grid-cols-2 gap-2">
+          <div className="mb-3 grid grid-cols-3 gap-2">
+            <label className="text-xs text-slate-300">
+              Columns
+              <input
+                type="range"
+                min={CUSTOM_TEMPLATE_GRID_LIMITS.minColumns || 8}
+                max={CUSTOM_TEMPLATE_GRID_LIMITS.maxColumns || 48}
+                value={stageColumns}
+                onChange={(event) => {
+                  const nextColumns = toInt(
+                    event.target.value,
+                    CUSTOM_TEMPLATE_GRID_LIMITS.minColumns || 8,
+                    CUSTOM_TEMPLATE_GRID_LIMITS.maxColumns || 48,
+                    stageColumns
+                  );
+
+                  const nextBlocks = blocks.map((block) => {
+                    const clampedSpan = toInt(block.colSpan, 1, nextColumns, Math.min(block.colSpan, nextColumns));
+                    return {
+                      ...block,
+                      colSpan: clampedSpan,
+                      colStart: toInt(block.colStart, 1, Math.max(1, nextColumns - clampedSpan + 1), 1),
+                      ...syncShapeMaskToBlockSpan(block, clampedSpan, block.rowSpan)
+                    };
+                  });
+
+                  commitActiveStudio({
+                    ...studio,
+                    columns: nextColumns,
+                    blocks: nextBlocks
+                  });
+                }}
+                className="mt-1 w-full"
+              />
+            </label>
             <label className="text-xs text-slate-300">
               Rows
               <input
@@ -797,14 +1374,30 @@ const CustomTemplateStudioPanel = ({
               Row Height
               <input
                 type="range"
-                min={24}
-                max={54}
+                min={CUSTOM_TEMPLATE_GRID_LIMITS.minRowHeight || 24}
+                max={CUSTOM_TEMPLATE_GRID_LIMITS.maxRowHeight || 54}
                 value={studio?.rowHeight || 32}
-                onChange={(event) => updateStudioField('rowHeight', toInt(event.target.value, 24, 54, 32))}
+                onChange={(event) =>
+                  updateStudioField(
+                    'rowHeight',
+                    toInt(
+                      event.target.value,
+                      CUSTOM_TEMPLATE_GRID_LIMITS.minRowHeight || 24,
+                      CUSTOM_TEMPLATE_GRID_LIMITS.maxRowHeight || 54,
+                      32
+                    )
+                  )
+                }
                 className="mt-1 w-full"
               />
             </label>
           </div>
+
+          {canvasShapeEditing && selectedBlockSupportsShapeCanvas && (
+            <p className="mb-2 rounded-md border border-violet-400/40 bg-violet-500/10 px-2 py-2 text-[11px] text-violet-100">
+              Drag border handles directly on the selected block to sculpt shape with 90-degree corners. No paint/erase is required.
+            </p>
+          )}
 
           <div
             ref={stageRef}
@@ -813,22 +1406,43 @@ const CustomTemplateStudioPanel = ({
               height: stageHeight,
               backgroundImage:
                 'linear-gradient(to right, rgba(148,163,184,.16) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,.14) 1px, transparent 1px)',
-              backgroundSize: `${100 / GRID_COLUMNS}% ${100 / stageRows}%`
+              backgroundSize: `${100 / stageColumns}% ${100 / stageRows}%`
             }}
           >
             {sortedBlocksForCanvas.map((block) => {
-              const left = ((block.colStart - 1) / GRID_COLUMNS) * 100;
-              const width = (block.colSpan / GRID_COLUMNS) * 100;
+              const left = ((block.colStart - 1) / stageColumns) * 100;
+              const width = (block.colSpan / stageColumns) * 100;
               const top = ((block.rowStart - 1) / stageRows) * 100;
               const height = (block.rowSpan / stageRows) * 100;
               const isActive = selectedBlockIds.includes(block.id);
+              const shapeClipPath = isShapeEligibleBlockType(block.type)
+                ? getCustomTemplateShapeClipPath(
+                    block.shapePreset,
+                    block.shapeNotch,
+                    block.shapeOffset,
+                    block.shapeGridCols,
+                    block.shapeGridRows,
+                    block.shapeMaskCells
+                  )
+                : 'none';
+              const useSteppedShape = shapeClipPath && shapeClipPath !== 'none';
+              const showCanvasShapeOverlay =
+                canvasShapeEditing
+                && selectedBlock?.id === block.id
+                && selectedBlockSupportsShapeCanvas
+                && (block.shapePreset || 'rect') === 'cells';
 
               return (
                 <button
                   key={block.id}
                   type="button"
+                  data-canvas-block-id={block.id}
                   onMouseDown={(event) => {
                     event.preventDefault();
+                    if (canvasShapeEditing && selectedBlock?.id === block.id && selectedBlockSupportsShapeCanvas) {
+                      setSelectedBlockIds([block.id]);
+                      return;
+                    }
                     const isToggle = event.metaKey || event.ctrlKey || event.shiftKey;
                     if (isToggle) {
                       setSelectedBlockIds((prev) => {
@@ -863,7 +1477,7 @@ const CustomTemplateStudioPanel = ({
                       initialById
                     });
                   }}
-                  className={`absolute overflow-hidden rounded-md border px-2 py-1 text-left text-[11px] transition ${
+                  className={`absolute overflow-hidden border px-2 py-1 text-left text-[11px] transition ${
                     isActive ? 'border-cyan-300 ring-1 ring-cyan-300/90' : 'border-slate-400/40 hover:border-cyan-400/60'
                   } ${block.locked ? 'opacity-75' : ''}`}
                   style={{
@@ -873,40 +1487,209 @@ const CustomTemplateStudioPanel = ({
                     height: `${height}%`,
                     zIndex: Number(block.zIndex || 1),
                     backgroundColor: block.shellBackgroundColor || block.backgroundColor,
-                    color: block.textColor
+                    color: block.textColor,
+                    borderRadius: useSteppedShape ? '0px' : `${toInt(block.borderRadius ?? 8, 0, 44, 8)}px`,
+                    clipPath: useSteppedShape ? shapeClipPath : undefined
                   }}
                 >
-                  <span className="block truncate font-semibold">{block.label}</span>
-                  <span className="block truncate opacity-80">{block.colSpan}x{block.rowSpan}</span>
-                  <span className="mt-1 inline-flex items-center gap-1 text-[10px] opacity-80">
+                  {showCanvasShapeOverlay && (
+                    <div
+                      className="absolute inset-0 z-10 grid gap-[1px] bg-transparent"
+                      style={{
+                        gridTemplateColumns: `repeat(${Math.max(1, block.colSpan)}, minmax(0, 1fr))`,
+                        gridTemplateRows: `repeat(${Math.max(1, block.rowSpan)}, minmax(0, 1fr))`
+                      }}
+                    >
+                      {Array.from({ length: Math.max(1, block.colSpan) * Math.max(1, block.rowSpan) }).map((_, index) => {
+                        const localRow = Math.floor(index / Math.max(1, block.colSpan));
+                        const localCol = index % Math.max(1, block.colSpan);
+                        const token = shapeCellToken(localRow, localCol);
+                        const active = selectedCanvasShapeMaskSet.has(token);
+                        return (
+                          <span
+                            key={token}
+                            className={`block h-full w-full border border-slate-800/25 ${
+                              active ? 'bg-violet-400/35' : 'bg-slate-900/25'
+                            }`}
+                          />
+                        );
+                      })}
+                      {selectedBlock?.id === block.id && (
+                        <>
+                          {Array.from({ length: Math.max(1, block.rowSpan) }).map((_, rowIndex) => {
+                            const leftEdge = selectedCanvasRowProfiles.left[rowIndex];
+                            const rightEdge = selectedCanvasRowProfiles.right[rowIndex];
+                            if (leftEdge === null || leftEdge === undefined || rightEdge === null || rightEdge === undefined) return null;
+                            const top = ((rowIndex + 0.5) / Math.max(1, block.rowSpan)) * 100;
+                            const leftX = ((leftEdge + 0.5) / Math.max(1, block.colSpan)) * 100;
+                            const rightX = ((rightEdge + 0.5) / Math.max(1, block.colSpan)) * 100;
+                            return (
+                              <React.Fragment key={`edge-row-${rowIndex}`}>
+                                <span
+                                  onMouseDown={(event) => beginCanvasShapeEdgeDrag(event, 'row', rowIndex, 'left')}
+                                  className="absolute z-20 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded-full border border-cyan-100 bg-cyan-400/90"
+                                  style={{ left: `${leftX}%`, top: `${top}%` }}
+                                  title={`Drag left edge for row ${rowIndex + 1}`}
+                                />
+                                <span
+                                  onMouseDown={(event) => beginCanvasShapeEdgeDrag(event, 'row', rowIndex, 'right')}
+                                  className="absolute z-20 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize rounded-full border border-cyan-100 bg-cyan-400/90"
+                                  style={{ left: `${rightX}%`, top: `${top}%` }}
+                                  title={`Drag right edge for row ${rowIndex + 1}`}
+                                />
+                              </React.Fragment>
+                            );
+                          })}
+                          {Array.from({ length: Math.max(1, block.colSpan) }).map((_, colIndex) => {
+                            const topEdge = selectedCanvasColumnProfiles.top[colIndex];
+                            const bottomEdge = selectedCanvasColumnProfiles.bottom[colIndex];
+                            if (topEdge === null || topEdge === undefined || bottomEdge === null || bottomEdge === undefined) return null;
+                            const left = ((colIndex + 0.5) / Math.max(1, block.colSpan)) * 100;
+                            const topY = ((topEdge + 0.5) / Math.max(1, block.rowSpan)) * 100;
+                            const bottomY = ((bottomEdge + 0.5) / Math.max(1, block.rowSpan)) * 100;
+                            return (
+                              <React.Fragment key={`edge-col-${colIndex}`}>
+                                <span
+                                  onMouseDown={(event) => beginCanvasShapeEdgeDrag(event, 'col', colIndex, 'top')}
+                                  className="absolute z-20 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize rounded-full border border-cyan-100 bg-cyan-400/90"
+                                  style={{ left: `${left}%`, top: `${topY}%` }}
+                                  title={`Drag top edge for column ${colIndex + 1}`}
+                                />
+                                <span
+                                  onMouseDown={(event) => beginCanvasShapeEdgeDrag(event, 'col', colIndex, 'bottom')}
+                                  className="absolute z-20 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize rounded-full border border-cyan-100 bg-cyan-400/90"
+                                  style={{ left: `${left}%`, top: `${bottomY}%` }}
+                                  title={`Drag bottom edge for column ${colIndex + 1}`}
+                                />
+                              </React.Fragment>
+                            );
+                          })}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <span className="relative z-20 block truncate font-semibold">{block.label}</span>
+                  <span className="relative z-20 block truncate opacity-80">{block.colSpan}x{block.rowSpan}</span>
+                  <span className="relative z-20 mt-1 inline-flex items-center gap-1 text-[10px] opacity-80">
                     <FaLayerGroup /> z{block.zIndex || 1}
                     {block.locked ? <><FaLock /> locked</> : null}
                   </span>
-                  <span
-                    className={`absolute bottom-1 right-1 inline-flex h-4 w-4 items-center justify-center rounded-sm border border-current/40 bg-black/25 ${
-                      block.locked ? 'cursor-not-allowed opacity-40' : 'cursor-se-resize'
-                    }`}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      if (block.locked) return;
-                      setSelectedBlockIds([block.id]);
-                      setInteraction({
-                        mode: 'resize',
-                        blockId: block.id,
-                        startX: event.clientX,
-                        startY: event.clientY,
-                        initial: {
-                          colStart: block.colStart,
-                          colSpan: block.colSpan,
-                          rowStart: block.rowStart,
-                          rowSpan: block.rowSpan
-                        }
-                      });
-                    }}
-                  >
-                    <FaGripLines className="text-[9px]" />
-                  </span>
+                  {!block.locked && !(canvasShapeEditing && selectedBlock?.id === block.id) && (
+                    <>
+                      <span
+                        className="absolute left-1/2 top-0 z-20 inline-flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 cursor-n-resize items-center justify-center rounded-sm border border-current/40 bg-black/25"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setSelectedBlockIds([block.id]);
+                          setInteraction({
+                            mode: 'resize',
+                            resizeEdge: 'n',
+                            blockId: block.id,
+                            startX: event.clientX,
+                            startY: event.clientY,
+                            initial: {
+                              colStart: block.colStart,
+                              colSpan: block.colSpan,
+                              rowStart: block.rowStart,
+                              rowSpan: block.rowSpan
+                            }
+                          });
+                        }}
+                      />
+                      <span
+                        className="absolute right-0 top-1/2 z-20 inline-flex h-4 w-4 translate-x-1/2 -translate-y-1/2 cursor-e-resize items-center justify-center rounded-sm border border-current/40 bg-black/25"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setSelectedBlockIds([block.id]);
+                          setInteraction({
+                            mode: 'resize',
+                            resizeEdge: 'e',
+                            blockId: block.id,
+                            startX: event.clientX,
+                            startY: event.clientY,
+                            initial: {
+                              colStart: block.colStart,
+                              colSpan: block.colSpan,
+                              rowStart: block.rowStart,
+                              rowSpan: block.rowSpan
+                            }
+                          });
+                        }}
+                      />
+                      <span
+                        className="absolute bottom-0 left-1/2 z-20 inline-flex h-4 w-4 -translate-x-1/2 translate-y-1/2 cursor-s-resize items-center justify-center rounded-sm border border-current/40 bg-black/25"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setSelectedBlockIds([block.id]);
+                          setInteraction({
+                            mode: 'resize',
+                            resizeEdge: 's',
+                            blockId: block.id,
+                            startX: event.clientX,
+                            startY: event.clientY,
+                            initial: {
+                              colStart: block.colStart,
+                              colSpan: block.colSpan,
+                              rowStart: block.rowStart,
+                              rowSpan: block.rowSpan
+                            }
+                          });
+                        }}
+                      />
+                      <span
+                        className="absolute left-0 top-1/2 z-20 inline-flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 cursor-w-resize items-center justify-center rounded-sm border border-current/40 bg-black/25"
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          setSelectedBlockIds([block.id]);
+                          setInteraction({
+                            mode: 'resize',
+                            resizeEdge: 'w',
+                            blockId: block.id,
+                            startX: event.clientX,
+                            startY: event.clientY,
+                            initial: {
+                              colStart: block.colStart,
+                              colSpan: block.colSpan,
+                              rowStart: block.rowStart,
+                              rowSpan: block.rowSpan
+                            }
+                          });
+                        }}
+                      />
+                    </>
+                  )}
+                  {!(canvasShapeEditing && selectedBlock?.id === block.id) && (
+                    <span
+                      className={`absolute bottom-1 right-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-sm border border-current/40 bg-black/25 ${
+                        block.locked ? 'cursor-not-allowed opacity-40' : 'cursor-se-resize'
+                      }`}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (block.locked) return;
+                        setSelectedBlockIds([block.id]);
+                        setInteraction({
+                          mode: 'resize',
+                          resizeEdge: 'se',
+                          blockId: block.id,
+                          startX: event.clientX,
+                          startY: event.clientY,
+                          initial: {
+                            colStart: block.colStart,
+                            colSpan: block.colSpan,
+                            rowStart: block.rowStart,
+                            rowSpan: block.rowSpan
+                          }
+                        });
+                      }}
+                    >
+                      <FaGripLines className="text-[9px]" />
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -992,23 +1775,71 @@ const CustomTemplateStudioPanel = ({
                 <input type="text" value={selectedBlock.label} onChange={(event) => updateBlock(selectedBlock.id, { label: event.target.value.slice(0, 36) })} className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100" />
               </label>
               <label className="text-xs text-slate-300">Type
-                <select value={selectedBlock.type} onChange={(event) => updateBlock(selectedBlock.id, { type: event.target.value })} className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100">
+                <select
+                  value={selectedBlock.type}
+                  onChange={(event) => {
+                    const nextType = event.target.value;
+                    const nextPatch = { type: nextType };
+                    if (!isShapeEligibleBlockType(nextType)) {
+                      nextPatch.shapePreset = 'rect';
+                      nextPatch.shapeMaskCells = [];
+                    }
+                    updateBlock(selectedBlock.id, nextPatch);
+                  }}
+                  className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100"
+                >
                   {CUSTOM_TEMPLATE_BLOCK_OPTIONS.map((option) => (
                     <option key={option.id} value={option.id}>{option.label}</option>
                   ))}
                 </select>
               </label>
               <label className="text-xs text-slate-300">Column Start
-                <input type="number" min={1} max={GRID_COLUMNS} value={selectedBlock.colStart} onChange={(event) => updateBlock(selectedBlock.id, { colStart: toInt(event.target.value, 1, Math.max(1, GRID_COLUMNS - selectedBlock.colSpan + 1), selectedBlock.colStart) })} className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100" />
+                <input type="number" min={1} max={stageColumns} value={selectedBlock.colStart} onChange={(event) => updateBlock(selectedBlock.id, { colStart: toInt(event.target.value, 1, Math.max(1, stageColumns - selectedBlock.colSpan + 1), selectedBlock.colStart) })} className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100" />
               </label>
               <label className="text-xs text-slate-300">Column Span
-                <input type="number" min={1} max={GRID_COLUMNS} value={selectedBlock.colSpan} onChange={(event) => updateBlock(selectedBlock.id, { colSpan: toInt(event.target.value, 1, Math.max(1, GRID_COLUMNS - selectedBlock.colStart + 1), selectedBlock.colSpan) })} className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100" />
+                <input
+                  type="number"
+                  min={1}
+                  max={stageColumns}
+                  value={selectedBlock.colSpan}
+                  onChange={(event) => {
+                    const nextColSpan = toInt(
+                      event.target.value,
+                      1,
+                      Math.max(1, stageColumns - selectedBlock.colStart + 1),
+                      selectedBlock.colSpan
+                    );
+                    updateBlock(selectedBlock.id, {
+                      colSpan: nextColSpan,
+                      ...syncShapeMaskToBlockSpan(selectedBlock, nextColSpan, selectedBlock.rowSpan)
+                    });
+                  }}
+                  className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100"
+                />
               </label>
               <label className="text-xs text-slate-300">Row Start
                 <input type="number" min={1} max={stageRows} value={selectedBlock.rowStart} onChange={(event) => updateBlock(selectedBlock.id, { rowStart: toInt(event.target.value, 1, Math.max(1, stageRows - selectedBlock.rowSpan + 1), selectedBlock.rowStart) })} className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100" />
               </label>
               <label className="text-xs text-slate-300">Row Span
-                <input type="number" min={1} max={stageRows} value={selectedBlock.rowSpan} onChange={(event) => updateBlock(selectedBlock.id, { rowSpan: toInt(event.target.value, 1, Math.max(1, stageRows - selectedBlock.rowStart + 1), selectedBlock.rowSpan) })} className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100" />
+                <input
+                  type="number"
+                  min={1}
+                  max={stageRows}
+                  value={selectedBlock.rowSpan}
+                  onChange={(event) => {
+                    const nextRowSpan = toInt(
+                      event.target.value,
+                      1,
+                      Math.max(1, stageRows - selectedBlock.rowStart + 1),
+                      selectedBlock.rowSpan
+                    );
+                    updateBlock(selectedBlock.id, {
+                      rowSpan: nextRowSpan,
+                      ...syncShapeMaskToBlockSpan(selectedBlock, selectedBlock.colSpan, nextRowSpan)
+                    });
+                  }}
+                  className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100"
+                />
               </label>
             </div>
 
@@ -1021,6 +1852,12 @@ const CustomTemplateStudioPanel = ({
               {showAdvancedStyles ? <FaChevronUp /> : <FaChevronDown />}
             </button>
 
+            {!showAdvancedStyles && isShapeEligibleBlockType(selectedBlock.type) && (
+              <p className="mt-2 rounded-md border border-violet-500/35 bg-violet-500/10 px-2 py-2 text-[11px] text-violet-100">
+                Choose a block shape here, then use `Canvas Shape Edit` to sculpt it by dragging border handles.
+              </p>
+            )}
+
             {showAdvancedStyles && (
               <>
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
@@ -1028,7 +1865,21 @@ const CustomTemplateStudioPanel = ({
                     <input type="range" min={0.72} max={1.9} step={0.02} value={selectedBlock.fontScale} onChange={(event) => updateBlock(selectedBlock.id, { fontScale: clamp(event.target.value, 0.72, 1.9, selectedBlock.fontScale) })} className="mt-1 w-full" />
                   </label>
                   <label className="text-slate-300"><span className="inline-flex items-center gap-1"><FaBorderAll /> Border Width</span>
-                    <input type="range" min={0} max={8} step={1} value={selectedBlock.borderWidth} onChange={(event) => updateBlock(selectedBlock.id, { borderWidth: toInt(event.target.value, 0, 8, selectedBlock.borderWidth) })} className="mt-1 w-full" />
+                    <input
+                      type="range"
+                      min={0}
+                      max={8}
+                      step={1}
+                      value={selectedBlock.borderWidth}
+                      disabled={selectedBlock.borderEnabled === false}
+                      onChange={(event) =>
+                        updateBlock(selectedBlock.id, {
+                          borderWidth: toInt(event.target.value, 0, 8, selectedBlock.borderWidth),
+                          borderEnabled: true
+                        })
+                      }
+                      className="mt-1 w-full"
+                    />
                   </label>
                   <label className="text-slate-300">Border Radius
                     <input type="range" min={0} max={44} step={1} value={selectedBlock.borderRadius} onChange={(event) => updateBlock(selectedBlock.id, { borderRadius: toInt(event.target.value, 0, 44, selectedBlock.borderRadius) })} className="mt-1 w-full" />
@@ -1042,6 +1893,67 @@ const CustomTemplateStudioPanel = ({
                   <label>Border Style
                     <select value={selectedBlock.borderStyle} onChange={(event) => updateBlock(selectedBlock.id, { borderStyle: event.target.value })} className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100">
                       {CUSTOM_TEMPLATE_BORDER_STYLE_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex items-end">
+                    <span className="mt-1 inline-flex w-full items-center justify-between gap-2 rounded-md border border-slate-600 bg-slate-900 px-2 py-2 text-xs text-slate-200">
+                      <span>Enable Border</span>
+                      <input
+                        type="checkbox"
+                        checked={selectedBlock.borderEnabled !== false}
+                        onChange={(event) =>
+                          updateBlock(selectedBlock.id, {
+                            borderEnabled: event.target.checked
+                          })
+                        }
+                      />
+                    </span>
+                  </label>
+                  <label className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => updateBlock(selectedBlock.id, { borderRadius: 0 })}
+                      className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
+                    >
+                      Square Corners (90deg)
+                    </button>
+                  </label>
+                  <label>Block Shape
+                    <select
+                      value={selectedBlock.shapePreset || 'rect'}
+                      disabled={!isShapeEligibleBlockType(selectedBlock.type)}
+                      onChange={(event) => {
+                        const nextPreset = event.target.value;
+                        if (nextPreset === 'cells') {
+                          const nextCols = toInt(
+                            selectedBlock.shapeGridCols ?? Math.max(4, selectedBlock.colSpan),
+                            SHAPE_GRID_MIN,
+                            SHAPE_GRID_MAX,
+                            6
+                          );
+                          const nextRows = toInt(
+                            selectedBlock.shapeGridRows ?? Math.max(4, selectedBlock.rowSpan),
+                            SHAPE_GRID_MIN,
+                            SHAPE_GRID_MAX,
+                            6
+                          );
+                          const fallback = buildFullShapeMaskCells(nextCols, nextRows);
+                          const nextMask = normalizeShapeMaskCells(selectedBlock.shapeMaskCells, nextCols, nextRows, fallback);
+                          updateBlock(selectedBlock.id, {
+                            shapePreset: nextPreset,
+                            shapeGridCols: nextCols,
+                            shapeGridRows: nextRows,
+                            shapeMaskCells: nextMask.length ? nextMask : fallback
+                          });
+                          return;
+                        }
+                        updateBlock(selectedBlock.id, { shapePreset: nextPreset });
+                      }}
+                      className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {CUSTOM_TEMPLATE_SHAPE_PRESET_OPTIONS.map((option) => (
                         <option key={option.id} value={option.id}>{option.label}</option>
                       ))}
                     </select>
@@ -1067,6 +1979,41 @@ const CustomTemplateStudioPanel = ({
                       ))}
                     </select>
                   </label>
+                  {isShapeEligibleBlockType(selectedBlock.type) && ['step-lr', 'step-rl'].includes(selectedBlock.shapePreset || 'rect') && (
+                    <>
+                      <label><span className="inline-flex items-center gap-1"><FaVectorSquare /> Shape Notch</span>
+                        <input
+                          type="range"
+                          min={10}
+                          max={38}
+                          step={1}
+                          value={selectedBlock.shapeNotch ?? 24}
+                          onChange={(event) =>
+                            updateBlock(selectedBlock.id, { shapeNotch: toInt(event.target.value, 10, 38, selectedBlock.shapeNotch ?? 24) })
+                          }
+                          className="mt-1 w-full"
+                        />
+                      </label>
+                      <label><span className="inline-flex items-center gap-1"><FaArrowsAlt /> Shape Offset</span>
+                        <input
+                          type="range"
+                          min={28}
+                          max={72}
+                          step={1}
+                          value={selectedBlock.shapeOffset ?? 45}
+                          onChange={(event) =>
+                            updateBlock(selectedBlock.id, { shapeOffset: toInt(event.target.value, 28, 72, selectedBlock.shapeOffset ?? 45) })
+                          }
+                          className="mt-1 w-full"
+                        />
+                      </label>
+                    </>
+                  )}
+                  {isShapeEligibleBlockType(selectedBlock.type) && (selectedBlock.shapePreset || 'rect') === 'cells' && (
+                    <p className="col-span-2 rounded-md border border-violet-500/40 bg-violet-500/10 px-2 py-2 text-[11px] text-violet-100">
+                      Use `Canvas Shape Edit` and drag block border handles directly to sculpt this block.
+                    </p>
+                  )}
                   <label>Text Align
                     <div className="mt-1 flex gap-1">
                       {CUSTOM_TEMPLATE_TEXT_ALIGN_OPTIONS.map((option) => (
@@ -1086,6 +2033,12 @@ const CustomTemplateStudioPanel = ({
                     </div>
                   </label>
                 </div>
+
+                {!isShapeEligibleBlockType(selectedBlock.type) && (
+                  <p className="mt-3 rounded-md border border-slate-600 bg-slate-900/70 px-2 py-2 text-[11px] text-slate-300">
+                    Media blocks stay rectangular to keep image/video framing stable.
+                  </p>
+                )}
 
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
                   <label><span className="inline-flex items-center gap-1"><FaSwatchbook /> Block Shell</span>
@@ -1148,6 +2101,12 @@ const CustomTemplateStudioPanel = ({
                       </select>
                     </label>
                   </div>
+                )}
+
+                {selectedBlock.type === 'content' && (
+                  <p className="mt-3 rounded-md border border-cyan-500/50 bg-cyan-500/10 px-2 py-2 text-[11px] text-cyan-100">
+                    Multiple Main Content blocks auto-split the article in visual order (top-left to bottom-right).
+                  </p>
                 )}
               </>
             )}

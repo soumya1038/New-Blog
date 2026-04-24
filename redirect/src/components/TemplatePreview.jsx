@@ -22,9 +22,34 @@ import {
   recommendArticleTemplate
 } from '../utils/articleTemplates';
 import CustomTemplateStudioPanel from './CustomTemplateStudioPanel';
+import {
+  listMyTemplatePresets,
+  createTemplatePreset,
+  updateTemplatePreset,
+  deleteTemplatePreset,
+  toggleTemplatePresetShare
+} from '../services/templatePresets';
 
 const CUSTOM_TEMPLATE_NAME_STORAGE_KEY = 'lekhon:custom-template-saved-names';
 const CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY = 'lekhon:custom-template-presets:v1';
+
+const hasAuthToken = () =>
+  typeof window !== 'undefined' && Boolean(window.localStorage.getItem('token'));
+
+const normalizePresetRecord = (preset) => {
+  const id = String(preset?.id || preset?._id || '').trim();
+  const name = String(preset?.name || '').trim();
+  if (!id || !name || typeof preset?.template !== 'object' || !preset.template) return null;
+
+  return {
+    id,
+    name,
+    template: normalizeCustomTemplate(preset.template),
+    visibility: preset?.visibility === 'public' ? 'public' : 'private',
+    createdAt: preset?.createdAt || new Date().toISOString(),
+    updatedAt: preset?.updatedAt || new Date().toISOString()
+  };
+};
 
 const TemplatePreview = ({
   article,
@@ -51,6 +76,7 @@ const TemplatePreview = ({
   const [customTemplateNameInput, setCustomTemplateNameInput] = useState('');
   const [savedCustomTemplateNames, setSavedCustomTemplateNames] = useState([]);
   const [customPresets, setCustomPresets] = useState([]);
+  const [isPresetSyncing, setIsPresetSyncing] = useState(false);
   const [customDraft, setCustomDraft] = useState(
     normalizeCustomTemplate(customTemplate || createDefaultCustomTemplate())
   );
@@ -70,46 +96,73 @@ const TemplatePreview = ({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    try {
-      const raw = window.localStorage.getItem(CUSTOM_TEMPLATE_NAME_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return;
-      const normalized = parsed
-        .map((item) => String(item || '').trim())
-        .filter(Boolean)
-        .slice(0, 120);
-      setSavedCustomTemplateNames(normalized);
-    } catch (error) {
-      // Ignore local storage read issues.
-    }
+    let isMounted = true;
 
-    try {
-      const rawPresets = window.localStorage.getItem(CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY);
-      if (!rawPresets) return;
-      const parsedPresets = JSON.parse(rawPresets);
-      if (!Array.isArray(parsedPresets)) return;
+    const loadLocalFallback = () => {
+      try {
+        const raw = window.localStorage.getItem(CUSTOM_TEMPLATE_NAME_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const normalized = parsed
+              .map((item) => String(item || '').trim())
+              .filter(Boolean)
+              .slice(0, 120);
+            if (isMounted) setSavedCustomTemplateNames(normalized);
+          }
+        }
+      } catch (error) {
+        // Ignore local storage read issues.
+      }
 
-      const normalizedPresets = parsedPresets
-        .map((preset) => {
-          const id = String(preset?.id || '').trim();
-          const name = String(preset?.name || '').trim();
-          if (!id || !name || typeof preset?.template !== 'object') return null;
-          return {
-            id,
-            name,
-            template: normalizeCustomTemplate(preset.template),
-            createdAt: preset?.createdAt || new Date().toISOString(),
-            updatedAt: preset?.updatedAt || new Date().toISOString()
-          };
-        })
-        .filter(Boolean)
-        .slice(0, 120);
+      try {
+        const rawPresets = window.localStorage.getItem(CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY);
+        if (!rawPresets) return;
+        const parsedPresets = JSON.parse(rawPresets);
+        if (!Array.isArray(parsedPresets)) return;
 
-      setCustomPresets(normalizedPresets);
-    } catch (error) {
-      // Ignore local storage read issues.
-    }
+        const normalizedPresets = parsedPresets
+          .map((preset) => normalizePresetRecord(preset))
+          .filter(Boolean)
+          .slice(0, 120);
+
+        if (isMounted) setCustomPresets(normalizedPresets);
+      } catch (error) {
+        // Ignore local storage read issues.
+      }
+    };
+
+    const hydratePresets = async () => {
+      loadLocalFallback();
+
+      if (!hasAuthToken()) return;
+
+      setIsPresetSyncing(true);
+      try {
+        const serverPresets = await listMyTemplatePresets();
+        const normalized = serverPresets
+          .map((preset) => normalizePresetRecord(preset))
+          .filter(Boolean)
+          .slice(0, 120);
+
+        if (!isMounted) return;
+
+        setCustomPresets(normalized);
+        const presetNames = normalized.map((preset) => preset.name);
+        setSavedCustomTemplateNames((current) => [...new Set([...current, ...presetNames])].slice(0, 120));
+        window.localStorage.setItem(CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY, JSON.stringify(normalized));
+      } catch (error) {
+        // Ignore API failures and keep local fallback data.
+      } finally {
+        if (isMounted) setIsPresetSyncing(false);
+      }
+    };
+
+    hydratePresets();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -243,7 +296,7 @@ const TemplatePreview = ({
     }
   };
 
-  const upsertCustomPreset = (templateInput) => {
+  const upsertCustomPreset = async (templateInput) => {
     const nextTemplate = normalizeCustomTemplate(templateInput);
     const normalizedName = String(nextTemplate.name || '').trim();
     if (!normalizedName) return null;
@@ -253,31 +306,69 @@ const TemplatePreview = ({
       (preset) => String(preset?.name || '').trim().toLowerCase() === normalizedName.toLowerCase()
     );
 
-    let nextPresets;
-    let savedPreset;
-    if (existing) {
-      savedPreset = {
-        ...existing,
-        name: normalizedName,
-        template: nextTemplate,
-        updatedAt: now
-      };
-      nextPresets = customPresets.map((preset) => (preset.id === existing.id ? savedPreset : preset));
-    } else {
-      savedPreset = {
-        id: `preset-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-        name: normalizedName,
-        template: nextTemplate,
-        createdAt: now,
-        updatedAt: now
-      };
-      nextPresets = [...customPresets, savedPreset].slice(0, 120);
+    const persistLocalOnly = () => {
+      let nextPresets;
+      let savedPreset;
+      if (existing) {
+        savedPreset = {
+          ...existing,
+          name: normalizedName,
+          template: nextTemplate,
+          updatedAt: now
+        };
+        nextPresets = customPresets.map((preset) => (preset.id === existing.id ? savedPreset : preset));
+      } else {
+        savedPreset = {
+          id: `preset-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+          name: normalizedName,
+          template: nextTemplate,
+          visibility: 'private',
+          createdAt: now,
+          updatedAt: now
+        };
+        nextPresets = [...customPresets, savedPreset].slice(0, 120);
+      }
+
+      setCustomPresets(nextPresets);
+      persistCustomPresets(nextPresets);
+      persistCustomTemplateName(normalizedName);
+      return savedPreset;
+    };
+
+    if (!hasAuthToken()) {
+      return persistLocalOnly();
     }
 
-    setCustomPresets(nextPresets);
-    persistCustomPresets(nextPresets);
-    persistCustomTemplateName(normalizedName);
-    return savedPreset;
+    try {
+      let savedFromApi = null;
+      if (existing) {
+        savedFromApi = await updateTemplatePreset(existing.id, {
+          name: normalizedName,
+          template: nextTemplate
+        });
+      } else {
+        savedFromApi = await createTemplatePreset({
+          name: normalizedName,
+          template: nextTemplate
+        });
+      }
+
+      const normalizedSaved = normalizePresetRecord(savedFromApi);
+      if (!normalizedSaved) {
+        return persistLocalOnly();
+      }
+
+      const nextPresets = existing
+        ? customPresets.map((preset) => (preset.id === existing.id ? normalizedSaved : preset))
+        : [...customPresets, normalizedSaved].slice(0, 120);
+
+      setCustomPresets(nextPresets);
+      persistCustomPresets(nextPresets);
+      persistCustomTemplateName(normalizedName);
+      return normalizedSaved;
+    } catch (error) {
+      return persistLocalOnly();
+    }
   };
 
   const handleApplyCustomPreset = (preset) => {
@@ -292,7 +383,7 @@ const TemplatePreview = ({
     }
   };
 
-  const handleSaveCustomPresetFromStudio = (templateInput) => {
+  const handleSaveCustomPresetFromStudio = async (templateInput) => {
     const sourceTemplate = normalizeCustomTemplate(templateInput || customDraft);
     const nextName = String(sourceTemplate.name || '').trim();
     if (!nextName) return;
@@ -301,16 +392,24 @@ const TemplatePreview = ({
       name: nextName
     });
     setCustomDraft(nextDraft);
-    upsertCustomPreset(nextDraft);
+    await upsertCustomPreset(nextDraft);
   };
 
-  const handleDeleteCustomPreset = (presetId) => {
-    const nextPresets = customPresets.filter((preset) => preset.id !== presetId);
+  const handleDeleteCustomPreset = async (presetId) => {
+    if (hasAuthToken()) {
+      try {
+        await deleteTemplatePreset(presetId);
+      } catch (error) {
+        // Keep local deletion behavior even if API deletion fails.
+      }
+    }
+
+    const nextPresets = customPresets.filter((preset) => String(preset.id) !== String(presetId));
     setCustomPresets(nextPresets);
     persistCustomPresets(nextPresets);
   };
 
-  const handleDuplicateCustomPreset = (preset) => {
+  const handleDuplicateCustomPreset = async (preset) => {
     if (!preset?.template) return;
     const baseName = String(preset.name || 'Custom Preset').trim() || 'Custom Preset';
     let candidate = `${baseName} Copy`;
@@ -325,7 +424,7 @@ const TemplatePreview = ({
       name: candidate
     });
 
-    upsertCustomPreset(duplicatedTemplate);
+    await upsertCustomPreset(duplicatedTemplate);
   };
 
   const handleExportCustomPreset = async (preset) => {
@@ -350,6 +449,27 @@ const TemplatePreview = ({
     }
   };
 
+  const handleToggleCustomPresetShare = async (preset) => {
+    if (!preset?.id) return;
+
+    const nextVisibility = preset.visibility === 'public' ? 'private' : 'public';
+    if (!hasAuthToken()) return;
+
+    try {
+      const updated = await toggleTemplatePresetShare(preset.id, nextVisibility);
+      const normalizedUpdated = normalizePresetRecord(updated);
+      if (!normalizedUpdated) return;
+
+      const nextPresets = customPresets.map((item) =>
+        String(item.id) === String(preset.id) ? normalizedUpdated : item
+      );
+      setCustomPresets(nextPresets);
+      persistCustomPresets(nextPresets);
+    } catch (error) {
+      // Keep current state when API request fails.
+    }
+  };
+
   const handleUseTemplate = () => {
     if (!isCustomTemplate) {
       applySelection();
@@ -360,14 +480,14 @@ const TemplatePreview = ({
     setShowCustomSaveModal(true);
   };
 
-  const handleSaveCustomTemplateName = () => {
+  const handleSaveCustomTemplateName = async () => {
     if (!customTemplateNameIsUnique) return;
     const nextCustomDraft = normalizeCustomTemplate({
       ...customDraft,
       name: trimmedCustomTemplateName
     });
     setCustomDraft(nextCustomDraft);
-    upsertCustomPreset(nextCustomDraft);
+    await upsertCustomPreset(nextCustomDraft);
     setShowCustomSaveModal(false);
     if (!onApplyTemplate) return;
     onApplyTemplate(currentTemplate.id, nextCustomDraft);
@@ -574,6 +694,9 @@ const TemplatePreview = ({
                 onDeletePreset={handleDeleteCustomPreset}
                 onDuplicatePreset={handleDuplicateCustomPreset}
                 onExportPreset={handleExportCustomPreset}
+                onTogglePresetShare={handleToggleCustomPresetShare}
+                canSharePresets={hasAuthToken()}
+                presetSyncing={isPresetSyncing}
               />
             </div>
           )}

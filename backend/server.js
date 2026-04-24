@@ -32,6 +32,7 @@ const draftRoutes = require('./routes/draftRoutes');
 const chatbotRoutes = require('./routes/chatbot');
 const seoRoutes = require('./routes/seoRoutes');
 const searchRoutes = require('./routes/searchRoutes');
+const templatePresetRoutes = require('./routes/templatePresetRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { systemMonitor, getMetrics } = require('./middleware/monitoring');
 const { startDatabaseMonitor } = require('./utils/dbMonitor');
@@ -183,6 +184,7 @@ app.use('/api/livekit', apiLimiter, livekitRoutes);
 app.use('/api/drafts', apiLimiter, draftRoutes);
 app.use('/api/chatbot', apiLimiter, chatbotRoutes);
 app.use('/api/search', apiLimiter, searchRoutes);
+app.use('/api/template-presets', apiLimiter, templatePresetRoutes);
 
 // SPA fallback - MUST be AFTER all API routes
 if (process.env.NODE_ENV === 'production') {
