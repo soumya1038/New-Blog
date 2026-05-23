@@ -9,7 +9,10 @@ import {
   FaPalette,
   FaMoon,
   FaSun,
-  FaSyncAlt
+  FaSyncAlt,
+  FaDesktop,
+  FaTabletAlt,
+  FaMobileAlt
 } from 'react-icons/fa';
 import {
   articleTemplates,
@@ -71,6 +74,7 @@ const TemplatePreview = ({
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
   );
   const [previewThemeMode, setPreviewThemeMode] = useState('auto');
+  const [previewStudioDevice, setPreviewStudioDevice] = useState('desktop');
   const [mobileStudioTab, setMobileStudioTab] = useState('preview');
   const [showCustomSaveModal, setShowCustomSaveModal] = useState(false);
   const [customTemplateNameInput, setCustomTemplateNameInput] = useState('');
@@ -209,6 +213,12 @@ const TemplatePreview = ({
     }
   }, [isCustomTemplate, isFullscreen, currentTemplate.id]);
 
+  useEffect(() => {
+    if (!isCustomTemplate) {
+      setPreviewStudioDevice('desktop');
+    }
+  }, [isCustomTemplate]);
+
   const articleData = useMemo(
     () => ({
       title: article?.title || 'Untitled Article',
@@ -235,16 +245,28 @@ const TemplatePreview = ({
   const activeSuggestedTemplateId = suggestedTemplateId || derivedRecommendation.templateId;
   const activeSuggestedReason = suggestedReason || derivedRecommendation.reason;
   const suggestedTemplateMeta = getArticleTemplateById(activeSuggestedTemplateId);
+  const resolvedPreviewCustomTemplate = useMemo(() => {
+    if (!isCustomTemplate) return null;
+    return normalizeCustomTemplate(customDraft);
+  }, [isCustomTemplate, customDraft]);
 
   const htmlContent = useMemo(
     () =>
       generateArticleTemplateHTML(
         articleData,
         currentTemplate.id,
-        isCustomTemplate ? customDraft : null,
-        effectiveThemeMode
+        isCustomTemplate ? resolvedPreviewCustomTemplate : null,
+        effectiveThemeMode,
+        isCustomTemplate ? { runtimeStudioDevice: previewStudioDevice } : null
       ),
-    [articleData, currentTemplate.id, isCustomTemplate, customDraft, effectiveThemeMode]
+    [
+      articleData,
+      currentTemplate.id,
+      isCustomTemplate,
+      resolvedPreviewCustomTemplate,
+      effectiveThemeMode,
+      previewStudioDevice
+    ]
   );
 
   const takenTemplateNameSet = useMemo(() => {
@@ -261,9 +283,46 @@ const TemplatePreview = ({
   }, [savedCustomTemplateNames, customPresets]);
 
   const trimmedCustomTemplateName = customTemplateNameInput.trim();
-  const customTemplateNameIsUnique =
+  const customTemplateNameExists = Boolean(
+    trimmedCustomTemplateName
+    && savedCustomTemplateNames
+      .map((name) => String(name || '').trim().toLowerCase())
+      .includes(trimmedCustomTemplateName.toLowerCase())
+  ) || customPresets.some(
+    (preset) => String(preset?.name || '').trim().toLowerCase() === trimmedCustomTemplateName.toLowerCase()
+  );
+  const customTemplateNameIsReservedSystemName =
     Boolean(trimmedCustomTemplateName)
-    && !takenTemplateNameSet.has(trimmedCustomTemplateName.toLowerCase());
+    && takenTemplateNameSet.has(trimmedCustomTemplateName.toLowerCase())
+    && !customTemplateNameExists;
+  const customTemplateNameCanSave =
+    Boolean(trimmedCustomTemplateName)
+    && !customTemplateNameIsReservedSystemName;
+  const activeCustomName = String(customDraft?.name || '').trim();
+  const activeCustomTemplateExists = Boolean(
+    activeCustomName
+    && (savedCustomTemplateNames
+      .map((name) => String(name || '').trim().toLowerCase())
+      .includes(activeCustomName.toLowerCase())
+      || customPresets.some(
+        (preset) => String(preset?.name || '').trim().toLowerCase() === activeCustomName.toLowerCase()
+      ))
+  );
+  const isEditingAppliedCustomTemplate = Boolean(
+    isCustomTemplate
+    && activeCustomName
+    && String(customTemplate?.name || '').trim().toLowerCase() === activeCustomName.toLowerCase()
+  );
+  const useTemplateButtonLabel = isCustomTemplate && (activeCustomTemplateExists || isEditingAppliedCustomTemplate)
+    ? 'Update Template'
+    : 'Use This Template';
+  const previewFrameMaxWidth = !isCustomTemplate
+    ? null
+    : previewStudioDevice === 'mobile'
+    ? '430px'
+    : previewStudioDevice === 'tablet'
+    ? '920px'
+    : null;
 
   const applySelection = () => {
     if (!onApplyTemplate) return;
@@ -481,7 +540,7 @@ const TemplatePreview = ({
   };
 
   const handleSaveCustomTemplateName = async () => {
-    if (!customTemplateNameIsUnique) return;
+    if (!customTemplateNameCanSave) return;
     const nextCustomDraft = normalizeCustomTemplate({
       ...customDraft,
       name: trimmedCustomTemplateName
@@ -588,6 +647,31 @@ const TemplatePreview = ({
                   Preview: {effectiveThemeMode === 'dark' ? 'Dark' : 'Light'}
                 </span>
               </div>
+              {isCustomTemplate && (
+                <div className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 px-2 py-1.5 sm:px-3 sm:py-2">
+                  <span className="hidden text-xs font-semibold uppercase tracking-[0.1em] text-slate-300 sm:inline">Device</span>
+                  {[
+                    { id: 'desktop', icon: <FaDesktop />, label: 'Desktop' },
+                    { id: 'tablet', icon: <FaTabletAlt />, label: 'Tablet' },
+                    { id: 'mobile', icon: <FaMobileAlt />, label: 'Mobile' }
+                  ].map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => setPreviewStudioDevice(option.id)}
+                      className={`inline-flex items-center gap-1 rounded-md border p-1.5 text-xs font-semibold transition sm:px-2 sm:py-1 ${
+                        previewStudioDevice === option.id
+                          ? 'border-emerald-300 bg-emerald-500/20 text-emerald-100'
+                          : 'border-slate-500 bg-slate-700 text-slate-200 hover:bg-slate-600'
+                      }`}
+                      aria-pressed={previewStudioDevice === option.id}
+                      title={`${option.label} layout preview`}
+                    >
+                      {option.icon}
+                      <span className="hidden md:inline">{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <button
                 onClick={handlePrevTemplate}
                 className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 p-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 sm:gap-2 sm:px-3 sm:py-2"
@@ -610,7 +694,7 @@ const TemplatePreview = ({
                 title="Use this template"
               >
                 <FaCheckCircle />
-                <span className="hidden sm:inline">Use This Template</span>
+                <span className="hidden sm:inline">{useTemplateButtonLabel}</span>
               </button>
               <button
                 onClick={() => setIsFullscreen(true)}
@@ -652,7 +736,7 @@ const TemplatePreview = ({
         </div>
       )}
 
-      <div className={`${isFullscreen ? 'h-full pt-0' : 'h-full pt-24 pb-16'}`}>
+      <div className={`${isFullscreen ? 'h-full pt-0' : 'h-full pt-28 pb-16 sm:pt-24'}`}>
         {isCustomTemplate && !isFullscreen && (
           <div className="mb-2 flex items-center gap-2 lg:hidden">
             <button
@@ -683,7 +767,7 @@ const TemplatePreview = ({
             <div
               className={`${
                 mobileStudioTab === 'builder' ? 'block' : 'hidden'
-              } h-[calc(100dvh-250px)] min-h-0 overflow-hidden lg:block lg:h-full`}
+              } h-[calc(100dvh-260px)] min-h-0 overflow-hidden sm:h-[calc(100dvh-248px)] lg:block lg:h-full`}
             >
               <CustomTemplateStudioPanel
                 customDraft={customDraft}
@@ -697,6 +781,9 @@ const TemplatePreview = ({
                 onTogglePresetShare={handleToggleCustomPresetShare}
                 canSharePresets={hasAuthToken()}
                 presetSyncing={isPresetSyncing}
+                activeDevice={previewStudioDevice}
+                onActiveDeviceChange={setPreviewStudioDevice}
+                showCanvasShapeEditor={false}
               />
             </div>
           )}
@@ -704,7 +791,7 @@ const TemplatePreview = ({
           <div
             className={`relative rounded-2xl border border-slate-700 bg-white ${
               isCustomTemplate && !isFullscreen
-                ? `${mobileStudioTab === 'preview' ? 'block' : 'hidden'} h-[calc(100dvh-250px)] min-h-0 lg:block lg:h-full`
+                ? `${mobileStudioTab === 'preview' ? 'block' : 'hidden'} h-[calc(100dvh-260px)] min-h-0 sm:h-[calc(100dvh-248px)] lg:block lg:h-full`
                 : 'h-full'
             }`}
           >
@@ -721,15 +808,23 @@ const TemplatePreview = ({
             {!isFullscreen && (
               <div className="absolute right-3 top-3 z-10 rounded-full bg-slate-900/80 px-3 py-1 text-xs font-medium text-cyan-200">
                 <FaPalette className="mr-1 inline" />
-                Selected: {selectedTemplateMeta.name}
+                Selected: {selectedTemplateMeta?.name || 'Template'}
               </div>
             )}
-            <iframe
-              srcDoc={htmlContent}
-              className="h-full w-full rounded-2xl"
-              title="Article Template Preview"
-              sandbox="allow-same-origin allow-scripts allow-popups"
-            />
+            <div className="h-full w-full overflow-auto p-1">
+              <div
+                className={`h-full ${previewFrameMaxWidth ? 'mx-auto' : ''}`}
+                style={previewFrameMaxWidth ? { maxWidth: previewFrameMaxWidth } : undefined}
+              >
+                <iframe
+                  key={`${currentTemplate.id}-${effectiveThemeMode}-${previewStudioDevice}`}
+                  srcDoc={htmlContent}
+                  className="h-full w-full rounded-2xl"
+                  title="Article Template Preview"
+                  sandbox="allow-same-origin allow-scripts allow-popups"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -770,7 +865,7 @@ const TemplatePreview = ({
           <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
             <h4 className="text-lg font-semibold text-slate-100">Save Custom Template Name</h4>
             <p className="mt-1 text-sm text-slate-400">
-              Give this custom template a unique name to save it for reuse.
+              Save this template name for reuse. If the name already exists, it will be updated.
             </p>
 
             <label className="mt-4 block text-sm text-slate-300">
@@ -778,16 +873,22 @@ const TemplatePreview = ({
               <input
                 autoFocus
                 type="text"
-                placeholder="Enter a unique template name"
+                placeholder="Enter template name"
                 value={customTemplateNameInput}
                 onChange={(event) => setCustomTemplateNameInput(event.target.value)}
                 className="mt-2 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-100"
               />
             </label>
 
-            {trimmedCustomTemplateName && !customTemplateNameIsUnique && (
+            {customTemplateNameIsReservedSystemName && (
               <p className="mt-2 text-xs font-semibold text-rose-300">
-                This name is already used. Please choose a different one.
+                This name is reserved by a built-in template. Please choose another name.
+              </p>
+            )}
+
+            {customTemplateNameExists && customTemplateNameCanSave && (
+              <p className="mt-2 text-xs font-semibold text-amber-300">
+                Existing template found. Saving will update it.
               </p>
             )}
 
@@ -802,14 +903,14 @@ const TemplatePreview = ({
               <button
                 type="button"
                 onClick={handleSaveCustomTemplateName}
-                disabled={!customTemplateNameIsUnique}
+                disabled={!customTemplateNameCanSave}
                 className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                  customTemplateNameIsUnique
+                  customTemplateNameCanSave
                     ? 'bg-emerald-600 text-white hover:bg-emerald-500'
                     : 'cursor-not-allowed bg-emerald-900/40 text-emerald-200/60'
                 }`}
               >
-                Save
+                {customTemplateNameExists ? 'Update' : 'Save'}
               </button>
             </div>
           </div>

@@ -288,10 +288,17 @@ const CustomTemplateStudioPanel = ({
   onExportPreset,
   onTogglePresetShare,
   canSharePresets = false,
-  presetSyncing = false
+  presetSyncing = false,
+  activeDevice: activeDeviceProp = 'desktop',
+  onActiveDeviceChange,
+  showCanvasShapeEditor = true
 }) => {
   const stageRef = useRef(null);
-  const [activeDevice, setActiveDevice] = useState('desktop');
+  const [activeDevice, setActiveDevice] = useState(
+    ['desktop', 'tablet', 'mobile'].includes(String(activeDeviceProp || '').trim())
+      ? String(activeDeviceProp).trim()
+      : 'desktop'
+  );
   const [selectedBlockIds, setSelectedBlockIds] = useState([]);
   const [interaction, setInteraction] = useState(null);
   const [shapeEdgeSession, setShapeEdgeSession] = useState(null);
@@ -314,6 +321,19 @@ const CustomTemplateStudioPanel = ({
   );
   const stageRows = studio?.rows || CUSTOM_TEMPLATE_GRID_LIMITS.minRows;
   const stageHeight = Math.max(320, stageRows * 15);
+
+  useEffect(() => {
+    const normalizedDevice = ['desktop', 'tablet', 'mobile'].includes(String(activeDeviceProp || '').trim())
+      ? String(activeDeviceProp).trim()
+      : 'desktop';
+    setActiveDevice((prev) => (prev === normalizedDevice ? prev : normalizedDevice));
+  }, [activeDeviceProp]);
+
+  useEffect(() => {
+    if (typeof onActiveDeviceChange === 'function') {
+      onActiveDeviceChange(activeDevice);
+    }
+  }, [activeDevice, onActiveDeviceChange]);
 
   useEffect(() => {
     if (!blocks.length) {
@@ -395,10 +415,10 @@ const CustomTemplateStudioPanel = ({
 
   useEffect(() => {
     if (!canvasShapeEditing) return;
-    if (!selectedBlockSupportsShapeCanvas || selectedBlocks.length !== 1) {
+    if (!showCanvasShapeEditor || !selectedBlockSupportsShapeCanvas || selectedBlocks.length !== 1) {
       setCanvasShapeEditing(false);
     }
-  }, [canvasShapeEditing, selectedBlockSupportsShapeCanvas, selectedBlocks.length]);
+  }, [canvasShapeEditing, selectedBlockSupportsShapeCanvas, selectedBlocks.length, showCanvasShapeEditor]);
 
   useEffect(() => {
     if (!canvasShapeEditing) {
@@ -426,13 +446,6 @@ const CustomTemplateStudioPanel = ({
 
   const updateTemplateField = (field, value) => {
     commitDraft({ ...normalizedDraft, [field]: value });
-  };
-
-  const updateStudioField = (field, value) => {
-    commitActiveStudio({
-      ...studio,
-      [field]: value
-    });
   };
 
   const updateBlocksByIds = (ids, patch) => {
@@ -1035,13 +1048,13 @@ const CustomTemplateStudioPanel = ({
   }, [customPresets, normalizedDraft.name]);
 
   return (
-    <aside className="h-full overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900/95 p-4">
+    <aside className="h-full overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900/95 p-3 sm:p-4">
       <div className="mb-4 flex items-center gap-2 text-slate-100">
         <FaVectorSquare className="text-cyan-300" />
         <h4 className="text-sm font-semibold uppercase tracking-[0.12em]">Custom Studio Playground</h4>
       </div>
 
-      <div className="space-y-4 text-sm">
+      <div className="space-y-3 text-sm sm:space-y-4">
         <div className="rounded-xl border border-slate-700 bg-slate-800/70 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-200">Reusable Presets</p>
@@ -1157,7 +1170,7 @@ const CustomTemplateStudioPanel = ({
             </select>
           </label>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="block text-slate-300">
               Headline Font
               <select
@@ -1184,7 +1197,7 @@ const CustomTemplateStudioPanel = ({
             </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 text-slate-300">
+          <div className="grid grid-cols-1 gap-2 text-slate-300 sm:grid-cols-2">
             <label className="block">Accent
               <input type="color" value={normalizedDraft.accentColor} onChange={(event) => updateTemplateField('accentColor', event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-slate-600 bg-slate-800" />
             </label>
@@ -1205,7 +1218,7 @@ const CustomTemplateStudioPanel = ({
             </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-2 text-slate-300">
               <input type="checkbox" checked={normalizedDraft.showDropCap} onChange={(event) => updateTemplateField('showDropCap', event.target.checked)} />
               Drop Cap
@@ -1216,7 +1229,7 @@ const CustomTemplateStudioPanel = ({
             </label>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label className="block text-slate-300">
               Pagination
               <select
@@ -1301,7 +1314,7 @@ const CustomTemplateStudioPanel = ({
               <FaArrowsAlt />
               Drag & Resize Layout ({activeDevice})
             </span>
-            {selectedBlockSupportsShapeCanvas && selectedBlocks.length === 1 && (
+            {showCanvasShapeEditor && selectedBlockSupportsShapeCanvas && selectedBlocks.length === 1 && (
               <div className="inline-flex items-center gap-1">
                 <button
                   type="button"
@@ -1324,76 +1337,12 @@ const CustomTemplateStudioPanel = ({
             )}
           </div>
 
-          <div className="mb-3 grid grid-cols-3 gap-2">
-            <label className="text-xs text-slate-300">
-              Columns
-              <input
-                type="range"
-                min={CUSTOM_TEMPLATE_GRID_LIMITS.minColumns || 8}
-                max={CUSTOM_TEMPLATE_GRID_LIMITS.maxColumns || 48}
-                value={stageColumns}
-                onChange={(event) => {
-                  const nextColumns = toInt(
-                    event.target.value,
-                    CUSTOM_TEMPLATE_GRID_LIMITS.minColumns || 8,
-                    CUSTOM_TEMPLATE_GRID_LIMITS.maxColumns || 48,
-                    stageColumns
-                  );
-
-                  const nextBlocks = blocks.map((block) => {
-                    const clampedSpan = toInt(block.colSpan, 1, nextColumns, Math.min(block.colSpan, nextColumns));
-                    return {
-                      ...block,
-                      colSpan: clampedSpan,
-                      colStart: toInt(block.colStart, 1, Math.max(1, nextColumns - clampedSpan + 1), 1),
-                      ...syncShapeMaskToBlockSpan(block, clampedSpan, block.rowSpan)
-                    };
-                  });
-
-                  commitActiveStudio({
-                    ...studio,
-                    columns: nextColumns,
-                    blocks: nextBlocks
-                  });
-                }}
-                className="mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-300">
-              Rows
-              <input
-                type="range"
-                min={CUSTOM_TEMPLATE_GRID_LIMITS.minRows}
-                max={CUSTOM_TEMPLATE_GRID_LIMITS.maxRows}
-                value={stageRows}
-                onChange={(event) => updateStudioField('rows', toInt(event.target.value, CUSTOM_TEMPLATE_GRID_LIMITS.minRows, CUSTOM_TEMPLATE_GRID_LIMITS.maxRows, stageRows))}
-                className="mt-1 w-full"
-              />
-            </label>
-            <label className="text-xs text-slate-300">
-              Row Height
-              <input
-                type="range"
-                min={CUSTOM_TEMPLATE_GRID_LIMITS.minRowHeight || 24}
-                max={CUSTOM_TEMPLATE_GRID_LIMITS.maxRowHeight || 54}
-                value={studio?.rowHeight || 32}
-                onChange={(event) =>
-                  updateStudioField(
-                    'rowHeight',
-                    toInt(
-                      event.target.value,
-                      CUSTOM_TEMPLATE_GRID_LIMITS.minRowHeight || 24,
-                      CUSTOM_TEMPLATE_GRID_LIMITS.maxRowHeight || 54,
-                      32
-                    )
-                  )
-                }
-                className="mt-1 w-full"
-              />
-            </label>
+          <div className="mb-3 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-[11px] text-slate-300">
+            Grid is auto-managed for {activeDevice}: {stageColumns} columns, {stageRows} rows.
+            Use drag and resize handles to design layout.
           </div>
 
-          {canvasShapeEditing && selectedBlockSupportsShapeCanvas && (
+          {showCanvasShapeEditor && canvasShapeEditing && selectedBlockSupportsShapeCanvas && (
             <p className="mb-2 rounded-md border border-violet-400/40 bg-violet-500/10 px-2 py-2 text-[11px] text-violet-100">
               Drag border handles directly on the selected block to sculpt shape with 90-degree corners. No paint/erase is required.
             </p>
@@ -1427,7 +1376,8 @@ const CustomTemplateStudioPanel = ({
                 : 'none';
               const useSteppedShape = shapeClipPath && shapeClipPath !== 'none';
               const showCanvasShapeOverlay =
-                canvasShapeEditing
+                showCanvasShapeEditor
+                && canvasShapeEditing
                 && selectedBlock?.id === block.id
                 && selectedBlockSupportsShapeCanvas
                 && (block.shapePreset || 'rect') === 'cells';
@@ -1439,7 +1389,7 @@ const CustomTemplateStudioPanel = ({
                   data-canvas-block-id={block.id}
                   onMouseDown={(event) => {
                     event.preventDefault();
-                    if (canvasShapeEditing && selectedBlock?.id === block.id && selectedBlockSupportsShapeCanvas) {
+                    if (showCanvasShapeEditor && canvasShapeEditing && selectedBlock?.id === block.id && selectedBlockSupportsShapeCanvas) {
                       setSelectedBlockIds([block.id]);
                       return;
                     }
@@ -1574,7 +1524,7 @@ const CustomTemplateStudioPanel = ({
                     <FaLayerGroup /> z{block.zIndex || 1}
                     {block.locked ? <><FaLock /> locked</> : null}
                   </span>
-                  {!block.locked && !(canvasShapeEditing && selectedBlock?.id === block.id) && (
+                  {!block.locked && !(showCanvasShapeEditor && canvasShapeEditing && selectedBlock?.id === block.id) && (
                     <>
                       <span
                         className="absolute left-1/2 top-0 z-20 inline-flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 cursor-n-resize items-center justify-center rounded-sm border border-current/40 bg-black/25"
@@ -1662,7 +1612,7 @@ const CustomTemplateStudioPanel = ({
                       />
                     </>
                   )}
-                  {!(canvasShapeEditing && selectedBlock?.id === block.id) && (
+                  {!(showCanvasShapeEditor && canvasShapeEditing && selectedBlock?.id === block.id) && (
                     <span
                       className={`absolute bottom-1 right-1 z-20 inline-flex h-4 w-4 items-center justify-center rounded-sm border border-current/40 bg-black/25 ${
                         block.locked ? 'cursor-not-allowed opacity-40' : 'cursor-se-resize'
@@ -1719,7 +1669,7 @@ const CustomTemplateStudioPanel = ({
             <div className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-violet-200">
               <FaLayerGroup /> Group Tools ({selectedBlocks.length})
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
               <div className="rounded-lg border border-slate-600 bg-slate-900 p-2">
                 <p className="mb-1 text-[11px] text-slate-400">Align Horizontal</p>
                 <div className="flex gap-1">
@@ -1737,7 +1687,7 @@ const CustomTemplateStudioPanel = ({
                 </div>
               </div>
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-2">
+            <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-2">
               <div className="rounded-lg border border-slate-600 bg-slate-900 p-2">
                 <p className="mb-1 text-[11px] text-slate-400">Spacing Presets</p>
                 <div className="flex gap-1">
@@ -1763,14 +1713,14 @@ const CustomTemplateStudioPanel = ({
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-emerald-200">
                 <FaRulerCombined /> Selected Block
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex flex-wrap items-center justify-end gap-1">
                 <button type="button" onClick={() => reorderZIndex('front')} className="inline-flex items-center gap-1 rounded-md border border-slate-500/70 bg-slate-900 px-2 py-1 text-xs text-slate-200 hover:bg-slate-700"><FaArrowUp /> Front</button>
                 <button type="button" onClick={() => reorderZIndex('back')} className="inline-flex items-center gap-1 rounded-md border border-slate-500/70 bg-slate-900 px-2 py-1 text-xs text-slate-200 hover:bg-slate-700"><FaArrowDown /> Back</button>
                 <button type="button" onClick={removeSelectedBlocks} className="inline-flex items-center gap-1 rounded-md border border-rose-500/60 bg-rose-500/15 px-2 py-1 text-xs text-rose-200 hover:bg-rose-500/25"><FaMinusCircle /> Remove</button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="text-xs text-slate-300">Label
                 <input type="text" value={selectedBlock.label} onChange={(event) => updateBlock(selectedBlock.id, { label: event.target.value.slice(0, 36) })} className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100" />
               </label>
@@ -1860,7 +1810,7 @@ const CustomTemplateStudioPanel = ({
 
             {showAdvancedStyles && (
               <>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                   <label className="text-slate-300"><span className="inline-flex items-center gap-1"><FaFont /> Font Scale</span>
                     <input type="range" min={0.72} max={1.9} step={0.02} value={selectedBlock.fontScale} onChange={(event) => updateBlock(selectedBlock.id, { fontScale: clamp(event.target.value, 0.72, 1.9, selectedBlock.fontScale) })} className="mt-1 w-full" />
                   </label>
@@ -1889,7 +1839,7 @@ const CustomTemplateStudioPanel = ({
                   </label>
                 </div>
 
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
+                <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-300 sm:grid-cols-2">
                   <label>Border Style
                     <select value={selectedBlock.borderStyle} onChange={(event) => updateBlock(selectedBlock.id, { borderStyle: event.target.value })} className="mt-1 w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-slate-100">
                       {CUSTOM_TEMPLATE_BORDER_STYLE_OPTIONS.map((option) => (
@@ -2010,8 +1960,10 @@ const CustomTemplateStudioPanel = ({
                     </>
                   )}
                   {isShapeEligibleBlockType(selectedBlock.type) && (selectedBlock.shapePreset || 'rect') === 'cells' && (
-                    <p className="col-span-2 rounded-md border border-violet-500/40 bg-violet-500/10 px-2 py-2 text-[11px] text-violet-100">
-                      Use `Canvas Shape Edit` and drag block border handles directly to sculpt this block.
+                    <p className="col-span-1 rounded-md border border-violet-500/40 bg-violet-500/10 px-2 py-2 text-[11px] text-violet-100 sm:col-span-2">
+                      {showCanvasShapeEditor
+                        ? 'Use `Canvas Shape Edit` and drag block border handles directly to sculpt this block.'
+                        : 'Advanced shape editing is currently hidden for this release.'}
                     </p>
                   )}
                   <label>Text Align
@@ -2040,7 +1992,7 @@ const CustomTemplateStudioPanel = ({
                   </p>
                 )}
 
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
+                <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-300 sm:grid-cols-2">
                   <label><span className="inline-flex items-center gap-1"><FaSwatchbook /> Block Shell</span>
                     <input type="color" value={selectedBlock.shellBackgroundColor || selectedBlock.backgroundColor} onChange={(event) => updateBlock(selectedBlock.id, { shellBackgroundColor: event.target.value })} className="mt-1 h-9 w-full rounded-md border border-slate-600 bg-slate-900" />
                   </label>
@@ -2059,7 +2011,7 @@ const CustomTemplateStudioPanel = ({
                 </div>
 
                 {isMediaBlockType(selectedBlock.type) && (
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-300">
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-slate-300 sm:grid-cols-2">
                     {selectedBlock.type !== 'video' && (
                       <>
                         <label>Image Fit

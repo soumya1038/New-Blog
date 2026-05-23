@@ -37,7 +37,6 @@ const ArticleDetails = () => {
   const [deletingComment, setDeletingComment] = useState(null);
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState('');
-  const [focusMode, setFocusMode] = useState(false);
   const [moreByAuthor, setMoreByAuthor] = useState([]);
   const [progress, setProgress] = useState(0);
   const contentId = article?._id || id;
@@ -59,11 +58,6 @@ const ArticleDetails = () => {
         .then(({ data }) => setMoreByAuthor(data.articles.filter(a => a._id !== article._id).slice(0, 3)));
     }
   }, [article]);
-
-  useEffect(() => {
-    document.body.classList.toggle('focus-mode', focusMode);
-    return () => document.body.classList.remove('focus-mode');
-  }, [focusMode]);
 
   useEffect(() => {
     // console.log('ArticleDetails mounted, id:', id);
@@ -468,39 +462,25 @@ const ArticleDetails = () => {
         
         <div style={{ background: 'var(--surface-container)', borderBottom: '1px solid var(--outline-variant)' }}>
         <div className="max-w-4xl mx-auto px-4" style={{ padding: 'var(--spacing-4)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
             <button
               onClick={() => navigate(-1)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 'var(--spacing-2)',
-                background: 'none',
-                border: 'none',
-                color: 'var(--on-surface-variant)',
+                background: 'var(--surface-container-high)',
+                border: '1px solid var(--outline-variant)',
+                borderRadius: '999px',
+                color: 'var(--on-surface)',
                 fontFamily: 'var(--font-sans)',
                 fontSize: 'var(--label-md)',
                 cursor: 'pointer',
+                padding: 'var(--spacing-2) var(--spacing-4)',
+                fontWeight: 600
               }}
             >
               <FaArrowLeft /> {t('Back')}
-            </button>
-            <button
-              onClick={() => setFocusMode(p => !p)}
-              style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize: 'var(--label-sm)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                padding: 'var(--spacing-2) var(--spacing-4)',
-                background: 'var(--surface-container-high)',
-                color: 'var(--primary)',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 600,
-              }}
-            >
-              {focusMode ? 'Exit Focus' : 'Focus Mode'}
             </button>
           </div>
         </div>

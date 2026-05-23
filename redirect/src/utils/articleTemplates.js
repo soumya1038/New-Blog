@@ -1889,7 +1889,7 @@ const createDefaultCustomStudioBlocks = () => {
     imageFit: 'cover',
     focalX: 50,
     focalY: 50,
-    captionStyle: 'strip',
+    captionStyle: ['image', 'gallery', 'collage'].includes(type) ? 'hidden' : 'strip',
     videoLayout: 'grid',
     pagePlacement: 'all',
     borderPreset: 'custom',
@@ -1947,7 +1947,7 @@ export const createCustomStudioBlock = (type) => {
     imageFit: 'cover',
     focalX: 50,
     focalY: 50,
-    captionStyle: 'strip',
+    captionStyle: ['image', 'gallery', 'collage'].includes(fallbackType) ? 'hidden' : 'strip',
     videoLayout: 'grid',
     pagePlacement: 'all',
     borderPreset: 'custom',
@@ -2738,7 +2738,7 @@ export const recommendArticleTemplate = (article = {}, options = {}) => {
 
 const resolveTemplatePreset = (templateId) => PRESET_MAP[templateId] || PRESET_MAP[DEFAULT_TEMPLATE_ID];
 
-const runtimeTemplate = (templateId, customTemplate) => {
+const runtimeTemplate = (templateId, customTemplate, runtimeOptions = null) => {
   const preset = resolveTemplatePreset(templateId);
 
   if (preset.id !== CUSTOM_TEMPLATE_ID) {
@@ -2760,7 +2760,12 @@ const runtimeTemplate = (templateId, customTemplate) => {
   const headline = FONT_MAP[custom.headlineFont] || FONT_MAP.heritage;
   const body = FONT_MAP[custom.bodyFont] || FONT_MAP.modern;
   const runtimeStudios = normalizeCustomStudios(custom.studios, createDefaultCustomStudios());
-  const runtimeDevice = resolveRuntimeStudioDevice(runtimeStudios);
+  const forcedRuntimeDevice = cleanEnum(
+    cleanText(runtimeOptions?.runtimeStudioDevice, ''),
+    ['desktop', 'tablet', 'mobile'],
+    ''
+  );
+  const runtimeDevice = forcedRuntimeDevice || resolveRuntimeStudioDevice(runtimeStudios);
   const runtimeStudio = runtimeStudios[runtimeDevice] || runtimeStudios.desktop || custom.studio;
 
   return {
@@ -3372,17 +3377,49 @@ const renderCustomStudioQuote = (article) => `
   </blockquote>
 `;
 
-const buildCustomMediaCaption = (article, block, fallback) => {
+const buildCustomMediaCaption = (article, block) => {
   const captionStyle = cleanEnum(
     cleanText(block?.captionStyle, 'strip'),
     CUSTOM_STUDIO_CAPTION_STYLE_OPTIONS.map((item) => item.id),
     'strip'
   );
   if (captionStyle === 'hidden') return '';
-  const captionText = cleanText(
-    article.metaDescription,
-    `${cleanText(article.category, 'Story')} | ${fallback}`
+  const captionText = cleanText(block?.captionText, '').slice(0, 200);
+  const articleDeck = cleanText(article?.metaDescription, '').slice(0, 200);
+  const articleTitle = cleanText(article?.title, '').slice(0, 200);
+  const articleHighlight = cleanText(
+    Array.isArray(article?.highlights) ? article.highlights[0] : '',
+    ''
   ).slice(0, 200);
+  const toComparableCaptionText = (value) =>
+    cleanText(value, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  const captionComparable = toComparableCaptionText(captionText);
+  const deckComparable = toComparableCaptionText(articleDeck);
+  const titleComparable = toComparableCaptionText(articleTitle);
+  const highlightComparable = toComparableCaptionText(articleHighlight);
+  const isComparableDuplicate = (left, right) =>
+    left
+    && right
+    && (
+      left === right
+      || (left.length > 24 && left.includes(right))
+      || (right.length > 24 && right.includes(left))
+    );
+  const isDuplicateCaption =
+    captionComparable
+    && (
+      isComparableDuplicate(captionComparable, deckComparable)
+      || isComparableDuplicate(captionComparable, titleComparable)
+      || isComparableDuplicate(captionComparable, highlightComparable)
+    );
+  if (isDuplicateCaption) {
+    return '';
+  }
+  if (!captionText) return '';
   return `<figcaption class="custom-studio-caption custom-studio-caption-${captionStyle}">${escapeHtml(captionText)}</figcaption>`;
 };
 
@@ -3405,7 +3442,7 @@ const renderCustomStudioImage = (article, block) => {
           loading="lazy"
           style="object-fit:${imageFit};object-position:${focalX}% ${focalY}%;"
         />
-        ${buildCustomMediaCaption(article, block, 'Feature visual')}
+        ${buildCustomMediaCaption(article, block)}
       </figure>
     `;
   }
@@ -3446,7 +3483,7 @@ const renderCustomStudioGallery = (article, block) => {
           )
           .join('')}
       </div>
-      ${buildCustomMediaCaption(article, block, 'Gallery strip')}
+      ${buildCustomMediaCaption(article, block)}
     </figure>
   `;
 };
@@ -3480,7 +3517,7 @@ const renderCustomStudioCollage = (article, block) => {
             </div>`
         )
         .join('')}
-      ${buildCustomMediaCaption(article, block, 'Collage board')}
+      ${buildCustomMediaCaption(article, block)}
     </figure>
   `;
 };
@@ -3594,6 +3631,15 @@ const renderCustomStudioContentByType = (block, article, template, contentHtml, 
 };
 
 const renderCustomCanvasLayout = (article, template, contentHtml) => {
+  const runtimeDevice = cleanEnum(
+    cleanText(template?.runtimeStudioDevice, 'desktop'),
+    ['desktop', 'tablet', 'mobile'],
+    'desktop'
+  );
+  const runtimeStudios = normalizeCustomStudios(
+    template?.studios,
+    createDefaultCustomStudios()
+  );
   const normalizedTemplate = normalizeCustomTemplate({
     name: template.runtimeName,
     layout: template.resolvedLayout,
@@ -3609,11 +3655,14 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
     borderColor: template.palette.border,
     showDropCap: template.showDropCap,
     showProgress: template.showProgress,
-    studio: template.studio,
-    studios: template.studios
+    studios: runtimeStudios
   });
 
-  const studio = normalizedTemplate.studio || createDefaultCustomStudio();
+  const studio =
+    normalizedTemplate?.studios?.[runtimeDevice]
+    || template?.studio
+    || normalizedTemplate.studio
+    || createDefaultCustomStudio();
   const columnCount = clampInt(
     studio.columns,
     CUSTOM_STUDIO_MIN_COLUMNS,
@@ -3718,9 +3767,10 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
     .join('');
 
   return `
-    <section class="custom-canvas-shell frame-card reveal">
+    <section class="custom-canvas-shell frame-card reveal custom-canvas-device-${runtimeDevice}">
       <div
         class="custom-canvas-page"
+        data-runtime-device="${runtimeDevice}"
         style="--studio-grid-columns: ${columnCount}; --studio-grid-rows: ${rowCount}; --studio-row-height: ${rowHeight}px;"
       >
         ${blockHtml}
@@ -4201,6 +4251,34 @@ const renderTemplateHtml = (article, template) => {
       background: #ece6de;
     }
 
+    .story-pagination-nav.is-next-only {
+      grid-template-columns: minmax(0, 1fr) 44px;
+    }
+
+    .story-pagination-nav.is-prev-only {
+      grid-template-columns: 44px minmax(0, 1fr);
+    }
+
+    .story-pagination-nav.is-next-only .story-pagination-status {
+      grid-column: 1;
+      justify-self: center;
+    }
+
+    .story-pagination-nav.is-next-only #story-page-next {
+      grid-column: 2;
+      justify-self: end;
+    }
+
+    .story-pagination-nav.is-prev-only .story-pagination-status {
+      grid-column: 2;
+      justify-self: center;
+    }
+
+    .story-pagination-nav.is-prev-only #story-page-prev {
+      grid-column: 1;
+      justify-self: start;
+    }
+
     .story-page-btn {
       width: 40px;
       height: 40px;
@@ -4221,6 +4299,10 @@ const renderTemplateHtml = (article, template) => {
       visibility: hidden;
       pointer-events: none;
       opacity: 0;
+    }
+
+    .story-page-btn[hidden] {
+      display: none !important;
     }
 
     .story-page-btn#story-page-prev {
@@ -7219,6 +7301,95 @@ const renderTemplateHtml = (article, template) => {
       font-style: normal;
     }
 
+    .template-custom-studio .custom-canvas-device-tablet.custom-canvas-shell {
+      padding: 10px;
+    }
+
+    .template-custom-studio .custom-canvas-device-tablet .custom-canvas-page {
+      gap: 10px;
+    }
+
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-block {
+      padding: max(4px, calc(var(--studio-block-padding, 14px) * 0.34));
+    }
+
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-block-inner {
+      padding: clamp(9px, calc(var(--studio-block-padding, 14px) * 0.72), 20px);
+    }
+
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-headline {
+      font-size: clamp(1.34rem, 4.6vw, 2.52rem);
+    }
+
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-meta li {
+      font-size: 0.84rem;
+      gap: 8px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile.custom-canvas-shell {
+      padding: 8px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-canvas-page {
+      gap: 8px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-block {
+      padding: max(3px, calc(var(--studio-block-padding, 14px) * 0.3));
+      font-size: clamp(0.84rem, calc(0.78rem * var(--studio-block-font-scale, 1)), 1rem);
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-block-inner {
+      padding: clamp(8px, calc(var(--studio-block-padding, 14px) * 0.6), 14px);
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-headline {
+      font-size: clamp(1.16rem, 6vw, 1.9rem);
+      line-height: 1.12;
+      letter-spacing: -0.01em;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-deck,
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-list,
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-meta,
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-tags-wrap,
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-quote {
+      font-size: 0.92em;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-meta li {
+      font-size: 0.78rem;
+      gap: 6px;
+      padding-bottom: 5px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-list {
+      gap: 0.28rem;
+      padding-left: 1rem;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .story-pagination-nav {
+      margin: 8px 2px 4px;
+      padding: 8px 10px;
+      gap: 8px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .story-page-btn {
+      width: 34px;
+      height: 34px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .story-page-btn-icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .story-pagination-status {
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
+      min-width: 76px;
+    }
+
     .custom-studio-video-grid {
       display: grid;
       gap: 10px;
@@ -7301,6 +7472,105 @@ const renderTemplateHtml = (article, template) => {
 
     .custom-studio-type-content .story h2 {
       margin-top: 1.1em;
+    }
+
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-type-content .reader-toolbar {
+      padding: 4px 4px 10px;
+      gap: 8px;
+    }
+
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-type-content .reader-btn {
+      padding: 6px 10px;
+      font-size: 0.66rem;
+    }
+
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-type-content .reader-volume-wrap {
+      padding: 5px 8px;
+      font-size: 0.64rem;
+    }
+
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-type-content .story p,
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-type-content .story li,
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-type-content .story blockquote {
+      font-size: clamp(0.92rem, 1.45vw, 1.02rem);
+      line-height: 1.68;
+    }
+
+    .template-custom-studio .custom-canvas-device-tablet .custom-studio-type-content .story-page {
+      min-height: 210px;
+      padding: 16px 18px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .reader-toolbar {
+      padding: 2px 0 8px;
+      gap: 6px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .reader-toolbar-main {
+      gap: 6px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .reader-btn {
+      padding: 5px 9px;
+      font-size: 0.62rem;
+      letter-spacing: 0.06em;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .reader-volume-wrap {
+      padding: 5px 8px;
+      font-size: 0.6rem;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .reader-volume-wrap input {
+      width: 72px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .reader-status {
+      margin: 0 2px 8px;
+      font-size: 0.66rem;
+      letter-spacing: 0.05em;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .reader-content {
+      margin-top: 6px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .reader-summary {
+      padding: 12px;
+      gap: 8px;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .story h2,
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .story h3 {
+      margin-top: 1em;
+      margin-bottom: 0.32em;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .story p,
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .story li,
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .story blockquote {
+      font-size: 0.93rem;
+      line-height: 1.62;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .story .lead::first-letter {
+      font-size: 2.45em;
+      margin: 0.05em 0.1em 0 0;
+      padding: 0.04em 0.1em;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .story .inline-media {
+      margin: 1rem 0 1.2rem;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .story .inline-media figcaption {
+      padding: 8px 10px;
+      font-size: 0.62rem;
+    }
+
+    .template-custom-studio .custom-canvas-device-mobile .custom-studio-type-content .story-page {
+      min-height: 140px;
+      padding: 10px 12px;
     }
 
     .longread .split-grid,
@@ -8845,6 +9115,7 @@ const renderTemplateHtml = (article, template) => {
 
         if (pagePrevBtn) {
           pagePrevBtn.classList.toggle('is-hidden', !canGoPrev);
+          pagePrevBtn.hidden = !canGoPrev;
           pagePrevBtn.disabled = !canGoPrev;
           pagePrevBtn.tabIndex = canGoPrev ? 0 : -1;
           pagePrevBtn.setAttribute('aria-disabled', canGoPrev ? 'false' : 'true');
@@ -8853,6 +9124,7 @@ const renderTemplateHtml = (article, template) => {
 
         if (pageNextBtn) {
           pageNextBtn.classList.toggle('is-hidden', !canGoNext);
+          pageNextBtn.hidden = !canGoNext;
           pageNextBtn.disabled = !canGoNext;
           pageNextBtn.tabIndex = canGoNext ? 0 : -1;
           pageNextBtn.setAttribute('aria-disabled', canGoNext ? 'false' : 'true');
@@ -8860,7 +9132,13 @@ const renderTemplateHtml = (article, template) => {
         }
 
         if (paginationNav) {
-          paginationNav.hidden = isSummaryMode || !hasMultiplePages;
+          var navHidden = isSummaryMode || !hasMultiplePages;
+          paginationNav.hidden = navHidden;
+          paginationNav.classList.remove('is-next-only', 'is-prev-only');
+          if (!navHidden) {
+            if (!canGoPrev && canGoNext) paginationNav.classList.add('is-next-only');
+            else if (canGoPrev && !canGoNext) paginationNav.classList.add('is-prev-only');
+          }
         }
 
         syncPageScopedBlockVisibility();
@@ -9258,14 +9536,15 @@ export const generateArticleTemplateHTML = (
   article,
   templateId = DEFAULT_TEMPLATE_ID,
   customTemplate = null,
-  templateThemeMode = 'auto'
+  templateThemeMode = 'auto',
+  runtimeOptions = null
 ) => {
   const normalized = normalizeArticleTemplateData({
     ...(article || {}),
     templateThemeMode:
       templateThemeMode !== undefined ? templateThemeMode : article?.templateThemeMode
   });
-  const template = runtimeTemplate(templateId, customTemplate);
+  const template = runtimeTemplate(templateId, customTemplate, runtimeOptions);
   return renderTemplateHtml(normalized, template);
 };
 

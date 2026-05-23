@@ -1,8 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEFAULT_ARTICLE_TEMPLATE_ID,
-  generateArticleTemplateHTML
+  generateArticleTemplateHTML,
+  normalizeCustomTemplate
 } from '../utils/articleTemplates';
+
+const resolveViewportStudioDevice = (width) => {
+  const normalizedWidth = Number(width || 0);
+  if (normalizedWidth > 0 && normalizedWidth < 768) return 'mobile';
+  if (normalizedWidth > 0 && normalizedWidth < 1180) return 'tablet';
+  return 'desktop';
+};
 
 const ArticleTemplateFrame = ({
   article,
@@ -11,10 +19,14 @@ const ArticleTemplateFrame = ({
   className = ''
 }) => {
   const iframeRef = useRef(null);
+  const resizeObserverRef = useRef(null);
   const syncRafRef = useRef(null);
   const [frameHeight, setFrameHeight] = useState(560);
   const [autoThemeMode, setAutoThemeMode] = useState(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+  );
+  const [viewportStudioDevice, setViewportStudioDevice] = useState(() =>
+    typeof window !== 'undefined' ? resolveViewportStudioDevice(window.innerWidth) : 'desktop'
   );
 
   const clampFrameHeight = useCallback((height) => {
@@ -26,16 +38,23 @@ const ArticleTemplateFrame = ({
   }, []);
 
   const resolvedTemplateThemeMode = autoThemeMode;
+  const resolvedRuntimeCustomTemplate = useMemo(() => {
+    const sourceTemplate =
+      customTemplate !== undefined ? customTemplate : (article?.customTemplate || null);
+    if (!sourceTemplate) return null;
+    return normalizeCustomTemplate(sourceTemplate);
+  }, [article, customTemplate]);
 
   const htmlContent = useMemo(
     () =>
       generateArticleTemplateHTML(
         article,
         templateId || article?.templateId || DEFAULT_ARTICLE_TEMPLATE_ID,
-        customTemplate !== undefined ? customTemplate : (article?.customTemplate || null),
-        resolvedTemplateThemeMode
+        resolvedRuntimeCustomTemplate,
+        resolvedTemplateThemeMode,
+        { runtimeStudioDevice: viewportStudioDevice }
       ),
-    [article, templateId, customTemplate, resolvedTemplateThemeMode]
+    [article, templateId, resolvedRuntimeCustomTemplate, resolvedTemplateThemeMode, viewportStudioDevice]
   );
 
   const syncHeight = useCallback(() => {
@@ -64,6 +83,14 @@ const ArticleTemplateFrame = ({
     }
   }, [clampFrameHeight]);
 
+  const refreshViewportStudioDevice = useCallback(() => {
+    const viewportWidth = typeof window !== 'undefined' ? Number(window.innerWidth || 0) : 0;
+    const frameWidth = Number(iframeRef.current?.getBoundingClientRect?.().width || 0);
+    const width = viewportWidth > 0 ? viewportWidth : frameWidth;
+    const nextDevice = resolveViewportStudioDevice(width);
+    setViewportStudioDevice((prev) => (prev === nextDevice ? prev : nextDevice));
+  }, []);
+
   const scheduleSyncHeight = useCallback(() => {
     if (syncRafRef.current !== null) return;
     syncRafRef.current = window.requestAnimationFrame(() => {
@@ -85,17 +112,53 @@ const ArticleTemplateFrame = ({
 
   useEffect(() => {
     const timeout = window.setTimeout(scheduleSyncHeight, 80);
+    refreshViewportStudioDevice();
     return () => window.clearTimeout(timeout);
-  }, [htmlContent, scheduleSyncHeight]);
+  }, [htmlContent, scheduleSyncHeight, refreshViewportStudioDevice]);
 
   useEffect(() => {
+    let rafId = null;
     const handleResize = () => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        refreshViewportStudioDevice();
+      });
       scheduleSyncHeight();
     };
 
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [scheduleSyncHeight]);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [scheduleSyncHeight, refreshViewportStudioDevice]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.ResizeObserver) return undefined;
+
+    const observedNode = iframeRef.current?.parentElement || iframeRef.current;
+    if (!observedNode) return undefined;
+
+    const observer = new window.ResizeObserver(() => {
+      window.requestAnimationFrame(() => {
+        refreshViewportStudioDevice();
+        scheduleSyncHeight();
+      });
+    });
+
+    observer.observe(observedNode);
+    resizeObserverRef.current = observer;
+
+    return () => {
+      observer.disconnect();
+      if (resizeObserverRef.current === observer) {
+        resizeObserverRef.current = null;
+      }
+    };
+  }, [refreshViewportStudioDevice, scheduleSyncHeight]);
 
   useEffect(() => {
     const onMessage = (event) => {
@@ -121,6 +184,7 @@ const ArticleTemplateFrame = ({
   }, []);
 
   const handleLoad = () => {
+    refreshViewportStudioDevice();
     scheduleSyncHeight();
     window.setTimeout(scheduleSyncHeight, 140);
     window.setTimeout(scheduleSyncHeight, 420);
