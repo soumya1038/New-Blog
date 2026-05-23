@@ -167,6 +167,13 @@ const Register = () => {
     setTimeout(() => setFlashMessage(''), 3000);
   };
 
+  const handleGoogleLoginRedirect = () => {
+    const apiBase = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+    const redirectUri = `${window.location.origin}/auth/google/callback`;
+    const oauthStartUrl = `${apiBase}/api/auth/google/start?redirect_uri=${encodeURIComponent(redirectUri)}`;
+    window.location.href = oauthStartUrl;
+  };
+
   const handleSendCode = async () => {
     if (emailValidationMsg !== 'valid') {
       setError('Please enter a valid email address from a major provider');
@@ -506,7 +513,7 @@ const Register = () => {
             <div className="flex justify-center gap-4">
               <button
                 type="button"
-                onClick={() => handleSocialLogin('Google')}
+                onClick={handleGoogleLoginRedirect}
                 className="p-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition"
                 title="Continue with Google"
               >

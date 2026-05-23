@@ -1,4 +1,4 @@
-import React, { useEffect, useContext, useState, lazy, Suspense } from 'react';
+import React, { useEffect, useContext, useState, useMemo, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import { GroupCallProvider } from './context/GroupCallContext';
@@ -51,29 +51,43 @@ const LoadingFallback = () => (
   </div>
 );
 
+const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/privacy', '/terms', '/auth/google/callback']);
+
 function AppContent() {
   const { user, sessionExpired, guestExpired, setGuestExpired } = useContext(AuthContext);
   const { currentCall, isMinimized, endCall, toggleMinimize } = useGroupCall();
   const location = useLocation();
   const navigate = useNavigate();
+  const normalizedPath = useMemo(() => {
+    const path = (location.pathname || '/').replace(/\/+$/, '');
+    return path || '/';
+  }, [location.pathname]);
+  const hideGlobalChrome = ROUTES_WITHOUT_GLOBAL_CHROME.has(normalizedPath);
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   const [globalCallState, setGlobalCallState] = useState(null);
   const [showIntro, setShowIntro] = useState(() => {
     const hasSeenIntro = sessionStorage.getItem('hasSeenIntro');
     const showLoginIntro = sessionStorage.getItem('showLoginIntro');
+    if (ROUTES_WITHOUT_GLOBAL_CHROME.has((location.pathname || '/').replace(/\/+$/, '') || '/')) {
+      return false;
+    }
     return !hasSeenIntro || showLoginIntro === 'true';
   });
   
   useRouteTracker();
 
   useEffect(() => {
+    if (hideGlobalChrome) {
+      setShowIntro(false);
+      return;
+    }
     const loginIntro = sessionStorage.getItem('showLoginIntro');
     if (loginIntro === 'true') {
       sessionStorage.removeItem('showLoginIntro');
       setShowIntro(true);
     }
-  }, [location.pathname]);
+  }, [hideGlobalChrome, location.pathname]);
 
   useEffect(() => {
     const savedState = getCallState('one-to-one');
@@ -279,7 +293,7 @@ function AppContent() {
     }
   };
 
-  if (showIntro) {
+  if (showIntro && !hideGlobalChrome) {
     return <CinematicIntro onComplete={handleIntroComplete} />;
   }
 
@@ -294,9 +308,9 @@ function AppContent() {
       }
     >
       <div className="min-h-screen">
-        <Navbar />
+        {!hideGlobalChrome && <Navbar />}
         {user && <GlobalGroupCallListener />}
-        {location.pathname !== '/chat' && (
+        {!hideGlobalChrome && location.pathname !== '/chat' && (
           <Suspense fallback={null}>
             <ModernChatbot />
           </Suspense>

@@ -69,30 +69,57 @@ const GoogleAuthCallback = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--background-primary)' }}>
-        <div className="max-w-lg w-full rounded-xl p-6 border" style={{ background: 'var(--surface-card)', borderColor: 'var(--border-default)' }}>
-          <h1 className="text-2xl font-bold mb-3 text-red-500">Google Sign-in Failed</h1>
-          <p className="mb-5" style={{ color: 'var(--text-secondary)' }}>{error}</p>
-          <button
-            type="button"
-            onClick={() => navigate('/login')}
-            className="px-5 py-2 rounded-lg text-white font-semibold"
-            style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))' }}
-          >
-            Back to Login
-          </button>
+      <div className="min-h-screen px-4 py-10 sm:py-14 flex items-center justify-center" style={{ background: 'var(--background-primary)' }}>
+        <div
+          className="w-full max-w-2xl rounded-2xl border p-6 sm:p-8"
+          style={{
+            background: 'linear-gradient(135deg, rgba(14, 33, 24, 0.94), rgba(18, 43, 31, 0.92))',
+            borderColor: 'rgba(118, 160, 128, 0.25)',
+            boxShadow: 'var(--shadow-lg)',
+          }}
+        >
+          <div className="flex items-center gap-3 mb-5">
+            <img src="/image/lekhon_url.png" alt="Lekhon Logo" className="h-11 w-11 rounded-lg object-cover" />
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)]">Lekhon</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-red-500">Google Sign-in Failed</h1>
+            </div>
+          </div>
+          <p className="mb-6 text-base sm:text-lg" style={{ color: 'var(--text-secondary)' }}>{error}</p>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/login')}
+              className="px-6 py-2.5 rounded-lg text-white font-semibold"
+              style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))' }}
+            >
+              Back to Login
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/register')}
+              className="px-6 py-2.5 rounded-lg font-semibold border"
+              style={{ color: 'var(--text-primary)', borderColor: 'var(--border-default)', background: 'var(--surface-card)' }}
+            >
+              Create Account
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--background-primary)' }}>
-      <div className="max-w-lg w-full rounded-xl p-8 border text-center" style={{ background: 'var(--surface-card)', borderColor: 'var(--border-default)' }}>
-        <h1 className="text-2xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Signing You In</h1>
-        <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>Please wait while we complete Google authentication.</p>
+    <div className="min-h-screen px-4 py-10 sm:py-14 flex items-center justify-center" style={{ background: 'var(--background-primary)' }}>
+      <div
+        className="max-w-xl w-full rounded-2xl border p-8 text-center"
+        style={{ background: 'var(--surface-card)', borderColor: 'var(--border-default)', boxShadow: 'var(--shadow-md)' }}
+      >
+        <img src="/image/lekhon_url.png" alt="Lekhon Logo" className="h-14 w-14 rounded-xl object-cover mx-auto mb-4" />
+        <h1 className="text-2xl font-bold mb-3" style={{ color: 'var(--text-primary)' }}>Completing Secure Sign-In</h1>
+        <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>Please wait while we finish your Google authentication.</p>
         <div className="flex justify-center">
-          <ScaleLoader color="#3b82f6" height={28} width={4} />
+          <ScaleLoader color="var(--brand-primary)" height={28} width={4} />
         </div>
       </div>
     </div>
@@ -100,4 +127,3 @@ const GoogleAuthCallback = () => {
 };
 
 export default GoogleAuthCallback;
-
