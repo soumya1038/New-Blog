@@ -68,3 +68,7 @@ backend/.env
 frontend/.env
 .env
 *.env.local
+
+# Keep existing history, but ignore new documentation/script changes going forward
+docs/
+scripts/
