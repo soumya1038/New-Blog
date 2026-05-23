@@ -3,7 +3,124 @@ const generateToken = require('../utils/generateToken');
 const { validateEmail } = require('../utils/emailValidator');
 const { enqueueEmailJob } = require('../jobs/queueService');
 const crypto = require('crypto');
+const axios = require('axios');
+const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
+
+const GOOGLE_AUTH_BASE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
+
+const normalizeAbsoluteUrl = (value = '') => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = new URL(trimmed);
+    const normalized = `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+    return normalized;
+  } catch (error) {
+    return '';
+  }
+};
+
+const getGoogleClientId = () =>
+  (process.env.GOOGLE_CLIENT_ID || process.env.google_client_id || '').trim();
+
+const getGoogleClientSecret = () =>
+  (process.env.GOOGLE_CLIENT_SECRET || process.env.google_client_Secret || '').trim();
+
+const getAllowedGoogleRedirectUris = () => {
+  const configured = (process.env.GOOGLE_ALLOWED_REDIRECT_URIS || '')
+    .split(',')
+    .map((entry) => normalizeAbsoluteUrl(entry))
+    .filter(Boolean);
+
+  const defaults = [
+    'https://lekhon-development.netlify.app/auth/google/callback',
+    'http://localhost:3000/auth/google/callback',
+    'http://localhost:3001/auth/google/callback',
+  ];
+
+  const frontendProd = normalizeAbsoluteUrl(process.env.FRONTEND_URL_PROD || '');
+  const frontendLocal = normalizeAbsoluteUrl(process.env.FRONTEND_URL || '');
+
+  if (frontendProd) defaults.push(`${frontendProd}/auth/google/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
+  if (frontendLocal) defaults.push(`${frontendLocal}/auth/google/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
+
+  return [...new Set([...defaults, ...configured].map((entry) => normalizeAbsoluteUrl(entry)).filter(Boolean))];
+};
+
+const isGoogleRedirectUriAllowed = (redirectUri) => {
+  const normalized = normalizeAbsoluteUrl(redirectUri);
+  if (!normalized) return false;
+  return getAllowedGoogleRedirectUris().includes(normalized);
+};
+
+const createGoogleState = (redirectUri) => {
+  return jwt.sign(
+    {
+      redirectUri: normalizeAbsoluteUrl(redirectUri),
+      nonce: crypto.randomBytes(8).toString('hex'),
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '10m' }
+  );
+};
+
+const readGoogleState = (stateToken) => {
+  if (!stateToken || !process.env.JWT_SECRET) return null;
+  try {
+    return jwt.verify(String(stateToken), process.env.JWT_SECRET);
+  } catch (error) {
+    return null;
+  }
+};
+
+const sanitizeUsernameFragment = (value) => {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '')
+    .slice(0, 24);
+  if (normalized.length >= 3) return normalized;
+  return `user_${crypto.randomBytes(2).toString('hex')}`;
+};
+
+const makeUniqueUsername = async (seed) => {
+  const base = sanitizeUsernameFragment(seed);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const suffix = attempt === 0 ? '' : `_${attempt}`;
+    const candidate = `${base}${suffix}`.slice(0, 30);
+    const existing = await User.findOne({ username: candidate }).select('_id').lean();
+    if (!existing) return candidate;
+  }
+  return `user_${crypto.randomBytes(4).toString('hex')}`;
+};
+
+const ensureUserCanLogin = async (user) => {
+  if (!user) {
+    return { status: 404, body: { success: false, message: 'User not found' } };
+  }
+
+  if (user.isGuest && user.guestExpiresAt && new Date() >= user.guestExpiresAt) {
+    await User.findByIdAndDelete(user._id);
+    return { status: 401, body: { success: false, message: 'Guest account expired', guestExpired: true } };
+  }
+
+  if (user.suspendedUntil && new Date() >= user.suspendedUntil) {
+    user.suspendedUntil = null;
+    user.isActive = true;
+    await user.save();
+  }
+
+  if (!user.isActive || (user.suspendedUntil && new Date() < user.suspendedUntil)) {
+    const suspendedMessage = user.suspendedUntil
+      ? `Account suspended until ${user.suspendedUntil.toLocaleDateString()}`
+      : 'Account has been suspended';
+    return { status: 403, body: { success: false, message: suspendedMessage } };
+  }
+
+  return null;
+};
 
 // Register user
 exports.register = async (req, res) => {
@@ -146,6 +263,181 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Start Google OAuth redirect flow
+exports.startGoogleAuth = async (req, res) => {
+  try {
+    const clientId = getGoogleClientId();
+    if (!clientId) {
+      return res.status(500).json({ success: false, message: 'Google OAuth is not configured on server' });
+    }
+
+    const redirectUri = normalizeAbsoluteUrl(req.query.redirect_uri || '');
+    if (!redirectUri) {
+      return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
+    }
+
+    if (!isGoogleRedirectUriAllowed(redirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirect_uri is not allowed',
+        allowedRedirectUris: getAllowedGoogleRedirectUris(),
+      });
+    }
+
+    const state = createGoogleState(redirectUri);
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      access_type: 'offline',
+      include_granted_scopes: 'true',
+      prompt: 'consent',
+      state,
+    });
+
+    return res.redirect(`${GOOGLE_AUTH_BASE_URL}?${params.toString()}`);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Exchange Google OAuth code for local session
+exports.exchangeGoogleCode = async (req, res) => {
+  try {
+    const clientId = getGoogleClientId();
+    const clientSecret = getGoogleClientSecret();
+    if (!clientId || !clientSecret) {
+      return res.status(500).json({ success: false, message: 'Google OAuth is not configured on server' });
+    }
+
+    const { code, redirectUri, state } = req.body || {};
+    const normalizedRedirectUri = normalizeAbsoluteUrl(redirectUri || '');
+
+    if (!code || !normalizedRedirectUri) {
+      return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
+    }
+
+    if (!isGoogleRedirectUriAllowed(normalizedRedirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirectUri is not allowed',
+        allowedRedirectUris: getAllowedGoogleRedirectUris(),
+      });
+    }
+
+    const statePayload = readGoogleState(state);
+    if (!statePayload || normalizeAbsoluteUrl(statePayload.redirectUri) !== normalizedRedirectUri) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
+    }
+
+    const tokenParams = new URLSearchParams({
+      code: String(code),
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: normalizedRedirectUri,
+      grant_type: 'authorization_code',
+    });
+
+    const tokenResponse = await axios.post(GOOGLE_TOKEN_URL, tokenParams.toString(), {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    const accessToken = tokenResponse?.data?.access_token;
+    if (!accessToken) {
+      return res.status(400).json({ success: false, message: 'Google access token not received' });
+    }
+
+    const profileResponse = await axios.get(GOOGLE_USERINFO_URL, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const profile = profileResponse?.data || {};
+    const email = String(profile.email || '').trim().toLowerCase();
+    const emailVerified = Boolean(profile.email_verified);
+    const displayName = String(profile.name || '').trim();
+    const picture = String(profile.picture || '').trim();
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Google account email is unavailable' });
+    }
+
+    if (!emailVerified) {
+      return res.status(400).json({ success: false, message: 'Google account email is not verified' });
+    }
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      const usernameSeed = email.split('@')[0] || displayName || 'user';
+      const username = await makeUniqueUsername(usernameSeed);
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+
+      user = await User.create({
+        username,
+        email,
+        password: randomPassword,
+        fullName: displayName,
+        name: displayName,
+        profileImage: picture,
+        isVerified: true,
+      });
+    } else {
+      let shouldSave = false;
+      if (!user.isVerified) {
+        user.isVerified = true;
+        shouldSave = true;
+      }
+      if (!user.fullName && displayName) {
+        user.fullName = displayName;
+        shouldSave = true;
+      }
+      if (!user.name && displayName) {
+        user.name = displayName;
+        shouldSave = true;
+      }
+      if (!user.profileImage && picture) {
+        user.profileImage = picture;
+        shouldSave = true;
+      }
+      if (shouldSave) {
+        await user.save();
+      }
+    }
+
+    const guardFailure = await ensureUserCanLogin(user);
+    if (guardFailure) {
+      return res.status(guardFailure.status).json(guardFailure.body);
+    }
+
+    user.lastActive = new Date();
+    await user.save();
+
+    const token = generateToken(user._id);
+    return res.json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        profileImage: user.profileImage,
+        role: user.role,
+      },
+      rememberMe: true,
+    });
+  } catch (error) {
+    const details = error?.response?.data || error.message;
+    return res.status(500).json({
+      success: false,
+      message: 'Google authentication failed',
+      details,
+    });
   }
 };
 
