@@ -13,10 +13,10 @@ const printUsage = () => {
       '  npm run release:overall -- [version] [--tag] [--push-tag]',
       '',
       'Examples:',
-      '  npm run release:overall -- 1.1.0',
+      '  npm run release:overall -- 1.1.12',
       '  npm run release:overall --',
-      '  npm run release:overall -- 1.1.0 --tag',
-      '  npm run release:overall -- 1.1.0 --tag --push-tag'
+      '  npm run release:overall -- 1.1.12 --tag',
+      '  npm run release:overall -- 1.1.12 --tag --push-tag'
     ].join('\n')
   );
 };
@@ -37,7 +37,6 @@ if (shouldPushTag && !shouldTag) {
   process.exit(1);
 }
 
-const releaseTag = `v${normalizedVersion}`;
 const currentBranch = safeExec('git rev-parse --abbrev-ref HEAD');
 
 if (shouldTag && currentBranch !== 'main') {
@@ -58,6 +57,7 @@ if (!fs.existsSync(overallPkgPath) || !fs.existsSync(backendPkgPath) || !fs.exis
 
 const overallVersionFromPkg = readJson(overallPkgPath).version || 'unknown';
 const normalizedVersion = String(versionArg || overallVersionFromPkg).replace(/^v/i, '');
+const releaseTag = `v${normalizedVersion}`;
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(normalizedVersion)) {
   if (!versionArg) {
     console.error('Root package.json does not have a valid semver "version".');
