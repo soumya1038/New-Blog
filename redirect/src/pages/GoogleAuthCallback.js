@@ -40,10 +40,18 @@ const GoogleAuthCallback = () => {
         if (!token) {
           throw new Error('Google login did not return an application token.');
         }
+        const passwordSetupRequired = Boolean(response?.data?.passwordSetupRequired);
 
         localStorage.setItem('token', token);
         localStorage.setItem('rememberMe', 'true');
         sessionStorage.setItem('showLoginIntro', 'true');
+        if (passwordSetupRequired) {
+          sessionStorage.setItem('googlePasswordSetupRequired', 'true');
+          sessionStorage.removeItem('redirectAfterLogin');
+          window.location.href = '/profile?forcePasswordChange=1';
+          return;
+        }
+        sessionStorage.removeItem('googlePasswordSetupRequired');
 
         const redirectPath = sessionStorage.getItem('redirectAfterLogin');
         if (redirectPath) {

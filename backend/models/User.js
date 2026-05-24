@@ -38,6 +38,7 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ['user', 'admin', 'coAdmin', 'guest'], default: 'user' },
   isGuest: { type: Boolean, default: false },
   guestExpiresAt: { type: Date, default: null, index: true },
+  mustChangePasswordAfterGoogle: { type: Boolean, default: false },
   isActive: { type: Boolean, default: true },
   suspendedUntil: { type: Date, default: null },
   isVerified: { type: Boolean, default: false },

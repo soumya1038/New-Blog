@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
@@ -23,6 +23,7 @@ const ProfileNew = () => {
   const { t } = useTranslation();
   const { user, setUser } = useContext(AuthContext);
   const navigate = useNavigate();
+  const location = useLocation();
   const profileRef = React.useRef(null);
 
   // State
@@ -39,6 +40,7 @@ const ProfileNew = () => {
   const [expandedCard, setExpandedCard] = useState(null);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showPasswordSetupNotice, setShowPasswordSetupNotice] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '' });
@@ -94,6 +96,23 @@ const ProfileNew = () => {
     };
     loadData();
   }, [user]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search || '');
+    const forcePasswordChange = searchParams.get('forcePasswordChange') === '1';
+    const fromGoogleSession = sessionStorage.getItem('googlePasswordSetupRequired') === 'true';
+
+    if (!forcePasswordChange && !fromGoogleSession) return;
+
+    setExpandedCard(null);
+    setShowForgotPassword(false);
+    setShowPasswordForm(true);
+    setShowPasswordSetupNotice(true);
+
+    if (forcePasswordChange) {
+      navigate('/profile', { replace: true });
+    }
+  }, [location.search, navigate]);
 
   // Click outside to collapse
   useEffect(() => {
@@ -179,6 +198,8 @@ const ProfileNew = () => {
       setShowPasswordCodeModal(false);
       setPasswordCode('');
       setPasswords({ currentPassword: '', newPassword: '' });
+      setShowPasswordSetupNotice(false);
+      sessionStorage.removeItem('googlePasswordSetupRequired');
     } catch (error) {
       showModal('error', 'Error', 'Invalid code');
     }
@@ -783,6 +804,16 @@ const ProfileNew = () => {
                   <FaKey className="text-purple-600 dark:text-purple-400" size={24} />
                 </div>
               </div>
+              {showPasswordSetupNotice && (
+                <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3">
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                    {t('For security, please change your temporary password now.')}
+                  </p>
+                  <p className="text-xs mt-1 text-amber-700 dark:text-amber-400">
+                    {t('Use the temporary password from your welcome email as the current password, then set a new one.')}
+                  </p>
+                </div>
+              )}
               <div className="flex gap-3">
                 <button onClick={() => { setShowPasswordForm(!showPasswordForm); setShowForgotPassword(false); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
                   <FaKey /> {t('Change Password')}

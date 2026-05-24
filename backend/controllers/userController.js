@@ -174,16 +174,18 @@ exports.requestPasswordChange = async (req, res) => {
     const confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     global.passwordChangeCodes = global.passwordChangeCodes || {};
+    const passwordChangeExpiresAt = Date.now() + 2 * 60 * 1000;
     global.passwordChangeCodes[user._id.toString()] = {
       code: confirmationCode,
       newPassword,
-      expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
+      expiresAt: passwordChangeExpiresAt // 2 minutes
     };
 
     await enqueueEmailJob('password-change-confirmation', {
       email: user.email,
       username: user.username,
-      code: confirmationCode
+      code: confirmationCode,
+      expiresAt: passwordChangeExpiresAt
     });
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
@@ -218,6 +220,9 @@ exports.confirmPasswordChange = async (req, res) => {
 
     const user = await User.findById(req.user._id);
     user.password = storedData.newPassword;
+    if (user.mustChangePasswordAfterGoogle) {
+      user.mustChangePasswordAfterGoogle = false;
+    }
     await user.save();
 
     delete global.passwordChangeCodes[req.user._id.toString()];
@@ -226,7 +231,8 @@ exports.confirmPasswordChange = async (req, res) => {
     try {
       await enqueueEmailJob('password-changed-success', {
         email: user.email,
-        username: user.username
+        username: user.username,
+        changedAt: Date.now()
       });
     } catch (error) {
       console.error('Failed to send success email:', error);
@@ -258,15 +264,17 @@ exports.requestAccountDeletion = async (req, res) => {
     const confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
 
     global.accountDeletionCodes = global.accountDeletionCodes || {};
+    const accountDeletionExpiresAt = Date.now() + 2 * 60 * 1000;
     global.accountDeletionCodes[user._id.toString()] = {
       code: confirmationCode,
-      expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
+      expiresAt: accountDeletionExpiresAt // 2 minutes
     };
 
     await enqueueEmailJob('account-deletion-confirmation', {
       email: user.email,
       username: user.username,
-      code: confirmationCode
+      code: confirmationCode,
+      expiresAt: accountDeletionExpiresAt
     });
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });

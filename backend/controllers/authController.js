@@ -96,6 +96,16 @@ const makeUniqueUsername = async (seed) => {
   return `user_${crypto.randomBytes(4).toString('hex')}`;
 };
 
+const generateTemporaryPassword = (length = 12) => {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+  const bytes = crypto.randomBytes(length);
+  let password = '';
+  for (let index = 0; index < length; index += 1) {
+    password += alphabet[bytes[index] % alphabet.length];
+  }
+  return password;
+};
+
 const ensureUserCanLogin = async (user) => {
   if (!user) {
     return { status: 404, body: { success: false, message: 'User not found' } };
@@ -169,11 +179,11 @@ exports.register = async (req, res) => {
       delete global.verificationCodes[email]; // Clean up
     }
     
-    const user = await User.create({ 
+    const user = await User.create({
       username, 
       email, 
       password,
-      isVerified: true // Email already verified in the form
+      isVerified: false
     });
 
     // Send welcome email
@@ -374,26 +384,34 @@ exports.exchangeGoogleCode = async (req, res) => {
     }
 
     let user = await User.findOne({ email });
+    let temporaryPassword = '';
     if (!user) {
       const usernameSeed = email.split('@')[0] || displayName || 'user';
       const username = await makeUniqueUsername(usernameSeed);
-      const randomPassword = crypto.randomBytes(32).toString('hex');
+      temporaryPassword = generateTemporaryPassword();
 
       user = await User.create({
         username,
         email,
-        password: randomPassword,
+        password: temporaryPassword,
         fullName: displayName,
         name: displayName,
         profileImage: picture,
-        isVerified: true,
+        isVerified: false,
+        mustChangePasswordAfterGoogle: true,
       });
+
+      try {
+        await enqueueEmailJob('welcome-email', {
+          email,
+          username,
+          temporaryPassword,
+        });
+      } catch (mailError) {
+        console.error('Failed to send Google onboarding welcome email:', mailError);
+      }
     } else {
       let shouldSave = false;
-      if (!user.isVerified) {
-        user.isVerified = true;
-        shouldSave = true;
-      }
       if (!user.fullName && displayName) {
         user.fullName = displayName;
         shouldSave = true;
@@ -429,6 +447,7 @@ exports.exchangeGoogleCode = async (req, res) => {
         profileImage: user.profileImage,
         role: user.role,
       },
+      passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
       rememberMe: true,
     });
   } catch (error) {
@@ -478,13 +497,19 @@ exports.sendVerificationCode = async (req, res) => {
     // Store in temporary collection or cache (for now, we'll use a simple approach)
     // In production, use Redis or a temporary collection
     global.verificationCodes = global.verificationCodes || {};
+    const verificationExpiresAt = Date.now() + 2 * 60 * 1000;
     global.verificationCodes[email] = {
       code: verificationCode,
-      expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
+      expiresAt: verificationExpiresAt // 2 minutes
     };
 
     // Queue verification email send
-    await enqueueEmailJob('verification-code', { email, username: 'User', code: verificationCode });
+    await enqueueEmailJob('verification-code', {
+      email,
+      username: 'User',
+      code: verificationCode,
+      expiresAt: verificationExpiresAt
+    });
 
     res.json({ success: true, message: 'Verification code sent to your email' });
   } catch (error) {
@@ -511,12 +536,18 @@ exports.sendPasswordResetCode = async (req, res) => {
     const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
     
     global.passwordResetCodes = global.passwordResetCodes || {};
+    const resetExpiresAt = Date.now() + 2 * 60 * 1000;
     global.passwordResetCodes[email] = {
       code: resetCode,
-      expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
+      expiresAt: resetExpiresAt // 2 minutes
     };
 
-    await enqueueEmailJob('password-reset-code', { email, username: user.username, code: resetCode });
+    await enqueueEmailJob('password-reset-code', {
+      email,
+      username: user.username,
+      code: resetCode,
+      expiresAt: resetExpiresAt
+    });
 
     res.json({ success: true, message: 'Password reset code sent to your email' });
   } catch (error) {
@@ -555,6 +586,9 @@ exports.resetPasswordWithCode = async (req, res) => {
     }
 
     user.password = newPassword;
+    if (user.mustChangePasswordAfterGoogle) {
+      user.mustChangePasswordAfterGoogle = false;
+    }
     await user.save();
 
     delete global.passwordResetCodes[email];
@@ -638,14 +672,20 @@ exports.requestForgotPassword = async (req, res) => {
     const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
     
     global.forgotPasswordCodes = global.forgotPasswordCodes || {};
+    const forgotVerificationExpiresAt = Date.now() + 2 * 60 * 1000;
     global.forgotPasswordCodes[email] = {
       code: verificationCode,
       username,
-      expiresAt: Date.now() + 2 * 60 * 1000, // 2 minutes
+      expiresAt: forgotVerificationExpiresAt, // 2 minutes
       verified: false
     };
 
-    await enqueueEmailJob('password-reset-code', { email, username: user.username, code: verificationCode });
+    await enqueueEmailJob('password-reset-code', {
+      email,
+      username: user.username,
+      code: verificationCode,
+      expiresAt: forgotVerificationExpiresAt
+    });
 
     res.json({ success: true, message: 'Verification code sent to your email' });
   } catch (error) {
@@ -708,15 +748,21 @@ exports.requestForgotPasswordChange = async (req, res) => {
     const confirmCode = Math.floor(100000 + Math.random() * 900000).toString();
     
     global.forgotPasswordChangeCodes = global.forgotPasswordChangeCodes || {};
+    const forgotChangeExpiresAt = Date.now() + 2 * 60 * 1000;
     global.forgotPasswordChangeCodes[email] = {
       code: confirmCode,
       username,
       newPassword,
-      expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
+      expiresAt: forgotChangeExpiresAt // 2 minutes
     };
 
     const user = await User.findOne({ username, email });
-    await enqueueEmailJob('password-change-confirmation', { email, username: user.username, code: confirmCode });
+    await enqueueEmailJob('password-change-confirmation', {
+      email,
+      username: user.username,
+      code: confirmCode,
+      expiresAt: forgotChangeExpiresAt
+    });
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
   } catch (error) {
@@ -755,6 +801,9 @@ exports.confirmForgotPasswordChange = async (req, res) => {
     }
 
     user.password = storedData.newPassword;
+    if (user.mustChangePasswordAfterGoogle) {
+      user.mustChangePasswordAfterGoogle = false;
+    }
     await user.save();
 
     delete global.forgotPasswordCodes[email];
@@ -762,7 +811,7 @@ exports.confirmForgotPasswordChange = async (req, res) => {
 
     // Send success email
     try {
-      await enqueueEmailJob('password-changed-success', { email, username });
+      await enqueueEmailJob('password-changed-success', { email, username, changedAt: Date.now() });
     } catch (error) {
       console.error('Failed to send success email:', error);
     }
@@ -795,13 +844,19 @@ exports.requestAuthenticatedPasswordChange = async (req, res) => {
     const confirmCode = Math.floor(100000 + Math.random() * 900000).toString();
     
     global.authenticatedPasswordChangeCodes = global.authenticatedPasswordChangeCodes || {};
+    const authenticatedChangeExpiresAt = Date.now() + 2 * 60 * 1000;
     global.authenticatedPasswordChangeCodes[userId.toString()] = {
       code: confirmCode,
       newPassword,
-      expiresAt: Date.now() + 2 * 60 * 1000 // 2 minutes
+      expiresAt: authenticatedChangeExpiresAt // 2 minutes
     };
 
-    await enqueueEmailJob('password-change-confirmation', { email: user.email, username: user.username, code: confirmCode });
+    await enqueueEmailJob('password-change-confirmation', {
+      email: user.email,
+      username: user.username,
+      code: confirmCode,
+      expiresAt: authenticatedChangeExpiresAt
+    });
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
   } catch (error) {
@@ -841,13 +896,20 @@ exports.confirmAuthenticatedPasswordChange = async (req, res) => {
     }
 
     user.password = storedData.newPassword;
+    if (user.mustChangePasswordAfterGoogle) {
+      user.mustChangePasswordAfterGoogle = false;
+    }
     await user.save();
 
     delete global.authenticatedPasswordChangeCodes[userId.toString()];
 
     // Send success email
     try {
-      await enqueueEmailJob('password-changed-success', { email: user.email, username: user.username });
+      await enqueueEmailJob('password-changed-success', {
+        email: user.email,
+        username: user.username,
+        changedAt: Date.now()
+      });
     } catch (error) {
       console.error('Failed to send success email:', error);
     }

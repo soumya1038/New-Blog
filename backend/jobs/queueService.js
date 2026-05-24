@@ -58,21 +58,23 @@ const createBullConnection = () => {
 };
 
 const handleEmailJob = async (jobName, payload = {}) => {
-  const { email, username, code } = payload;
+  const { email, username, code, expiresAt, changedAt, temporaryPassword } = payload;
 
   switch (jobName) {
     case 'verification-code':
-      return sendVerificationEmail(email, username || 'User', code);
+      return sendVerificationEmail(email, username || 'User', code, expiresAt);
     case 'welcome-email':
-      return sendWelcomeEmail(email, username || 'User');
+      return sendWelcomeEmail(email, username || 'User', {
+        temporaryPassword: temporaryPassword || ''
+      });
     case 'password-reset-code':
-      return sendPasswordResetEmail(email, username || 'User', code);
+      return sendPasswordResetEmail(email, username || 'User', code, expiresAt);
     case 'password-change-confirmation':
-      return sendPasswordChangeConfirmation(email, username || 'User', code);
+      return sendPasswordChangeConfirmation(email, username || 'User', code, expiresAt);
     case 'account-deletion-confirmation':
-      return sendAccountDeletionConfirmation(email, username || 'User', code);
+      return sendAccountDeletionConfirmation(email, username || 'User', code, expiresAt);
     case 'password-changed-success':
-      return sendPasswordChangedSuccess(email, username || 'User');
+      return sendPasswordChangedSuccess(email, username || 'User', changedAt);
     case 'account-deleted-success':
       return sendAccountDeletedSuccess(email, username || 'User');
     default:

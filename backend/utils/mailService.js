@@ -1,359 +1,164 @@
 const axios = require('axios');
+const {
+  renderWelcomeEmail,
+  renderVerificationEmail,
+  renderPasswordResetEmail,
+  renderPasswordChangeConfirmationEmail,
+  renderPasswordChangedSuccessEmail,
+  renderAccountDeletionConfirmationEmail,
+  renderAccountDeletedSuccessEmail,
+  renderContactAdminEmail,
+} = require('./emailTemplates');
 
 const sendEmail = async ({ to, subject, html }) => {
-  console.log('📧 [EMAIL] Starting email send process...');
-  console.log('📧 [EMAIL] To:', to);
-  console.log('📧 [EMAIL] Subject:', subject);
-  console.log('📧 [EMAIL] Using Brevo API');
-  
+  console.log('[EMAIL] Starting email send process...');
+  console.log('[EMAIL] To:', to);
+  console.log('[EMAIL] Subject:', subject);
+  console.log('[EMAIL] Using Brevo API');
+
   if (!process.env.BREVO_API_KEY || !process.env.BREVO_FROM_EMAIL) {
-    console.error('❌ [EMAIL] Missing Brevo credentials!');
+    console.error('[EMAIL] Missing Brevo credentials.');
     throw new Error('Email service not configured. Please set BREVO_API_KEY and BREVO_FROM_EMAIL.');
   }
-  
-  try {
-    const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
-      sender: { name: 'Lekhon', email: process.env.BREVO_FROM_EMAIL },
-      to: [{ email: to }],
-      subject,
-      htmlContent: html
-    }, {
-      headers: {
-        'api-key': process.env.BREVO_API_KEY,
-        'Content-Type': 'application/json'
-      }
-    });
 
-    console.log('✅ [EMAIL] Email sent successfully!');
-    console.log('📧 [EMAIL] Brevo Response:', JSON.stringify(response.data));
-    console.log('⚠️ [EMAIL] Check: 1) Sender email verified at https://app.brevo.com/senders 2) Check spam folder');
+  try {
+    const response = await axios.post(
+      'https://api.brevo.com/v3/smtp/email',
+      {
+        sender: { name: 'Lekhon', email: process.env.BREVO_FROM_EMAIL },
+        to: [{ email: to }],
+        subject,
+        htmlContent: html,
+      },
+      {
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    console.log('[EMAIL] Email sent successfully.');
+    console.log('[EMAIL] Brevo response:', JSON.stringify(response.data));
     return { success: true };
   } catch (error) {
-    console.error('❌ [EMAIL] Email send failed!');
-    console.error('❌ [EMAIL] Error:', error.response?.data || error.message);
-    console.error('⚠️ [EMAIL] Verify sender email at: https://app.brevo.com/senders');
+    console.error('[EMAIL] Email send failed.');
+    console.error('[EMAIL] Error:', error.response?.data || error.message);
     throw new Error('Failed to send email: ' + (error.response?.data?.message || error.message));
   }
 };
 
-const sendVerificationEmail = async (email, username, verificationCode) => {
-  console.log('📧 [EMAIL] Sending verification email to:', email);
-  const logoUrl = process.env.LOGO_URL || '';
-  const html = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Verify Your Email</title>
-      <style>
-        @media only screen and (max-width: 600px) {
-          .container { width: 100% !important; }
-          .content { padding: 20px !important; }
-          .code-box { font-size: 28px !important; padding: 20px !important; }
-          h1 { font-size: 24px !important; }
-        }
-      </style>
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f5f5f5; padding: 20px 0;">
-        <tr>
-          <td align="center">
-            <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-              ${logoUrl ? `<tr><td align="center" style="padding: 48px 32px 24px;"><img src="${logoUrl}" alt="Lekhon" width="100" height="100" style="border-radius: 50%; border: 3px solid #f0f0f0;"/></td></tr>` : '<tr><td style="padding-top: 48px;"></td></tr>'}
-              <tr><td class="content" align="center" style="padding: 0 32px 32px;"><h1 style="margin: 0 0 16px; color: #1a1a1a; font-size: 28px; font-weight: 600; line-height: 1.3;">Welcome to Lekhon!</h1><p style="margin: 0; color: #666; font-size: 16px; line-height: 1.6;">We're excited to have you here, ${username}.</p></td></tr>
-              <tr><td class="content" style="padding: 0 32px;"><p style="margin: 0 0 24px; color: #333; font-size: 15px; line-height: 1.6;">To get started, please verify your email address by entering this code:</p></td></tr>
-              <tr><td align="center" style="padding: 0 32px 32px;"><div class="code-box" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #ffffff; font-size: 32px; font-weight: 700; padding: 24px 40px; border-radius: 10px; letter-spacing: 8px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);">${verificationCode}</div></td></tr>
-              <tr><td class="content" style="padding: 0 32px 32px;"><div style="background-color: #fff8e1; border-left: 3px solid #ffa726; padding: 16px 20px; border-radius: 6px;"><p style="margin: 0; color: #e65100; font-size: 14px; line-height: 1.5;">⏱️ This code will expire in 2 minutes for security reasons.</p></div></td></tr>
-              <tr><td class="content" style="padding: 0 32px 48px;"><p style="margin: 0; color: #999; font-size: 14px; line-height: 1.6;">If you didn't create an account with Lekhon, you can safely ignore this email.</p></td></tr>
-              <tr><td style="background-color: #fafafa; padding: 24px 32px; border-top: 1px solid #e0e0e0;"><p style="margin: 0; color: #999; font-size: 12px; text-align: center; line-height: 1.5;">© ${new Date().getFullYear()} Lekhon. All rights reserved.</p></td></tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
+const sendVerificationEmail = async (email, username, verificationCode, expiresAt) => {
+  console.log('[EMAIL] Sending verification email to:', email);
+  const { subject, html } = renderVerificationEmail({
+    username,
+    code: verificationCode,
+    expiresAt,
+  });
 
   return sendEmail({
     to: email,
-    subject: 'Verify Your Email - Lekhon',
+    subject,
     html,
   });
 };
 
-const sendPasswordResetEmail = async (email, username, resetCode) => {
-  console.log('📧 [EMAIL] Sending password reset email to:', email);
-  const logoUrl = process.env.LOGO_URL || '';
-  const html = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Reset Your Password</title>
-      <style>
-        @media only screen and (max-width: 600px) {
-          .container { width: 100% !important; }
-          .content { padding: 20px !important; }
-          .code-box { font-size: 28px !important; padding: 20px !important; }
-          h1 { font-size: 24px !important; }
-        }
-      </style>
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f5f5f5; padding: 20px 0;">
-        <tr>
-          <td align="center">
-            <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-              ${logoUrl ? `<tr><td align="center" style="padding: 48px 32px 24px;"><img src="${logoUrl}" alt="Lekhon" width="100" height="100" style="border-radius: 50%; border: 3px solid #f0f0f0;"/></td></tr>` : '<tr><td style="padding-top: 48px;"></td></tr>'}
-              <tr><td class="content" align="center" style="padding: 0 32px 32px;"><h1 style="margin: 0 0 16px; color: #1a1a1a; font-size: 28px; font-weight: 600; line-height: 1.3;">Reset Your Password</h1><p style="margin: 0; color: #666; font-size: 16px; line-height: 1.6;">Hi ${username}, we received a request to reset your password.</p></td></tr>
-              <tr><td class="content" style="padding: 0 32px;"><p style="margin: 0 0 24px; color: #333; font-size: 15px; line-height: 1.6;">Use this code to create a new password:</p></td></tr>
-              <tr><td align="center" style="padding: 0 32px 32px;"><div class="code-box" style="display: inline-block; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: #ffffff; font-size: 32px; font-weight: 700; padding: 24px 40px; border-radius: 10px; letter-spacing: 8px; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);">${resetCode}</div></td></tr>
-              <tr><td class="content" style="padding: 0 32px 32px;"><div style="background-color: #fff8e1; border-left: 3px solid #ffa726; padding: 16px 20px; border-radius: 6px;"><p style="margin: 0; color: #e65100; font-size: 14px; line-height: 1.5;">⏱️ This code will expire in 2 minutes for your security.</p></div></td></tr>
-              <tr><td class="content" style="padding: 0 32px 48px;"><p style="margin: 0; color: #999; font-size: 14px; line-height: 1.6;">If you didn't request a password reset, you can safely ignore this email. Your password won't be changed.</p></td></tr>
-              <tr><td style="background-color: #fafafa; padding: 24px 32px; border-top: 1px solid #e0e0e0;"><p style="margin: 0; color: #999; font-size: 12px; text-align: center; line-height: 1.5;">© ${new Date().getFullYear()} Lekhon. All rights reserved.</p></td></tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
+const sendPasswordResetEmail = async (email, username, resetCode, expiresAt) => {
+  console.log('[EMAIL] Sending password reset email to:', email);
+  const { subject, html } = renderPasswordResetEmail({
+    username,
+    code: resetCode,
+    expiresAt,
+  });
 
   return sendEmail({
     to: email,
-    subject: 'Password Reset Code - Lekhon',
+    subject,
     html,
   });
 };
 
-const sendWelcomeEmail = async (email, username) => {
-  console.log('📧 [EMAIL] Sending welcome email to:', email);
-  const logoUrl = process.env.LOGO_URL || '';
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  const html = `
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <title>Welcome to Lekhon</title>
-      <style>
-        @media only screen and (max-width: 600px) {
-          .container { width: 100% !important; }
-          .content { padding: 20px !important; }
-          h1 { font-size: 24px !important; }
-          .button { padding: 14px 28px !important; font-size: 15px !important; }
-        }
-      </style>
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f5f5f5; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #f5f5f5; padding: 20px 0;">
-        <tr>
-          <td align="center">
-            <table class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-              ${logoUrl ? `<tr><td align="center" style="padding: 48px 32px 24px;"><img src="${logoUrl}" alt="Lekhon" width="100" height="100" style="border-radius: 50%; border: 3px solid #f0f0f0;"/></td></tr>` : '<tr><td style="padding-top: 48px;"></td></tr>'}
-              <tr><td class="content" align="center" style="padding: 0 32px 24px;"><h1 style="margin: 0 0 16px; color: #1a1a1a; font-size: 28px; font-weight: 600; line-height: 1.3;">🎉 You're all set, ${username}!</h1><p style="margin: 0; color: #666; font-size: 16px; line-height: 1.6;">Your email has been verified successfully.</p></td></tr>
-              <tr><td class="content" style="padding: 0 32px 32px;"><p style="margin: 0 0 24px; color: #333; font-size: 15px; line-height: 1.6;">Welcome to Lekhon! We're thrilled to have you as part of our community. You can now start sharing your thoughts, connecting with others, and exploring amazing content.</p></td></tr>
-              <tr><td align="center" style="padding: 0 32px 32px;"><a href="${frontendUrl}" class="button" style="display: inline-block; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #ffffff; text-decoration: none; padding: 16px 36px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);">Start Writing</a></td></tr>
-              <tr><td class="content" style="padding: 0 32px 48px;"><p style="margin: 0; color: #666; font-size: 15px; line-height: 1.6; text-align: center;">Happy blogging! 🚀</p></td></tr>
-              <tr><td style="background-color: #fafafa; padding: 24px 32px; border-top: 1px solid #e0e0e0;"><p style="margin: 0; color: #999; font-size: 12px; text-align: center; line-height: 1.5;">© ${new Date().getFullYear()} Lekhon. All rights reserved.</p></td></tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
+const sendWelcomeEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Sending welcome email to:', email);
+  const { subject, html } = renderWelcomeEmail({
+    username,
+    temporaryPassword: options.temporaryPassword || ''
+  });
 
   return sendEmail({
     to: email,
-    subject: 'Welcome to Lekhon',
+    subject,
     html,
   });
 };
 
-const sendPasswordChangeConfirmation = async (email, username, confirmationCode) => {
-  console.log('📧 [EMAIL] Sending password change confirmation to:', email);
-  const logoUrl = process.env.LOGO_URL || '';
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
-        <tr>
-          <td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
-              ${logoUrl ? `<tr><td align="center" style="padding: 40px 40px 20px;"><img src="${logoUrl}" alt="Lekhon" style="width: 120px; height: 120px; object-fit: cover; border-radius: 50%; display: block;"/></td></tr>` : ''}
-              <tr><td align="center" style="padding: ${logoUrl ? '20px' : '40px'} 40px 30px;"><h1 style="margin: 0; color: #111827; font-size: 28px; font-weight: 700;">🔐 Password Change</h1></td></tr>
-              <tr><td style="padding: 0 40px;"><p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hi <strong>${username}</strong>,</p><p style="margin: 0 0 30px; color: #374151; font-size: 16px; line-height: 1.6;">Confirm your password change with this code:</p></td></tr>
-              <tr><td align="center" style="padding: 0 40px 30px;"><div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; font-size: 36px; font-weight: 700; padding: 24px; border-radius: 12px; letter-spacing: 10px; display: inline-block;">${confirmationCode}</div></td></tr>
-              <tr><td style="padding: 0 40px 30px;"><div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px;"><p style="margin: 0; color: #92400e; font-size: 14px; font-weight: 600;">⏰ Expires in 2 minutes</p></div></td></tr>
-              <tr><td style="padding: 0 40px 40px;"><p style="margin: 0; color: #9ca3af; font-size: 14px; line-height: 1.6;">If you didn't request this, please secure your account immediately.</p></td></tr>
-              <tr><td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb;"><p style="margin: 0; color: #6b7280; font-size: 13px; text-align: center;">© 2024 Lekhon. All rights reserved.</p></td></tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
+const sendPasswordChangeConfirmation = async (email, username, confirmationCode, expiresAt) => {
+  console.log('[EMAIL] Sending password change confirmation to:', email);
+  const { subject, html } = renderPasswordChangeConfirmationEmail({
+    username,
+    code: confirmationCode,
+    expiresAt,
+  });
 
   return sendEmail({
     to: email,
-    subject: 'Confirm Password Change - Lekhon',
+    subject,
     html,
   });
 };
 
-const sendAccountDeletionConfirmation = async (email, username, confirmationCode) => {
-  console.log('📧 [EMAIL] Sending account deletion confirmation to:', email);
-  const logoUrl = process.env.LOGO_URL || '';
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
-        <tr>
-          <td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
-              ${logoUrl ? `<tr><td align="center" style="padding: 40px 40px 20px;"><img src="${logoUrl}" alt="Lekhon" style="width: 120px; height: 120px; object-fit: cover; border-radius: 50%; display: block;"/></td></tr>` : ''}
-              <tr><td align="center" style="padding: ${logoUrl ? '20px' : '40px'} 40px 30px;"><h1 style="margin: 0; color: #dc2626; font-size: 28px; font-weight: 700;">⚠️ Account Deletion</h1></td></tr>
-              <tr><td style="padding: 0 40px;"><p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hi <strong>${username}</strong>,</p><p style="margin: 0 0 30px; color: #374151; font-size: 16px; line-height: 1.6;">Confirm account deletion with this code:</p></td></tr>
-              <tr><td align="center" style="padding: 0 40px 30px;"><div style="background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); color: #ffffff; font-size: 36px; font-weight: 700; padding: 24px; border-radius: 12px; letter-spacing: 10px; display: inline-block;">${confirmationCode}</div></td></tr>
-              <tr><td style="padding: 0 40px 20px;"><div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px;"><p style="margin: 0; color: #92400e; font-size: 14px; font-weight: 600;">⏰ Expires in 2 minutes</p></div></td></tr>
-              <tr><td style="padding: 0 40px 30px;"><div style="background-color: #fee2e2; border-left: 4px solid #dc2626; padding: 16px; border-radius: 8px;"><p style="margin: 0; color: #991b1b; font-size: 14px; font-weight: 600;">⚠️ This action is permanent and cannot be undone!</p></div></td></tr>
-              <tr><td style="padding: 0 40px 40px;"><p style="margin: 0; color: #9ca3af; font-size: 14px; line-height: 1.6;">If you didn't request this, please secure your account immediately.</p></td></tr>
-              <tr><td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb;"><p style="margin: 0; color: #6b7280; font-size: 13px; text-align: center;">© 2024 Lekhon. All rights reserved.</p></td></tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
+const sendAccountDeletionConfirmation = async (email, username, confirmationCode, expiresAt) => {
+  console.log('[EMAIL] Sending account deletion confirmation to:', email);
+  const { subject, html } = renderAccountDeletionConfirmationEmail({
+    username,
+    code: confirmationCode,
+    expiresAt,
+  });
 
   return sendEmail({
     to: email,
-    subject: 'Confirm Account Deletion - Lekhon',
+    subject,
     html,
   });
 };
 
-const sendPasswordChangedSuccess = async (email, username) => {
-  console.log('📧 [EMAIL] Sending password changed success to:', email);
-  const logoUrl = process.env.LOGO_URL || '';
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
-        <tr>
-          <td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
-              ${logoUrl ? `<tr><td align="center" style="padding: 40px 40px 20px;"><img src="${logoUrl}" alt="Lekhon" style="width: 120px; height: 120px; object-fit: cover; border-radius: 50%; display: block;"/></td></tr>` : ''}
-              <tr><td align="center" style="padding: ${logoUrl ? '20px' : '40px'} 40px 30px;"><h1 style="margin: 0; color: #059669; font-size: 28px; font-weight: 700;">✅ Password Changed</h1></td></tr>
-              <tr><td style="padding: 0 40px 20px;"><p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hi <strong>${username}</strong>,</p><p style="margin: 0; color: #374151; font-size: 16px; line-height: 1.6;">Your password has been changed successfully.</p></td></tr>
-              <tr><td style="padding: 0 40px 40px;"><p style="margin: 0; color: #9ca3af; font-size: 14px; line-height: 1.6;">If you didn't make this change, please contact support immediately.</p></td></tr>
-              <tr><td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb;"><p style="margin: 0; color: #6b7280; font-size: 13px; text-align: center;">© 2024 Lekhon. All rights reserved.</p></td></tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
+const sendPasswordChangedSuccess = async (email, username, changedAt) => {
+  console.log('[EMAIL] Sending password changed success to:', email);
+  const { subject, html } = renderPasswordChangedSuccessEmail({
+    username,
+    changedAt,
+  });
 
   return sendEmail({
     to: email,
-    subject: 'Password Changed Successfully - Lekhon',
+    subject,
     html,
   });
 };
 
 const sendAccountDeletedSuccess = async (email, username) => {
-  console.log('📧 [EMAIL] Sending account deleted success to:', email);
-  const logoUrl = process.env.LOGO_URL || '';
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
-        <tr>
-          <td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
-              ${logoUrl ? `<tr><td align="center" style="padding: 40px 40px 20px;"><img src="${logoUrl}" alt="Lekhon" style="width: 120px; height: 120px; object-fit: cover; border-radius: 50%; display: block;"/></td></tr>` : ''}
-              <tr><td align="center" style="padding: ${logoUrl ? '20px' : '40px'} 40px 30px;"><h1 style="margin: 0; color: #6b7280; font-size: 28px; font-weight: 700;">Account Deleted</h1></td></tr>
-              <tr><td style="padding: 0 40px 20px;"><p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Hi <strong>${username}</strong>,</p><p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">Your account has been permanently deleted from Lekhon.</p><p style="margin: 0; color: #374151; font-size: 16px; line-height: 1.6;">We're sorry to see you go. If you change your mind, you're always welcome to create a new account.</p></td></tr>
-              <tr><td style="padding: 0 40px 40px;"><p style="margin: 0; color: #9ca3af; font-size: 14px; line-height: 1.6;">Thank you for being part of our community.</p></td></tr>
-              <tr><td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb;"><p style="margin: 0; color: #6b7280; font-size: 13px; text-align: center;">© 2024 Lekhon. All rights reserved.</p></td></tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
+  console.log('[EMAIL] Sending account deleted success to:', email);
+  const { subject, html } = renderAccountDeletedSuccessEmail({ username });
 
   return sendEmail({
     to: email,
-    subject: 'Account Deleted - Lekhon',
+    subject,
     html,
   });
 };
 
 const sendContactEmail = async ({ userEmail, username, issue, advice }) => {
-  console.log('📧 [EMAIL] Sending contact message to admin');
-  const logoUrl = process.env.LOGO_URL || '';
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
-        <tr>
-          <td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); overflow: hidden;">
-              ${logoUrl ? `<tr><td align="center" style="padding: 40px 40px 20px;"><img src="${logoUrl}" alt="Lekhon" style="width: 120px; height: 120px; object-fit: cover; border-radius: 50%; display: block;"/></td></tr>` : ''}
-              <tr><td align="center" style="padding: ${logoUrl ? '20px' : '40px'} 40px 30px;"><h1 style="margin: 0; color: #111827; font-size: 28px; font-weight: 700;">📧 New Contact Message</h1></td></tr>
-              <tr><td style="padding: 0 40px 20px;"><p style="margin: 0; color: #374151; font-size: 16px; line-height: 1.6;"><strong>From:</strong> ${username} (${userEmail})</p></td></tr>
-              <tr><td style="padding: 0 40px 20px;"><div style="border-top: 2px solid #e5e7eb; margin: 20px 0;"></div><h3 style="margin: 0 0 12px; color: #111827; font-size: 18px; font-weight: 600;">Issue / Problem:</h3><div style="background-color: #fef3c7; padding: 16px; border-radius: 8px; border-left: 4px solid #f59e0b;"><p style="margin: 0; color: #374151; font-size: 15px; line-height: 1.6;">${issue}</p></div></td></tr>
-              ${advice ? `<tr><td style="padding: 0 40px 30px;"><h3 style="margin: 0 0 12px; color: #111827; font-size: 18px; font-weight: 600;">Advice / Suggestions:</h3><div style="background-color: #dbeafe; padding: 16px; border-radius: 8px; border-left: 4px solid #3b82f6;"><p style="margin: 0; color: #374151; font-size: 15px; line-height: 1.6;">${advice}</p></div></td></tr>` : '<tr><td style="padding: 0 40px 30px;"></td></tr>'}
-              <tr><td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb;"><p style="margin: 0; color: #6b7280; font-size: 13px; text-align: center;">© 2024 Lekhon. All rights reserved.</p></td></tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
-  `;
+  console.log('[EMAIL] Sending contact message to admin');
+  const { subject, html } = renderContactAdminEmail({
+    username,
+    userEmail,
+    issue,
+    advice,
+  });
 
   return sendEmail({
-    to: process.env.My_email || 'soumyamaiti20@gmail.com',
-    subject: `Contact Message from ${username} - Lekhon`,
+    to: process.env.My_email || process.env.MY_EMAIL || 'soumyamaiti20@gmail.com',
+    subject,
     html,
   });
 };
