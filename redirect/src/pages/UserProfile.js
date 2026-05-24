@@ -311,23 +311,23 @@ const UserProfile = () => {
 
   const getHeatmapColor = (count, isInYear) => {
     if (!isInYear) return 'bg-transparent';
-    if (count === 0) return 'bg-gray-100';
-    if (count === 1) return 'bg-green-200';
-    if (count === 2) return 'bg-green-400';
-    if (count >= 3) return 'bg-green-600';
-    return 'bg-gray-100';
+    if (count === 0) return 'bg-[var(--background-secondary)]';
+    if (count === 1) return 'bg-green-200 dark:bg-green-800';
+    if (count === 2) return 'bg-green-400 dark:bg-green-600';
+    if (count >= 3) return 'bg-green-600 dark:bg-green-400';
+    return 'bg-[var(--background-secondary)]';
   };
 
   const getSocialIcon = (name) => {
-    if (!name) return <FaGlobe className="text-gray-600" />;
+    if (!name) return <FaGlobe className="text-[var(--text-secondary)]" />;
     const lowerName = name.toLowerCase();
     if (lowerName.includes('facebook')) return <FaFacebook className="text-blue-600" />;
-    if (lowerName.includes('twitter')) return <FaTwitter className="text-blue-400" />;
+    if (lowerName.includes('twitter') || lowerName.includes('x.com')) return <FaXTwitter className="text-sky-500" />;
     if (lowerName.includes('instagram')) return <FaInstagram className="text-pink-600" />;
     if (lowerName.includes('youtube')) return <FaYoutube className="text-red-600" />;
-    if (lowerName.includes('github')) return <FaGithub className="text-gray-800" />;
+    if (lowerName.includes('github')) return <FaGithub className="text-[var(--text-primary)]" />;
     if (lowerName.includes('linkedin')) return <FaLinkedin className="text-blue-700" />;
-    return <FaGlobe className="text-gray-600" />;
+    return <FaGlobe className="text-[var(--text-secondary)]" />;
   };
 
   const handleShare = async (post, type) => {
@@ -480,7 +480,7 @@ return (
             <h1
               className={`text-3xl font-bold mb-2 flex items-center gap-2 ${profile.hasActiveStatus
                 ? 'animate-gradient cursor-pointer'
-                : 'text-gray-800'
+                : 'text-[var(--text-primary)]'
                 }`}
               onClick={() => {
                 // Allow status viewing for all logged-in users when clicking username
@@ -501,32 +501,32 @@ return (
                   </div>
                 ) : (
                   currentUser && currentUser._id === profile._id && (
-                    <GoUnverified className="text-gray-400" size={24} title="Not Verified" />
+                    <GoUnverified className="text-[var(--text-muted)]" size={24} title="Not Verified" />
                   )
                 )
               )}
               {(profile.isGuest || profile.role === 'guest') && <GuestBadge size="lg" />}
             </h1>
-            {profile.fullName && <p className="text-lg text-gray-600 mb-3">{profile.fullName}</p>}
-            {profile.description && <p className="text-gray-600 italic mb-3">{profile.description}</p>}
-            {profile.bio && <p className="text-gray-700 mb-4">{profile.bio}</p>}
+            {profile.fullName && <p className="text-lg text-[var(--text-secondary)] mb-3">{profile.fullName}</p>}
+            {profile.description && <p className="text-[var(--text-secondary)] italic mb-3">{profile.description}</p>}
+            {profile.bio && <p className="text-[var(--text-primary)] mb-4">{profile.bio}</p>}
 
             {/* Stats */}
             <div className="flex flex-wrap justify-center sm:justify-start gap-6 mb-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-blue-600">{(blogs.length + articles.length + shorts.length) || 0}</p>
-                <p className="text-sm text-gray-600 flex items-center gap-1"><FaFileAlt /> {t('Posts')} ({blogs.length} blogs + {articles.length} articles + {shorts.length} shorts)</p>
+                <p className="text-2xl font-bold text-[var(--brand-primary)]">{(blogs.length + articles.length + shorts.length) || 0}</p>
+                <p className="text-sm text-[var(--text-secondary)] flex items-center gap-1"><FaFileAlt /> {t('Posts')} ({blogs.length} blogs + {articles.length} articles + {shorts.length} shorts)</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-blue-600">{profile.followerCount || 0}</p>
-                <p className="text-sm text-gray-600 flex items-center gap-1"><FaUsers /> {t('Followers')}</p>
+                <p className="text-2xl font-bold text-[var(--brand-primary)]">{profile.followerCount || 0}</p>
+                <p className="text-sm text-[var(--text-secondary)] flex items-center gap-1"><FaUsers /> {t('Followers')}</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-blue-600">{profile.followingCount || 0}</p>
-                <p className="text-sm text-gray-600 flex items-center gap-1"><FaUsers /> {t('Following')}</p>
+                <p className="text-2xl font-bold text-[var(--brand-primary)]">{profile.followingCount || 0}</p>
+                <p className="text-sm text-[var(--text-secondary)] flex items-center gap-1"><FaUsers /> {t('Following')}</p>
               </div>
               <div className="text-center">
-                <p className="text-sm text-gray-600 flex items-center gap-1">
+                <p className="text-sm text-[var(--text-secondary)] flex items-center gap-1">
                   <FaCalendar /> {t('Member since')} {new Date(profile.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
                 </p>
               </div>
@@ -553,7 +553,7 @@ return (
                   }}
                   disabled={followLoading}
                   className={`flex items-center gap-2 px-6 py-2 rounded-lg font-semibold transition ${isFollowing
-                    ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    ? 'theme-soft-button'
                     : 'bg-blue-600 text-white hover:bg-blue-700'
                     } ${followLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
@@ -567,7 +567,7 @@ return (
                 </button>
                 <button
                   onClick={() => navigate('/chat', { state: { selectedUser: profile } })}
-                  className="flex items-center gap-2 px-6 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 rounded-lg font-semibold transition"
+                  className="flex items-center gap-2 px-6 py-2 theme-soft-button rounded-lg font-semibold transition"
                 >
                   <FaEnvelope /> {t('Message')}
                 </button>
@@ -583,7 +583,7 @@ return (
                     href={social.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg transition text-sm"
+                    className="flex items-center gap-2 bg-[var(--background-secondary)] border border-[var(--border-default)] text-[var(--text-primary)] hover:bg-[var(--surface-elevated)] px-3 py-2 rounded-lg transition text-sm"
                     title={social.name || social.url}
                   >
                     <span className="text-xl">{getSocialIcon(social.name || social.url)}</span>
@@ -596,14 +596,14 @@ return (
         </div>
 
         {/* GitHub-style Contribution Heatmap */}
-        {blogs.length > 0 && (
-          <div className="mt-6 pt-6 border-t">
+        {(blogs.length > 0 || articles.length > 0 || shorts.length > 0) && (
+          <div className="mt-6 pt-6 border-t border-[var(--border-default)]">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="text-sm font-semibold text-gray-700">{t('Post Activity')}</h3>
+              <h3 className="text-sm font-semibold text-[var(--text-primary)]">{t('Post Activity')}</h3>
               <select
                 value={heatmapYear}
                 onChange={(e) => setHeatmapYear(Number(e.target.value))}
-                className="text-xs border rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="text-xs border border-[var(--border-default)] rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] bg-[var(--background-secondary)] text-[var(--text-primary)]"
               >
                 {getAvailableYears().map(year => (
                   <option key={year} value={year}>{year}</option>
@@ -615,11 +615,11 @@ return (
                 {/* Day labels */}
                 <div className="flex flex-col gap-0.5 mr-1 flex-shrink-0">
                   <div className="h-2.5"></div>
-                  <div className="w-6 h-2.5 text-[9px] text-gray-500 flex items-center">Mon</div>
+                  <div className="w-6 h-2.5 text-[9px] text-[var(--text-secondary)] flex items-center">Mon</div>
                   <div className="w-6 h-2.5"></div>
-                  <div className="w-6 h-2.5 text-[9px] text-gray-500 flex items-center">Wed</div>
+                  <div className="w-6 h-2.5 text-[9px] text-[var(--text-secondary)] flex items-center">Wed</div>
                   <div className="w-6 h-2.5"></div>
-                  <div className="w-6 h-2.5 text-[9px] text-gray-500 flex items-center">Fri</div>
+                  <div className="w-6 h-2.5 text-[9px] text-[var(--text-secondary)] flex items-center">Fri</div>
                   <div className="w-6 h-2.5"></div>
                 </div>
 
@@ -630,7 +630,7 @@ return (
                     {getContributionData().months.map((m, idx) => (
                       <div
                         key={idx}
-                        className="text-[9px] text-gray-500 absolute"
+                        className="text-[9px] text-[var(--text-secondary)] absolute"
                         style={{ left: `${m.weekIndex * 12}px` }}
                       >
                         {m.month}
@@ -660,11 +660,11 @@ return (
                 </div>
               </div>
             </div>
-            <p className="text-[10px] text-gray-500 mt-2 md:hidden">Scroll horizontally to see full year</p>
-            <div className="flex items-center gap-2 mt-3 text-[10px] text-gray-600">
+            <p className="text-[10px] text-[var(--text-secondary)] mt-2 md:hidden">Scroll horizontally to see full year</p>
+            <div className="flex items-center gap-2 mt-3 text-[10px] text-[var(--text-secondary)]">
               <span>{t('Less')}</span>
               <div className="flex gap-0.5">
-                <div className="w-2.5 h-2.5 bg-gray-100 rounded-sm"></div>
+                <div className="w-2.5 h-2.5 bg-[var(--background-secondary)] rounded-sm"></div>
                 <div className="w-2.5 h-2.5 bg-green-200 rounded-sm"></div>
                 <div className="w-2.5 h-2.5 bg-green-400 rounded-sm"></div>
                 <div className="w-2.5 h-2.5 bg-green-600 rounded-sm"></div>
@@ -676,20 +676,20 @@ return (
       </div>
 
       {/* Activity Graph */}
-      {blogs.length > 0 && (
+      {(blogs.length > 0 || articles.length > 0 || shorts.length > 0) && (
         <div className="theme-modal-card rounded-2xl shadow-xl p-6 sm:p-8 mb-6">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-800">{t('Activity Overview')}</h2>
+            <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('Activity Overview')}</h2>
             {graphView !== 'months' && (
               <button
                 onClick={handleBackClick}
-                className="text-blue-600 hover:text-blue-800 text-sm font-semibold"
+                className="text-[var(--brand-primary)] hover:opacity-80 text-sm font-semibold"
               >
                 {t('Back')} to {graphView === 'weeks' ? t('Months') : t('Weeks')}
               </button>
             )}
           </div>
-          <p className="text-sm text-gray-600 mb-4">
+          <p className="text-sm text-[var(--text-secondary)] mb-4">
             {graphView === 'months' && t('Click on a month to see weekly activity')}
             {graphView === 'weeks' && t('Click on a week to see daily activity')}
             {graphView === 'days' && t('Click on a day to filter blog posts below')}
@@ -715,7 +715,7 @@ return (
                       </div>
                     </div>
                   </div>
-                  <p className="text-xs sm:text-sm text-gray-600 font-medium">{item.label}</p>
+                  <p className="text-xs sm:text-sm text-[var(--text-secondary)] font-medium">{item.label}</p>
                 </div>
               );
             })}
@@ -729,21 +729,21 @@ return (
           <div className="flex gap-4">
             <button
               onClick={() => setContentTab('posts')}
-              className={`text-xl font-bold transition ${contentTab === 'posts' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-400 hover:text-gray-600'
+              className={`text-xl font-bold transition ${contentTab === 'posts' ? 'text-[var(--brand-primary)] border-b-2 border-[var(--brand-primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                 }`}
             >
               {t('Blog Posts')} ({blogs.length})
             </button>
             <button
               onClick={() => setContentTab('articles')}
-              className={`text-xl font-bold transition ${contentTab === 'articles' ? 'text-green-600 border-b-2 border-green-600' : 'text-gray-400 hover:text-gray-600'
+              className={`text-xl font-bold transition ${contentTab === 'articles' ? 'text-[var(--brand-primary)] border-b-2 border-[var(--brand-primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                 }`}
             >
               {t('Articles')} ({articles.length})
             </button>
             <button
               onClick={() => setContentTab('shorts')}
-              className={`text-xl font-bold transition ${contentTab === 'shorts' ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-400 hover:text-gray-600'
+              className={`text-xl font-bold transition ${contentTab === 'shorts' ? 'text-[var(--brand-primary)] border-b-2 border-[var(--brand-primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
                 }`}
             >
               {t('Shorts')} ({shorts.length})
@@ -752,21 +752,21 @@ return (
           {selectedDay && (
             <button
               onClick={() => setSelectedDay(null)}
-              className="text-sm text-blue-600 hover:text-blue-800"
+              className="text-sm text-[var(--brand-primary)] hover:opacity-80"
             >
               {t('Show All Posts')}
             </button>
           )}
         </div>
         {selectedDay && (
-          <p className="text-sm text-gray-600 mb-4 bg-blue-50 p-3 rounded-lg">
+          <p className="text-sm text-[var(--text-secondary)] mb-4 bg-[var(--background-secondary)] border border-[var(--border-default)] p-3 rounded-lg">
             {t('Showing posts from')} {selectedDay.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
         )}
 
         {contentTab === 'posts' ? (
           getFilteredBlogs().length === 0 ? (
-            <p className="text-gray-600 text-center py-8">
+            <p className="text-[var(--text-secondary)] text-center py-8">
               {selectedDay ? t('No posts on this day') : t('No posts yet')}
             </p>
           ) : (
@@ -775,21 +775,21 @@ return (
                 <Link
                   key={post._id}
                   to={`/blog/${post._id}`}
-                  className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl p-5 hover:shadow-lg transition flex flex-col"
+                  className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-xl p-5 hover:shadow-lg hover:border-[var(--brand-primary)] transition flex flex-col"
                 >
-                  <h3 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2">{post.title}</h3>
-                  <p className="text-gray-600 text-sm mb-3 line-clamp-3">{post.content.substring(0, 150)}...</p>
+                  <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2 line-clamp-2">{post.title}</h3>
+                  <p className="text-[var(--text-secondary)] text-sm mb-3 line-clamp-3">{post.content.substring(0, 150)}...</p>
                   {post.tags && post.tags.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-3">
                       {post.tags.slice(0, 3).map((tag, idx) => (
-                        <span key={idx} className="bg-blue-100 text-blue-600 px-2 py-1 rounded text-xs">
+                        <span key={idx} className="bg-[var(--surface-card)] border border-[var(--border-default)] text-[var(--brand-primary)] px-2 py-1 rounded text-xs">
                           {tag}
                         </span>
                       ))}
                     </div>
                   )}
-                  <div className="text-xs text-gray-500 mb-2">{new Date(post.createdAt).toLocaleDateString()}</div>
-                  <div className="flex items-center justify-between text-sm text-gray-500 pt-3 border-t border-gray-200 mt-auto">
+                  <div className="text-xs text-[var(--text-secondary)] mb-2">{new Date(post.createdAt).toLocaleDateString()}</div>
+                  <div className="flex items-center justify-between text-sm text-[var(--text-secondary)] pt-3 border-t border-[var(--border-default)] mt-auto">
                     <div className="flex items-center gap-3">
                       <span className="flex items-center gap-1"><FaEye size={14} /> {post.views || 0}</span>
                       <span className="flex items-center gap-1"><FaComment size={14} /> {post.commentCount || 0}</span>
@@ -797,7 +797,7 @@ return (
                     </div>
                     <button
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleShare(post, 'blog'); }}
-                      className="text-blue-600 hover:text-blue-800 transition"
+                      className="text-[var(--brand-primary)] hover:opacity-80 transition"
                     >
                       <FaShare size={14} />
                     </button>
@@ -808,7 +808,7 @@ return (
           )
         ) : contentTab === 'articles' ? (
           getFilteredArticles().length === 0 ? (
-            <p className="text-gray-600 text-center py-8">
+            <p className="text-[var(--text-secondary)] text-center py-8">
               {selectedDay ? t('No articles on this day') : t('No articles yet')}
             </p>
           ) : (
@@ -817,21 +817,21 @@ return (
                 <Link
                   key={article._id}
                   to={`/article/${article._id}`}
-                  className="bg-gradient-to-br from-green-50 to-teal-50 rounded-xl p-5 hover:shadow-lg transition flex flex-col"
+                  className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-xl p-5 hover:shadow-lg hover:border-[var(--brand-primary)] transition flex flex-col"
                 >
-                  <h3 className="text-xl font-bold text-gray-800 mb-2 line-clamp-2">{article.title}</h3>
-                  <p className="text-gray-600 text-sm mb-3 line-clamp-3">{article.content.substring(0, 150)}...</p>
+                  <h3 className="text-xl font-bold text-[var(--text-primary)] mb-2 line-clamp-2">{article.title}</h3>
+                  <p className="text-[var(--text-secondary)] text-sm mb-3 line-clamp-3">{article.content.substring(0, 150)}...</p>
                   {article.tags && article.tags.length > 0 && (
                     <div className="flex flex-wrap gap-2 mb-3">
                       {article.tags.slice(0, 3).map((tag, idx) => (
-                        <span key={idx} className="bg-green-100 text-green-600 px-2 py-1 rounded text-xs">
+                        <span key={idx} className="bg-[var(--surface-card)] border border-[var(--border-default)] text-[var(--brand-primary)] px-2 py-1 rounded text-xs">
                           {tag}
                         </span>
                       ))}
                     </div>
                   )}
-                  <div className="text-xs text-gray-500 mb-2">{new Date(article.createdAt).toLocaleDateString()}</div>
-                  <div className="flex items-center justify-between text-sm text-gray-500 pt-3 border-t border-gray-200 mt-auto">
+                  <div className="text-xs text-[var(--text-secondary)] mb-2">{new Date(article.createdAt).toLocaleDateString()}</div>
+                  <div className="flex items-center justify-between text-sm text-[var(--text-secondary)] pt-3 border-t border-[var(--border-default)] mt-auto">
                     <div className="flex items-center gap-3">
                       <span className="flex items-center gap-1"><FaEye size={14} /> {article.views || 0}</span>
                       <span className="flex items-center gap-1"><FaComment size={14} /> {article.commentCount || 0}</span>
@@ -839,7 +839,7 @@ return (
                     </div>
                     <button
                       onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleShare(article, 'article'); }}
-                      className="text-green-600 hover:text-green-800 transition"
+                      className="text-[var(--brand-primary)] hover:opacity-80 transition"
                     >
                       <FaShare size={14} />
                     </button>
@@ -850,7 +850,7 @@ return (
           )
         ) : (
           getFilteredShorts().length === 0 ? (
-            <p className="text-gray-600 text-center py-8">
+            <p className="text-[var(--text-secondary)] text-center py-8">
               {selectedDay ? t('No shorts on this day') : t('No shorts yet')}
             </p>
           ) : (
@@ -949,8 +949,8 @@ return (
         <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4" onClick={() => setShowShareModal(false)}>
           <div className="theme-modal-card rounded-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-gray-800">{t('Share this post')}</h3>
-              <button onClick={() => setShowShareModal(false)} className="text-gray-500 hover:text-gray-700">
+              <h3 className="text-xl font-bold text-[var(--text-primary)]">{t('Share this post')}</h3>
+              <button onClick={() => setShowShareModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                 <FaTimes />
               </button>
             </div>
@@ -975,8 +975,8 @@ return (
         <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4">
           <div className="theme-modal-card rounded-2xl shadow-xl p-8 max-w-md w-full text-center">
             <FaLock className="text-6xl mb-4 text-blue-500 mx-auto" />
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">{t('Login Required')}</h2>
-            <p className="text-gray-600 mb-6">{t('Please login to view status posts.')}</p>
+            <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-2">{t('Login Required')}</h2>
+            <p className="text-[var(--text-secondary)] mb-6">{t('Please login to view status posts.')}</p>
             <div className="flex gap-3">
               <button
                 onClick={() => navigate('/login', { state: { from: `/user/${id}` } })}

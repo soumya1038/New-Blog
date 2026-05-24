@@ -83,17 +83,60 @@ export const BlogDetailSkeleton = () => (
 
 // User Profile Skeleton
 export const UserProfileSkeleton = () => (
-  <div className="bg-white rounded-2xl shadow-xl p-8">
-    <div className="flex items-center gap-6 mb-6">
-      <div className={`w-32 h-32 bg-gray-200 rounded-full ${shimmer}`}></div>
-      <div className="flex-1">
-        <div className={`h-8 bg-gray-200 rounded w-48 mb-3 ${shimmer}`}></div>
-        <div className={`h-4 bg-gray-200 rounded w-64 mb-4 ${shimmer}`}></div>
-        <div className="flex gap-6">
-          <div className={`h-6 bg-gray-200 rounded w-20 ${shimmer}`}></div>
-          <div className={`h-6 bg-gray-200 rounded w-20 ${shimmer}`}></div>
-          <div className={`h-6 bg-gray-200 rounded w-20 ${shimmer}`}></div>
+  <div className="space-y-6">
+    <div className="theme-panel rounded-3xl shadow-xl p-6 sm:p-8 border border-[var(--border-default)]">
+      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 mb-6">
+        <SkeletonBlock className="w-32 h-32 rounded-full" />
+        <div className="flex-1 w-full">
+          <SkeletonBlock className="h-8 w-56 mb-3" />
+          <SkeletonBlock className="h-4 w-2/3 mb-2" />
+          <SkeletonBlock className="h-4 w-1/2 mb-4" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <SkeletonBlock className="h-14 w-full rounded-lg" />
+            <SkeletonBlock className="h-14 w-full rounded-lg" />
+            <SkeletonBlock className="h-14 w-full rounded-lg" />
+            <SkeletonBlock className="h-14 w-full rounded-lg" />
+          </div>
         </div>
+      </div>
+      <SkeletonBlock className="h-4 w-32 mb-3" />
+      <div className="grid grid-cols-12 gap-1">
+        {[...Array(60)].map((_, i) => (
+          <SkeletonBlock key={i} className="h-2.5 w-full rounded-sm" />
+        ))}
+      </div>
+    </div>
+
+    <div className="theme-modal-card rounded-2xl shadow-xl p-6 sm:p-8 border border-[var(--border-default)]">
+      <div className="flex items-center justify-between mb-6">
+        <SkeletonBlock className="h-7 w-52" />
+        <SkeletonBlock className="h-5 w-24 rounded-full" />
+      </div>
+      <div className="flex items-end gap-3 h-48">
+        <SkeletonBlock className="h-20 w-full rounded-t-lg" />
+        <SkeletonBlock className="h-36 w-full rounded-t-lg" />
+        <SkeletonBlock className="h-28 w-full rounded-t-lg" />
+        <SkeletonBlock className="h-40 w-full rounded-t-lg" />
+        <SkeletonBlock className="h-24 w-full rounded-t-lg" />
+        <SkeletonBlock className="h-32 w-full rounded-t-lg" />
+      </div>
+    </div>
+
+    <div className="theme-modal-card rounded-2xl shadow-xl p-6 sm:p-8 border border-[var(--border-default)]">
+      <div className="flex items-center gap-4 mb-6">
+        <SkeletonBlock className="h-8 w-28 rounded-md" />
+        <SkeletonBlock className="h-8 w-24 rounded-md" />
+        <SkeletonBlock className="h-8 w-20 rounded-md" />
+      </div>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)] p-5 space-y-3">
+            <SkeletonBlock className="h-6 w-4/5" />
+            <SkeletonBlock className="h-4 w-full" />
+            <SkeletonBlock className="h-4 w-5/6" />
+            <SkeletonBlock className="h-4 w-2/3" />
+          </div>
+        ))}
       </div>
     </div>
   </div>
