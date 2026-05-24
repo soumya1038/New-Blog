@@ -25,6 +25,12 @@ const normalizeUrl = (value, fallback) => {
 
 const normalizeSubjectText = (value) => String(value || '').replace(/[\r\n]+/g, ' ').trim();
 
+const buildAppUrl = (baseUrl, path = '/') => {
+  const safeBase = String(baseUrl || '').replace(/\/+$/, '');
+  const safePath = String(path || '/').startsWith('/') ? path : `/${path}`;
+  return `${safeBase}${safePath}`;
+};
+
 const getConfig = () => {
   const siteUrl = normalizeUrl(
     process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL,
@@ -226,7 +232,7 @@ const renderWelcomeEmail = ({ username, temporaryPassword = '' }) => {
         <p style="margin:0;font-family:Arial,sans-serif;font-size:13px;color:#666;line-height:1.5;">Start individual or group calls and collaborate with your community in real time.</p>
       </td></tr>
     </table>`),
-    button('Explore Your Dashboard ->', config.siteUrl),
+    button('Explore Your Dashboard ->', buildAppUrl(config.siteUrl, '/profile')),
     securityBlock,
     paragraph(
       `Our team is always here to help - reach us at <a href="mailto:${escapeHtml(config.supportEmail)}" style="color:#c9a227;text-decoration:none;">${escapeHtml(config.supportEmail)}</a>.`
@@ -282,7 +288,9 @@ const renderPasswordResetEmail = ({ username, code, expiresAt }) => {
       '<strong>Security notice:</strong> This code expires in 2 minutes and can only be used once. Never share it with anyone.',
       'amber'
     ),
-    button('Go to Password Reset ->', `${config.siteUrl}/reset-password`),
+    paragraph(
+      'Return to the password reset form where you started this request, then enter the code to continue.'
+    ),
     paragraph(
       "If you did not request a password reset, you can safely ignore this email. Your password will remain unchanged and your account is secure."
     ),
@@ -366,6 +374,7 @@ const renderAccountDeletionConfirmationEmail = ({ username, code, expiresAt }) =
       `<strong>Did not make this request?</strong> Do not enter this code. Contact us immediately at <a href="mailto:${escapeHtml(config.supportEmail)}" style="color:#92400e;text-decoration:none;">${escapeHtml(config.supportEmail)}</a>.`,
       'red'
     ),
+    button('Keep My Account ->', buildAppUrl(config.siteUrl, '/profile')),
     signature(),
   ].join('');
 
@@ -391,6 +400,7 @@ const renderAccountDeletedSuccessEmail = ({ username }) => {
     paragraph(
       "We're sorry to see you go. If you ever want to return, you're always welcome to create a new account."
     ),
+    button('Rejoin Lekhon ->', buildAppUrl(config.siteUrl, '/login')),
     signature(),
   ].join('');
 
@@ -430,6 +440,7 @@ const renderContactAdminEmail = ({ username, userEmail, issue, advice }) => {
       <p style="margin:0;font-family:Arial,sans-serif;font-size:15px;color:#2d2d2d;line-height:1.8;">${safeAdvice}</p>
     </div>`
       : '',
+    button('Open Admin Dashboard ->', buildAppUrl(config.siteUrl, '/admin')),
     signature('Lekhon Contact System'),
   ].join('');
 
