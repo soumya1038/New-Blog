@@ -38,6 +38,7 @@ const JoinGroup = lazy(() => import('./pages/JoinGroup'));
 const ShortBlogsViewer = lazy(() => import('./pages/ShortBlogsViewer'));
 const News = lazy(() => import('./pages/News'));
 const About = lazy(() => import('./pages/About'));
+const TermsOfService = lazy(() => import('./pages/TermsOfService'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ModernChatbot = lazy(() => import('./components/ModernChatbot'));
 
@@ -372,6 +373,7 @@ function AppContent() {
             <Route path="/shorts/:id" element={<ShortBlogsViewer />} />
             <Route path="/news" element={<News />} />
             <Route path="/about" element={<About />} />
+            <Route path="/terms" element={<TermsOfService />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

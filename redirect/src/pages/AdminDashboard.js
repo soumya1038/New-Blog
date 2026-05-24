@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { TbBrandBlogger } from "react-icons/tb";
-import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes, FaServer, FaExclamationTriangle, FaChartLine, FaBug, FaTachometerAlt } from 'react-icons/fa';
+import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes, FaServer, FaExclamationTriangle, FaChartLine, FaBug, FaTachometerAlt, FaEnvelope } from 'react-icons/fa';
 import { GoVerified, GoUnverified } from 'react-icons/go';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -137,6 +137,72 @@ const AdminDashboard = () => {
       userId,
       isActive
     });
+  };
+
+  const handleSendWarningEmail = async (userId, username) => {
+    const reasonInput = window.prompt(
+      `Enter warning reason for ${username}:`,
+      'Policy warning issued by moderation team'
+    );
+
+    if (reasonInput === null) return;
+
+    const reason = reasonInput.trim() || 'Policy warning issued by moderation team';
+
+    try {
+      await api.post(`/admin/users/${userId}/warn-email`, { reason });
+      openModal({
+        type: 'success',
+        title: t('Success!'),
+        message: `Warning email queued for ${username}.`,
+      });
+    } catch (error) {
+      openModal({
+        type: 'delete-user',
+        title: 'Error',
+        message: error.response?.data?.message || 'Failed to queue warning email',
+      });
+    }
+  };
+
+  const handleSendPreDeletionEmail = async (userId, username) => {
+    const daysInput = window.prompt(
+      `Enter days remaining for pre-deletion warning email for ${username}:`,
+      '7'
+    );
+
+    if (daysInput === null) return;
+
+    const parsedDays = Number(daysInput);
+    if (!Number.isFinite(parsedDays) || parsedDays <= 0) {
+      openModal({
+        type: 'delete-user',
+        title: 'Error',
+        message: 'Please enter a valid positive number of days.',
+      });
+      return;
+    }
+
+    const daysRemaining = Math.max(1, Math.floor(parsedDays));
+    const deletionDate = new Date(Date.now() + daysRemaining * 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+      await api.post(`/admin/users/${userId}/pre-deletion-email`, {
+        daysRemaining,
+        deletionDate,
+      });
+      openModal({
+        type: 'success',
+        title: t('Success!'),
+        message: `Pre-deletion warning email queued for ${username} (${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining).`,
+      });
+    } catch (error) {
+      openModal({
+        type: 'delete-user',
+        title: 'Error',
+        message: error.response?.data?.message || 'Failed to queue pre-deletion warning email',
+      });
+    }
   };
 
   const handleModalConfirm = async () => {
@@ -1047,6 +1113,20 @@ const AdminDashboard = () => {
                                 <FaBan size={18} />
                               </button>
                               <button
+                                onClick={() => handleSendWarningEmail(u._id, u.username)}
+                                className="text-amber-600 hover:text-amber-800"
+                                title="Send Account Warning Email"
+                              >
+                                <FaEnvelope size={18} />
+                              </button>
+                              <button
+                                onClick={() => handleSendPreDeletionEmail(u._id, u.username)}
+                                className="text-rose-600 hover:text-rose-800"
+                                title="Send Pre-Deletion Warning Email"
+                              >
+                                <FaEnvelope size={18} />
+                              </button>
+                              <button
                                 onClick={() => handleDeleteUser(u._id, u.username)}
                                 className="text-red-600 hover:text-red-800"
                                 title={t('Delete')}
@@ -1063,6 +1143,20 @@ const AdminDashboard = () => {
                                 title={t('Suspend') + '/' + t('Unsuspend')}
                               >
                                 <FaBan size={18} />
+                              </button>
+                              <button
+                                onClick={() => handleSendWarningEmail(u._id, u.username)}
+                                className="text-amber-600 hover:text-amber-800"
+                                title="Send Account Warning Email"
+                              >
+                                <FaEnvelope size={18} />
+                              </button>
+                              <button
+                                onClick={() => handleSendPreDeletionEmail(u._id, u.username)}
+                                className="text-rose-600 hover:text-rose-800"
+                                title="Send Pre-Deletion Warning Email"
+                              >
+                                <FaEnvelope size={18} />
                               </button>
                               <button
                                 onClick={() => handleDeleteUser(u._id, u.username)}

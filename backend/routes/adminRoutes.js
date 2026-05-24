@@ -16,7 +16,9 @@ const {
   makeCoAdmin,
   removeCoAdmin,
   toggleVerification,
-  getGuestUsers
+  getGuestUsers,
+  sendAccountWarningEmailNotice,
+  sendPreDeletionWarningEmailNotice
 } = require('../controllers/adminController');
 
 const router = express.Router();
@@ -62,6 +64,8 @@ router.put('/users/:id/verify', adminAuth, toggleVerification);
 router.put('/users/:id/make-admin', adminAuth, makeAdmin);
 router.put('/users/:id/make-coadmin', adminAuth, makeCoAdmin);
 router.put('/users/:id/remove-coadmin', adminAuth, removeCoAdmin);
+router.post('/users/:id/warn-email', adminAuth, sendAccountWarningEmailNotice);
+router.post('/users/:id/pre-deletion-email', adminAuth, sendPreDeletionWarningEmailNotice);
 router.delete('/blogs/:id', adminAuth, deleteBlog);
 router.delete('/articles/:id', adminAuth, deleteArticle);
 router.delete('/shorts/:id', adminAuth, deleteShort);

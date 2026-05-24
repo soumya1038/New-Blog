@@ -4,6 +4,9 @@ const User = require('../models/User');
 const Group = require('../models/Group');
 const Notification = require('../models/Notification');
 const { encrypt, decrypt } = require('../utils/encryption');
+const { enqueueEmailJob } = require('../jobs/queueService');
+
+const shouldSendNewMessageEmail = () => process.env.EMAIL_NOTIFY_NEW_MESSAGES === 'true';
 
 // Send message
 exports.sendMessage = async (req, res) => {
@@ -46,11 +49,27 @@ exports.sendMessage = async (req, res) => {
 
     // Create notification
     await Notification.create({
-      user: receiverId,
+      recipient: receiverId,
+      sender: req.user._id,
       type: 'message',
-      message: `${req.user.username} sent you a message`,
-      link: '/chat'
+      message: `${req.user.username} sent you a message`
     });
+
+    if (shouldSendNewMessageEmail() && receiver.email) {
+      enqueueEmailJob(
+        'new-message',
+        {
+          email: receiver.email,
+          username: receiver.username,
+          senderName: req.user.username,
+          messagePreview: content,
+          chatUrl: '/chat'
+        },
+        { jobId: `new-message:${message._id}` }
+      ).catch((error) => {
+        console.error('Failed to queue new message email:', error?.message || error);
+      });
+    }
 
     res.status(201).json({ success: true, message: 'Message sent successfully', data: message });
   } catch (error) {
