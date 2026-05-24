@@ -1,6 +1,11 @@
 # Custom Template Persistence Context
 
-Last updated: 2026-04-24 (pass 2)
+Last updated: 2026-04-25
+
+Master context for ongoing organic editor evolution:
+- `docs/ORGANIC_TEMPLATE_EDITOR_CONTEXT.md`
+Historical refinements changelog:
+- `docs/CUSTOM_TEMPLATE_REFINEMENTS_CHANGELOG.md`
 
 ## Goal
 - Make `Use This Template` persist custom templates in the database for the logged-in user.
@@ -31,6 +36,8 @@ Last updated: 2026-04-24 (pass 2)
   - `template` (Mixed object)
   - `visibility` (`private` | `public`, default `private`)
   - timestamps
+- Payload guardrail:
+  - `MAX_TEMPLATE_PAYLOAD_BYTES = 450000` (backend validation ceiling)
 
 ## Progress Checklist
 - [x] Create this implementation context document.
@@ -66,67 +73,15 @@ Last updated: 2026-04-24 (pass 2)
   - Backend module load check (`node -e` require checks) passed.
   - Redirect production build passed (`npm run build`).
 
-## Follow-up Refinements (2026-04-18)
-- Added explicit `Enable Border` toggle in Custom Studio selected block controls.
-- Added one-click `Square Corners (90deg)` action for rigid grid-aligned corners.
-- Updated custom-canvas renderer so when multiple `Main Content` blocks are present:
-  - article body is split into sequential segments,
-  - the first content block keeps the full reader controls,
-  - additional content blocks render independent story segments (no duplicated full content).
-- Added high-resolution shape freedom while preserving right-angle geometry:
-  - Custom Studio now supports adjustable grid columns (8 to 48) per device layout.
-  - Drag/resize calculations now follow the active column count, enabling finer rectangular shapes.
-  - Runtime renderer now respects per-studio column count with `--studio-grid-columns`.
-
-## Follow-up Refinements (2026-04-19)
-- Added stepped orthogonal block shapes (90-degree corners) for text-oriented blocks in Custom Studio:
-  - shape presets: `Rectangle`, `Stepped (Left -> Right)`, `Stepped (Right -> Left)`.
-  - per-block controls: `Shape Notch` and `Shape Offset`.
-  - live shape preview in drag/resize canvas.
-  - final article renderer now persists and applies shape masks for compatible blocks.
-- Added true cell-paint custom shapes (orthogonal polyform) for text-oriented blocks:
-  - new shape preset: `Cell Paint (Custom)`.
-  - per-block mask grid controls (`columns`, `rows`) and paintable cell matrix.
-  - utilities added to normalize and persist mask cells (`shapeGridCols`, `shapeGridRows`, `shapeMaskCells`).
-  - runtime clip-path now generated from the painted cell union boundary.
-- Enhanced Cell Paint workflow (next pass):
-  - click-drag paint and erase support in shape matrix.
-  - one-click `Sample: Reference Step` preset to generate the exact stepped shape requested in feedback.
-  - additional guidance hint when Advanced Style Controls are collapsed.
-  - improved mask boundary tracing for more reliable clip-path output.
-- Merged shape editing into the `Drag & Resize` canvas:
-  - new `Canvas Shape Edit` mode for eligible text blocks.
-  - in-place paint/erase brush controls directly on the selected block footprint.
-  - shape mask now syncs with block resize/span changes so reshaping is easier while arranging layout.
-  - keeps media blocks rectangle-only for stability.
-- Enforced media stability:
-  - image/gallery/collage/video blocks remain rectangular by default for reliable framing and embeds.
-  - switching a block type to media auto-resets shape preset to `Rectangle`.
-
-## Follow-up Refinements (2026-04-24)
-- Improved Custom Studio shape editing ergonomics in Drag & Resize canvas:
-  - added `Edge Drag` as the default canvas shape tool for `Cell Paint (Custom)` blocks.
-  - per-row left/right edge handles are now rendered directly on the selected block, so users can drag borders instead of manually toggling many cells.
-  - edge dragging keeps orthogonal geometry (90-degree corners) and stays grid-snapped.
-- Kept paint/erase as optional fine-tuning tools:
-  - users can still switch to `Paint` or `Erase` for micro-adjustments.
-  - session state now resets cleanly when changing tools or exiting canvas shape mode.
-- Reinforced shape/content consistency:
-  - custom shape masks continue to drive runtime block clip-path for both block shell and inner content container.
-  - this keeps visible content constrained to the final selected shape in preview and published rendering.
-
-## Follow-up Refinements (2026-04-24, pass 2)
-- Reworked Canvas Shape Edit based on UX feedback:
-  - removed paint/erase dependency from canvas-shape workflow.
-  - removed frame/fill/center/sample cell-paint controls from Selected Block advanced panel.
-  - shape editing now uses border-handle dragging only in canvas.
-- Added full edge sculpt controls for `Cell Paint (Custom)` blocks:
-  - row-level left/right edge handles.
-  - column-level top/bottom edge handles.
-  - all edits stay grid-snapped with 90-degree geometry.
-- Stabilized shape-mode entry to prevent random/inconsistent block forms:
-  - entering Canvas Shape Edit now remaps to current span, normalizes profiles, and applies a stabilized mask.
-  - if no valid prior mask is present, editor starts from full-rectangle mask for predictable behavior.
-- Improved generic block resizing ergonomics in Drag & Resize:
-  - added direct resize handles on all four sides (`N/E/S/W`) plus existing corner resize.
-  - shape-edit active block suppresses generic resize handles to avoid interaction conflicts.
+## Current-State Summary (instead of long history blocks)
+- Persistence is API-first for authenticated users with local fallback for unauthenticated sessions.
+- Article records persist full template metadata (`templateId`, `customTemplate`, theme mode, gallery fields).
+- Custom Studio supports responsive `desktop/tablet/mobile` layouts with shared data contract.
+- Runtime now applies explicit device binding (`runtimeStudioDevice`) so custom studio preview and article details can resolve per-device studios consistently.
+- Runtime now exposes device-class hooks (`custom-canvas-device-*`) and applies compact tablet/mobile typography-spacing tuning for better small-screen readability.
+- Long-form custom content blocks now use denser tablet/mobile reader controls and tighter story-page spacing to reduce visual dead space on small devices.
+- Studio now hides direct grid sliders (`columns`, `rows`, `row-height`) from user-facing controls; internal grid values remain persisted and runtime-safe.
+- Custom media caption rendering suppresses duplicated deck/meta text to avoid noisy messages below images.
+- Shape tooling is border-handle based in engine, with production UI gating controlled separately.
+- Historical implementation details are maintained in the dedicated changelog:
+  - `docs/CUSTOM_TEMPLATE_REFINEMENTS_CHANGELOG.md`

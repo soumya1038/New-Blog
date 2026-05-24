@@ -17,10 +17,10 @@ const ProfileCompleteness = ({ user, profile }) => {
   const isComplete = percentage === 100;
 
   return (
-    <div className={`bg-gradient-to-br from-white to-blue-50/30 dark:from-gray-800 dark:to-blue-900/10 rounded-2xl shadow-sm border border-blue-100 dark:border-blue-900/30 overflow-hidden transition-all duration-300 ${isComplete && !isExpanded ? 'p-3' : 'p-5'}`}>
+    <div className={`theme-panel rounded-2xl shadow-sm border border-[var(--border-default)] overflow-hidden transition-all duration-300 ${isComplete && !isExpanded ? 'p-3' : 'p-5'}`}>
       <div 
         className="flex items-center justify-between cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => setIsExpanded((prev) => !prev)}
       >
         <div className="flex items-center gap-3">
           {isComplete ? (
@@ -30,7 +30,7 @@ const ProfileCompleteness = ({ user, profile }) => {
           ) : (
             <div className="relative w-10 h-10">
               <svg className="transform -rotate-90 w-10 h-10">
-                <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="none" className="text-gray-200 dark:text-gray-700" />
+                <circle cx="20" cy="20" r="16" stroke="currentColor" strokeWidth="3" fill="none" className="text-[var(--border-default)]" />
                 <circle 
                   cx="20" 
                   cy="20" 
@@ -40,25 +40,25 @@ const ProfileCompleteness = ({ user, profile }) => {
                   fill="none" 
                   strokeDasharray={`${2 * Math.PI * 16}`}
                   strokeDashoffset={`${2 * Math.PI * 16 * (1 - percentage / 100)}`}
-                  className="text-blue-500 transition-all duration-700"
+                  className="text-[var(--brand-primary)] transition-all duration-700"
                   strokeLinecap="round"
                 />
               </svg>
-              <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-gray-700 dark:text-gray-300">
+              <span className="absolute inset-0 flex items-center justify-center text-xs font-bold text-[var(--text-primary)]">
                 {percentage}%
               </span>
             </div>
           )}
           <div>
-            <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+            <h3 className="text-base font-semibold text-[var(--text-primary)]">
               {isComplete ? 'Profile Complete!' : 'Complete Your Profile'}
             </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
+            <p className="text-xs text-[var(--text-secondary)]">
               {isComplete ? 'All set! Looking great' : `${completedCount}/${checks.length} completed`}
             </p>
           </div>
         </div>
-        {isExpanded ? <FaChevronUp className="text-gray-400" size={16} /> : <FaChevronDown className="text-gray-400" size={16} />}
+        {isExpanded ? <FaChevronUp className="text-[var(--text-secondary)]" size={16} /> : <FaChevronDown className="text-[var(--text-secondary)]" size={16} />}
       </div>
 
       {isExpanded && !isComplete && (
@@ -68,16 +68,16 @@ const ProfileCompleteness = ({ user, profile }) => {
               key={idx} 
               className={`flex items-center gap-2.5 text-sm py-2 px-3 rounded-lg transition-all duration-200 ${
                 check.completed 
-                  ? 'bg-green-50 dark:bg-green-900/20' 
-                  : 'bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700'
+                  ? 'bg-emerald-500/15 border border-emerald-500/30'
+                  : 'bg-[var(--background-secondary)] border border-[var(--border-default)] hover:brightness-95 dark:hover:brightness-110'
               }`}
             >
               {check.completed ? (
-                <FaCheckCircle className="text-green-500 flex-shrink-0" size={16} />
+                <FaCheckCircle className="text-emerald-400 flex-shrink-0" size={16} />
               ) : (
-                <div className="w-4 h-4 rounded-full border-2 border-gray-300 dark:border-gray-600 flex-shrink-0" />
+                <div className="w-4 h-4 rounded-full border-2 border-[var(--border-default)] flex-shrink-0" />
               )}
-              <span className={check.completed ? 'text-gray-700 dark:text-gray-300 font-medium' : 'text-gray-500 dark:text-gray-400'}>
+              <span className={check.completed ? 'text-[var(--text-primary)] font-medium' : 'text-[var(--text-secondary)]'}>
                 {check.label}
               </span>
             </div>

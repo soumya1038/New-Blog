@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { FaTrophy, FaStar, FaFire, FaHeart, FaUsers, FaPen, FaLock, FaCheckCircle, FaEye, FaComment, FaCalendarCheck, FaUserFriends, FaCrown } from 'react-icons/fa';
+import { FaTrophy, FaStar, FaFire, FaHeart, FaUsers, FaPen, FaLock, FaCheckCircle, FaEye, FaComment, FaCalendarCheck, FaCrown, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 
 const Achievements = ({ blogs, articles, shorts, user }) => {
   const [hoveredCard, setHoveredCard] = useState(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const totalPosts = blogs.length + articles.length + shorts.length;
   const totalLikes = [...blogs, ...articles, ...shorts].reduce((sum, post) => sum + (post.likes?.length || 0), 0);
@@ -170,17 +171,41 @@ const Achievements = ({ blogs, articles, shorts, user }) => {
   ];
 
   const unlockedCount = achievements.filter(a => a.unlocked).length;
+  const inProgressAchievements = achievements.filter((achievement) => {
+    const lastMilestone = achievement.milestones[achievement.milestones.length - 1];
+    return achievement.current < lastMilestone.value;
+  });
+  const previewAchievements = inProgressAchievements.slice(0, 2);
+  const visibleAchievements = isExpanded
+    ? achievements
+    : (previewAchievements.length > 0 ? previewAchievements : achievements.slice(0, 2));
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5 border border-gray-100 dark:border-gray-700">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Achievements</h3>
+      <div className="flex justify-between items-center mb-3">
+        <button
+          type="button"
+          onClick={() => setIsExpanded((prev) => !prev)}
+          className="flex items-center gap-2 text-left"
+        >
+          <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Achievements</h3>
+          {isExpanded ? (
+            <FaChevronUp className="text-gray-500 dark:text-gray-400" size={14} />
+          ) : (
+            <FaChevronDown className="text-gray-500 dark:text-gray-400" size={14} />
+          )}
+        </button>
         <span className="text-xs font-medium px-2.5 py-1 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full">
           {unlockedCount}/{achievements.length}
         </span>
       </div>
+      {!isExpanded && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Showing top 2 achievements currently in progress.
+        </p>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {achievements.map((achievement, idx) => {
+        {visibleAchievements.map((achievement, idx) => {
           const currentMilestone = achievement.milestones.findIndex(m => achievement.current < m.value);
           const activeIndex = currentMilestone === -1 ? achievement.milestones.length - 1 : Math.max(0, currentMilestone - 1);
           const nextIndex = Math.min(activeIndex + 1, achievement.milestones.length - 1);
@@ -262,7 +287,7 @@ const Achievements = ({ blogs, articles, shorts, user }) => {
                     {achievement.current === 0 ? (
                       `Start your journey to unlock!`
                     ) : (
-                      `${achievement.current}/${achievement.milestones[nextIndex]?.value} • ${Math.round(progress)}% to ${achievement.milestones[nextIndex]?.label}!`
+                      `${achievement.current}/${achievement.milestones[nextIndex]?.value} - ${Math.round(progress)}% to ${achievement.milestones[nextIndex]?.label}!`
                     )}
                   </span>
                 )}

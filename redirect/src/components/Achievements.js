@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { FaTrophy, FaStar, FaFire, FaHeart, FaUsers, FaPen, FaLock, FaCheckCircle, FaEye, FaComment, FaCalendarCheck, FaUserFriends, FaCrown } from 'react-icons/fa';
+import { FaTrophy, FaStar, FaFire, FaHeart, FaUsers, FaPen, FaLock, FaCheckCircle, FaEye, FaComment, FaCalendarCheck, FaCrown, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 
 const Achievements = ({ blogs, articles, shorts, user }) => {
   const [hoveredCard, setHoveredCard] = useState(null);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const totalPosts = blogs.length + articles.length + shorts.length;
   const totalLikes = [...blogs, ...articles, ...shorts].reduce((sum, post) => sum + (post.likes?.length || 0), 0);
@@ -170,17 +171,41 @@ const Achievements = ({ blogs, articles, shorts, user }) => {
   ];
 
   const unlockedCount = achievements.filter(a => a.unlocked).length;
+  const inProgressAchievements = achievements.filter((achievement) => {
+    const lastMilestone = achievement.milestones[achievement.milestones.length - 1];
+    return achievement.current < lastMilestone.value;
+  });
+  const previewAchievements = inProgressAchievements.slice(0, 2);
+  const visibleAchievements = isExpanded
+    ? achievements
+    : (previewAchievements.length > 0 ? previewAchievements : achievements.slice(0, 2));
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-5 border border-gray-100 dark:border-gray-700">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Achievements</h3>
+    <div className="theme-panel rounded-2xl shadow-sm p-5 border border-[var(--border-default)]">
+      <div className="flex justify-between items-center mb-3">
+        <button
+          type="button"
+          onClick={() => setIsExpanded((prev) => !prev)}
+          className="flex items-center gap-2 text-left"
+        >
+          <h3 className="text-base font-semibold text-[var(--text-primary)]">Achievements</h3>
+          {isExpanded ? (
+            <FaChevronUp className="text-[var(--text-secondary)]" size={14} />
+          ) : (
+            <FaChevronDown className="text-[var(--text-secondary)]" size={14} />
+          )}
+        </button>
         <span className="text-xs font-medium px-2.5 py-1 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full">
           {unlockedCount}/{achievements.length}
         </span>
       </div>
+      {!isExpanded && (
+        <p className="text-xs text-[var(--text-secondary)] mb-4">
+          Showing top 2 achievements currently in progress.
+        </p>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {achievements.map((achievement, idx) => {
+        {visibleAchievements.map((achievement, idx) => {
           const currentMilestone = achievement.milestones.findIndex(m => achievement.current < m.value);
           const activeIndex = currentMilestone === -1 ? achievement.milestones.length - 1 : Math.max(0, currentMilestone - 1);
           const nextIndex = Math.min(activeIndex + 1, achievement.milestones.length - 1);
@@ -198,7 +223,7 @@ const Achievements = ({ blogs, articles, shorts, user }) => {
               className={`relative p-5 rounded-2xl border transition-all duration-500 cursor-pointer ${
                 achievement.unlocked
                   ? `bg-gradient-to-br ${achievement.color} border-transparent text-white shadow-xl ${achievement.glowColor} hover:shadow-2xl hover:scale-[1.02]`
-                  : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  : 'bg-[var(--surface-card)] border-[var(--border-default)] hover:border-[var(--brand-primary)]/40'
               } ${achievement.special ? 'ring-2 ring-yellow-400 ring-offset-2' : ''}`}
             >
               {/* Completion Sparkle */}
@@ -217,20 +242,20 @@ const Achievements = ({ blogs, articles, shorts, user }) => {
               <div className="flex items-start justify-between mb-3 relative z-10">
                 <div className="flex items-center gap-3">
                   <div className={`p-2.5 rounded-xl ${
-                    achievement.unlocked ? 'bg-white/20' : 'bg-gray-100 dark:bg-gray-700'
+                    achievement.unlocked ? 'bg-white/20' : 'bg-[var(--background-secondary)]'
                   }`}>
                     <achievement.icon className={`${
-                      achievement.unlocked ? 'text-white' : 'text-gray-400'
+                      achievement.unlocked ? 'text-white' : 'text-[var(--text-muted)]'
                     }`} size={24} />
                   </div>
                   <div>
                     <h4 className={`text-sm font-bold ${
-                      achievement.unlocked ? 'text-white' : 'text-gray-800 dark:text-gray-200'
+                      achievement.unlocked ? 'text-white' : 'text-[var(--text-primary)]'
                     }`}>
                       {achievement.title}
                     </h4>
                     <p className={`text-xs italic mt-0.5 ${
-                      achievement.unlocked ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'
+                      achievement.unlocked ? 'text-white/80' : 'text-[var(--text-secondary)]'
                     }`}>
                       {achievement.story}
                     </p>
@@ -246,12 +271,12 @@ const Achievements = ({ blogs, articles, shorts, user }) => {
                     <FaCheckCircle className="text-white text-lg animate-bounce" />
                   )
                 ) : (
-                  <FaLock className="text-gray-400 text-sm" />
+                  <FaLock className="text-[var(--text-muted)] text-sm" />
                 )}</div>
 
               {/* Progress Narrative */}
               <div className={`text-xs mb-3 font-medium ${
-                achievement.unlocked ? 'text-white/90' : 'text-gray-600 dark:text-gray-400'
+                achievement.unlocked ? 'text-white/90' : 'text-[var(--text-secondary)]'
               }`}>
                 {isCompleted ? (
                   <span>👑 Mastered! You've reached the pinnacle!</span>
@@ -262,7 +287,7 @@ const Achievements = ({ blogs, articles, shorts, user }) => {
                     {achievement.current === 0 ? (
                       `Start your journey to unlock!`
                     ) : (
-                      `${achievement.current}/${achievement.milestones[nextIndex]?.value} • ${Math.round(progress)}% to ${achievement.milestones[nextIndex]?.label}!`
+                      `${achievement.current}/${achievement.milestones[nextIndex]?.value} - ${Math.round(progress)}% to ${achievement.milestones[nextIndex]?.label}!`
                     )}
                   </span>
                 )}
@@ -270,7 +295,7 @@ const Achievements = ({ blogs, articles, shorts, user }) => {
 
               {achievement.extraInfo && (
                 <div className={`text-xs mb-3 font-semibold ${
-                  achievement.unlocked ? 'text-white/80' : 'text-blue-600 dark:text-blue-400'
+                  achievement.unlocked ? 'text-white/80' : 'text-[var(--brand-primary)]'
                 }`}>
                   {achievement.extraInfo}
                 </div>
@@ -339,7 +364,7 @@ const Achievements = ({ blogs, articles, shorts, user }) => {
 
                 {/* Progress Bar Background */}
                 <div className={`h-2 rounded-full ${
-                  achievement.unlocked ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-700'
+                  achievement.unlocked ? 'bg-white/20' : 'bg-[var(--background-secondary)]'
                 }`}>
                   <div 
                     className={`h-full rounded-full transition-all duration-700 ${

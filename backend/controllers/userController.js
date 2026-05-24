@@ -66,11 +66,44 @@ exports.getProfile = async (req, res) => {
 // Update profile
 exports.updateProfile = async (req, res) => {
   try {
-    const { fullName, email, phone, dateOfBirth, address, bio, description, signature, socialMedia } = req.body;
+    const {
+      fullName,
+      email,
+      phone,
+      dateOfBirth,
+      address,
+      bio,
+      description,
+      signature,
+      socialMedia,
+      privacy,
+      emailNotifications,
+    } = req.body;
+
+    const updates = {
+      fullName,
+      email,
+      phone,
+      dateOfBirth,
+      address,
+      bio,
+      description,
+      signature,
+      socialMedia,
+      privacy,
+    };
+
+    if (emailNotifications) {
+      updates.emailNotifications = {
+        ...emailNotifications,
+        // Keep content-published email system controlled.
+        contentPublished: true,
+      };
+    }
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
-      { fullName, email, phone, dateOfBirth, address, bio, description, signature, socialMedia },
+      updates,
       { new: true, runValidators: true }
     ).select('-password');
 

@@ -1,10 +1,12 @@
 const Blog = require('../models/Blog');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
+const User = require('../models/User');
 const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCursorFilter, extractNextCursor } = require('../utils/cursorPagination');
 const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
-const { enqueueSearchIndexRefresh } = require('../jobs/queueService');
+const { enqueueSearchIndexRefresh, enqueueEmailJob } = require('../jobs/queueService');
+const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
 
 const BLOG_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_BLOG_LIST_SECONDS,
@@ -104,6 +106,23 @@ exports.createBlog = async (req, res) => {
     const populatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage isGuest role isVerified');
     await invalidateBlogPublishCache();
     triggerSearchIndexRefresh('blog:create');
+
+    const isPublishedNow = !blog.isDraft && !blog.isScheduled;
+    if (isPublishedNow && req.user?.email) {
+      enqueueEmailJob(
+        'content-published',
+        {
+          email: req.user.email,
+          username: req.user.username,
+          contentType: 'blog',
+          postTitle: blog.title,
+          postUrl: `/blog/${blog.slug || blog._id}`
+        },
+        { jobId: `content-published:blog:${blog._id}` }
+      ).catch((error) => {
+        console.error('Failed to queue blog published email:', error?.message || error);
+      });
+    }
 
     res.status(201).json({ success: true, blog: populatedBlog });
   } catch (error) {
@@ -315,8 +334,11 @@ exports.updateBlog = async (req, res) => {
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : blog.tags;
     const videoUrlsArray = videoUrls !== undefined ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : blog.videoUrls;
 
+    const publishingFromDraft =
+      (blog.isDraft || blog.isScheduled) && isDraft === false && !isScheduled;
+
     // If changing from draft/scheduled to published, delete any other draft with same title
-    if ((blog.isDraft || blog.isScheduled) && isDraft === false && !isScheduled) {
+    if (publishingFromDraft) {
       const otherDraft = await Blog.findOne({ 
         title: title || blog.title, 
         author: req.user._id, 
@@ -365,6 +387,22 @@ exports.updateBlog = async (req, res) => {
     await blog.save();
     await invalidateBlogPublishCache();
     triggerSearchIndexRefresh('blog:update');
+
+    if (publishingFromDraft && req.user?.email) {
+      enqueueEmailJob(
+        'content-published',
+        {
+          email: req.user.email,
+          username: req.user.username,
+          contentType: 'blog',
+          postTitle: blog.title,
+          postUrl: `/blog/${blog.slug || blog._id}`
+        },
+        { jobId: `content-published:blog:${blog._id}` }
+      ).catch((error) => {
+        console.error('Failed to queue blog published email after draft publish:', error?.message || error);
+      });
+    }
 
     const updatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage isGuest role isVerified');
 
@@ -499,6 +537,24 @@ exports.toggleLike = async (req, res) => {
           blog: blog._id,
           message: `${req.user.username} liked your post "${blog.title}"`
         });
+
+        const blogAuthor = await User.findById(blog.author).select('email username emailNotifications');
+        if (blogAuthor?.email && isEmailNotificationEnabled(blogAuthor, 'newReaction')) {
+          enqueueEmailJob(
+            'new-reaction',
+            {
+              email: blogAuthor.email,
+              username: blogAuthor.username,
+              reactorName: req.user.username,
+              reactionCount: blog.likes.length,
+              postTitle: blog.title,
+              postUrl: `/blog/${blog.slug || blog._id}`
+            },
+            { jobId: `new-reaction:blog:${blog._id}:${req.user._id}` }
+          ).catch((error) => {
+            console.error('Failed to queue blog reaction email:', error?.message || error);
+          });
+        }
         
         // Emit socket event
         const io = req.app.get('io');

@@ -3,7 +3,7 @@ const Blog = require('../models/Blog');
 const Short = require('../models/Short');
 const Article = require('../models/Article');
 const Notification = require('../models/Notification');
-const { enqueueSearchIndexRefresh } = require('./queueService');
+const { enqueueSearchIndexRefresh, enqueueEmailJob } = require('./queueService');
 
 const publishScheduledContent = (io) => {
   cron.schedule('* * * * *', async () => {
@@ -15,7 +15,7 @@ const publishScheduledContent = (io) => {
         isScheduled: true,
         isDraft: true,
         scheduledPublishDate: { $lte: now }
-      }).populate('author', 'username');
+      }).populate('author', 'username email');
 
       for (const blog of scheduledBlogs) {
         blog.isDraft = false;
@@ -38,6 +38,22 @@ const publishScheduledContent = (io) => {
           });
         }
 
+        if (blog.author?.email) {
+          enqueueEmailJob(
+            'content-published',
+            {
+              email: blog.author.email,
+              username: blog.author.username,
+              contentType: 'blog',
+              postTitle: blog.title,
+              postUrl: `/blog/${blog.slug || blog._id}`
+            },
+            { jobId: `content-published:blog:${blog._id}` }
+          ).catch((error) => {
+            console.error('Failed to queue scheduled blog published email:', error?.message || error);
+          });
+        }
+
         console.log(`[schedule] Published scheduled blog: ${blog.title}`);
       }
 
@@ -52,7 +68,7 @@ const publishScheduledContent = (io) => {
         isScheduled: true,
         isDraft: true,
         scheduledPublishDate: { $lte: now }
-      }).populate('author', 'username');
+      }).populate('author', 'username email');
 
       for (const short of scheduledShorts) {
         short.isDraft = false;
@@ -74,6 +90,22 @@ const publishScheduledContent = (io) => {
           });
         }
 
+        if (short.author?.email) {
+          enqueueEmailJob(
+            'content-published',
+            {
+              email: short.author.email,
+              username: short.author.username,
+              contentType: 'short',
+              postTitle: short.title,
+              postUrl: `/shorts/${short._id}`
+            },
+            { jobId: `content-published:short:${short._id}` }
+          ).catch((error) => {
+            console.error('Failed to queue scheduled short published email:', error?.message || error);
+          });
+        }
+
         console.log(`[schedule] Published scheduled short: ${short.title}`);
       }
 
@@ -82,7 +114,7 @@ const publishScheduledContent = (io) => {
         isScheduled: true,
         isDraft: true,
         scheduledPublishDate: { $lte: now }
-      }).populate('author', 'username');
+      }).populate('author', 'username email');
 
       for (const article of scheduledArticles) {
         article.isDraft = false;
@@ -102,6 +134,22 @@ const publishScheduledContent = (io) => {
             articleId: article._id,
             articleTitle: article.title,
             type: 'article'
+          });
+        }
+
+        if (article.author?.email) {
+          enqueueEmailJob(
+            'content-published',
+            {
+              email: article.author.email,
+              username: article.author.username,
+              contentType: 'article',
+              postTitle: article.title,
+              postUrl: `/article/${article.slug || article._id}`
+            },
+            { jobId: `content-published:article:${article._id}` }
+          ).catch((error) => {
+            console.error('Failed to queue scheduled article published email:', error?.message || error);
           });
         }
 

@@ -14,12 +14,19 @@ const GoogleAuthCallback = () => {
 
   useEffect(() => {
     const finalizeGoogleAuth = async () => {
+      let guardKey = '';
       try {
         const params = new URLSearchParams(window.location.search);
         const oauthError = params.get('error');
         const oauthErrorDescription = params.get('error_description');
         const code = params.get('code');
         const state = params.get('state');
+
+        guardKey = `google_oauth_exchange:${code || 'no_code'}:${state || 'no_state'}`;
+        if (sessionStorage.getItem(guardKey) === '1') {
+          return;
+        }
+        sessionStorage.setItem(guardKey, '1');
 
         if (oauthError) {
           throw new Error(oauthErrorDescription || oauthError);
@@ -62,6 +69,9 @@ const GoogleAuthCallback = () => {
 
         window.location.href = '/';
       } catch (err) {
+        if (guardKey) {
+          sessionStorage.removeItem(guardKey);
+        }
         const fallback = 'Google sign-in failed. Please try again.';
         const detail =
           err?.response?.data?.message ||

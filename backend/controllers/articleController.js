@@ -1,10 +1,12 @@
 const Article = require('../models/Article');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
+const User = require('../models/User');
 const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCursorFilter, extractNextCursor } = require('../utils/cursorPagination');
 const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
-const { enqueueSearchIndexRefresh } = require('../jobs/queueService');
+const { enqueueSearchIndexRefresh, enqueueEmailJob } = require('../jobs/queueService');
+const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
 
 const ARTICLE_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_ARTICLE_LIST_SECONDS,
@@ -186,6 +188,23 @@ exports.createArticle = async (req, res) => {
     const populatedArticle = await Article.findById(article._id).populate('author', 'username profileImage isGuest role isVerified');
     await invalidateArticlePublishCache();
     triggerSearchIndexRefresh('article:create');
+
+    const isPublishedNow = !article.isDraft && !article.isScheduled;
+    if (isPublishedNow && req.user?.email) {
+      enqueueEmailJob(
+        'content-published',
+        {
+          email: req.user.email,
+          username: req.user.username,
+          contentType: 'article',
+          postTitle: article.title,
+          postUrl: `/article/${article.slug || article._id}`
+        },
+        { jobId: `content-published:article:${article._id}` }
+      ).catch((error) => {
+        console.error('Failed to queue article published email:', error?.message || error);
+      });
+    }
 
     res.status(201).json({ success: true, article: populatedArticle });
   } catch (error) {
@@ -426,7 +445,10 @@ exports.updateArticle = async (req, res) => {
         ? normalizeTemplateThemeMode(templateThemeMode, article.templateThemeMode || 'auto')
         : article.templateThemeMode;
 
-    if ((article.isDraft || article.isScheduled) && isDraft === false && !isScheduled) {
+    const publishingFromDraft =
+      (article.isDraft || article.isScheduled) && isDraft === false && !isScheduled;
+
+    if (publishingFromDraft) {
       const otherDraft = await Article.findOne({ 
         title: title || article.title, 
         author: req.user._id, 
@@ -480,6 +502,22 @@ exports.updateArticle = async (req, res) => {
     await article.save();
     await invalidateArticlePublishCache();
     triggerSearchIndexRefresh('article:update');
+
+    if (publishingFromDraft && req.user?.email) {
+      enqueueEmailJob(
+        'content-published',
+        {
+          email: req.user.email,
+          username: req.user.username,
+          contentType: 'article',
+          postTitle: article.title,
+          postUrl: `/article/${article.slug || article._id}`
+        },
+        { jobId: `content-published:article:${article._id}` }
+      ).catch((error) => {
+        console.error('Failed to queue article published email after draft publish:', error?.message || error);
+      });
+    }
 
     const updatedArticle = await Article.findById(article._id).populate('author', 'username profileImage isGuest role isVerified');
 
@@ -581,6 +619,24 @@ exports.toggleLike = async (req, res) => {
           article: article._id,
           message: `${req.user.username} liked your article "${article.title}"`
         });
+
+        const articleAuthor = await User.findById(article.author).select('email username emailNotifications');
+        if (articleAuthor?.email && isEmailNotificationEnabled(articleAuthor, 'newReaction')) {
+          enqueueEmailJob(
+            'new-reaction',
+            {
+              email: articleAuthor.email,
+              username: articleAuthor.username,
+              reactorName: req.user.username,
+              reactionCount: article.likes.length,
+              postTitle: article.title,
+              postUrl: `/article/${article.slug || article._id}`
+            },
+            { jobId: `new-reaction:article:${article._id}:${req.user._id}` }
+          ).catch((error) => {
+            console.error('Failed to queue article reaction email:', error?.message || error);
+          });
+        }
         
         const io = req.app.get('io');
         if (io) {

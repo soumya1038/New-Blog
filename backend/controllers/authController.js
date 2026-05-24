@@ -76,6 +76,30 @@ const readGoogleState = (stateToken) => {
   }
 };
 
+const consumeGoogleStateToken = (stateToken, ttlMs = 10 * 60 * 1000) => {
+  const token = String(stateToken || '').trim();
+  if (!token) return false;
+
+  global.consumedGoogleStateTokens = global.consumedGoogleStateTokens || new Map();
+  const now = Date.now();
+
+  for (const [savedToken, expiresAt] of global.consumedGoogleStateTokens.entries()) {
+    if (expiresAt <= now) {
+      global.consumedGoogleStateTokens.delete(savedToken);
+    }
+  }
+
+  if (global.consumedGoogleStateTokens.has(token)) {
+    return false;
+  }
+
+  global.consumedGoogleStateTokens.set(token, now + ttlMs);
+  return true;
+};
+
+const buildWelcomeEmailJobId = (email) =>
+  `welcome-email:${String(email || '').trim().toLowerCase()}`;
+
 const sanitizeUsernameFragment = (value) => {
   const normalized = String(value || '')
     .toLowerCase()
@@ -189,7 +213,11 @@ exports.register = async (req, res) => {
     // Send welcome email
     if (email) {
       try {
-        await enqueueEmailJob('welcome-email', { email, username });
+        await enqueueEmailJob(
+          'welcome-email',
+          { email, username },
+          { jobId: buildWelcomeEmailJobId(email) }
+        );
       } catch (error) {
         console.error('Failed to send welcome email:', error);
       }
@@ -343,6 +371,12 @@ exports.exchangeGoogleCode = async (req, res) => {
     if (!statePayload || normalizeAbsoluteUrl(statePayload.redirectUri) !== normalizedRedirectUri) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
     }
+    if (!consumeGoogleStateToken(state)) {
+      return res.status(409).json({
+        success: false,
+        message: 'This Google sign-in request has already been used. Please try again.',
+      });
+    }
 
     const tokenParams = new URLSearchParams({
       code: String(code),
@@ -406,6 +440,8 @@ exports.exchangeGoogleCode = async (req, res) => {
           email,
           username,
           temporaryPassword,
+        }, {
+          jobId: buildWelcomeEmailJobId(email),
         });
       } catch (mailError) {
         console.error('Failed to send Google onboarding welcome email:', mailError);

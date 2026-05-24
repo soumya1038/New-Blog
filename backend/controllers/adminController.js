@@ -4,6 +4,7 @@ const Article = require('../models/Article');
 const Short = require('../models/Short');
 const Comment = require('../models/Comment');
 const GuestAnalytics = require('../models/GuestAnalytics');
+const { enqueueEmailJob } = require('../jobs/queueService');
 
 // Get dashboard statistics
 exports.getStats = async (req, res) => {
@@ -327,19 +328,40 @@ exports.suspendUser = async (req, res) => {
     await user.save();
 
     let message = 'User unsuspended';
+    let suspensionDurationLabel = '';
     if (days > 0) {
       const daysNum = parseFloat(days);
       if (daysNum < 1) {
         const hours = Math.round(daysNum * 24);
-        message = `User suspended for ${hours} hour${hours !== 1 ? 's' : ''}`;
+        suspensionDurationLabel = `${hours} hour${hours !== 1 ? 's' : ''}`;
+        message = `User suspended for ${suspensionDurationLabel}`;
       } else if (daysNum === 1) {
+        suspensionDurationLabel = '1 day';
         message = 'User suspended for 1 day';
       } else if (daysNum >= 30 && daysNum % 30 === 0) {
         const months = daysNum / 30;
-        message = `User suspended for ${months} month${months !== 1 ? 's' : ''}`;
+        suspensionDurationLabel = `${months} month${months !== 1 ? 's' : ''}`;
+        message = `User suspended for ${suspensionDurationLabel}`;
       } else {
-        message = `User suspended for ${daysNum} days`;
+        suspensionDurationLabel = `${daysNum} days`;
+        message = `User suspended for ${suspensionDurationLabel}`;
       }
+    }
+
+    if (days > 0 && user.email) {
+      enqueueEmailJob(
+        'account-suspension',
+        {
+          email: user.email,
+          username: user.username,
+          suspensionReason: 'Community guideline or policy violation',
+          suspensionDuration: suspensionDurationLabel || `${days} day(s)`,
+          reviewDate: user.suspendedUntil
+        },
+        { jobId: `account-suspension:${user._id}:${user.suspendedUntil?.getTime?.() || Date.now()}` }
+      ).catch((error) => {
+        console.error('Failed to queue account suspension email:', error?.message || error);
+      });
     }
 
     res.json({ 
@@ -542,6 +564,69 @@ exports.getGuestUsers = async (req, res) => {
     }));
 
     res.json({ success: true, guests: guestsWithStats });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Send account warning email (admin initiated)
+exports.sendAccountWarningEmailNotice = async (req, res) => {
+  try {
+    const { reason } = req.body;
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (!user.email) {
+      return res.status(400).json({ success: false, message: 'User does not have an email address' });
+    }
+
+    await enqueueEmailJob(
+      'account-warning',
+      {
+        email: user.email,
+        username: user.username,
+        violationReason: reason || 'Policy warning issued by moderation team',
+        warningDate: Date.now()
+      },
+      { jobId: `account-warning:${user._id}:${Date.now()}` }
+    );
+
+    res.json({ success: true, message: 'Account warning email queued successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Send pre-deletion warning email (admin initiated)
+exports.sendPreDeletionWarningEmailNotice = async (req, res) => {
+  try {
+    const { daysRemaining, deletionDate } = req.body;
+    const user = await User.findById(req.params.id);
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    if (!user.email) {
+      return res.status(400).json({ success: false, message: 'User does not have an email address' });
+    }
+
+    const numericDays = Math.max(1, Number(daysRemaining) || 1);
+    const targetDeletionDate = deletionDate || new Date(Date.now() + numericDays * 24 * 60 * 60 * 1000);
+
+    await enqueueEmailJob(
+      'pre-deletion-warning',
+      {
+        email: user.email,
+        username: user.username,
+        daysRemaining: numericDays,
+        deletionDate: targetDeletionDate
+      },
+      { jobId: `pre-deletion-warning:${user._id}:${numericDays}:${new Date(targetDeletionDate).getTime()}` }
+    );
+
+    res.json({ success: true, message: 'Pre-deletion warning email queued successfully' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

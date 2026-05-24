@@ -8,7 +8,16 @@ const {
   sendPasswordChangeConfirmation,
   sendAccountDeletionConfirmation,
   sendPasswordChangedSuccess,
-  sendAccountDeletedSuccess
+  sendAccountDeletedSuccess,
+  sendNewFollowerEmail,
+  sendNewMessageEmail,
+  sendMissedCallEmail,
+  sendContentPublishedEmail,
+  sendNewCommentEmail,
+  sendNewReactionEmail,
+  sendAccountWarningEmail,
+  sendAccountSuspensionEmail,
+  sendPreDeletionWarningEmail
 } = require('../utils/mailService');
 const { ensureSearchIndexes } = require('../utils/searchIndexBootstrap');
 
@@ -20,6 +29,7 @@ const EMAIL_JOB_ATTEMPTS = parsePositiveInt(process.env.QUEUE_JOB_ATTEMPTS, 3);
 const EMAIL_JOB_BACKOFF_MS = parsePositiveInt(process.env.QUEUE_JOB_BACKOFF_MS, 5000);
 const EMAIL_QUEUE_CONCURRENCY = parsePositiveInt(process.env.QUEUE_CONCURRENCY_EMAIL, 4);
 const INDEXING_QUEUE_CONCURRENCY = parsePositiveInt(process.env.QUEUE_CONCURRENCY_INDEXING, 1);
+const FALLBACK_JOB_DEDUPE_TTL_MS = parsePositiveInt(process.env.QUEUE_FALLBACK_JOB_DEDUPE_TTL_MS, 10 * 60 * 1000);
 
 let initialized = false;
 let queueEnabled = false;
@@ -31,6 +41,7 @@ let emailDeadLetterQueue = null;
 let indexingQueue = null;
 let emailWorker = null;
 let indexingWorker = null;
+const fallbackJobDedupeMap = new Map();
 
 const isQueueFeatureEnabled = () => process.env.QUEUE_ENABLED !== 'false';
 
@@ -57,8 +68,57 @@ const createBullConnection = () => {
   });
 };
 
+const pruneFallbackDedupeMap = () => {
+  const now = Date.now();
+  for (const [key, expiresAt] of fallbackJobDedupeMap.entries()) {
+    if (expiresAt <= now) {
+      fallbackJobDedupeMap.delete(key);
+    }
+  }
+};
+
+const shouldSkipFallbackJob = (jobId) => {
+  if (!jobId) return false;
+  pruneFallbackDedupeMap();
+  const expiresAt = fallbackJobDedupeMap.get(jobId);
+  if (expiresAt && expiresAt > Date.now()) {
+    return true;
+  }
+  fallbackJobDedupeMap.set(jobId, Date.now() + FALLBACK_JOB_DEDUPE_TTL_MS);
+  return false;
+};
+
 const handleEmailJob = async (jobName, payload = {}) => {
-  const { email, username, code, expiresAt, changedAt, temporaryPassword } = payload;
+  const {
+    email,
+    username,
+    code,
+    expiresAt,
+    changedAt,
+    temporaryPassword,
+    followerName,
+    followerProfileUrl,
+    senderName,
+    messagePreview,
+    chatUrl,
+    callerName,
+    callType,
+    callTime,
+    contentType,
+    postTitle,
+    postUrl,
+    commenterName,
+    commentText,
+    reactorName,
+    reactionCount,
+    violationReason,
+    warningDate,
+    suspensionReason,
+    suspensionDuration,
+    reviewDate,
+    daysRemaining,
+    deletionDate
+  } = payload;
 
   switch (jobName) {
     case 'verification-code':
@@ -77,6 +137,59 @@ const handleEmailJob = async (jobName, payload = {}) => {
       return sendPasswordChangedSuccess(email, username || 'User', changedAt);
     case 'account-deleted-success':
       return sendAccountDeletedSuccess(email, username || 'User');
+    case 'new-follower':
+      return sendNewFollowerEmail(email, username || 'User', {
+        followerName,
+        followerProfileUrl
+      });
+    case 'new-message':
+      return sendNewMessageEmail(email, username || 'User', {
+        senderName,
+        messagePreview,
+        chatUrl
+      });
+    case 'missed-call':
+      return sendMissedCallEmail(email, username || 'User', {
+        callerName,
+        callType,
+        callTime
+      });
+    case 'content-published':
+      return sendContentPublishedEmail(email, username || 'User', {
+        contentType,
+        postTitle,
+        postUrl
+      });
+    case 'new-comment':
+      return sendNewCommentEmail(email, username || 'User', {
+        commenterName,
+        postTitle,
+        commentText,
+        postUrl
+      });
+    case 'new-reaction':
+      return sendNewReactionEmail(email, username || 'User', {
+        reactorName,
+        reactionCount,
+        postTitle,
+        postUrl
+      });
+    case 'account-warning':
+      return sendAccountWarningEmail(email, username || 'User', {
+        violationReason,
+        warningDate
+      });
+    case 'account-suspension':
+      return sendAccountSuspensionEmail(email, username || 'User', {
+        suspensionReason,
+        suspensionDuration,
+        reviewDate
+      });
+    case 'pre-deletion-warning':
+      return sendPreDeletionWarningEmail(email, username || 'User', {
+        daysRemaining,
+        deletionDate
+      });
     default:
       throw new Error(`Unsupported email job type: ${jobName}`);
   }
@@ -90,7 +203,11 @@ const handleIndexingJob = async (jobName) => {
   throw new Error(`Unsupported indexing job type: ${jobName}`);
 };
 
-const runFallbackEmailJob = (jobName, payload) => {
+const runFallbackEmailJob = (jobName, payload, options = {}) => {
+  if (shouldSkipFallbackJob(options.jobId)) {
+    return false;
+  }
+
   setImmediate(async () => {
     try {
       await handleEmailJob(jobName, payload);
@@ -98,6 +215,7 @@ const runFallbackEmailJob = (jobName, payload) => {
       console.error(`[queue:fallback] Email job failed (${jobName}):`, error?.message || error);
     }
   });
+  return true;
 };
 
 const runFallbackIndexingJob = () => {
@@ -237,11 +355,12 @@ const enqueueEmailJob = async (jobName, payload = {}, options = {}) => {
   }
 
   if (!queueEnabled || !emailQueue) {
-    runFallbackEmailJob(jobName, payload);
-    return { mode: 'fallback', queued: false };
+    const queued = runFallbackEmailJob(jobName, payload, options);
+    return { mode: 'fallback', queued, deduped: !queued };
   }
 
   const job = await emailQueue.add(jobName, payload, {
+    jobId: options.jobId,
     attempts: options.attempts || EMAIL_JOB_ATTEMPTS,
     backoff: options.backoff || { type: 'exponential', delay: EMAIL_JOB_BACKOFF_MS },
     removeOnComplete: options.removeOnComplete || { age: 60 * 60, count: 2000 },

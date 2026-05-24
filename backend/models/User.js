@@ -18,6 +18,25 @@ const userSchema = new mongoose.Schema({
     name: { type: String, default: '' },
     url: { type: String, required: true }
   }],
+  privacy: {
+    profileVisibility: {
+      type: String,
+      enum: ['public', 'friends', 'private'],
+      default: 'public',
+    },
+    showEmail: { type: Boolean, default: true },
+    showPhone: { type: Boolean, default: true },
+    allowMessages: { type: Boolean, default: true },
+  },
+  emailNotifications: {
+    newFollower: { type: Boolean, default: true },
+    newMessage: { type: Boolean, default: true },
+    missedCall: { type: Boolean, default: true },
+    newComment: { type: Boolean, default: true },
+    newReaction: { type: Boolean, default: true },
+    // Content-published emails are intentionally system-managed.
+    contentPublished: { type: Boolean, default: true },
+  },
   followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

@@ -16,6 +16,7 @@ import ProfileCompleteness from '../components/ProfileCompleteness';
 import ActivityStats from '../components/ActivityStats';
 import QuickActions from '../components/QuickActions';
 import PrivacySettings from '../components/PrivacySettings';
+import EmailNotificationSettings from '../components/EmailNotificationSettings';
 import Achievements from '../components/Achievements';
 import QRCodeModal from '../components/QRCodeModal';
 
@@ -131,6 +132,17 @@ const ProfileNew = () => {
 
   const closeModal = () => {
     setModal({ show: false, type: '', title: '', message: '', onConfirm: null });
+  };
+
+  const handleUpdateProfileSettings = async (updates, successMessage) => {
+    const nextProfile = { ...profile, ...updates };
+    try {
+      await api.put('/users/profile', nextProfile);
+      setProfile(nextProfile);
+      showModal('success', 'Success', successMessage);
+    } catch (error) {
+      showModal('error', 'Error', 'Failed to update settings');
+    }
   };
 
   const handleUpdateProfile = async (e) => {
@@ -473,7 +485,7 @@ const ProfileNew = () => {
                       )}
                     </div>
                     {/* Buttons always at bottom */}
-                    <div className="flex gap-2 w-full">
+                    <div className="flex gap-2 w-full lg:flex-col xl:flex-row">
                       <button onClick={() => { setNewUsername(user?.username || ''); setShowUsernameModal(true); }} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2">
                         <FaEdit size={14} /> {t('Username')}
                       </button>
@@ -557,6 +569,22 @@ const ProfileNew = () => {
                 onShowQR={() => setShowQRModal(true)}
               />
             </div>
+
+            {/* Email Notifications - Only on large+ screens */}
+            <div className="hidden lg:block">
+              <EmailNotificationSettings
+                profile={profile}
+                onUpdate={(updates) => handleUpdateProfileSettings(updates, 'Email notification settings updated!')}
+              />
+            </div>
+
+            {/* Privacy Settings - Only on large+ screens */}
+            <div className="hidden lg:block">
+              <PrivacySettings
+                profile={profile}
+                onUpdate={(updates) => handleUpdateProfileSettings(updates, 'Privacy settings updated!')}
+              />
+            </div>
           </div>
 
           {/* RIGHT COLUMN */}
@@ -573,6 +601,22 @@ const ProfileNew = () => {
                 user={user} 
                 onShareProfile={() => setShowProfileShareModal(true)}
                 onShowQR={() => setShowQRModal(true)}
+              />
+            </div>
+
+            {/* Email Notifications - Only on small/medium screens */}
+            <div className="lg:hidden">
+              <EmailNotificationSettings
+                profile={profile}
+                onUpdate={(updates) => handleUpdateProfileSettings(updates, 'Email notification settings updated!')}
+              />
+            </div>
+
+            {/* Privacy Settings - Only on small/medium screens */}
+            <div className="lg:hidden">
+              <PrivacySettings
+                profile={profile}
+                onUpdate={(updates) => handleUpdateProfileSettings(updates, 'Privacy settings updated!')}
               />
             </div>
 
@@ -797,8 +841,8 @@ const ProfileNew = () => {
             <div className="theme-panel rounded-3xl shadow-xl p-6 transition-all duration-300">
               <div className="flex items-start justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">{t('Password & Security')}</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">{t('Manage your account security')}</p>
+                  <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">{t('Password & Security')}</h3>
+                  <p className="text-sm text-[var(--text-secondary)]">{t('Manage your account security')}</p>
                 </div>
                 <div className="bg-purple-100 dark:bg-purple-900/30 p-3 rounded-full">
                   <FaKey className="text-purple-600 dark:text-purple-400" size={24} />
@@ -823,16 +867,16 @@ const ProfileNew = () => {
                 </button>
               </div>
               {showPasswordForm && (
-                <form onSubmit={handleChangePassword} className="space-y-4 mt-4 bg-blue-50 dark:bg-gray-700 p-4 rounded-lg">
+                <form onSubmit={handleChangePassword} className="space-y-4 mt-4 p-4 rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)]">
                   <div className="relative">
-                    <input type={showCurrentPassword ? 'text' : 'password'} placeholder={t('Current Password')} value={passwords.currentPassword} onChange={(e) => setPasswords({ ...passwords, currentPassword: e.target.value })} className="w-full px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" required />
-                    <button type="button" onClick={() => setShowCurrentPassword(!showCurrentPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                    <input type={showCurrentPassword ? 'text' : 'password'} placeholder={t('Current Password')} value={passwords.currentPassword} onChange={(e) => setPasswords({ ...passwords, currentPassword: e.target.value })} className="w-full px-4 py-2 pr-10 border border-[var(--border-default)] rounded-lg focus:ring-2 focus:ring-blue-500 bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" required />
+                    <button type="button" onClick={() => setShowCurrentPassword(!showCurrentPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]">
                       {showCurrentPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
                     </button>
                   </div>
                   <div className="relative">
-                    <input type={showNewPassword ? 'text' : 'password'} placeholder={t('New Password')} value={passwords.newPassword} onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })} className="w-full px-4 py-2 pr-10 border rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-white" required minLength={6} />
-                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                    <input type={showNewPassword ? 'text' : 'password'} placeholder={t('New Password')} value={passwords.newPassword} onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })} className="w-full px-4 py-2 pr-10 border border-[var(--border-default)] rounded-lg focus:ring-2 focus:ring-blue-500 bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" required minLength={6} />
+                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]">
                       {showNewPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
                     </button>
                   </div>
@@ -850,12 +894,12 @@ const ProfileNew = () => {
                                   : passwords.newPassword.length < 10
                                   ? 'bg-yellow-500'
                                   : 'bg-green-500'
-                                : 'bg-gray-300 dark:bg-gray-600'
+                                : 'bg-[var(--text-muted)]/40'
                             }`}
                           />
                         ))}
                       </div>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                      <p className="text-xs text-[var(--text-secondary)]">
                         {passwords.newPassword.length < 6 ? 'Weak' : passwords.newPassword.length < 10 ? 'Medium' : 'Strong'}
                       </p>
                     </div>
@@ -864,7 +908,7 @@ const ProfileNew = () => {
                     <button type="submit" className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2" disabled={sendingPasswordCode}>
                       {sendingPasswordCode ? <SyncLoader color="#fff" size={8} /> : t('Change Password')}
                     </button>
-                    <button type="button" onClick={() => { setShowPasswordForm(false); setPasswords({ currentPassword: '', newPassword: '' }); }} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300">{t('Cancel')}</button>
+                    <button type="button" onClick={() => { setShowPasswordForm(false); setPasswords({ currentPassword: '', newPassword: '' }); }} className="theme-soft-button px-4 py-2 rounded-lg">{t('Cancel')}</button>
                   </div>
                 </form>
               )}
@@ -878,26 +922,15 @@ const ProfileNew = () => {
                   } catch (error) {
                     showModal('error', 'Error', error.response?.data?.message || 'Failed to send reset link');
                   }
-                }} className="mt-4 bg-orange-50 dark:bg-gray-700 p-4 rounded-lg">
-                  <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">{t('A password reset link will be sent to')} <strong>{user.email}</strong></p>
+                }} className="mt-4 p-4 rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)]">
+                  <p className="text-sm text-[var(--text-primary)] mb-4">{t('A password reset link will be sent to')} <strong>{user.email}</strong></p>
                   <div className="flex gap-2">
                     <button type="submit" className="flex-1 bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700">{t('Send Reset Link')}</button>
-                    <button type="button" onClick={() => setShowForgotPassword(false)} className="bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300">{t('Cancel')}</button>
+                    <button type="button" onClick={() => setShowForgotPassword(false)} className="theme-soft-button px-4 py-2 rounded-lg">{t('Cancel')}</button>
                   </div>
                 </form>
               )}
             </div>
-
-            {/* Privacy Settings */}
-            <PrivacySettings profile={profile} onUpdate={async (updates) => {
-              try {
-                await api.put('/users/profile', { ...profile, ...updates });
-                setProfile({ ...profile, ...updates });
-                showModal('success', 'Success', 'Privacy settings updated!');
-              } catch (error) {
-                showModal('error', 'Error', 'Failed to update settings');
-              }
-            }} />
 
             {/* Danger Zone */}
             {!user?.isGuest && user?.role !== 'guest' && (

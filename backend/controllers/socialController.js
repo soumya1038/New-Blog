@@ -1,5 +1,7 @@
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const { enqueueEmailJob } = require('../jobs/queueService');
+const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
 
 // Follow/Unfollow user
 exports.toggleFollow = async (req, res) => {
@@ -42,6 +44,23 @@ exports.toggleFollow = async (req, res) => {
         type: 'follow',
         message: `${req.user.username} started following you`
       });
+
+      if (userToFollow.email && isEmailNotificationEnabled(userToFollow, 'newFollower')) {
+        enqueueEmailJob(
+          'new-follower',
+          {
+            email: userToFollow.email,
+            username: userToFollow.username,
+            followerName: req.user.username,
+            followerProfileUrl: `/user/${req.user._id}`
+          },
+          {
+            jobId: `new-follower:${userId}:${req.user._id}`
+          }
+        ).catch((error) => {
+          console.error('Failed to queue new follower email:', error?.message || error);
+        });
+      }
       
       // Emit socket event
       const io = req.app.get('io');

@@ -3,6 +3,9 @@ const Blog = require('../models/Blog');
 const Article = require('../models/Article');
 const Short = require('../models/Short');
 const Notification = require('../models/Notification');
+const User = require('../models/User');
+const { enqueueEmailJob } = require('../jobs/queueService');
+const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
 const { resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 const {
   parseLimit,
@@ -49,6 +52,17 @@ const getContentCachePrefixesByType = (contentType) => {
     return ['blogs:list:', 'blog:detail:'];
   }
   return [];
+};
+
+const getContentPath = (contentType, post) => {
+  if (!post?._id) return '/notifications';
+  if (contentType === 'article') {
+    return `/article/${post.slug || post._id}`;
+  }
+  if (contentType === 'short') {
+    return `/shorts/${post._id}`;
+  }
+  return `/blog/${post.slug || post._id}`;
 };
 
 // Create comment
@@ -106,6 +120,24 @@ exports.createComment = async (req, res) => {
         blog: isShort === 'true' ? null : post._id,
         message: `${req.user.username} commented on your post "${post.title}"`
       });
+
+      const postAuthor = await User.findById(post.author).select('email username emailNotifications');
+      if (postAuthor?.email && isEmailNotificationEnabled(postAuthor, 'newComment')) {
+        enqueueEmailJob(
+          'new-comment',
+          {
+            email: postAuthor.email,
+            username: postAuthor.username,
+            commenterName: req.user.username,
+            postTitle: post.title || 'your content',
+            commentText: content,
+            postUrl: getContentPath(contentType, post)
+          },
+          { jobId: `new-comment:${comment._id}` }
+        ).catch((error) => {
+          console.error('Failed to queue new comment email:', error?.message || error);
+        });
+      }
     }
 
     // Emit socket event for real-time updates

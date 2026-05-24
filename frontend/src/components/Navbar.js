@@ -20,13 +20,18 @@ const Navbar = () => {
     const saved = localStorage.getItem('theme');
     return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
-  const dropdownRef = useRef(null);
-  const tabletDropdownRef = useRef(null);
+  const desktopDropdownRef = useRef(null);
+  const tabletLgDropdownRef = useRef(null);
+  const tabletMdDropdownRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
-          tabletDropdownRef.current && !tabletDropdownRef.current.contains(event.target)) {
+      const isInsideDropdown =
+        (desktopDropdownRef.current && desktopDropdownRef.current.contains(event.target)) ||
+        (tabletLgDropdownRef.current && tabletLgDropdownRef.current.contains(event.target)) ||
+        (tabletMdDropdownRef.current && tabletMdDropdownRef.current.contains(event.target));
+
+      if (!isInsideDropdown) {
         setShowDropdown(false);
       }
     };
@@ -149,7 +154,7 @@ const Navbar = () => {
                 </Link>
                 
                 {/* User Profile Dropdown */}
-                <div className="profile-menu relative" ref={dropdownRef}>
+                <div className="profile-menu relative" ref={desktopDropdownRef}>
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
                     className="flex items-center gap-3 hover:bg-white/20 px-4 py-2.5 rounded-xl transition-all duration-300 hover:scale-105 border border-white/30 hover:border-white/50 backdrop-blur-sm hover:shadow-xl"
@@ -268,7 +273,7 @@ const Navbar = () => {
                     </span>
                   )}
                 </Link>
-                <div className="relative" ref={tabletDropdownRef}>
+                <div className="relative" ref={tabletLgDropdownRef}>
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
                     className="flex items-center gap-2 hover:bg-white/20 px-3 py-2 rounded-xl transition-all duration-300 hover:scale-105 border border-white/30 backdrop-blur-sm"
@@ -362,7 +367,7 @@ const Navbar = () => {
                     </span>
                   )}
                 </Link>
-                <div className="relative" ref={tabletDropdownRef}>
+                <div className="relative" ref={tabletMdDropdownRef}>
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
                     className="flex items-center gap-1 hover:bg-white/20 px-2 py-1.5 rounded-xl transition-all duration-300 hover:scale-105 border border-white/30 backdrop-blur-sm"

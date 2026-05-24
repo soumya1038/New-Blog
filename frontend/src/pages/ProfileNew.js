@@ -15,6 +15,7 @@ import ProfileCompleteness from '../components/ProfileCompleteness';
 import ActivityStats from '../components/ActivityStats';
 import QuickActions from '../components/QuickActions';
 import PrivacySettings from '../components/PrivacySettings';
+import EmailNotificationSettings from '../components/EmailNotificationSettings';
 import Achievements from '../components/Achievements';
 import QRCodeModal from '../components/QRCodeModal';
 
@@ -111,6 +112,17 @@ const ProfileNew = () => {
 
   const closeModal = () => {
     setModal({ show: false, type: '', title: '', message: '', onConfirm: null });
+  };
+
+  const handleUpdateProfileSettings = async (updates, successMessage) => {
+    const nextProfile = { ...profile, ...updates };
+    try {
+      await api.put('/users/profile', nextProfile);
+      setProfile(nextProfile);
+      showModal('success', 'Success', successMessage);
+    } catch (error) {
+      showModal('error', 'Error', 'Failed to update settings');
+    }
   };
 
   const handleUpdateProfile = async (e) => {
@@ -451,7 +463,7 @@ const ProfileNew = () => {
                       )}
                     </div>
                     {/* Buttons always at bottom */}
-                    <div className="flex gap-2 w-full">
+                    <div className="flex gap-2 w-full lg:flex-col xl:flex-row">
                       <button onClick={() => { setNewUsername(user?.username || ''); setShowUsernameModal(true); }} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2">
                         <FaEdit size={14} /> {t('Username')}
                       </button>
@@ -535,6 +547,22 @@ const ProfileNew = () => {
                 onShowQR={() => setShowQRModal(true)}
               />
             </div>
+
+            {/* Email Notifications - Only on large+ screens */}
+            <div className="hidden lg:block">
+              <EmailNotificationSettings
+                profile={profile}
+                onUpdate={(updates) => handleUpdateProfileSettings(updates, 'Email notification settings updated!')}
+              />
+            </div>
+
+            {/* Privacy Settings - Only on large+ screens */}
+            <div className="hidden lg:block">
+              <PrivacySettings
+                profile={profile}
+                onUpdate={(updates) => handleUpdateProfileSettings(updates, 'Privacy settings updated!')}
+              />
+            </div>
           </div>
 
           {/* RIGHT COLUMN */}
@@ -551,6 +579,22 @@ const ProfileNew = () => {
                 user={user} 
                 onShareProfile={() => setShowProfileShareModal(true)}
                 onShowQR={() => setShowQRModal(true)}
+              />
+            </div>
+
+            {/* Email Notifications - Only on small/medium screens */}
+            <div className="lg:hidden">
+              <EmailNotificationSettings
+                profile={profile}
+                onUpdate={(updates) => handleUpdateProfileSettings(updates, 'Email notification settings updated!')}
+              />
+            </div>
+
+            {/* Privacy Settings - Only on small/medium screens */}
+            <div className="lg:hidden">
+              <PrivacySettings
+                profile={profile}
+                onUpdate={(updates) => handleUpdateProfileSettings(updates, 'Privacy settings updated!')}
               />
             </div>
 
@@ -855,17 +899,6 @@ const ProfileNew = () => {
                 </form>
               )}
             </div>
-
-            {/* Privacy Settings */}
-            <PrivacySettings profile={profile} onUpdate={async (updates) => {
-              try {
-                await api.put('/users/profile', { ...profile, ...updates });
-                setProfile({ ...profile, ...updates });
-                showModal('success', 'Success', 'Privacy settings updated!');
-              } catch (error) {
-                showModal('error', 'Error', 'Failed to update settings');
-              }
-            }} />
 
             {/* Danger Zone */}
             {!user?.isGuest && user?.role !== 'guest' && (

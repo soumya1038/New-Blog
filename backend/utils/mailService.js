@@ -8,6 +8,15 @@ const {
   renderAccountDeletionConfirmationEmail,
   renderAccountDeletedSuccessEmail,
   renderContactAdminEmail,
+  renderNewFollowerEmail,
+  renderNewMessageEmail,
+  renderMissedCallEmail,
+  renderContentPublishedEmail,
+  renderNewCommentEmail,
+  renderNewReactionEmail,
+  renderAccountWarningEmail,
+  renderAccountSuspensionEmail,
+  renderPreDeletionWarningEmail,
 } = require('./emailTemplates');
 
 const sendEmail = async ({ to, subject, html }) => {
@@ -163,6 +172,149 @@ const sendContactEmail = async ({ userEmail, username, issue, advice }) => {
   });
 };
 
+const sendNewFollowerEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Sending new follower email to:', email);
+  const { subject, html } = renderNewFollowerEmail({
+    username,
+    followerName: options.followerName,
+    followerProfileUrl: options.followerProfileUrl,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+};
+
+const sendNewMessageEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Sending new message email to:', email);
+  const { subject, html } = renderNewMessageEmail({
+    username,
+    senderName: options.senderName,
+    messagePreview: options.messagePreview,
+    chatUrl: options.chatUrl,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+};
+
+const sendMissedCallEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Sending missed call email to:', email);
+  const { subject, html } = renderMissedCallEmail({
+    username,
+    callerName: options.callerName,
+    callType: options.callType,
+    callTime: options.callTime,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+};
+
+const sendContentPublishedEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Sending content published email to:', email);
+  const { subject, html } = renderContentPublishedEmail({
+    username,
+    contentType: options.contentType,
+    postTitle: options.postTitle,
+    postUrl: options.postUrl,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+};
+
+const sendNewCommentEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Sending new comment email to:', email);
+  const { subject, html } = renderNewCommentEmail({
+    username,
+    commenterName: options.commenterName,
+    postTitle: options.postTitle,
+    commentText: options.commentText,
+    postUrl: options.postUrl,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+};
+
+const sendNewReactionEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Sending new reaction email to:', email);
+  const { subject, html } = renderNewReactionEmail({
+    username,
+    reactorName: options.reactorName,
+    reactionCount: options.reactionCount,
+    postTitle: options.postTitle,
+    postUrl: options.postUrl,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+};
+
+const sendAccountWarningEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Sending account warning email to:', email);
+  const { subject, html } = renderAccountWarningEmail({
+    username,
+    violationReason: options.violationReason,
+    warningDate: options.warningDate,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+};
+
+const sendAccountSuspensionEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Sending account suspension email to:', email);
+  const { subject, html } = renderAccountSuspensionEmail({
+    username,
+    suspensionReason: options.suspensionReason,
+    suspensionDuration: options.suspensionDuration,
+    reviewDate: options.reviewDate,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+};
+
+const sendPreDeletionWarningEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Sending pre-deletion warning email to:', email);
+  const { subject, html } = renderPreDeletionWarningEmail({
+    username,
+    daysRemaining: options.daysRemaining,
+    deletionDate: options.deletionDate,
+  });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+};
+
 module.exports = {
   sendEmail,
   sendVerificationEmail,
@@ -173,4 +325,13 @@ module.exports = {
   sendPasswordChangedSuccess,
   sendAccountDeletedSuccess,
   sendContactEmail,
+  sendNewFollowerEmail,
+  sendNewMessageEmail,
+  sendMissedCallEmail,
+  sendContentPublishedEmail,
+  sendNewCommentEmail,
+  sendNewReactionEmail,
+  sendAccountWarningEmail,
+  sendAccountSuspensionEmail,
+  sendPreDeletionWarningEmail,
 };

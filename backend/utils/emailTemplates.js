@@ -31,6 +31,21 @@ const buildAppUrl = (baseUrl, path = '/') => {
   return `${safeBase}${safePath}`;
 };
 
+const resolvePublicUrl = (baseUrl, candidatePath = '/') => {
+  const candidate = String(candidatePath || '').trim();
+  if (!candidate) return buildAppUrl(baseUrl, '/');
+  if (/^https?:\/\//i.test(candidate)) return candidate;
+  return buildAppUrl(baseUrl, candidate);
+};
+
+const stripHtmlTags = (value = '') => String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+
+const truncateText = (value = '', maxLength = 160) => {
+  const text = String(value || '').trim();
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+};
+
 const getConfig = () => {
   const siteUrl = normalizeUrl(
     process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL,
@@ -73,6 +88,14 @@ const formatCode = (code) => {
     return `${cleaned.slice(0, 3)} ${cleaned.slice(3)}`;
   }
   return cleaned || '------';
+};
+
+const toTimestamp = (value, fallback = Date.now()) => {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  const parsed = Date.parse(String(value || ''));
+  if (Number.isFinite(parsed)) return parsed;
+  return fallback;
 };
 
 const resolveExpiry = (expiresAt) => {
@@ -450,6 +473,302 @@ const renderContactAdminEmail = ({ username, userEmail, issue, advice }) => {
   };
 };
 
+const renderNewFollowerEmail = ({ username, followerName, followerProfileUrl }) => {
+  const config = getConfig();
+  const safeUsername = escapeHtml(username || 'User');
+  const followerNameText = String(followerName || 'Someone').trim() || 'Someone';
+  const safeFollowerName = escapeHtml(followerNameText);
+  const profileUrl = resolvePublicUrl(config.siteUrl, followerProfileUrl || '/notifications');
+  const body = [
+    heading('You have a new follower'),
+    paragraph(`Dear <strong style="color:#1a1a1a;">${safeUsername}</strong>,`),
+    paragraph(
+      `<strong style="color:#1a1a1a;">${safeFollowerName}</strong> just started following you on Lekhon.`
+    ),
+    card(
+      `<p style="margin:0;font-family:Arial,sans-serif;font-size:14px;color:#555;line-height:1.7;">Keep writing and sharing your work - your audience is growing.</p>`
+    ),
+    button(`View ${safeFollowerName}'s Profile ->`, profileUrl),
+    signature(),
+  ].join('');
+
+  return {
+    subject: normalizeSubjectText(`${followerNameText} started following you on Lekhon`),
+    html: wrapTemplate({
+      subject: normalizeSubjectText(`${followerNameText} started following you on Lekhon`),
+      bodyHtml: body,
+      config,
+    }),
+  };
+};
+
+const renderNewMessageEmail = ({ username, senderName, messagePreview, chatUrl }) => {
+  const config = getConfig();
+  const safeUsername = escapeHtml(username || 'User');
+  const senderNameText = String(senderName || 'A user').trim() || 'A user';
+  const safeSenderName = escapeHtml(senderNameText);
+  const previewText = truncateText(stripHtmlTags(messagePreview || 'You received a new message.'), 160);
+  const safePreview = escapeHtml(previewText);
+  const safeChatUrl = resolvePublicUrl(config.siteUrl, chatUrl || '/chat');
+  const body = [
+    heading('New message received'),
+    paragraph(`Dear <strong style="color:#1a1a1a;">${safeUsername}</strong>,`),
+    paragraph(`<strong style="color:#1a1a1a;">${safeSenderName}</strong> sent you a new message on Lekhon.`),
+    card(
+      `<p style="margin:0 0 8px;font-family:Arial,sans-serif;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Message Preview</p><p style="margin:0;font-family:Georgia,serif;font-size:15px;color:#2d2d2d;line-height:1.75;">"${safePreview}"</p>`
+    ),
+    button('Open Chat ->', safeChatUrl),
+    signature(),
+  ].join('');
+
+  return {
+    subject: normalizeSubjectText(`New message from ${senderNameText} on Lekhon`),
+    html: wrapTemplate({
+      subject: normalizeSubjectText(`New message from ${senderNameText} on Lekhon`),
+      bodyHtml: body,
+      config,
+    }),
+  };
+};
+
+const renderMissedCallEmail = ({ username, callerName, callType, callTime }) => {
+  const config = getConfig();
+  const safeUsername = escapeHtml(username || 'User');
+  const callerNameText = String(callerName || 'A user').trim() || 'A user';
+  const safeCallerName = escapeHtml(callerNameText);
+  const normalizedCallType = String(callType || 'Audio').toLowerCase() === 'video' ? 'Video' : 'Audio';
+  const callTimestamp = toTimestamp(callTime, Date.now());
+  const safeCallTime = escapeHtml(formatExpiryDate(callTimestamp, config.timeZone));
+  const body = [
+    heading('Missed call alert'),
+    paragraph(`Dear <strong style="color:#1a1a1a;">${safeUsername}</strong>,`),
+    paragraph(`<strong style="color:#1a1a1a;">${safeCallerName}</strong> tried to reach you on Lekhon.`),
+    card(
+      `<table width="100%" cellpadding="0" cellspacing="0" border="0">${[
+        `<tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:5px 0;width:130px;vertical-align:top;">Caller</td><td style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;padding:5px 0;">${safeCallerName}</td></tr>`,
+        `<tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:5px 0;width:130px;vertical-align:top;">Call type</td><td style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;padding:5px 0;">${escapeHtml(normalizedCallType)}</td></tr>`,
+        `<tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:5px 0;width:130px;vertical-align:top;">Time</td><td style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;padding:5px 0;">${safeCallTime}</td></tr>`,
+      ].join('')}</table>`
+    ),
+    button('Open Chat ->', buildAppUrl(config.siteUrl, '/chat')),
+    signature(),
+  ].join('');
+
+  return {
+    subject: normalizeSubjectText(
+      `Missed ${normalizedCallType.toLowerCase()} call from ${callerNameText} on Lekhon`
+    ),
+    html: wrapTemplate({
+      subject: normalizeSubjectText(
+        `Missed ${normalizedCallType.toLowerCase()} call from ${callerNameText} on Lekhon`
+      ),
+      bodyHtml: body,
+      config,
+    }),
+  };
+};
+
+const renderContentPublishedEmail = ({ username, contentType, postTitle, postUrl }) => {
+  const config = getConfig();
+  const safeUsername = escapeHtml(username || 'User');
+  const safeContentType = escapeHtml(String(contentType || 'content').trim() || 'content');
+  const safePostTitle = escapeHtml(postTitle || 'Untitled');
+  const safePostUrl = resolvePublicUrl(config.siteUrl, postUrl || '/profile');
+  const body = [
+    heading('Your content is now live'),
+    paragraph(`Dear <strong style="color:#1a1a1a;">${safeUsername}</strong>,`),
+    paragraph(`Your ${safeContentType} has been published successfully on Lekhon.`),
+    card(
+      `<p style="margin:0 0 5px;font-family:Arial,sans-serif;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Published ${safeContentType}</p><p style="margin:0;font-family:Georgia,serif;font-size:19px;color:#1a1a1a;line-height:1.5;">${safePostTitle}</p>`
+    ),
+    button('View Published Content ->', safePostUrl),
+    signature(),
+  ].join('');
+
+  return {
+    subject: normalizeSubjectText(`Your ${String(contentType || 'content')} is now live on Lekhon`),
+    html: wrapTemplate({
+      subject: normalizeSubjectText(`Your ${String(contentType || 'content')} is now live on Lekhon`),
+      bodyHtml: body,
+      config,
+    }),
+  };
+};
+
+const renderNewCommentEmail = ({ username, commenterName, postTitle, commentText, postUrl }) => {
+  const config = getConfig();
+  const safeUsername = escapeHtml(username || 'User');
+  const commenterNameText = String(commenterName || 'A reader').trim() || 'A reader';
+  const safeCommenterName = escapeHtml(commenterNameText);
+  const safePostTitle = escapeHtml(postTitle || 'your post');
+  const commentPreview = truncateText(stripHtmlTags(commentText || ''), 220);
+  const safeCommentPreview = escapeHtml(commentPreview || 'A new comment was posted.');
+  const safePostUrl = resolvePublicUrl(config.siteUrl, postUrl || '/notifications');
+  const body = [
+    heading('New comment on your content'),
+    paragraph(`Dear <strong style="color:#1a1a1a;">${safeUsername}</strong>,`),
+    paragraph(
+      `<strong style="color:#1a1a1a;">${safeCommenterName}</strong> commented on "<strong style="color:#1a1a1a;">${safePostTitle}</strong>".`
+    ),
+    card(
+      `<p style="margin:0;font-family:Georgia,serif;font-size:15px;color:#2d2d2d;line-height:1.75;">"${safeCommentPreview}"</p>`
+    ),
+    button('View Comment ->', safePostUrl),
+    signature(),
+  ].join('');
+
+  return {
+    subject: normalizeSubjectText(`${commenterNameText} commented on your post`),
+    html: wrapTemplate({
+      subject: normalizeSubjectText(`${commenterNameText} commented on your post`),
+      bodyHtml: body,
+      config,
+    }),
+  };
+};
+
+const renderNewReactionEmail = ({ username, reactorName, reactionCount, postTitle, postUrl }) => {
+  const config = getConfig();
+  const safeUsername = escapeHtml(username || 'User');
+  const safeReactorName = escapeHtml(reactorName || 'Someone');
+  const count = Math.max(1, Number(reactionCount) || 1);
+  const safePostTitle = escapeHtml(postTitle || 'your post');
+  const safePostUrl = resolvePublicUrl(config.siteUrl, postUrl || '/notifications');
+  const body = [
+    heading('Your content received new reactions'),
+    paragraph(`Dear <strong style="color:#1a1a1a;">${safeUsername}</strong>,`),
+    paragraph(
+      `<strong style="color:#1a1a1a;">${safeReactorName}</strong>${count > 1 ? ` and ${count - 1} others` : ''} reacted to "<strong style="color:#1a1a1a;">${safePostTitle}</strong>".`
+    ),
+    card(
+      `<p style="margin:0 0 6px;font-family:Arial,sans-serif;font-size:11px;color:#888;text-transform:uppercase;letter-spacing:1px;">Total new reactions</p><p style="margin:0;font-family:Georgia,serif;font-size:42px;color:#c9a227;line-height:1.2;">${escapeHtml(String(count))}</p>`
+    ),
+    button('View Reactions ->', safePostUrl),
+    signature(),
+  ].join('');
+
+  return {
+    subject: normalizeSubjectText(`${count} new reaction${count === 1 ? '' : 's'} on your content`),
+    html: wrapTemplate({
+      subject: normalizeSubjectText(`${count} new reaction${count === 1 ? '' : 's'} on your content`),
+      bodyHtml: body,
+      config,
+    }),
+  };
+};
+
+const renderAccountWarningEmail = ({ username, violationReason, warningDate }) => {
+  const config = getConfig();
+  const safeUsername = escapeHtml(username || 'User');
+  const safeReason = escapeHtml(violationReason || 'Policy violation detected');
+  const timestamp = toTimestamp(warningDate, Date.now());
+  const safeWarningDate = escapeHtml(formatExpiryDate(timestamp, config.timeZone));
+  const body = [
+    heading('Important notice regarding your account'),
+    paragraph(`Dear <strong style="color:#1a1a1a;">${safeUsername}</strong>,`),
+    paragraph('Your Lekhon account has received a warning and needs your attention.'),
+    card(
+      `<table width="100%" cellpadding="0" cellspacing="0" border="0">${[
+        `<tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:5px 0;width:130px;vertical-align:top;">Reason</td><td style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;padding:5px 0;">${safeReason}</td></tr>`,
+        `<tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:5px 0;width:130px;vertical-align:top;">Date</td><td style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;padding:5px 0;">${safeWarningDate}</td></tr>`,
+      ].join('')}</table>`
+    ),
+    warning(
+      'Please review your recent activity and avoid repeated policy violations. Repeated issues may result in temporary suspension.',
+      'amber'
+    ),
+    button('Review Terms of Service ->', buildAppUrl(config.siteUrl, '/terms')),
+    signature('The Lekhon Moderation Team'),
+  ].join('');
+
+  return {
+    subject: 'Important notice regarding your Lekhon account',
+    html: wrapTemplate({
+      subject: 'Important notice regarding your Lekhon account',
+      bodyHtml: body,
+      config,
+    }),
+  };
+};
+
+const renderAccountSuspensionEmail = ({
+  username,
+  suspensionReason,
+  suspensionDuration,
+  reviewDate,
+}) => {
+  const config = getConfig();
+  const safeUsername = escapeHtml(username || 'User');
+  const safeReason = escapeHtml(suspensionReason || 'Policy violation');
+  const safeDuration = escapeHtml(suspensionDuration || 'temporarily');
+  const safeReviewDate = escapeHtml(
+    formatExpiryDate(toTimestamp(reviewDate, Date.now()), config.timeZone)
+  );
+  const body = [
+    heading('Your account has been suspended'),
+    paragraph(`Dear <strong style="color:#1a1a1a;">${safeUsername}</strong>,`),
+    paragraph(
+      `Your Lekhon account has been suspended for <strong>${safeDuration}</strong> due to: <strong>${safeReason}</strong>.`
+    ),
+    card(
+      `<table width="100%" cellpadding="0" cellspacing="0" border="0">${[
+        `<tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:5px 0;width:130px;vertical-align:top;">Suspension</td><td style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;padding:5px 0;">${safeDuration}</td></tr>`,
+        `<tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:5px 0;width:130px;vertical-align:top;">Review date</td><td style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;padding:5px 0;">${safeReviewDate}</td></tr>`,
+      ].join('')}</table>`
+    ),
+    warning(
+      `If you believe this suspension is incorrect, contact us at <a href="mailto:${escapeHtml(config.supportEmail)}" style="color:#92400e;text-decoration:none;">${escapeHtml(config.supportEmail)}</a>.`,
+      'red'
+    ),
+    signature('The Lekhon Moderation Team'),
+  ].join('');
+
+  return {
+    subject: 'Your Lekhon account has been suspended',
+    html: wrapTemplate({
+      subject: 'Your Lekhon account has been suspended',
+      bodyHtml: body,
+      config,
+    }),
+  };
+};
+
+const renderPreDeletionWarningEmail = ({ username, daysRemaining, deletionDate }) => {
+  const config = getConfig();
+  const safeUsername = escapeHtml(username || 'User');
+  const remainingDays = Math.max(1, Number(daysRemaining) || 1);
+  const safeDeletionDate = escapeHtml(
+    formatExpiryDate(toTimestamp(deletionDate, Date.now()), config.timeZone)
+  );
+  const body = [
+    heading('Account deletion reminder'),
+    paragraph(`Dear <strong style="color:#1a1a1a;">${safeUsername}</strong>,`),
+    paragraph(
+      `Your account is scheduled for deletion in <strong>${escapeHtml(
+        String(remainingDays)
+      )} day${remainingDays === 1 ? '' : 's'}</strong>.`
+    ),
+    card(
+      `<table width="100%" cellpadding="0" cellspacing="0" border="0">${[
+        `<tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:5px 0;width:130px;vertical-align:top;">Days remaining</td><td style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;padding:5px 0;">${escapeHtml(String(remainingDays))}</td></tr>`,
+        `<tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:5px 0;width:130px;vertical-align:top;">Deletion date</td><td style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;padding:5px 0;">${safeDeletionDate}</td></tr>`,
+      ].join('')}</table>`
+    ),
+    button('Keep My Account ->', buildAppUrl(config.siteUrl, '/login')),
+    paragraph('Log in before the deletion date to keep your account active.'),
+    signature(),
+  ].join('');
+
+  return {
+    subject: `Your Lekhon account will be deleted in ${remainingDays} day${remainingDays === 1 ? '' : 's'}`,
+    html: wrapTemplate({
+      subject: `Your Lekhon account will be deleted in ${remainingDays} day${remainingDays === 1 ? '' : 's'}`,
+      bodyHtml: body,
+      config,
+    }),
+  };
+};
+
 module.exports = {
   renderWelcomeEmail,
   renderVerificationEmail,
@@ -459,4 +778,13 @@ module.exports = {
   renderAccountDeletionConfirmationEmail,
   renderAccountDeletedSuccessEmail,
   renderContactAdminEmail,
+  renderNewFollowerEmail,
+  renderNewMessageEmail,
+  renderMissedCallEmail,
+  renderContentPublishedEmail,
+  renderNewCommentEmail,
+  renderNewReactionEmail,
+  renderAccountWarningEmail,
+  renderAccountSuspensionEmail,
+  renderPreDeletionWarningEmail,
 };

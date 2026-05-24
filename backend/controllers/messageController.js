@@ -5,8 +5,11 @@ const Group = require('../models/Group');
 const Notification = require('../models/Notification');
 const { encrypt, decrypt } = require('../utils/encryption');
 const { enqueueEmailJob } = require('../jobs/queueService');
+const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
 
-const shouldSendNewMessageEmail = () => process.env.EMAIL_NOTIFY_NEW_MESSAGES === 'true';
+const shouldSendNewMessageEmail = (receiver) =>
+  process.env.EMAIL_NOTIFY_NEW_MESSAGES === 'true' &&
+  isEmailNotificationEnabled(receiver, 'newMessage');
 
 // Send message
 exports.sendMessage = async (req, res) => {
@@ -55,7 +58,7 @@ exports.sendMessage = async (req, res) => {
       message: `${req.user.username} sent you a message`
     });
 
-    if (shouldSendNewMessageEmail() && receiver.email) {
+    if (shouldSendNewMessageEmail(receiver) && receiver.email) {
       enqueueEmailJob(
         'new-message',
         {

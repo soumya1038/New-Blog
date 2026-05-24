@@ -1,4 +1,7 @@
 const CallLog = require('../models/CallLog');
+const User = require('../models/User');
+const { enqueueEmailJob } = require('../jobs/queueService');
+const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
 
 // Get call history between two users (last 3 calls)
 exports.getCallHistory = async (req, res) => {
@@ -49,14 +52,39 @@ exports.updateCallLog = async (req, res) => {
     const { callLogId } = req.params;
     const { status, duration, endedAt } = req.body;
 
-    const callLog = await CallLog.findByIdAndUpdate(
-      callLogId,
-      { status, duration, endedAt },
-      { new: true }
-    );
+    const callLog = await CallLog.findById(callLogId);
 
     if (!callLog) {
       return res.status(404).json({ message: 'Call log not found' });
+    }
+
+    const previousStatus = callLog.status;
+    if (status !== undefined) callLog.status = status;
+    if (duration !== undefined) callLog.duration = duration;
+    if (endedAt !== undefined) callLog.endedAt = endedAt;
+    await callLog.save();
+
+    if (previousStatus !== 'missed' && callLog.status === 'missed') {
+      const [caller, receiver] = await Promise.all([
+        User.findById(callLog.caller).select('username'),
+        User.findById(callLog.receiver).select('username email emailNotifications')
+      ]);
+
+      if (receiver?.email && isEmailNotificationEnabled(receiver, 'missedCall')) {
+        enqueueEmailJob(
+          'missed-call',
+          {
+            email: receiver.email,
+            username: receiver.username,
+            callerName: caller?.username || 'A user',
+            callType: callLog.type || 'audio',
+            callTime: callLog.createdAt || Date.now()
+          },
+          { jobId: `missed-call:${callLog._id}` }
+        ).catch((error) => {
+          console.error('Failed to queue missed call email:', error?.message || error);
+        });
+      }
     }
 
     res.json({ callLog });

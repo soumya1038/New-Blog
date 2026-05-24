@@ -1,7 +1,10 @@
 const Short = require('../models/Short');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
+const User = require('../models/User');
 const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
+const { enqueueEmailJob } = require('../jobs/queueService');
+const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
 
 const SHORT_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_SHORT_LIST_SECONDS,
@@ -75,6 +78,23 @@ exports.createShort = async (req, res) => {
 
     const populatedShort = await Short.findById(short._id).populate('author', 'username profileImage');
     await invalidateShortCache();
+
+    const isPublishedNow = !short.isDraft && !short.isScheduled;
+    if (isPublishedNow && req.user?.email) {
+      enqueueEmailJob(
+        'content-published',
+        {
+          email: req.user.email,
+          username: req.user.username,
+          contentType: 'short',
+          postTitle: short.title,
+          postUrl: `/shorts/${short._id}`
+        },
+        { jobId: `content-published:short:${short._id}` }
+      ).catch((error) => {
+        console.error('Failed to queue short published email:', error?.message || error);
+      });
+    }
 
     res.status(201).json({ success: true, short: populatedShort });
   } catch (error) {
@@ -234,8 +254,11 @@ exports.updateShort = async (req, res) => {
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : short.tags;
     const videoUrlsArray = videoUrls !== undefined ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : short.videoUrls;
 
+    const publishingFromDraft =
+      (short.isDraft || short.isScheduled) && isDraft === false && !isScheduled;
+
     // If changing from draft/scheduled to published, delete other drafts with same title
-    if ((short.isDraft || short.isScheduled) && isDraft === false && !isScheduled) {
+    if (publishingFromDraft) {
       const otherDraft = await Short.findOne({ 
         title: title || short.title, 
         author: req.user._id, 
@@ -271,6 +294,22 @@ exports.updateShort = async (req, res) => {
 
     await short.save();
     await invalidateShortCache();
+
+    if (publishingFromDraft && req.user?.email) {
+      enqueueEmailJob(
+        'content-published',
+        {
+          email: req.user.email,
+          username: req.user.username,
+          contentType: 'short',
+          postTitle: short.title,
+          postUrl: `/shorts/${short._id}`
+        },
+        { jobId: `content-published:short:${short._id}` }
+      ).catch((error) => {
+        console.error('Failed to queue short published email after draft publish:', error?.message || error);
+      });
+    }
 
     const updatedShort = await Short.findById(short._id).populate('author', 'username profileImage');
 
@@ -371,6 +410,24 @@ exports.toggleLike = async (req, res) => {
           short: short._id,
           message: `${req.user.username} liked your short "${short.title}"`
         });
+
+        const shortAuthor = await User.findById(short.author).select('email username emailNotifications');
+        if (shortAuthor?.email && isEmailNotificationEnabled(shortAuthor, 'newReaction')) {
+          enqueueEmailJob(
+            'new-reaction',
+            {
+              email: shortAuthor.email,
+              username: shortAuthor.username,
+              reactorName: req.user.username,
+              reactionCount: short.likes.length,
+              postTitle: short.title,
+              postUrl: `/shorts/${short._id}`
+            },
+            { jobId: `new-reaction:short:${short._id}:${req.user._id}` }
+          ).catch((error) => {
+            console.error('Failed to queue short reaction email:', error?.message || error);
+          });
+        }
         
         const io = req.app.get('io');
         if (io) {
