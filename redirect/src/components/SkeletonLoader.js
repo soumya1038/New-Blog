@@ -174,22 +174,22 @@ export const StatsCardSkeleton = () => (
 
 // Chat Skeleton
 export const ChatSkeleton = () => (
-  <div className="flex h-screen bg-gray-50">
+  <div className="flex h-screen bg-[var(--background-primary)]">
     {/* Sidebar Skeleton */}
-    <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-      <div className="p-4 border-b border-gray-200">
-        <div className={`h-6 bg-gray-200 rounded w-32 ${shimmer}`}></div>
+    <div className="w-80 bg-[var(--surface-card)] border-r border-[var(--border-default)] flex flex-col">
+      <div className="p-4 border-b border-[var(--border-default)]">
+        <SkeletonBlock className="h-6 w-32" />
       </div>
-      <div className="p-3 border-b border-gray-200">
-        <div className={`h-10 bg-gray-200 rounded-md ${shimmer}`}></div>
+      <div className="p-3 border-b border-[var(--border-default)]">
+        <SkeletonBlock className="h-10 rounded-md" />
       </div>
       <div className="flex-1 overflow-y-auto">
         {[1, 2, 3, 4, 5].map((i) => (
-          <div key={i} className="flex items-center p-3 border-b border-gray-100">
-            <div className={`w-12 h-12 bg-gray-200 rounded-full ${shimmer}`}></div>
+          <div key={i} className="flex items-center p-3 border-b border-[var(--border-default)]">
+            <SkeletonBlock className="w-12 h-12 rounded-full" />
             <div className="ml-3 flex-1">
-              <div className={`h-4 bg-gray-200 rounded w-32 mb-2 ${shimmer}`}></div>
-              <div className={`h-3 bg-gray-200 rounded w-48 ${shimmer}`}></div>
+              <SkeletonBlock className="h-4 w-32 mb-2" />
+              <SkeletonBlock className="h-3 w-48" />
             </div>
           </div>
         ))}
@@ -197,11 +197,11 @@ export const ChatSkeleton = () => (
     </div>
     
     {/* Chat Area Skeleton */}
-    <div className="flex-1 flex items-center justify-center bg-white">
+    <div className="flex-1 flex items-center justify-center bg-[var(--surface-card)]">
       <div className="text-center">
-        <div className={`w-24 h-24 mx-auto mb-4 bg-gray-200 rounded-full ${shimmer}`}></div>
-        <div className={`h-6 bg-gray-200 rounded w-48 mx-auto mb-2 ${shimmer}`}></div>
-        <div className={`h-4 bg-gray-200 rounded w-64 mx-auto ${shimmer}`}></div>
+        <SkeletonBlock className="w-24 h-24 mx-auto mb-4 rounded-full" />
+        <SkeletonBlock className="h-6 w-48 mx-auto mb-2" />
+        <SkeletonBlock className="h-4 w-64 mx-auto" />
       </div>
     </div>
   </div>

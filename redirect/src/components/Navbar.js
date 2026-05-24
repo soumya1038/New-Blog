@@ -78,6 +78,20 @@ const Navbar = () => {
     setShowLogoutModal(false);
   };
 
+  const dropdownPanelBase =
+    'theme-modal-card border border-[var(--border-default)] backdrop-blur-xl shadow-2xl py-2 animate-slideDown overflow-hidden';
+  const dropdownDesktopItem =
+    'block px-4 py-3 mx-2 my-1 rounded-xl text-[var(--text-primary)] hover:bg-[var(--surface-elevated)] transition-all duration-200 hover:scale-[1.02]';
+  const dropdownCompactItem =
+    'block px-4 py-2 mx-2 my-1 rounded-lg text-[var(--text-primary)] hover:bg-[var(--surface-elevated)] transition-colors duration-200';
+  const dropdownAdminItem =
+    'block px-4 py-3 mx-2 my-1 rounded-xl font-semibold hover:bg-[var(--surface-elevated)] transition-all duration-200 hover:scale-[1.02]';
+  const dropdownDivider = 'my-2 border-[var(--border-default)]';
+  const dropdownLogoutDesktop =
+    'w-[calc(100%-1rem)] text-left px-4 py-3 mx-2 my-1 rounded-xl text-red-600 dark:text-red-400 hover:bg-[var(--surface-elevated)] transition-all duration-200 hover:scale-[1.02] flex items-center gap-2 font-semibold';
+  const dropdownLogoutCompact =
+    'w-full text-left px-4 py-2 mx-2 my-1 rounded-lg text-red-600 dark:text-red-400 hover:bg-[var(--surface-elevated)] transition-colors duration-200 flex items-center gap-2';
+
   return (
     <>
       <div className="h-20"></div>
@@ -170,15 +184,15 @@ const Navbar = () => {
                   </button>
 
                   {showDropdown && (
-                    <div className="absolute right-0 mt-3 w-56 bg-white/95 dark:bg-gray-800/95 backdrop-blur-xl rounded-2xl shadow-2xl py-2 z-[9999] border border-gray-200/50 dark:border-gray-700/50 animate-slideDown overflow-hidden">
+                    <div className={`absolute right-0 mt-3 w-56 rounded-2xl z-[9999] ${dropdownPanelBase}`}>
                       {(user.role === 'admin' || user.role === 'coAdmin') && (
                         <Link
                           to="/admin"
                           onClick={() => setShowDropdown(false)}
-                          className={`block px-4 py-3 mx-2 my-1 rounded-xl hover:bg-gradient-to-r font-semibold transition-all duration-300 hover:scale-105 hover:shadow-md ${
+                          className={`${dropdownAdminItem} ${
                             user.role === 'coAdmin' 
-                              ? 'text-blue-600 dark:text-blue-400 hover:from-blue-50 hover:to-blue-100 dark:hover:from-blue-900/30 dark:hover:to-blue-800/30' 
-                              : 'text-purple-600 dark:text-purple-400 hover:from-purple-50 hover:to-purple-100 dark:hover:from-purple-900/30 dark:hover:to-purple-800/30'
+                              ? 'text-blue-600 dark:text-blue-300'
+                              : 'text-purple-600 dark:text-purple-300'
                           }`}
                         >
                           <span className="flex items-center gap-2">
@@ -190,7 +204,7 @@ const Navbar = () => {
                       <Link
                         to="/profile"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-3 mx-2 my-1 rounded-xl text-gray-800 dark:text-gray-200 hover:bg-gradient-to-r hover:from-gray-100 hover:to-gray-200 dark:hover:from-gray-700 dark:hover:to-gray-600 transition-all duration-300 hover:scale-105"
+                        className={dropdownDesktopItem}
                       >
                         <span className="flex items-center gap-2">
                           <FaUserCircle />
@@ -200,7 +214,7 @@ const Navbar = () => {
                       <Link
                         to="/drafts"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-3 mx-2 my-1 rounded-xl text-gray-800 dark:text-gray-200 hover:bg-gradient-to-r hover:from-gray-100 hover:to-gray-200 dark:hover:from-gray-700 dark:hover:to-gray-600 transition-all duration-300 hover:scale-105"
+                        className={dropdownDesktopItem}
                       >
                         <span className="flex items-center gap-2">
                           <FaStickyNote />
@@ -210,14 +224,14 @@ const Navbar = () => {
                       <Link
                         to="/chat"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-3 mx-2 my-1 rounded-xl text-gray-800 dark:text-gray-200 hover:bg-gradient-to-r hover:from-gray-100 hover:to-gray-200 dark:hover:from-gray-700 dark:hover:to-gray-600 transition-all duration-300 hover:scale-105 flex items-center gap-2"
+                        className={`${dropdownDesktopItem} flex items-center gap-2`}
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      <hr className="my-2 border-gray-200/50 dark:border-gray-700/50" />
+                      <hr className={dropdownDivider} />
                       <button
                         onClick={handleLogout}
-                        className="w-[calc(100%-1rem)] text-left px-4 py-3 mx-2 my-1 rounded-xl text-red-600 dark:text-red-400 hover:bg-gradient-to-r hover:from-red-50 hover:to-red-100 dark:hover:from-red-900/30 dark:hover:to-red-800/30 transition-all duration-300 hover:scale-105 flex items-center gap-2 font-semibold"
+                        className={dropdownLogoutDesktop}
                       >
                         <FaSignOutAlt /> {t('Logout')}
                       </button>
@@ -288,13 +302,13 @@ const Navbar = () => {
                     <FaChevronDown size={12} className={`transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`} />
                   </button>
                   {showDropdown && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-[99999]">
+                    <div className={`absolute right-0 mt-2 w-48 rounded-xl z-[99999] ${dropdownPanelBase}`}>
                       {(user.role === 'admin' || user.role === 'coAdmin') && (
                         <Link
                           to="/admin"
                           onClick={() => setShowDropdown(false)}
-                          className={`block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold ${
-                            user.role === 'coAdmin' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'
+                          className={`${dropdownCompactItem} font-semibold ${
+                            user.role === 'coAdmin' ? 'text-blue-600 dark:text-blue-300' : 'text-purple-600 dark:text-purple-300'
                           }`}
                         >
                           {t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}
@@ -303,28 +317,28 @@ const Navbar = () => {
                       <Link
                         to="/profile"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className={dropdownCompactItem}
                       >
                         {t('My Profile')}
                       </Link>
                       <Link
                         to="/drafts"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className={dropdownCompactItem}
                       >
                         {t('My Drafts')}
                       </Link>
                       <Link
                         to="/chat"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                        className={`${dropdownCompactItem} flex items-center gap-2`}
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      <hr className="my-2 border-gray-200 dark:border-gray-700" />
+                      <hr className={dropdownDivider} />
                       <button
                         onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                        className={dropdownLogoutCompact}
                       >
                         <FaSignOutAlt /> {t('Logout')}
                       </button>
@@ -382,13 +396,13 @@ const Navbar = () => {
                     <FaChevronDown size={10} className={`transition-transform duration-300 ${showDropdown ? 'rotate-180' : ''}`} />
                   </button>
                   {showDropdown && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl py-2 z-[99999]">
+                    <div className={`absolute right-0 mt-2 w-48 rounded-xl z-[99999] ${dropdownPanelBase}`}>
                       {(user.role === 'admin' || user.role === 'coAdmin') && (
                         <Link
                           to="/admin"
                           onClick={() => setShowDropdown(false)}
-                          className={`block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 font-semibold ${
-                            user.role === 'coAdmin' ? 'text-blue-600 dark:text-blue-400' : 'text-purple-600 dark:text-purple-400'
+                          className={`${dropdownCompactItem} font-semibold ${
+                            user.role === 'coAdmin' ? 'text-blue-600 dark:text-blue-300' : 'text-purple-600 dark:text-purple-300'
                           }`}
                         >
                           {t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}
@@ -397,28 +411,28 @@ const Navbar = () => {
                       <Link
                         to="/profile"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className={dropdownCompactItem}
                       >
                         {t('My Profile')}
                       </Link>
                       <Link
                         to="/drafts"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className={dropdownCompactItem}
                       >
                         {t('My Drafts')}
                       </Link>
                       <Link
                         to="/chat"
                         onClick={() => setShowDropdown(false)}
-                        className="block px-4 py-2 text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                        className={`${dropdownCompactItem} flex items-center gap-2`}
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      <hr className="my-2 border-gray-200 dark:border-gray-700" />
+                      <hr className={dropdownDivider} />
                       <button
                         onClick={handleLogout}
-                        className="w-full text-left px-4 py-2 text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
+                        className={dropdownLogoutCompact}
                       >
                         <FaSignOutAlt /> {t('Logout')}
                       </button>

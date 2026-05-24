@@ -2101,7 +2101,7 @@ const ChatNew = () => {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900 overflow-hidden">
+    <div className="flex h-screen bg-[var(--background-primary)] overflow-hidden">
       {/* Status Modal */}
       {showStatusModal && selectedUserStatuses.length > 0 && (
         <div className="fixed inset-0 bg-black z-[70] flex items-center justify-center">
@@ -2201,16 +2201,16 @@ const ChatNew = () => {
       {/* Pin Duration Modal */}
       {showPinModal && pinningMessage && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4">
+          <div className="theme-modal-card border border-[var(--border-default)] rounded-lg shadow-xl max-w-sm w-full mx-4">
             <div className="p-5">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">{t('Choose How Long Your Pin Lasts')}</h3>
-              <p className="text-sm text-gray-500 mb-4">{t('You can unpin at any time')}</p>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">{t('Choose How Long Your Pin Lasts')}</h3>
+              <p className="text-sm text-[var(--text-secondary)] mb-4">{t('You can unpin at any time')}</p>
 
               <div className="space-y-2 mb-5">
                 <label
                   className={`w-full px-4 py-3 text-sm rounded-lg transition-colors border-2 cursor-pointer flex items-center gap-3 ${selectedPinDuration === 24
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                    ? 'border-[var(--brand-primary)] bg-[var(--surface-elevated)] text-[var(--text-primary)]'
+                    : 'border-[var(--border-default)] bg-[var(--background-secondary)] hover:bg-[var(--surface-elevated)] text-[var(--text-primary)]'
                     }`}
                 >
                   <input
@@ -2224,8 +2224,8 @@ const ChatNew = () => {
                 </label>
                 <label
                   className={`w-full px-4 py-3 text-sm rounded-lg transition-colors border-2 cursor-pointer flex items-center gap-3 ${selectedPinDuration === 168
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                    ? 'border-[var(--brand-primary)] bg-[var(--surface-elevated)] text-[var(--text-primary)]'
+                    : 'border-[var(--border-default)] bg-[var(--background-secondary)] hover:bg-[var(--surface-elevated)] text-[var(--text-primary)]'
                     }`}
                 >
                   <input
@@ -2239,8 +2239,8 @@ const ChatNew = () => {
                 </label>
                 <label
                   className={`w-full px-4 py-3 text-sm rounded-lg transition-colors border-2 cursor-pointer flex items-center gap-3 ${selectedPinDuration === 720
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 bg-gray-50 hover:bg-gray-100'
+                    ? 'border-[var(--brand-primary)] bg-[var(--surface-elevated)] text-[var(--text-primary)]'
+                    : 'border-[var(--border-default)] bg-[var(--background-secondary)] hover:bg-[var(--surface-elevated)] text-[var(--text-primary)]'
                     }`}
                 >
                   <input
@@ -2261,7 +2261,7 @@ const ChatNew = () => {
                     setPinningMessage(null);
                     setSelectedPinDuration(24);
                   }}
-                  className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  className="flex-1 px-4 py-2 theme-soft-button rounded-lg transition-colors"
                 >
                   {t('Cancel')}
                 </button>
@@ -2280,21 +2280,21 @@ const ChatNew = () => {
       {/* Forward Modal */}
       {forwardMessage && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] flex flex-col">
-            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">{t('Forward Message')}</h3>
+          <div className="theme-modal-card border border-[var(--border-default)] rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-[var(--border-default)] flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-[var(--text-primary)]">{t('Forward Message')}</h3>
               <button onClick={() => {
                 setForwardMessage(null);
                 setSelectedRecipients(new Set());
-              }} className="text-gray-400 hover:text-gray-600">
+              }} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                 <FiX className="w-5 h-5" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4">
-              <div className="bg-gray-50 rounded-lg p-3 mb-4">
-                <p className="text-sm text-gray-600">{forwardMessage.content}</p>
+              <div className="bg-[var(--background-secondary)] border border-[var(--border-default)] rounded-lg p-3 mb-4">
+                <p className="text-sm text-[var(--text-secondary)]">{forwardMessage.content}</p>
               </div>
-              <p className="text-sm font-medium text-gray-700 mb-2">
+              <p className="text-sm font-medium text-[var(--text-primary)] mb-2">
                 {t('Select recipients')} ({selectedRecipients.size} {t('selected')}):
               </p>
               <div className="space-y-2">
@@ -2302,8 +2302,8 @@ const ChatNew = () => {
                   <label
                     key={conv.user._id}
                     className={`w-full flex items-center p-3 rounded-lg border-2 cursor-pointer transition-colors ${selectedRecipients.has(conv.user._id)
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:bg-gray-50'
+                      ? 'border-[var(--brand-primary)] bg-[var(--surface-elevated)]'
+                      : 'border-[var(--border-default)] hover:bg-[var(--background-secondary)]'
                       }`}
                   >
                     <input
@@ -2317,25 +2317,25 @@ const ChatNew = () => {
                       alt={getUserDisplayName(conv.user)}
                       className="w-10 h-10 rounded-full object-cover ml-3"
                     />
-                    <p className="ml-3 font-medium text-gray-900">{getUserDisplayName(conv.user)}</p>
+                    <p className="ml-3 font-medium text-[var(--text-primary)]">{getUserDisplayName(conv.user)}</p>
                   </label>
                 ))}
               </div>
             </div>
-            <div className="p-4 border-t border-gray-200 flex gap-3">
+            <div className="p-4 border-t border-[var(--border-default)] flex gap-3">
               <button
                 onClick={() => {
                   setForwardMessage(null);
                   setSelectedRecipients(new Set());
                 }}
-                className="flex-1 px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                className="flex-1 px-4 py-2 theme-soft-button rounded-lg transition-colors"
               >
                 {t('Cancel')}
               </button>
               <button
                 onClick={handleForwardConfirm}
                 disabled={selectedRecipients.size === 0}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-[var(--text-muted)] disabled:cursor-not-allowed transition-colors"
               >
                 {t('Forward to')} {selectedRecipients.size || '...'}
               </button>
@@ -2347,82 +2347,82 @@ const ChatNew = () => {
       {/* Quick Chat Modal */}
       {showQuickChatModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+          <div className="theme-modal-card border border-[var(--border-default)] rounded-lg shadow-xl max-w-md w-full">
             <div className="p-5">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
                   <FiZap className="text-purple-600" /> {t('Quick Chat')}
                 </h3>
-                <button onClick={() => setShowQuickChatModal(false)} className="text-gray-400 hover:text-gray-600">
+                <button onClick={() => setShowQuickChatModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                   <FiX className="w-5 h-5" />
                 </button>
               </div>
-              <p className="text-sm text-gray-600 mb-4">{t('Select a message type to generate')}</p>
+              <p className="text-sm text-[var(--text-secondary)] mb-4">{t('Select a message type to generate')}</p>
 
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => handleQuickChat('greeting')}
                   disabled={aiLoading}
-                  className="p-3 text-left border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  className="p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-purple-500 hover:bg-purple-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">👋 {t('Greeting')}</div>
-                  <div className="text-xs text-gray-500">{t('Say hello')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">👋 {t('Greeting')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('Say hello')}</div>
                 </button>
                 <button
                   onClick={() => handleQuickChat('question')}
                   disabled={aiLoading}
-                  className="p-3 text-left border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  className="p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-purple-500 hover:bg-purple-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">❓ {t('Question')}</div>
-                  <div className="text-xs text-gray-500">{t('Ask how they are')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">❓ {t('Question')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('Ask how they are')}</div>
                 </button>
                 <button
                   onClick={() => handleQuickChat('thanks')}
                   disabled={aiLoading}
-                  className="p-3 text-left border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  className="p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-purple-500 hover:bg-purple-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">🙏 {t('Thanks')}</div>
-                  <div className="text-xs text-gray-500">{t('Say thank you')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">🙏 {t('Thanks')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('Say thank you')}</div>
                 </button>
                 <button
                   onClick={() => handleQuickChat('apology')}
                   disabled={aiLoading}
-                  className="p-3 text-left border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  className="p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-purple-500 hover:bg-purple-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">😔 {t('Apology')}</div>
-                  <div className="text-xs text-gray-500">{t('Say sorry')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">😔 {t('Apology')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('Say sorry')}</div>
                 </button>
                 <button
                   onClick={() => handleQuickChat('meeting')}
                   disabled={aiLoading}
-                  className="p-3 text-left border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  className="p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-purple-500 hover:bg-purple-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">📅 {t('Meeting')}</div>
-                  <div className="text-xs text-gray-500">{t('Schedule meeting')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">📅 {t('Meeting')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('Schedule meeting')}</div>
                 </button>
                 <button
                   onClick={() => handleQuickChat('followup')}
                   disabled={aiLoading}
-                  className="p-3 text-left border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  className="p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-purple-500 hover:bg-purple-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">📬 {t('Follow-up')}</div>
-                  <div className="text-xs text-gray-500">{t('Check in')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">📬 {t('Follow-up')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('Check in')}</div>
                 </button>
                 <button
                   onClick={() => handleQuickChat('congratulations')}
                   disabled={aiLoading}
-                  className="p-3 text-left border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  className="p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-purple-500 hover:bg-purple-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">🎉 {t('Congrats')}</div>
-                  <div className="text-xs text-gray-500">{t('Celebrate')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">🎉 {t('Congrats')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('Celebrate')}</div>
                 </button>
                 <button
                   onClick={() => handleQuickChat('support')}
                   disabled={aiLoading}
-                  className="p-3 text-left border-2 border-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-colors disabled:opacity-50"
+                  className="p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-purple-500 hover:bg-purple-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">💪 {t('Support')}</div>
-                  <div className="text-xs text-gray-500">{t('Show support')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">💪 {t('Support')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('Show support')}</div>
                 </button>
               </div>
 
@@ -2440,66 +2440,66 @@ const ChatNew = () => {
       {/* Enhance Modal */}
       {showEnhanceModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+          <div className="theme-modal-card border border-[var(--border-default)] rounded-lg shadow-xl max-w-md w-full">
             <div className="p-5">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
                   <FiEdit3 className="text-blue-600" /> {t('Enhance Message')}
                 </h3>
-                <button onClick={() => setShowEnhanceModal(false)} className="text-gray-400 hover:text-gray-600">
+                <button onClick={() => setShowEnhanceModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                   <FiX className="w-5 h-5" />
                 </button>
               </div>
-              <p className="text-sm text-gray-600 mb-4">{t('Choose how to improve your message')}</p>
+              <p className="text-sm text-[var(--text-secondary)] mb-4">{t('Choose how to improve your message')}</p>
 
               <div className="space-y-2">
                 <button
                   onClick={() => handleEnhance('grammar')}
                   disabled={aiLoading}
-                  className="w-full p-3 text-left border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                  className="w-full p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-blue-500 hover:bg-blue-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">✓ {t('Fix Grammar')}</div>
-                  <div className="text-xs text-gray-500">{t('Correct spelling and grammar errors')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">✓ {t('Fix Grammar')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('Correct spelling and grammar errors')}</div>
                 </button>
                 <button
                   onClick={() => handleEnhance('formal')}
                   disabled={aiLoading}
-                  className="w-full p-3 text-left border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                  className="w-full p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-blue-500 hover:bg-blue-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">👔 {t('Make Formal')}</div>
-                  <div className="text-xs text-gray-500">{t('More professional tone')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">👔 {t('Make Formal')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('More professional tone')}</div>
                 </button>
                 <button
                   onClick={() => handleEnhance('casual')}
                   disabled={aiLoading}
-                  className="w-full p-3 text-left border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                  className="w-full p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-blue-500 hover:bg-blue-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">😊 {t('Make Casual')}</div>
-                  <div className="text-xs text-gray-500">{t('More friendly tone')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">😊 {t('Make Casual')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('More friendly tone')}</div>
                 </button>
                 <button
                   onClick={() => handleEnhance('shorter')}
                   disabled={aiLoading}
-                  className="w-full p-3 text-left border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                  className="w-full p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-blue-500 hover:bg-blue-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">📉 {t('Make Shorter')}</div>
-                  <div className="text-xs text-gray-500">{t('More concise')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">📉 {t('Make Shorter')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('More concise')}</div>
                 </button>
                 <button
                   onClick={() => handleEnhance('longer')}
                   disabled={aiLoading}
-                  className="w-full p-3 text-left border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                  className="w-full p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-blue-500 hover:bg-blue-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">📈 {t('Make Longer')}</div>
-                  <div className="text-xs text-gray-500">{t('Add more detail')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">📈 {t('Make Longer')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('Add more detail')}</div>
                 </button>
                 <button
                   onClick={() => handleEnhance('polite')}
                   disabled={aiLoading}
-                  className="w-full p-3 text-left border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                  className="w-full p-3 text-left border-2 border-[var(--border-default)] rounded-lg hover:border-blue-500 hover:bg-blue-500/10 transition-colors disabled:opacity-50"
                 >
-                  <div className="font-medium text-gray-900">🙏 {t('Make Polite')}</div>
-                  <div className="text-xs text-gray-500">{t('More respectful tone')}</div>
+                  <div className="font-medium text-[var(--text-primary)]">🙏 {t('Make Polite')}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">{t('More respectful tone')}</div>
                 </button>
               </div>
 
@@ -2517,20 +2517,20 @@ const ChatNew = () => {
       {/* Delete Message Modal */}
       {showDeleteModal && deletingMessage && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-xs w-full">
+          <div className="bg-[var(--surface-card)] rounded-xl shadow-2xl max-w-xs w-full">
             <div className="p-4">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">{t('Delete message?')}</h3>
+              <h3 className="text-base font-semibold text-[var(--text-primary)] mb-3">{t('Delete message?')}</h3>
               <div className="space-y-2">
                 <button
                   onClick={deleteMessageForMe}
-                  className="w-full px-4 py-2.5 text-sm text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium"
+                  className="w-full px-4 py-2.5 text-sm text-left text-red-600 dark:text-red-400 hover:bg-red-500/10 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium"
                 >
                   {t('Delete for me')}
                 </button>
                 {canDeleteForEveryone(deletingMessage) && (
                   <button
                     onClick={deleteMessageForEveryone}
-                    className="w-full px-4 py-2.5 text-sm text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium"
+                    className="w-full px-4 py-2.5 text-sm text-left text-red-600 dark:text-red-400 hover:bg-red-500/10 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium"
                   >
                     {t('Delete for everyone')}
                   </button>
@@ -2541,7 +2541,7 @@ const ChatNew = () => {
                   setShowDeleteModal(false);
                   setDeletingMessage(null);
                 }}
-                className="w-full mt-3 px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                className="w-full mt-3 px-4 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--background-secondary)] rounded-lg transition-colors"
               >
                 {t('Cancel')}
               </button>
@@ -2553,15 +2553,15 @@ const ChatNew = () => {
       {/* Modal */}
       {modal.show && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 animate-fadeIn">
+          <div className="theme-modal-card border border-[var(--border-default)] rounded-lg shadow-xl max-w-md w-full mx-4 animate-fadeIn">
             <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">{modal.title}</h3>
-              <p className="text-gray-600 mb-6">{modal.message}</p>
+              <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">{modal.title}</h3>
+              <p className="text-[var(--text-secondary)] mb-6">{modal.message}</p>
               <div className="flex justify-end gap-3">
                 {modal.type === 'confirm' && (
                   <button
                     onClick={closeModal}
-                    className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                    className="px-4 py-2 text-[var(--text-secondary)] bg-[var(--background-secondary)] rounded-lg hover:bg-[var(--surface-elevated)] transition-colors"
                   >
                     {t('Cancel')}
                   </button>
@@ -2582,14 +2582,14 @@ const ChatNew = () => {
       )}
 
       {/* Sidebar */}
-      <div className={`w-full md:w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
+      <div className={`w-full md:w-80 bg-[var(--surface-card)] border-r border-[var(--border-default)] flex flex-col ${selectedChat ? 'hidden md:flex' : 'flex'}`}>
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-4 border-b border-[var(--border-default)]">
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('Messaging')}</h1>
+            <h1 className="text-xl font-semibold text-[var(--text-primary)]">{t('Messaging')}</h1>
             <button
               onClick={() => setShowCreateGroup(true)}
-              className="p-2 text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+              className="p-2 text-blue-600 hover:bg-blue-500/10 rounded-full transition-colors"
               title="New Group"
             >
               <FiUsers className="w-5 h-5" />
@@ -2598,15 +2598,15 @@ const ChatNew = () => {
         </div>
 
         {/* Search */}
-        <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-3 border-b border-[var(--border-default)]">
           <div className="relative">
-            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--text-muted)]" />
             <input
               type="text"
               placeholder={t('Search messages')}
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100 border-none rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2 bg-[var(--background-secondary)] text-[var(--text-primary)] border-none rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             {searchQuery && (
               <button
@@ -2614,7 +2614,7 @@ const ChatNew = () => {
                   setSearchQuery('');
                   setSearchResults([]);
                 }}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
               >
                 <FiX />
               </button>
@@ -2628,7 +2628,7 @@ const ChatNew = () => {
             searchResults.map(user => (
               <div
                 key={user._id}
-                className="flex items-center p-3 hover:bg-gray-50 border-b border-gray-100 cursor-pointer"
+                className="flex items-center p-3 hover:bg-[var(--background-secondary)] border-b border-[var(--border-default)] cursor-pointer"
                 onClick={() => {
                   setSelectedChat(user);
                   setSearchQuery('');
@@ -2643,12 +2643,12 @@ const ChatNew = () => {
                   />
                 </div>
                 <div className="ml-3 flex-1">
-                  <p className="font-medium text-gray-900">{getUserDisplayName(user)}</p>
+                  <p className="font-medium text-[var(--text-primary)]">{getUserDisplayName(user)}</p>
                 </div>
               </div>
             ))
           ) : conversations.length === 0 && groups.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center text-[var(--text-secondary)]">
               <p>{t('No conversations yet')}</p>
               <p className="text-sm mt-2">{t('Search for users to start chatting')}</p>
             </div>
@@ -2657,7 +2657,7 @@ const ChatNew = () => {
               chat.isGroup ? (
                 <div
                   key={`grp-${chat._id}`}
-                  className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === chat._id && selectedChat?.isGroup ? 'bg-blue-50 dark:bg-gray-700' : ''}`}
+                  className={`flex items-center p-3 hover:bg-[var(--background-secondary)] border-b border-[var(--border-default)] dark:border-[var(--border-default)] relative group cursor-pointer ${selectedChat?._id === chat._id && selectedChat?.isGroup ? 'bg-blue-500/10 dark:bg-[var(--background-secondary)]' : ''}`}
                   onClick={() => {
                     setSelectedChat({ ...chat, isGroup: true });
                   }}
@@ -2673,14 +2673,14 @@ const ChatNew = () => {
                     <div className="ml-3 flex-1 min-w-0">
                       <div className="flex justify-between items-baseline">
                         <div className="flex items-center gap-2">
-                          <FiUsers className="w-4 h-4 text-gray-500" />
-                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{chat.name}</p>
+                          <FiUsers className="w-4 h-4 text-[var(--text-secondary)]" />
+                          <p className="font-medium text-[var(--text-primary)] truncate">{chat.name}</p>
                         </div>
                         {chat.lastMessage && (
-                          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{formatDate(chat.lastMessage.createdAt)}</span>
+                          <span className="text-xs text-[var(--text-secondary)] ml-2">{formatDate(chat.lastMessage.createdAt)}</span>
                         )}
                       </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                      <p className="text-sm text-[var(--text-secondary)] truncate">
                         {(() => {
                           const activeCall = activeCallsByGroup[chat._id];
                           const isTyping = typingInConversations.has(`group:${chat._id}`);
@@ -2731,7 +2731,7 @@ const ChatNew = () => {
               ) : (
                 <div
                   key={chat.user._id}
-                  className={`flex items-center p-3 hover:bg-gray-50 dark:hover:bg-gray-700 border-b border-gray-100 dark:border-gray-700 relative group cursor-pointer ${selectedChat?._id === chat.user._id ? 'bg-blue-50 dark:bg-gray-700' : ''
+                  className={`flex items-center p-3 hover:bg-[var(--background-secondary)] border-b border-[var(--border-default)] dark:border-[var(--border-default)] relative group cursor-pointer ${selectedChat?._id === chat.user._id ? 'bg-blue-500/10 dark:bg-[var(--background-secondary)]' : ''
                     }`}
                   onClick={async () => {
                     // Clear unread count immediately for better UX
@@ -2780,18 +2780,18 @@ const ChatNew = () => {
                     <div className="ml-3 flex-1 min-w-0">
                       <div className="flex justify-between items-baseline">
                         <div className="flex items-center gap-2">
-                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{getUserDisplayName(chat.user)}</p>
+                          <p className="font-medium text-[var(--text-primary)] truncate">{getUserDisplayName(chat.user)}</p>
                           {blockedUsers.has(chat.user._id) && (
                             <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{t('Blocked')}</span>
                           )}
                         </div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{formatDate(chat.lastMessage.createdAt)}</span>
+                        <span className="text-xs text-[var(--text-secondary)] ml-2">{formatDate(chat.lastMessage.createdAt)}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         {mutedUsers.has(chat.user._id) && (
-                          <FiBellOff className="text-gray-400 text-xs" />
+                          <FiBellOff className="text-[var(--text-muted)] text-xs" />
                         )}
-                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate flex-1">
+                        <p className="text-sm text-[var(--text-secondary)] truncate flex-1">
                           {typingInConversations.has(chat.user._id) ? (
                             <span className="text-green-600 dark:text-green-400 italic flex items-center gap-1">
                               <span className="flex gap-0.5">
@@ -2831,39 +2831,39 @@ const ChatNew = () => {
                         e.stopPropagation();
                         setShowConvMenu(showConvMenu === chat.user._id ? null : chat.user._id);
                       }}
-                      className="p-2 hover:bg-gray-200 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="p-2 hover:bg-[var(--surface-elevated)] rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      <FiMoreVertical className="text-gray-600" />
+                      <FiMoreVertical className="text-[var(--text-secondary)]" />
                     </button>
                     {showConvMenu === chat.user._id && (
-                      <div ref={convMenuRef} className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-10">
+                      <div ref={convMenuRef} className="absolute right-0 mt-1 w-48 bg-[var(--surface-card)] rounded-lg shadow-lg border border-[var(--border-default)] z-10">
                         <button
                           onClick={() => handleMuteUser(chat.user._id)}
-                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--background-secondary)] flex items-center gap-2"
                         >
                           {mutedUsers.has(chat.user._id) ? (
-                            <><FiBell className="text-gray-600" /> {t('Unmute')}</>
+                            <><FiBell className="text-[var(--text-secondary)]" /> {t('Unmute')}</>
                           ) : (
-                            <><FiBellOff className="text-gray-600" /> {t('Mute notifications')}</>
+                            <><FiBellOff className="text-[var(--text-secondary)]" /> {t('Mute notifications')}</>
                           )}
                         </button>
                         <button
                           onClick={() => handleDeleteConversation(chat.user._id)}
-                          className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600"
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--background-secondary)] flex items-center gap-2 text-red-600"
                         >
                           <FiTrash2 /> {t('Delete conversation')}
                         </button>
                         {blockedUsers.has(chat.user._id) ? (
                           <button
                             onClick={() => handleUnblockUser(chat.user._id)}
-                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-green-600 rounded-b-lg"
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--background-secondary)] flex items-center gap-2 text-green-600 rounded-b-lg"
                           >
                             <FiUserX /> {t('Unblock user')}
                           </button>
                         ) : (
                           <button
                             onClick={() => handleBlockUser(chat.user._id)}
-                            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-red-600 rounded-b-lg"
+                            className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--background-secondary)] flex items-center gap-2 text-red-600 rounded-b-lg"
                           >
                             <FiUserX /> {t('Block user')}
                           </button>
@@ -2879,11 +2879,11 @@ const ChatNew = () => {
       </div>
 
       {/* Chat Area */}
-      <div className={`flex-1 flex flex-col bg-white dark:bg-gray-800 relative max-w-full overflow-hidden ${selectedChat ? 'flex' : 'hidden md:flex'}`}>
+      <div className={`flex-1 flex flex-col bg-[var(--surface-card)] relative max-w-full overflow-hidden ${selectedChat ? 'flex' : 'hidden md:flex'}`}>
         {/* Dismissible Warning Banner - Fixed at top */}
         {showWarningBanner && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/30 border-b border-yellow-200 dark:border-yellow-700 px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-300">
+          <div className="bg-yellow-500/10 border-b border-yellow-500/30 px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-300">
               <FiAlertCircle className="text-lg flex-shrink-0" />
               <p className="text-sm">
                 <strong>{t('Important')}:</strong> {t('All messages are automatically deleted after 30 days for privacy and storage management')}
@@ -2909,7 +2909,7 @@ const ChatNew = () => {
                   <div className="absolute inset-0 bg-gradient-to-r from-green-400 via-green-500 to-green-400 animate-pulse rounded-lg" style={{ animationDuration: '2s' }} />
                 </div>
               )}
-              <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative z-10">
+              <div className="p-4 border-b border-[var(--border-default)] bg-[var(--surface-card)] relative z-10">
                 <div className="flex items-center gap-3 relative z-10">
                   <button
                     onClick={(e) => {
@@ -2917,9 +2917,9 @@ const ChatNew = () => {
                       setSelectedChat(null);
                       setSelectedUserStatuses([]);
                     }}
-                    className="p-2 hover:bg-gray-100 rounded-full md:hidden flex-shrink-0"
+                    className="p-2 hover:bg-[var(--background-secondary)] rounded-full md:hidden flex-shrink-0"
                   >
-                    <FiX className="w-5 h-5 text-gray-600" />
+                    <FiX className="w-5 h-5 text-[var(--text-secondary)]" />
                   </button>
                   <div
                     className="relative flex-shrink-0 cursor-pointer"
@@ -2959,12 +2959,12 @@ const ChatNew = () => {
                     }}
                   >
                     <div className="flex items-center gap-2">
-                      {selectedChat.isGroup && <FiUsers className="w-4 h-4 text-gray-500" />}
-                      <h2 className="font-semibold text-gray-900 dark:text-gray-100">
+                      {selectedChat.isGroup && <FiUsers className="w-4 h-4 text-[var(--text-secondary)]" />}
+                      <h2 className="font-semibold text-[var(--text-primary)]">
                         {selectedChat.isGroup ? selectedChat.name : getUserDisplayName(selectedChat)}
                       </h2>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs">
+                    <p className="text-xs text-[var(--text-secondary)] truncate max-w-xs">
                       {selectedChat.isGroup ? (
                         (() => {
                           const onlineMembers = selectedChat.members.filter(m => {
@@ -2982,25 +2982,25 @@ const ChatNew = () => {
                   <div className="flex items-center gap-2">
                     {!selectedChat.isGroup ? (
                       <>
-                        <button onClick={() => initiateCall('audio')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
-                          <FiPhone className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                        <button onClick={() => initiateCall('audio')} className="p-2 hover:bg-[var(--background-secondary)] rounded-full transition-colors">
+                          <FiPhone className="w-5 h-5 text-[var(--text-secondary)] dark:text-[var(--text-secondary)]" />
                         </button>
-                        <button onClick={() => initiateCall('video')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
-                          <FiVideo className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                        <button onClick={() => initiateCall('video')} className="p-2 hover:bg-[var(--background-secondary)] rounded-full transition-colors">
+                          <FiVideo className="w-5 h-5 text-[var(--text-secondary)] dark:text-[var(--text-secondary)]" />
                         </button>
                       </>
                     ) : (
                       <>
-                        <button onClick={() => initiateGroupCall('audio')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
-                          <FiPhone className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                        <button onClick={() => initiateGroupCall('audio')} className="p-2 hover:bg-[var(--background-secondary)] rounded-full transition-colors">
+                          <FiPhone className="w-5 h-5 text-[var(--text-secondary)] dark:text-[var(--text-secondary)]" />
                         </button>
-                        <button onClick={() => initiateGroupCall('video')} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
-                          <FiVideo className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                        <button onClick={() => initiateGroupCall('video')} className="p-2 hover:bg-[var(--background-secondary)] rounded-full transition-colors">
+                          <FiVideo className="w-5 h-5 text-[var(--text-secondary)] dark:text-[var(--text-secondary)]" />
                         </button>
                       </>
                     )}
-                    <button onClick={() => setShowChatMenu(!showChatMenu)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors">
-                      <FiMoreVertical className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+                    <button onClick={() => setShowChatMenu(!showChatMenu)} className="p-2 hover:bg-[var(--background-secondary)] rounded-full transition-colors">
+                      <FiMoreVertical className="w-5 h-5 text-[var(--text-secondary)] dark:text-[var(--text-secondary)]" />
                     </button>
                   </div>
                 </div>
@@ -3010,7 +3010,7 @@ const ChatNew = () => {
               {showUserPanel && (
                 <div
                   ref={userPanelRef}
-                  className="absolute top-full left-0 w-full md:w-1/2 border border-gray-200 rounded-b-lg shadow-2xl z-50 animate-slideDown overflow-hidden"
+                  className="absolute top-full left-0 w-full md:w-1/2 border border-[var(--border-default)] rounded-b-lg shadow-2xl z-50 animate-slideDown overflow-hidden"
                   style={{
                     backgroundImage: selectedUserStatuses.length > 0 && selectedUserStatuses[currentStatusIndex]?.image
                       ? `url(${selectedUserStatuses[currentStatusIndex].image})`
@@ -3020,7 +3020,7 @@ const ChatNew = () => {
                   }}
                 >
                   <div
-                    className="absolute inset-0 bg-white dark:bg-gray-900 bg-opacity-70 dark:bg-opacity-70 backdrop-blur-sm cursor-pointer"
+                    className="absolute inset-0 bg-[var(--surface-card)] bg-opacity-70 dark:bg-opacity-70 backdrop-blur-sm cursor-pointer"
                     onClick={() => {
                       if (selectedUserStatuses.length > 0) {
                         setModalStatusIndex(0);
@@ -3034,7 +3034,7 @@ const ChatNew = () => {
                   {selectedUserStatuses.length > 0 && (
                     <div className="absolute top-2 left-2 right-2 z-20 flex gap-1 pointer-events-none">
                       {selectedUserStatuses.map((_, idx) => (
-                        <div key={idx} className="flex-1 h-1 bg-gray-300 rounded-full overflow-hidden">
+                        <div key={idx} className="flex-1 h-1 bg-[var(--surface-elevated)] rounded-full overflow-hidden">
                           <div
                             className="h-full bg-green-500 transition-all duration-100"
                             style={{
@@ -3052,13 +3052,13 @@ const ChatNew = () => {
                         <img
                           src={getUserAvatar(selectedChat)}
                           alt={getUserDisplayName(selectedChat)}
-                          className="w-16 h-16 rounded-full object-cover border-2 border-white dark:border-gray-700 hover:opacity-80 transition-opacity"
+                          className="w-16 h-16 rounded-full object-cover border-2 border-white dark:border-[var(--border-default)] hover:opacity-80 transition-opacity"
                         />
                         {isOnline(selectedChat._id) && (
                           <span className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></span>
                         )}
                       </div>
-                      <h3 className="text-lg font-semibold text-gray-900">{getUserDisplayName(selectedChat)}</h3>
+                      <h3 className="text-lg font-semibold text-[var(--text-primary)]">{getUserDisplayName(selectedChat)}</h3>
                       {selectedUserStatuses.length > 0 && (
                         <button
                           onClick={() => {
@@ -3069,7 +3069,7 @@ const ChatNew = () => {
                           }}
                           className={`text-sm mt-1 font-medium ${!viewedStatuses.has(selectedChat._id)
                             ? 'bg-gradient-to-r from-green-400 via-blue-500 to-purple-600 bg-clip-text text-transparent animate-shimmer'
-                            : 'text-gray-600'
+                            : 'text-[var(--text-secondary)]'
                             }`}
                           style={{
                             backgroundSize: !viewedStatuses.has(selectedChat._id) ? '200% auto' : 'auto'
@@ -3079,8 +3079,8 @@ const ChatNew = () => {
                         </button>
                       )}
                       <div className="mt-3 w-full">
-                        <p className="text-xs text-gray-400 mb-1">{t('About')}</p>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-xs text-[var(--text-muted)] mb-1">{t('About')}</p>
+                        <p className="text-sm text-[var(--text-secondary)]">
                           {selectedChat.bio || selectedChat.description || 'Connect, chat, and share moments with friends using our secure messaging platform.'}
                         </p>
                       </div>
@@ -3093,7 +3093,7 @@ const ChatNew = () => {
                           navigate(`/user/${selectedChat._id}`);
                           setShowUserPanel(false);
                         }}
-                        className="col-span-2 px-4 py-2.5 text-sm hover:bg-blue-50 rounded-lg flex items-center justify-center gap-2 transition-colors border border-blue-200 text-blue-600"
+                        className="col-span-2 px-4 py-2.5 text-sm hover:bg-blue-500/10 rounded-lg flex items-center justify-center gap-2 transition-colors border border-blue-200 text-blue-600"
                       >
                         <FiUser className="w-4 h-4" /> <span>{t('View Profile')}</span>
                       </button>
@@ -3102,7 +3102,7 @@ const ChatNew = () => {
                           loadCallHistory();
                           setShowUserPanel(false);
                         }}
-                        className="col-span-2 px-4 py-2.5 text-sm hover:bg-green-50 rounded-lg flex items-center justify-center gap-2 transition-colors border border-green-200 text-green-600"
+                        className="col-span-2 px-4 py-2.5 text-sm hover:bg-green-500/10 rounded-lg flex items-center justify-center gap-2 transition-colors border border-green-200 text-green-600"
                       >
                         <FiPhoneCall className="w-4 h-4" /> <span>{t('Call History')}</span>
                       </button>
@@ -3111,7 +3111,7 @@ const ChatNew = () => {
                           handleMuteUser(selectedChat._id);
                           setShowUserPanel(false);
                         }}
-                        className="px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-600 rounded-lg flex items-center justify-center gap-2 transition-colors border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200"
+                        className="px-4 py-2.5 text-sm hover:bg-[var(--background-secondary)] dark:hover:bg-[var(--surface-elevated)] rounded-lg flex items-center justify-center gap-2 transition-colors border border-[var(--border-default)] dark:border-[var(--border-default)] text-[var(--text-secondary)] dark:text-[var(--text-secondary)]"
                       >
                         {mutedUsers.has(selectedChat._id) ? (
                           <><FiBell className="w-4 h-4" /> <span>{t('Unmute')}</span></>
@@ -3124,7 +3124,7 @@ const ChatNew = () => {
                           handleClearChat();
                           setShowUserPanel(false);
                         }}
-                        className="px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-600 rounded-lg flex items-center justify-center gap-2 transition-colors border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-200"
+                        className="px-4 py-2.5 text-sm hover:bg-[var(--background-secondary)] dark:hover:bg-[var(--surface-elevated)] rounded-lg flex items-center justify-center gap-2 transition-colors border border-[var(--border-default)] dark:border-[var(--border-default)] text-[var(--text-secondary)] dark:text-[var(--text-secondary)]"
                       >
                         <FiArchive className="w-4 h-4" /> <span>{t('Clear')}</span>
                       </button>
@@ -3133,7 +3133,7 @@ const ChatNew = () => {
                           handleDeleteConversation(selectedChat._id);
                           setShowUserPanel(false);
                         }}
-                        className="px-4 py-2.5 text-sm hover:bg-red-50 rounded-lg flex items-center justify-center gap-2 text-red-600 transition-colors border border-red-200"
+                        className="px-4 py-2.5 text-sm hover:bg-red-500/10 rounded-lg flex items-center justify-center gap-2 text-red-600 transition-colors border border-red-200"
                       >
                         <FiTrash2 className="w-4 h-4" /> <span>{t('Delete')}</span>
                       </button>
@@ -3143,7 +3143,7 @@ const ChatNew = () => {
                             handleUnblockUser(selectedChat._id);
                             setShowUserPanel(false);
                           }}
-                          className="px-4 py-2.5 text-sm hover:bg-green-50 rounded-lg flex items-center justify-center gap-2 text-green-600 transition-colors border border-green-200"
+                          className="px-4 py-2.5 text-sm hover:bg-green-500/10 rounded-lg flex items-center justify-center gap-2 text-green-600 transition-colors border border-green-200"
                         >
                           <FiUserX className="w-4 h-4" /> <span>{t('Unblock')}</span>
                         </button>
@@ -3153,7 +3153,7 @@ const ChatNew = () => {
                             handleBlockUser(selectedChat._id);
                             setShowUserPanel(false);
                           }}
-                          className="px-4 py-2.5 text-sm hover:bg-red-50 rounded-lg flex items-center justify-center gap-2 text-red-600 transition-colors border border-red-200"
+                          className="px-4 py-2.5 text-sm hover:bg-red-500/10 rounded-lg flex items-center justify-center gap-2 text-red-600 transition-colors border border-red-200"
                         >
                           <FiUserX className="w-4 h-4" /> <span>{t('Block')}</span>
                         </button>
@@ -3180,7 +3180,7 @@ const ChatNew = () => {
 
             {/* Pinned Messages Banner */}
             {!selectedChat.isGroup && pinnedMessages.length > 0 && (
-              <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-blue-100 transition-colors"
+              <div className="bg-blue-500/10 border-b border-blue-200 px-4 py-2 flex items-center justify-between cursor-pointer hover:bg-blue-500/20 transition-colors"
                 onClick={() => scrollToMessage(pinnedMessages[0]._id)}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -3190,7 +3190,7 @@ const ChatNew = () => {
                       {pinnedMessages.length}
                     </span>
                   )}
-                  <p className="text-sm text-blue-800 truncate flex-1">
+                  <p className="text-sm text-blue-700 dark:text-blue-300 truncate flex-1">
                     <span className="font-semibold">
                       {pinnedMessages[0].sender._id === user._id ? t('You') : getUserDisplayName(pinnedMessages[0].sender)}:
                     </span>
@@ -3208,15 +3208,15 @@ const ChatNew = () => {
                     <FiChevronDown className="w-4 h-4 text-blue-600" />
                   </button>
                   {showPinDropdown && (
-                    <div ref={pinDropdownRef} className="absolute right-0 mt-1 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-10 max-h-80 overflow-y-auto">
+                    <div ref={pinDropdownRef} className="absolute right-0 mt-1 w-64 bg-[var(--surface-card)] rounded-lg shadow-lg border border-[var(--border-default)] z-10 max-h-80 overflow-y-auto">
                       {pinnedMessages.map((msg, index) => (
-                        <div key={msg._id} className={`px-3 py-2 hover:bg-gray-50 ${index < pinnedMessages.length - 1 ? 'border-b border-gray-100' : ''}`}>
+                        <div key={msg._id} className={`px-3 py-2 hover:bg-[var(--background-secondary)] ${index < pinnedMessages.length - 1 ? 'border-b border-[var(--border-default)]' : ''}`}>
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <p className="text-xs font-medium text-gray-700 mb-1">
+                              <p className="text-xs font-medium text-[var(--text-secondary)] mb-1">
                                 {msg.sender._id === user._id ? t('You') : getUserDisplayName(msg.sender)}
                               </p>
-                              <p className="text-xs text-gray-600 line-clamp-2">{msg.content}</p>
+                              <p className="text-xs text-[var(--text-secondary)] line-clamp-2">{msg.content}</p>
                             </div>
                             <div className="flex gap-1">
                               <button
@@ -3225,10 +3225,10 @@ const ChatNew = () => {
                                   scrollToMessage(msg._id);
                                   setShowPinDropdown(false);
                                 }}
-                                className="p-1 hover:bg-gray-200 rounded"
+                                className="p-1 hover:bg-[var(--surface-elevated)] rounded"
                                 title="Go to message"
                               >
-                                <FiCornerUpLeft className="w-3 h-3 text-gray-600" />
+                                <FiCornerUpLeft className="w-3 h-3 text-[var(--text-secondary)]" />
                               </button>
                               <button
                                 onClick={(e) => {
@@ -3236,10 +3236,10 @@ const ChatNew = () => {
                                   handleUnpinMessage(msg._id);
                                   setShowPinDropdown(false);
                                 }}
-                                className="p-1 hover:bg-gray-200 rounded"
+                                className="p-1 hover:bg-[var(--surface-elevated)] rounded"
                                 title="Unpin"
                               >
-                                <BsPinAngle className="w-3 h-3 text-gray-600" />
+                                <BsPinAngle className="w-3 h-3 text-[var(--text-secondary)]" />
                               </button>
                             </div>
                           </div>
@@ -3282,19 +3282,19 @@ const ChatNew = () => {
                         <circle cx="50" cy="50" r="35" stroke="currentColor" strokeWidth="8" fill="none" opacity="0.25" />
                         <path d="M50 15 A35 35 0 0 1 85 50" stroke="currentColor" strokeWidth="8" fill="none" strokeLinecap="round" />
                       </svg>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">Loading messages...</p>
+                      <p className="text-sm text-[var(--text-secondary)]">Loading messages...</p>
                     </div>
                   </div>
                 )}
 
                 {/* System Message - Auto-delete Warning */}
                 {!loadingMessages && (
-                  <div className="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg px-4 py-3 max-w-md shadow-sm">
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-3 max-w-md shadow-sm">
                     <div className="flex items-start gap-2">
                       <FiAlertCircle className="text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
                       <div>
-                        <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300 mb-1">{t('System Message')}</p>
-                        <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                        <p className="text-xs font-medium text-yellow-600 dark:text-yellow-300 mb-1">{t('System Message')}</p>
+                        <p className="text-xs text-yellow-600/90 dark:text-yellow-300">
                           {t('Messages in this conversation are automatically deleted after 30 days for privacy and storage management')}
                         </p>
                       </div>
@@ -3313,19 +3313,19 @@ const ChatNew = () => {
                       <div key={msg._id}>
                         {showDate && (
                           <div className="flex justify-center my-4">
-                            <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full">
+                            <span className="px-3 py-1 bg-[var(--background-secondary)] text-[var(--text-secondary)] dark:text-[var(--text-secondary)] text-xs rounded-full">
                               {formatDate(msg.createdAt)}
                             </span>
                           </div>
                         )}
                         <div className="flex justify-center my-2">
-                          <div className="bg-gray-100 dark:bg-gray-700 rounded-lg px-4 py-2 flex items-center gap-2 text-sm">
+                          <div className="bg-[var(--background-secondary)] rounded-lg px-4 py-2 flex items-center gap-2 text-sm">
                             {call.type === 'video' ? (
                               <FiVideo className={`w-4 h-4 ${call.status === 'missed' ? 'text-red-500' : 'text-green-500'}`} />
                             ) : (
                               <FiPhone className={`w-4 h-4 ${call.status === 'missed' ? 'text-red-500' : 'text-green-500'}`} />
                             )}
-                            <span className="text-gray-700 dark:text-gray-300">
+                            <span className="text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">
                               {isOutgoing ? (
                                 call.status === 'missed' ? t('Missed call') : t('Outgoing call')
                               ) : (
@@ -3333,11 +3333,11 @@ const ChatNew = () => {
                               )}
                             </span>
                             {call.duration > 0 && (
-                              <span className="text-gray-500 dark:text-gray-400 text-xs">
+                              <span className="text-[var(--text-secondary)] text-xs">
                                 {Math.floor(call.duration / 60)}:{(call.duration % 60).toString().padStart(2, '0')}
                               </span>
                             )}
-                            <span className="text-gray-400 text-xs">{formatTime(call.createdAt)}</span>
+                            <span className="text-[var(--text-muted)] text-xs">{formatTime(call.createdAt)}</span>
                           </div>
                         </div>
                       </div>
@@ -3356,7 +3356,7 @@ const ChatNew = () => {
                       <div key={msg._id}>
                         {showDate && (
                           <div className="flex justify-center my-4">
-                            <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full">
+                            <span className="px-3 py-1 bg-[var(--background-secondary)] text-[var(--text-secondary)] dark:text-[var(--text-secondary)] text-xs rounded-full">
                               {formatDate(msg.createdAt)}
                             </span>
                           </div>
@@ -3368,14 +3368,14 @@ const ChatNew = () => {
                               alt={getUserDisplayName(msg.sender)}
                               className="w-8 h-8 rounded-full object-cover flex-shrink-0"
                             />
-                            <div className={`${isOwn ? 'bg-blue-50 dark:bg-blue-900/30' : 'bg-gray-100 dark:bg-gray-700'} rounded-2xl px-4 py-3 shadow-sm`}>
+                            <div className={`${isOwn ? 'bg-blue-500/10' : 'bg-[var(--background-secondary)]'} rounded-2xl px-4 py-3 shadow-sm`}>
                               <div className="flex items-start gap-3">
                                 <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0">
                                   {msg.callData?.callType === 'audio' ? <FiPhone className="w-5 h-5 text-white" /> : <FiVideo className="w-5 h-5 text-white" />}
                                 </div>
                                 <div className="flex-1">
-                                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">{msg.callData?.callType === 'audio' ? 'Audio call' : 'Video call'}</p>
-                                  <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                                  <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">{msg.callData?.callType === 'audio' ? 'Audio call' : 'Video call'}</p>
+                                  <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
                                     <span>{Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')}</span>
                                     <span>•</span>
                                     <span>{joinedCount} joined</span>
@@ -3387,12 +3387,12 @@ const ChatNew = () => {
                                           key={i}
                                           src={u.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.fullName)}&background=0D8ABC&color=fff`}
                                           alt={u.fullName}
-                                          className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-800 object-cover"
+                                          className="w-6 h-6 rounded-full border-2 border-white dark:border-[var(--border-default)] object-cover"
                                           title={u.fullName}
                                         />
                                       ))}
                                       {joinedUsers.length > 3 && (
-                                        <div className="w-6 h-6 rounded-full border-2 border-white dark:border-gray-800 bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-[10px] font-semibold text-gray-700 dark:text-gray-200">
+                                        <div className="w-6 h-6 rounded-full border-2 border-white dark:border-[var(--border-default)] bg-[var(--surface-elevated)] dark:bg-[var(--surface-elevated)] flex items-center justify-center text-[10px] font-semibold text-[var(--text-secondary)] dark:text-[var(--text-secondary)]">
                                           +{joinedUsers.length - 3}
                                         </div>
                                       )}
@@ -3400,7 +3400,7 @@ const ChatNew = () => {
                                   )}
                                 </div>
                               </div>
-                              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-2">{formatTime(msg.createdAt)}</p>
+                              <p className="text-[10px] text-[var(--text-secondary)] mt-2">{formatTime(msg.createdAt)}</p>
                             </div>
                           </div>
                         </div>
@@ -3452,7 +3452,7 @@ const ChatNew = () => {
                     <div key={msg._id} id={`msg-${msg._id}`} className="transition-colors duration-500">
                       {showDate && (
                         <div className="flex justify-center my-4">
-                          <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full">
+                          <span className="px-3 py-1 bg-[var(--background-secondary)] text-[var(--text-secondary)] dark:text-[var(--text-secondary)] text-xs rounded-full">
                             {formatDate(msg.createdAt)}
                           </span>
                         </div>
@@ -3477,14 +3477,14 @@ const ChatNew = () => {
                                   {userReaction && (
                                     <button
                                       onClick={() => handleRemoveReaction(msg._id)}
-                                      className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs hover:bg-gray-100 shadow-sm"
+                                      className="bg-[var(--surface-card)] border border-[var(--border-default)] rounded-full px-1.5 py-0.5 text-xs hover:bg-[var(--background-secondary)] shadow-sm"
                                       title="Remove"
                                     >
                                       {userReaction.emoji}
                                     </button>
                                   )}
                                   {otherReactions.length > 0 && (
-                                    <div className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs shadow-sm">
+                                    <div className="bg-[var(--surface-card)] border border-[var(--border-default)] rounded-full px-1.5 py-0.5 text-xs shadow-sm">
                                       {otherReactions.map((r, i) => (
                                         <span key={i}>{r.emoji}</span>
                                       ))}
@@ -3494,18 +3494,18 @@ const ChatNew = () => {
                               )}
 
                               <div className="flex flex-col">
-                                <div className={`${isOwn ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white' : 'bg-gray-200 text-gray-900'} ${borderRadiusClass} px-4 py-2 shadow-sm`}>
+                                <div className={`${isOwn ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white' : 'bg-[var(--surface-elevated)] text-[var(--text-primary)]'} ${borderRadiusClass} px-4 py-2 shadow-sm`}>
                                   {/* Reply Quote */}
                                   {msg.replyTo && (
                                     <div
                                       onClick={() => scrollToMessage(msg.replyTo._id)}
-                                      className={`${isOwn ? 'bg-white bg-opacity-20' : 'bg-gray-300'} rounded-2xl p-2 mb-2 cursor-pointer hover:opacity-80 border-l-4 ${isOwn ? 'border-white border-opacity-50' : 'border-gray-500'} flex items-center gap-2`}
+                                      className={`${isOwn ? 'bg-white bg-opacity-20' : 'bg-[var(--surface-elevated)]'} rounded-2xl p-2 mb-2 cursor-pointer hover:opacity-80 border-l-4 ${isOwn ? 'border-white border-opacity-50' : 'border-[var(--text-muted)]'} flex items-center gap-2`}
                                     >
                                       <div className="flex-1 min-w-0">
-                                        <p className={`text-xs font-semibold ${isOwn ? 'text-white text-opacity-90' : 'text-gray-700'}`}>
+                                        <p className={`text-xs font-semibold ${isOwn ? 'text-white text-opacity-90' : 'text-[var(--text-secondary)]'}`}>
                                           {getUserDisplayName(msg.replyTo.sender)}
                                         </p>
-                                        <p className={`text-xs ${isOwn ? 'text-white text-opacity-80' : 'text-gray-600'} truncate`}>
+                                        <p className={`text-xs ${isOwn ? 'text-white text-opacity-80' : 'text-[var(--text-secondary)]'} truncate`}>
                                           {msg.replyTo.type === 'image' ? '📷 Photo' : msg.replyTo.content.length > 50 ? msg.replyTo.content.substring(0, 50) + '...' : msg.replyTo.content}
                                         </p>
                                       </div>
@@ -3534,7 +3534,7 @@ const ChatNew = () => {
                                       isOwn={isOwn}
                                     />
                                   ) : msg.deletedForEveryone ? (
-                                    <p className={`text-sm italic flex items-center gap-2 ${isOwn ? 'text-white/70' : 'text-gray-500'}`}>
+                                    <p className={`text-sm italic flex items-center gap-2 ${isOwn ? 'text-white/70' : 'text-[var(--text-secondary)]'}`}>
                                       <MdBlock className="w-4 h-4" />
                                       This message was deleted
                                     </p>
@@ -3543,7 +3543,7 @@ const ChatNew = () => {
                                   )}
                                 </div>
                                 {/* Timestamp BELOW message */}
-                                <div className={`flex items-center gap-1 text-[0.65rem] mt-0.5 ${isOwn ? 'justify-end text-gray-500' : 'justify-start text-gray-500'}`}>
+                                <div className={`flex items-center gap-1 text-[0.65rem] mt-0.5 ${isOwn ? 'justify-end text-[var(--text-secondary)]' : 'justify-start text-[var(--text-secondary)]'}`}>
                                   <span>{formatTime(msg.createdAt)}</span>
                                   {isOwn && (
                                     msg.read ? (
@@ -3563,14 +3563,14 @@ const ChatNew = () => {
                                   {userReaction && (
                                     <button
                                       onClick={() => handleRemoveReaction(msg._id)}
-                                      className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs hover:bg-gray-100 shadow-sm"
+                                      className="bg-[var(--surface-card)] border border-[var(--border-default)] rounded-full px-1.5 py-0.5 text-xs hover:bg-[var(--background-secondary)] shadow-sm"
                                       title="Remove"
                                     >
                                       {userReaction.emoji}
                                     </button>
                                   )}
                                   {otherReactions.length > 0 && (
-                                    <div className="bg-white border border-gray-200 rounded-full px-1.5 py-0.5 text-xs shadow-sm">
+                                    <div className="bg-[var(--surface-card)] border border-[var(--border-default)] rounded-full px-1.5 py-0.5 text-xs shadow-sm">
                                       {otherReactions.map((r, i) => (
                                         <span key={i}>{r.emoji}</span>
                                       ))}
@@ -3584,49 +3584,49 @@ const ChatNew = () => {
                           {/* Message Menu Button - opposite side of message */}
                           <button
                             onClick={() => setShowMessageMenu(showMessageMenu === msg._id ? null : msg._id)}
-                            className={`absolute ${isOwn ? 'left-0 -translate-x-8' : 'right-0 translate-x-8'} top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-white border border-gray-200 rounded-full p-1.5 hover:bg-gray-50 shadow-sm`}
+                            className={`absolute ${isOwn ? 'left-0 -translate-x-8' : 'right-0 translate-x-8'} top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--surface-card)] border border-[var(--border-default)] rounded-full p-1.5 hover:bg-[var(--background-secondary)] shadow-sm`}
                             title="More"
                           >
-                            <FiMoreVertical className="w-4 h-4 text-gray-600" />
+                            <FiMoreVertical className="w-4 h-4 text-[var(--text-secondary)]" />
                           </button>
 
                           {/* Message Menu - appears on opposite side, aligned with 3-dot button */}
                           {showMessageMenu === msg._id && !msg.deletedForEveryone && (
-                            <div ref={messageMenuRef} className={`absolute ${isOwn ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-10 flex gap-1`}>
+                            <div ref={messageMenuRef} className={`absolute ${isOwn ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 bg-[var(--surface-card)] border border-[var(--border-default)] rounded-lg shadow-lg p-2 z-10 flex gap-1`}>
                               <button
                                 onClick={() => {
                                   setShowReactionPicker(msg._id);
                                   setShowMessageMenu(null);
                                 }}
-                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="p-2 hover:bg-[var(--background-secondary)] rounded-lg transition-colors"
                                 title={t('React')}
                               >
-                                <FiSmile className="w-5 h-5 text-gray-700" />
+                                <FiSmile className="w-5 h-5 text-[var(--text-secondary)]" />
                               </button>
                               <button
                                 onClick={() => handleReply(msg)}
-                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="p-2 hover:bg-[var(--background-secondary)] rounded-lg transition-colors"
                                 title={t('Reply')}
                               >
-                                <FiCornerUpLeft className="w-5 h-5 text-gray-700" />
+                                <FiCornerUpLeft className="w-5 h-5 text-[var(--text-secondary)]" />
                               </button>
                               <button
                                 onClick={() => handleForward(msg)}
-                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="p-2 hover:bg-[var(--background-secondary)] rounded-lg transition-colors"
                                 title={t('Forward')}
                               >
-                                <FiShare2 className="w-5 h-5 text-gray-700" />
+                                <FiShare2 className="w-5 h-5 text-[var(--text-secondary)]" />
                               </button>
                               <button
                                 onClick={() => openPinModal(msg)}
-                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                className="p-2 hover:bg-[var(--background-secondary)] rounded-lg transition-colors"
                                 title={t('Pin')}
                               >
-                                <BsPinAngleFill className="w-5 h-5 text-gray-700" />
+                                <BsPinAngleFill className="w-5 h-5 text-[var(--text-secondary)]" />
                               </button>
                               <button
                                 onClick={() => handleDeleteMessage(msg)}
-                                className="p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
                                 title={t('Delete')}
                               >
                                 <MdDeleteOutline className="w-5 h-5 text-red-600" />
@@ -3638,7 +3638,7 @@ const ChatNew = () => {
                           {showReactionPicker === msg._id && (
                             <div
                               ref={reactionPickerRef}
-                              className={`absolute ${isOwn ? 'right-0' : 'left-0'} bottom-full mb-2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 flex gap-2 z-10`}
+                              className={`absolute ${isOwn ? 'right-0' : 'left-0'} bottom-full mb-2 bg-[var(--surface-card)] border border-[var(--border-default)] rounded-lg shadow-lg p-2 flex gap-2 z-10`}
                             >
                               {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
                                 <button
@@ -3657,7 +3657,7 @@ const ChatNew = () => {
                   );
                 })}
                 {typingUsers.has(selectedChat._id) && (
-                  <div className="flex items-center space-x-2 text-gray-500">
+                  <div className="flex items-center space-x-2 text-[var(--text-secondary)]">
                     <div className="flex space-x-1">
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                       <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
@@ -3678,9 +3678,9 @@ const ChatNew = () => {
                   setNewMessageCount(0);
                   setIsAtBottom(true);
                 }}
-                className="fixed bottom-28 sm:bottom-32 right-6 sm:right-8 bg-white hover:bg-gray-50 w-12 h-12 rounded-full shadow-lg flex items-center justify-center z-50 border border-gray-200 transition-all"
+                className="fixed bottom-28 sm:bottom-32 right-6 sm:right-8 bg-[var(--surface-card)] hover:bg-[var(--background-secondary)] w-12 h-12 rounded-full shadow-lg flex items-center justify-center z-50 border border-[var(--border-default)] transition-all"
               >
-                <FiChevronDown className="w-6 h-6 text-gray-700" />
+                <FiChevronDown className="w-6 h-6 text-[var(--text-secondary)]" />
                 {newMessageCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-xs font-semibold w-5 h-5 rounded-full flex items-center justify-center">
                     {newMessageCount > 9 ? '9+' : newMessageCount}
@@ -3691,7 +3691,7 @@ const ChatNew = () => {
 
             {/* Image Editor */}
             {showImageEditor && (
-              <div className="fixed inset-0 bg-white dark:bg-gray-900 z-[100] flex flex-col md:flex-row">
+              <div className="fixed inset-0 bg-[var(--surface-card)] z-[100] flex flex-col md:flex-row">
                 <BlogImageEditor
                   imageUrl={imageToEdit}
                   caption={imageCaption}
@@ -3787,7 +3787,7 @@ const ChatNew = () => {
                         className="relative group mx-auto"
                       >
                         <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform">
-                          <MdOutlineCamera className="w-8 h-8 md:w-10 md:h-10 text-gray-900" />
+                          <MdOutlineCamera className="w-8 h-8 md:w-10 md:h-10 text-[var(--text-primary)]" />
                         </div>
                       </button>
 
@@ -3809,20 +3809,20 @@ const ChatNew = () => {
 
             {/* File Preview Modal */}
             {filePreview && (
-              <div className="sticky bottom-0 p-4 border-t border-gray-200 bg-white">
-                <div className="p-4 border-t border-gray-200 bg-white z-50">
+              <div className="sticky bottom-0 p-4 border-t border-[var(--border-default)] bg-[var(--surface-card)]">
+                <div className="p-4 border-t border-[var(--border-default)] bg-[var(--surface-card)] z-50">
                   <div className="space-y-3">
                     {/* Image Preview */}
                     <div className="flex items-center gap-3">
                       <button
                         onClick={handleCancelFile}
-                        className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        className="p-2 hover:bg-[var(--background-secondary)] rounded-full transition-colors"
                       >
-                        <FiX className="w-6 h-6 text-gray-600" />
+                        <FiX className="w-6 h-6 text-[var(--text-secondary)]" />
                       </button>
 
                       <div
-                        className="flex-1 flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                        className="flex-1 flex items-center gap-3 p-3 bg-[var(--background-secondary)] rounded-lg cursor-pointer hover:bg-[var(--background-secondary)] transition-colors"
                         onClick={() => {
                           if (filePreview.type === 'image') {
                             setImageToEdit(editedImageData || filePreview.url);
@@ -3833,13 +3833,13 @@ const ChatNew = () => {
                         {filePreview.type === 'image' ? (
                           <img src={filePreview.url} alt="Preview" className="w-16 h-16 object-cover rounded" />
                         ) : (
-                          <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-2xl">
+                          <div className="w-16 h-16 bg-[var(--surface-elevated)] rounded flex items-center justify-center text-2xl">
                             📄
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{filePreview.name}</p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-sm font-medium text-[var(--text-primary)] truncate">{filePreview.name}</p>
+                          <p className="text-xs text-[var(--text-secondary)]">
                             {(filePreview.size / 1024 / 1024).toFixed(2)} MB
                           </p>
                           {filePreview.type === 'image' && (
@@ -3851,7 +3851,7 @@ const ChatNew = () => {
                       <button
                         onClick={handleSendFile}
                         disabled={uploadingFile}
-                        className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
+                        className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-[var(--text-muted)] transition-colors"
                       >
                         {uploadingFile ? (
                           <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -3868,7 +3868,7 @@ const ChatNew = () => {
                         value={imageCaption}
                         onChange={(e) => setImageCaption(e.target.value)}
                         placeholder="Add a caption..."
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        className="w-full px-4 py-2 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                         maxLength={200}
                       />
                     )}
@@ -3887,8 +3887,8 @@ const ChatNew = () => {
 
             {/* Message Input - Fixed to bottom */}
             {!showVoiceRecorder && !filePreview && !showImageEditor && (
-              <div className="sticky bottom-0 p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 relative z-50">
-                <div className="p-2 sm:p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 z-50">
+              <div className="sticky bottom-0 p-2 sm:p-4 border-t border-[var(--border-default)] bg-[var(--surface-card)] relative z-50">
+                <div className="p-2 sm:p-4 border-t border-[var(--border-default)] bg-[var(--surface-card)] z-50">
                   {/* Quick Chat & Enhance Text Links */}
                   <div className="flex gap-3 mb-0.5">
                     <button
@@ -3910,16 +3910,16 @@ const ChatNew = () => {
 
                   {/* Reply Preview */}
                   {replyingTo && (
-                    <div className="mb-2 bg-gray-100 rounded-lg p-3 flex items-start justify-between gap-2">
+                    <div className="mb-2 bg-[var(--background-secondary)] rounded-lg p-3 flex items-start justify-between gap-2">
                       <div className="flex-1 flex items-center gap-2">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <FiCornerUpLeft className="w-4 h-4 text-gray-600" />
-                            <p className="text-xs font-medium text-gray-700">
+                            <FiCornerUpLeft className="w-4 h-4 text-[var(--text-secondary)]" />
+                            <p className="text-xs font-medium text-[var(--text-secondary)]">
                               {t('Replying to')} {getUserDisplayName(replyingTo.sender)}
                             </p>
                           </div>
-                          <p className="text-sm text-gray-600 truncate">
+                          <p className="text-sm text-[var(--text-secondary)] truncate">
                             {replyingTo.type === 'image' ? '📷 Photo' : replyingTo.content.length > 60 ? replyingTo.content.substring(0, 60) + '...' : replyingTo.content}
                           </p>
                         </div>
@@ -3933,7 +3933,7 @@ const ChatNew = () => {
                       </div>
                       <button
                         onClick={() => setReplyingTo(null)}
-                        className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+                        className="text-[var(--text-muted)] hover:text-[var(--text-secondary)] flex-shrink-0"
                       >
                         <FiX className="w-5 h-5" />
                       </button>
@@ -3967,7 +3967,7 @@ const ChatNew = () => {
                       <button
                         onClick={() => setShowAttachMenu(!showAttachMenu)}
                         disabled={uploadingFile}
-                        className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors disabled:opacity-50"
+                        className="flex-shrink-0 p-2 text-[var(--text-secondary)] hover:text-blue-600 hover:bg-blue-500/10 rounded-full transition-colors disabled:opacity-50"
                         title="Attach"
                       >
                         {uploadingFile ? (
@@ -3978,34 +3978,34 @@ const ChatNew = () => {
                       </button>
 
                       {showAttachMenu && (
-                        <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 min-w-[160px] animate-slideUp z-50">
+                        <div className="absolute bottom-full left-0 mb-2 bg-[var(--surface-card)] rounded-lg shadow-lg border border-[var(--border-default)] py-2 min-w-[160px] animate-slideUp z-50">
                           <button
                             onClick={() => imageInputRef.current?.click()}
-                            className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                            className="w-full px-4 py-2.5 text-left hover:bg-[var(--background-secondary)] flex items-center gap-3 transition-colors"
                           >
                             <FiImage className="w-5 h-5 text-purple-600" />
-                            <span className="text-sm font-medium text-gray-700">Photos</span>
+                            <span className="text-sm font-medium text-[var(--text-secondary)]">Photos</span>
                           </button>
                           <button
                             onClick={openCamera}
-                            className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                            className="w-full px-4 py-2.5 text-left hover:bg-[var(--background-secondary)] flex items-center gap-3 transition-colors"
                           >
                             <FiCamera className="w-5 h-5 text-blue-600" />
-                            <span className="text-sm font-medium text-gray-700">Camera</span>
+                            <span className="text-sm font-medium text-[var(--text-secondary)]">Camera</span>
                           </button>
                           <button
                             onClick={() => fileInputRef.current?.click()}
-                            className="w-full px-4 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 transition-colors"
+                            className="w-full px-4 py-2.5 text-left hover:bg-[var(--background-secondary)] flex items-center gap-3 transition-colors"
                           >
                             <FiFile className="w-5 h-5 text-orange-600" />
-                            <span className="text-sm font-medium text-gray-700">Document</span>
+                            <span className="text-sm font-medium text-[var(--text-secondary)]">Document</span>
                           </button>
                         </div>
                       )}
                     </div>
                     <button
                       onClick={() => setShowVoiceRecorder(true)}
-                      className="flex-shrink-0 p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+                      className="flex-shrink-0 p-2 text-[var(--text-secondary)] hover:text-blue-600 hover:bg-blue-500/10 rounded-full transition-colors"
                       title="Voice message"
                     >
                       <FiMic className="w-5 h-5" />
@@ -4026,13 +4026,13 @@ const ChatNew = () => {
                       }}
                       placeholder={t('Write a message')}
                       rows="1"
-                      className="flex-1 w-0 px-2 py-1.5 sm:px-4 sm:py-2 border border-gray-300 dark:border-gray-600 rounded-full resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm overflow-hidden bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                      className="flex-1 w-0 px-2 py-1.5 sm:px-4 sm:py-2 border border-[var(--border-default)] rounded-full resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm overflow-hidden bg-[var(--surface-card)] dark:bg-[var(--background-secondary)] text-[var(--text-primary)]"
                       style={{ height: 'auto', maxHeight: '72px' }}
                     />
                     <button
                       onClick={handleSendMessage}
                       disabled={!newMessage.trim()}
-                      className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                      className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:bg-[var(--text-muted)] disabled:cursor-not-allowed transition-colors"
                     >
                       <FiSend className="w-4 h-4" />
                     </button>
@@ -4042,14 +4042,14 @@ const ChatNew = () => {
             )}
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
+          <div className="flex-1 flex items-center justify-center text-[var(--text-secondary)]">
             <div className="text-center">
-              <div className="w-24 h-24 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                <FiSearch className="w-12 h-12 text-gray-400" />
+              <div className="w-24 h-24 mx-auto mb-4 bg-[var(--background-secondary)] rounded-full flex items-center justify-center">
+                <FiSearch className="w-12 h-12 text-[var(--text-muted)]" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">{t('Your Messages')}</h3>
+              <h3 className="text-lg font-medium text-[var(--text-primary)] mb-2">{t('Your Messages')}</h3>
               <p className="text-sm">{t('Select a conversation or search for someone to start messaging')}</p>
-              <p className="text-xs text-gray-400 mt-4">💡 {t('Messages are automatically deleted after 30 days')}</p>
+              <p className="text-xs text-[var(--text-muted)] mt-4">💡 {t('Messages are automatically deleted after 30 days')}</p>
             </div>
           </div>
         )}
