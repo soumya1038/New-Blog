@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { FaSearch, FaTimes } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
-import { BlogCardSkeleton } from '../components/SkeletonLoader';
+import { HomePageSkeleton } from '../components/SkeletonLoader';
 import soundNotification from '../utils/soundNotifications';
 import ArticleCard from '../components/ArticleCard';
 import BlogCard from '../components/BlogCard';
@@ -292,16 +292,7 @@ const Home = () => {
   };
 
   if (loading) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'var(--surface)', padding: 'var(--spacing-8)' }}>
-        <div className="container mx-auto px-4">
-          <SectionHeader title={t('Latest Content')} accent={false} />
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[...Array(6)].map((_, i) => <BlogCardSkeleton key={i} />)}
-          </div>
-        </div>
-      </div>
-    );
+    return <HomePageSkeleton />;
   }
 
   if (error) {

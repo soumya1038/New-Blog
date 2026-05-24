@@ -1,22 +1,61 @@
 import React from 'react';
 
 // Base shimmer animation
-const shimmer = "relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_2s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/60 before:to-transparent";
+const shimmer = "relative overflow-hidden before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.8s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/35 dark:before:via-white/10 before:to-transparent";
+const blockBase = "rounded-md bg-[var(--background-secondary)] border border-[var(--border-default)]";
+
+const SkeletonBlock = ({ className = '' }) => (
+  <div className={`${blockBase} ${className} ${shimmer}`.trim()} />
+);
 
 // Blog Card Skeleton
 export const BlogCardSkeleton = () => (
-  <div className="bg-white rounded-xl shadow-lg overflow-hidden p-6">
-    <div className={`h-6 bg-gray-200 rounded w-3/4 mb-4 ${shimmer}`}></div>
+  <div className="theme-panel rounded-xl shadow-lg overflow-hidden p-6 border border-[var(--border-default)]">
+    <SkeletonBlock className="h-6 w-3/4 mb-4" />
     <div className="flex items-center gap-2 mb-4">
-      <div className={`w-8 h-8 bg-gray-200 rounded-full ${shimmer}`}></div>
-      <div className={`h-4 bg-gray-200 rounded w-24 ${shimmer}`}></div>
+      <SkeletonBlock className="w-8 h-8 rounded-full" />
+      <SkeletonBlock className="h-4 w-24" />
     </div>
-    <div className={`h-4 bg-gray-200 rounded w-full mb-2 ${shimmer}`}></div>
-    <div className={`h-4 bg-gray-200 rounded w-5/6 mb-2 ${shimmer}`}></div>
-    <div className={`h-4 bg-gray-200 rounded w-4/6 mb-4 ${shimmer}`}></div>
+    <SkeletonBlock className="h-4 w-full mb-2" />
+    <SkeletonBlock className="h-4 w-5/6 mb-2" />
+    <SkeletonBlock className="h-4 w-4/6 mb-4" />
     <div className="flex gap-4">
-      <div className={`h-4 bg-gray-200 rounded w-16 ${shimmer}`}></div>
-      <div className={`h-4 bg-gray-200 rounded w-20 ${shimmer}`}></div>
+      <SkeletonBlock className="h-4 w-16" />
+      <SkeletonBlock className="h-4 w-20" />
+    </div>
+  </div>
+);
+
+// Home Page Skeleton
+export const HomePageSkeleton = () => (
+  <div style={{ minHeight: '100vh', background: 'var(--background-primary)', paddingTop: '80px', paddingBottom: '60px' }}>
+    <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 24px' }}>
+      {/* Search bar skeleton */}
+      <div style={{ marginBottom: '40px', maxWidth: '600px' }}>
+        <SkeletonBlock className="h-[48px] w-full rounded-lg" />
+      </div>
+
+      {/* Filter buttons skeleton */}
+      <div className="flex flex-wrap gap-3 mb-12">
+        {[...Array(4)].map((_, idx) => (
+          <SkeletonBlock key={idx} className="h-[40px] w-[94px] rounded-md" />
+        ))}
+      </div>
+
+      {/* Content sections skeleton */}
+      {[...Array(2)].map((_, sectionIdx) => (
+        <section key={sectionIdx} style={{ marginBottom: '60px' }}>
+          <div className="flex items-center justify-between mb-5">
+            <SkeletonBlock className="h-6 w-40" />
+            <SkeletonBlock className="h-6 w-20 rounded-full" />
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <BlogCardSkeleton key={`${sectionIdx}-${i}`} />
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   </div>
 );
@@ -127,6 +166,7 @@ export const ChatSkeleton = () => (
 
 export default {
   BlogCardSkeleton,
+  HomePageSkeleton,
   BlogDetailSkeleton,
   UserProfileSkeleton,
   TableRowSkeleton,
