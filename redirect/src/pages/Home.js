@@ -13,8 +13,25 @@ import SectionHeader from '../components/SectionHeader';
 import ModernProductTour from '../components/ModernProductTour';
 import ShortBlogs from '../components/ShortBlogs';
 import ScrollToTop from '../components/ScrollToTop';
+import Avatar from '../components/Avatar';
+import StatusViewer from '../components/StatusViewer';
 import { useDebounce } from '../hooks/useDebounce';
 import { apiCache } from '../utils/apiCache';
+
+const STORY_SEEN_STORAGE_PREFIX = 'lekhon_story_seen_v1';
+
+const normalizeActiveStatuses = (statuses = []) =>
+  Array.isArray(statuses)
+    ? statuses.filter((status) => status?.expiresAt && new Date(status.expiresAt) > new Date())
+    : [];
+
+const getLatestStatusAt = (statuses = []) => {
+  if (!Array.isArray(statuses) || statuses.length === 0) return '';
+  return statuses
+    .map((status) => new Date(status.createdAt || status.expiresAt || Date.now()).getTime())
+    .reduce((latest, current) => (current > latest ? current : latest), 0)
+    .toString();
+};
 
 const Home = () => {
   const { t } = useTranslation();
@@ -34,9 +51,22 @@ const Home = () => {
   const [visibleTagCount, setVisibleTagCount] = useState(5);
   const [error, setError] = useState(false);
   const [isDark, setIsDark] = useState(false);
+  const [isCompactViewport, setIsCompactViewport] = useState(() => window.innerWidth < 640);
   const searchBarRef = useRef(null);
   const tagContainerRef = useRef(null);
   const [showTour, setShowTour] = useState(false);
+  const [myStoryStatuses, setMyStoryStatuses] = useState([]);
+  const [storyStatusCache, setStoryStatusCache] = useState({});
+  const [seenStories, setSeenStories] = useState({});
+  const [storyViewerState, setStoryViewerState] = useState({
+    open: false,
+    userId: '',
+    userName: '',
+    statuses: [],
+    initialIndex: 0,
+  });
+  const [storyLoadingUserId, setStoryLoadingUserId] = useState('');
+  const storySeenStorageKey = user?._id ? `${STORY_SEEN_STORAGE_PREFIX}:${user._id}` : '';
   
   useEffect(() => {
     const checkTheme = () => setIsDark(document.documentElement.classList.contains('dark'));
@@ -44,6 +74,13 @@ const Home = () => {
     const observer = new MutationObserver(checkTheme);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => setIsCompactViewport(window.innerWidth < 640);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
   
   useEffect(() => {
@@ -57,7 +94,67 @@ const Home = () => {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (!storySeenStorageKey) {
+      setSeenStories({});
+      return;
+    }
 
+    try {
+      const raw = localStorage.getItem(storySeenStorageKey);
+      setSeenStories(raw ? JSON.parse(raw) : {});
+    } catch (error) {
+      setSeenStories({});
+    }
+  }, [storySeenStorageKey]);
+
+  useEffect(() => {
+    if (!storySeenStorageKey) return;
+    try {
+      localStorage.setItem(storySeenStorageKey, JSON.stringify(seenStories));
+    } catch (error) {
+      // Ignore storage write failures
+    }
+  }, [storySeenStorageKey, seenStories]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchMyStatuses = async () => {
+      if (!user?._id) {
+        if (isMounted) {
+          setMyStoryStatuses([]);
+        }
+        return;
+      }
+
+      try {
+        const { data } = await api.get('/users/statuses');
+        if (!isMounted) return;
+
+        const activeStatuses = normalizeActiveStatuses(data?.statuses || []);
+        setMyStoryStatuses(activeStatuses);
+        setStoryStatusCache((prev) => ({
+          ...prev,
+          [user._id]: {
+            statuses: activeStatuses,
+            latestStatusAt: getLatestStatusAt(activeStatuses),
+            userName: user.username || 'You',
+          },
+        }));
+      } catch (error) {
+        if (isMounted) {
+          setMyStoryStatuses([]);
+        }
+      }
+    };
+
+    fetchMyStatuses();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?._id, user?.username]);
 
   useEffect(() => {
     fetchBlogs();
@@ -204,6 +301,136 @@ const Home = () => {
     setSelectedTags(selectedTags.filter(tag => tag !== tagToRemove));
   };
 
+  const storyEntries = useMemo(() => {
+    if (!user?._id) return [];
+
+    const authorMap = new Map();
+    const allSources = [...blogs, ...articles, ...shortBlogs];
+
+    allSources.forEach((item) => {
+      const author = item?.author;
+      const authorId = String(author?._id || '');
+      if (!authorId) return;
+
+      const existing = authorMap.get(authorId);
+      const nextValue = {
+        userId: authorId,
+        username: author?.username || 'User',
+        profileImage: author?.profileImage || '',
+        isGuest: Boolean(author?.isGuest || author?.role === 'guest'),
+        hasActiveStatus: Boolean(author?.hasActiveStatus),
+      };
+
+      if (!existing) {
+        authorMap.set(authorId, nextValue);
+      } else if (!existing.hasActiveStatus && nextValue.hasActiveStatus) {
+        authorMap.set(authorId, { ...existing, hasActiveStatus: true });
+      }
+    });
+
+    const activeAuthors = Array.from(authorMap.values())
+      .filter((entry) => entry.userId !== user._id && entry.hasActiveStatus)
+      .sort((a, b) => a.username.localeCompare(b.username));
+
+    const selfEntry = {
+      userId: user._id,
+      username: myStoryStatuses.length > 0 ? 'Your story' : 'Add story',
+      profileImage: user.profileImage || '',
+      isGuest: Boolean(user?.isGuest || user?.role === 'guest'),
+      hasActiveStatus: myStoryStatuses.length > 0,
+      isSelf: true,
+    };
+
+    return [selfEntry, ...activeAuthors];
+  }, [user?._id, user?.profileImage, user?.isGuest, user?.role, blogs, articles, shortBlogs, myStoryStatuses.length]);
+
+  const markStoryAsSeen = (userId, latestStatusAt) => {
+    if (!userId || !latestStatusAt) return;
+    setSeenStories((prev) => ({
+      ...prev,
+      [userId]: {
+        latestStatusAt: String(latestStatusAt),
+        seenAt: Date.now(),
+      },
+    }));
+  };
+
+  const isStorySeen = (entry) => {
+    if (!entry?.hasActiveStatus) return false;
+    const seenMeta = seenStories?.[entry.userId];
+    if (!seenMeta) return false;
+
+    const latestFromCache = storyStatusCache?.[entry.userId]?.latestStatusAt;
+    if (latestFromCache && seenMeta.latestStatusAt) {
+      return String(latestFromCache) === String(seenMeta.latestStatusAt);
+    }
+
+    return Date.now() - Number(seenMeta.seenAt || 0) < 24 * 60 * 60 * 1000;
+  };
+
+  const openStoryForEntry = async (entry) => {
+    if (!entry || !entry.userId) return;
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    if (entry.isSelf && !entry.hasActiveStatus) {
+      navigate('/profile');
+      return;
+    }
+
+    setStoryLoadingUserId(entry.userId);
+    try {
+      let statusPayload = storyStatusCache?.[entry.userId] || null;
+
+      if (!statusPayload?.statuses || statusPayload.statuses.length === 0) {
+        let statuses = [];
+        let userName = entry.username || 'User';
+
+        if (entry.isSelf) {
+          const { data } = await api.get('/users/statuses');
+          statuses = normalizeActiveStatuses(data?.statuses || []);
+          userName = user?.username || 'You';
+        } else {
+          const { data } = await api.get(`/users/profile/${entry.userId}`);
+          statuses = normalizeActiveStatuses(data?.user?.statuses || []);
+          userName = data?.user?.username || userName;
+        }
+
+        statusPayload = {
+          statuses,
+          latestStatusAt: getLatestStatusAt(statuses),
+          userName,
+        };
+
+        setStoryStatusCache((prev) => ({
+          ...prev,
+          [entry.userId]: statusPayload,
+        }));
+      }
+
+      if (!statusPayload?.statuses?.length) {
+        if (entry.isSelf) navigate('/profile');
+        return;
+      }
+
+      markStoryAsSeen(entry.userId, statusPayload.latestStatusAt);
+
+      setStoryViewerState({
+        open: true,
+        userId: entry.userId,
+        userName: statusPayload.userName || entry.username || 'User',
+        statuses: statusPayload.statuses,
+        initialIndex: 0,
+      });
+    } catch (error) {
+      console.error('Failed to open story:', error);
+    } finally {
+      setStoryLoadingUserId('');
+    }
+  };
+
   useEffect(() => {
     const calculateVisibleTags = () => {
       if (selectedTags.length > 0 && tagContainerRef.current && searchBarRef.current) {
@@ -332,9 +559,9 @@ const Home = () => {
       <ScrollToTop />
       
       <div style={{ minHeight:'100vh', background:'var(--background-primary)', paddingTop:'80px', paddingBottom:'60px' }}>
-        <div style={{ maxWidth:'1400px', margin:'0 auto', padding:'0 24px' }}>
+        <div style={{ maxWidth:'1400px', margin:'0 auto', padding:'0 clamp(12px, 4vw, 24px)' }}>
           {/* Search Bar */}
-          <div style={{ marginBottom:'40px', maxWidth:'600px' }}>
+          <div style={{ marginBottom:'clamp(28px, 5vw, 40px)', maxWidth:'600px' }}>
             <div style={{ position:'relative' }}>
               <FaSearch style={{ position:'absolute', left:'16px', top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)', fontSize:'18px' }} />
               <input
@@ -359,7 +586,7 @@ const Home = () => {
           </div>
 
           {/* Filter Buttons */}
-          <div style={{ display:'flex', gap:'12px', marginBottom:'48px', flexWrap:'wrap' }}>
+          <div style={{ display:'flex', gap:'12px', marginBottom:'clamp(30px, 5vw, 48px)', flexWrap:'wrap' }}>
             {['all', 'articles', 'blogs', 'shorts'].map(filter => (
               <button
                 key={filter}
@@ -377,6 +604,98 @@ const Home = () => {
             ))}
           </div>
 
+          {/* Stories Tray */}
+          {user && storyEntries.length > 0 && (
+            <section style={{ marginBottom: 'clamp(28px, 5vw, 42px)' }}>
+              <SectionHeader type="short" label="Stories" badge={storyEntries.length > 1 ? `${storyEntries.length - 1} active` : 'Create'} />
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 'clamp(8px, 2.8vw, 14px)',
+                  overflowX: 'auto',
+                  paddingBottom: '10px',
+                  WebkitOverflowScrolling: 'touch',
+                  scrollSnapType: 'x proximity',
+                  touchAction: 'pan-x',
+                }}
+              >
+                {storyEntries.map((entry) => {
+                  const seen = isStorySeen(entry);
+                  const hasActive = Boolean(entry.hasActiveStatus);
+                  const isLoading = storyLoadingUserId === entry.userId;
+                  const ringColor = !hasActive
+                    ? 'var(--border-default)'
+                    : seen
+                      ? 'var(--border-subtle)'
+                      : 'var(--brand-primary)';
+
+                  return (
+                    <div
+                      key={entry.userId}
+                      style={{
+                        minWidth: 'clamp(68px, 18vw, 90px)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: '6px',
+                        flexShrink: 0,
+                        scrollSnapAlign: 'start',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => openStoryForEntry(entry)}
+                        disabled={isLoading}
+                        style={{
+                          width: 'clamp(58px, 15vw, 74px)',
+                          height: 'clamp(58px, 15vw, 74px)',
+                          borderRadius: '999px',
+                          border: `2px ${hasActive ? 'solid' : 'dashed'} ${ringColor}`,
+                          background: 'var(--surface-card)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          cursor: isLoading ? 'wait' : 'pointer',
+                          opacity: isLoading ? 0.7 : 1,
+                          transition: 'all 180ms ease',
+                        }}
+                        title={entry.isSelf && !hasActive ? t('Add status') : t('View status')}
+                      >
+                        <Avatar
+                          user={entry}
+                          size={isCompactViewport ? 'sm' : 'md'}
+                          className={isCompactViewport ? '!w-10 !h-10' : '!w-14 !h-14'}
+                        />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => navigate(entry.isSelf ? '/profile' : `/user/${entry.userId}`)}
+                        style={{
+                          maxWidth: 'clamp(64px, 18vw, 90px)',
+                          border: 'none',
+                          background: 'transparent',
+                          padding: 0,
+                          margin: 0,
+                          cursor: 'pointer',
+                          color: 'var(--text-secondary)',
+                          fontSize: 'clamp(11px, 2.8vw, 12px)',
+                          lineHeight: 1.2,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                        title={entry.isSelf ? t('Go to profile') : t('Open profile')}
+                      >
+                        {entry.username}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           {/* Content Sections */}
           {filteredBlogs.length === 0 && shortBlogs.length === 0 ? (
             <div style={{ textAlign:'center', padding:'80px 20px', color:'var(--text-muted)' }}>
@@ -387,7 +706,7 @@ const Home = () => {
               {(contentFilter === 'all' || contentFilter === 'articles') && (
                 <section style={{ marginBottom:'60px' }}>
                   <SectionHeader type="article" label="Articles" badge="Premium" />
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:'20px' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap:'20px' }}>
                     {filteredBlogs.filter(b=>b.type==='article').map((article,i) => (
                       <ArticleCard key={article._id} article={article} index={i}
                         onLike={(id,likes) => setArticles(p => p.map(a=>a._id===id?{...a,likes}:a))}
@@ -399,7 +718,7 @@ const Home = () => {
               {(contentFilter === 'all' || contentFilter === 'blogs') && (
                 <section style={{ marginBottom:'60px' }}>
                   <SectionHeader type="blog" label="Blogs" badge="Community" />
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:'20px' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap:'20px' }}>
                     {filteredBlogs.filter(b=>b.type==='blog').map((blog,i) => (
                       <BlogCard key={blog._id} blog={blog} index={i}
                         onLike={(id,likes) => setBlogs(p => p.map(b=>b._id===id?{...b,likes}:b))}
@@ -411,7 +730,7 @@ const Home = () => {
               {(contentFilter === 'all' || contentFilter === 'shorts') && shortBlogs.length > 0 && (
                 <section style={{ marginBottom:'60px' }}>
                   <SectionHeader type="short" label="Shorts" badge="Trending" />
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px, 1fr))', gap:'16px' }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap:'16px' }}>
                     {shortBlogs.slice(0,6).map((short,i) => (
                       <ShortPreviewCard key={short._id} short={short} index={i} />
                     ))}
@@ -422,6 +741,20 @@ const Home = () => {
           )}
         </div>
       </div>
+
+      {storyViewerState.open && storyViewerState.statuses.length > 0 && (
+        <StatusViewer
+          statuses={storyViewerState.statuses}
+          initialIndex={storyViewerState.initialIndex}
+          userName={storyViewerState.userName}
+          onClose={() =>
+            setStoryViewerState((prev) => ({
+              ...prev,
+              open: false,
+            }))
+          }
+        />
+      )}
     </>
   );
 
