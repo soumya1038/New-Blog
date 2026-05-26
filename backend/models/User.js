@@ -74,6 +74,8 @@ const userSchema = new mongoose.Schema({
     textColor: { type: String, default: '#ffffff' },
     fontFamily: { type: String, default: 'Inter' },
     textAlign: { type: String, enum: ['left', 'center', 'right'], default: 'center' },
+    textPosX: { type: Number, default: 50, min: 0, max: 100 },
+    textPosY: { type: Number, default: 50, min: 0, max: 100 },
     durationSec: { type: Number, default: 7, min: 3, max: 30 },
     createdAt: { type: Date, default: Date.now },
     expiresAt: { type: Date }

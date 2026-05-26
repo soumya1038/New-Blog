@@ -20,6 +20,12 @@ const getMediaUrl = (status) => {
   return status.video || status.image || '';
 };
 
+const clampTextPosition = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 50;
+  return Math.max(0, Math.min(100, parsed));
+};
+
 const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) => {
   const [currentIndex, setCurrentIndex] = useState(() => {
     const safeIndex = Number.isInteger(initialIndex) ? initialIndex : 0;
@@ -31,11 +37,20 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
   const currentStatus = statuses[currentIndex] || null;
   const currentMediaType = useMemo(() => getMediaType(currentStatus), [currentStatus]);
   const currentMediaUrl = useMemo(() => getMediaUrl(currentStatus), [currentStatus]);
+  const currentTextPosX = useMemo(
+    () => clampTextPosition(currentStatus?.textPosX),
+    [currentStatus?.textPosX]
+  );
+  const currentTextPosY = useMemo(
+    () => clampTextPosition(currentStatus?.textPosY),
+    [currentStatus?.textPosY]
+  );
   const currentDurationMs = useMemo(
     () => clampDurationSec(currentStatus?.durationSec) * 1000,
     [currentStatus?.durationSec]
   );
   const isVideoStatus = currentMediaType === 'video' && Boolean(currentMediaUrl);
+  const hasMedia = Boolean(currentMediaUrl);
 
   useEffect(() => {
     if (statuses.length === 0) return;
@@ -187,31 +202,28 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
           <img src={currentMediaUrl} alt="Status" className="max-w-full max-h-full object-contain rounded-lg" />
         ) : (
           <div
-            className="w-full h-full rounded-lg flex items-center justify-center p-8"
+            className="w-full h-full rounded-lg"
             style={{ backgroundColor: currentStatus.backgroundColor || '#1f2937' }}
-          >
-            <p
-              className="text-2xl w-full"
-              style={{
-                color: currentStatus.textColor || '#ffffff',
-                fontFamily: currentStatus.fontFamily || 'Inter',
-                textAlign: currentStatus.textAlign || 'center',
-              }}
-            >
-              {currentStatus.text || 'Status'}
-            </p>
-          </div>
+          />
         )}
 
-        {currentStatus.text && currentMediaUrl && (
-          <div className="absolute bottom-20 left-0 right-0 text-center px-4">
+        {currentStatus.text && (
+          <div
+            className="absolute px-4"
+            style={{
+              left: `${currentTextPosX}%`,
+              top: `${currentTextPosY}%`,
+              transform: 'translate(-50%, -50%)',
+              width: '82%',
+            }}
+          >
             <p
-              className="inline-block text-lg px-4 py-2 rounded-lg backdrop-blur-sm"
+              className="inline-block text-lg px-4 py-2 rounded-lg backdrop-blur-sm w-full"
               style={{
                 color: currentStatus.textColor || '#ffffff',
                 fontFamily: currentStatus.fontFamily || 'Inter',
                 textAlign: currentStatus.textAlign || 'center',
-                backgroundColor: 'rgba(0, 0, 0, 0.45)',
+                backgroundColor: hasMedia ? 'rgba(0, 0, 0, 0.45)' : 'transparent',
               }}
             >
               {currentStatus.text}

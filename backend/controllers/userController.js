@@ -533,6 +533,12 @@ const clampStatusDuration = (value) => {
   return Math.max(3, Math.min(30, Math.floor(parsed)));
 };
 
+const clampStatusPosition = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 50;
+  return Math.max(0, Math.min(100, parsed));
+};
+
 const extractCloudinaryPublicId = (url) => {
   if (!url) return '';
   try {
@@ -609,6 +615,8 @@ exports.createStatus = async (req, res) => {
       textColor,
       fontFamily,
       textAlign,
+      textPosX,
+      textPosY,
       durationSec,
     } = req.body;
     let imageUrl = '';
@@ -621,10 +629,13 @@ exports.createStatus = async (req, res) => {
     }
 
     const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
     // Check if user already has 5 statuses
-    const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
-    if (activeStatuses.length >= 5) {
+    const existingActiveStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
+    if (existingActiveStatuses.length >= 5) {
       return res.status(400).json({ success: false, message: 'Maximum 5 active statuses allowed' });
     }
 
@@ -653,6 +664,8 @@ exports.createStatus = async (req, res) => {
       textColor: String(textColor || '#ffffff'),
       fontFamily: String(fontFamily || 'Inter'),
       textAlign: ['left', 'center', 'right'].includes(textAlign) ? textAlign : 'center',
+      textPosX: clampStatusPosition(textPosX),
+      textPosY: clampStatusPosition(textPosY),
       durationSec: clampStatusDuration(durationSec),
       createdAt: now,
       expiresAt
@@ -660,8 +673,8 @@ exports.createStatus = async (req, res) => {
 
     await user.save();
 
-    const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
-    res.json({ success: true, statuses: activeStatuses });
+    const responseActiveStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
+    res.json({ success: true, statuses: responseActiveStatuses });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -671,6 +684,9 @@ exports.createStatus = async (req, res) => {
 exports.getStatuses = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('statuses');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
     // Filter out expired statuses
     const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
@@ -700,10 +716,17 @@ exports.updateStatus = async (req, res) => {
       textColor,
       fontFamily,
       textAlign,
+      textPosX,
+      textPosY,
       durationSec,
+      removeMedia,
     } = req.body;
+    const shouldRemoveMedia = ['1', 'true', 'yes'].includes(String(removeMedia || '').toLowerCase());
 
     const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
     const status = user.statuses.id(statusId);
 
     if (!status) {
@@ -726,6 +749,12 @@ exports.updateStatus = async (req, res) => {
     if (textAlign !== undefined) {
       status.textAlign = ['left', 'center', 'right'].includes(textAlign) ? textAlign : 'center';
     }
+    if (textPosX !== undefined) {
+      status.textPosX = clampStatusPosition(textPosX);
+    }
+    if (textPosY !== undefined) {
+      status.textPosY = clampStatusPosition(textPosY);
+    }
     if (durationSec !== undefined) {
       status.durationSec = clampStatusDuration(durationSec);
     }
@@ -744,6 +773,12 @@ exports.updateStatus = async (req, res) => {
         status.image = uploadResult.mediaUrl;
         status.video = '';
       }
+    } else if (shouldRemoveMedia && (status.image || status.video)) {
+      await destroyStatusMedia(status);
+      status.image = '';
+      status.video = '';
+      status.mediaType = 'text';
+      status.mediaPublicId = '';
     } else if (!status.image && !status.video) {
       status.mediaType = 'text';
       status.mediaPublicId = '';
@@ -764,6 +799,9 @@ exports.deleteStatus = async (req, res) => {
     const { statusId } = req.params;
 
     const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
     const status = user.statuses.id(statusId);
 
     if (!status) {

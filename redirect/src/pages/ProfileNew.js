@@ -53,6 +53,7 @@ const ProfileNew = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const profileRef = React.useRef(null);
+  const statusPreviewRef = React.useRef(null);
 
   // State
   const [profile, setProfile] = useState({ fullName: '', email: '', phone: '', dateOfBirth: '', bio: '', socialMedia: [] });
@@ -108,15 +109,19 @@ const ProfileNew = () => {
     mediaFile: null,
     mediaPreview: '',
     mediaType: 'text',
+    removeExistingMedia: false,
     backgroundColor: '#1f2937',
     textColor: '#ffffff',
     fontFamily: 'Inter',
     textAlign: 'center',
+    textPosX: 50,
+    textPosY: 50,
     durationSec: 7,
   });
   const [statusSaving, setStatusSaving] = useState(false);
   const [statusDeletingId, setStatusDeletingId] = useState('');
   const [editingStatusId, setEditingStatusId] = useState('');
+  const [statusTextDragging, setStatusTextDragging] = useState(false);
 
   // Fetch data
   useEffect(() => {
@@ -397,19 +402,72 @@ const ProfileNew = () => {
     return status.video || status.image || '';
   };
 
+  const clampStatusTextPosition = (value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return 50;
+    return Math.max(8, Math.min(92, parsed));
+  };
+
+  const updateStatusTextPositionFromPointer = (clientX, clientY) => {
+    const previewNode = statusPreviewRef.current;
+    if (!previewNode) return;
+    const rect = previewNode.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const x = ((clientX - rect.left) / rect.width) * 100;
+    const y = ((clientY - rect.top) / rect.height) * 100;
+    setStatusForm((prev) => ({
+      ...prev,
+      textPosX: clampStatusTextPosition(x),
+      textPosY: clampStatusTextPosition(y),
+    }));
+  };
+
+  const handleStatusTextPointerDown = (event) => {
+    if (!statusForm.text.trim()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setStatusTextDragging(true);
+    if (event.currentTarget.setPointerCapture) {
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch (_) {}
+    }
+    updateStatusTextPositionFromPointer(event.clientX, event.clientY);
+  };
+
+  const handleStatusTextPointerMove = (event) => {
+    if (!statusTextDragging) return;
+    event.preventDefault();
+    updateStatusTextPositionFromPointer(event.clientX, event.clientY);
+  };
+
+  const handleStatusTextPointerUp = (event) => {
+    if (!statusTextDragging) return;
+    setStatusTextDragging(false);
+    if (event.currentTarget.releasePointerCapture) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch (_) {}
+    }
+  };
+
   const resetStatusComposer = () => {
     if (statusForm.mediaPreview && statusForm.mediaPreview.startsWith('blob:')) {
       URL.revokeObjectURL(statusForm.mediaPreview);
     }
+    setStatusTextDragging(false);
     setStatusForm({
       text: '',
       mediaFile: null,
       mediaPreview: '',
       mediaType: 'text',
+      removeExistingMedia: false,
       backgroundColor: '#1f2937',
       textColor: '#ffffff',
       fontFamily: 'Inter',
       textAlign: 'center',
+      textPosX: 50,
+      textPosY: 50,
       durationSec: 7,
     });
     setEditingStatusId('');
@@ -434,10 +492,13 @@ const ProfileNew = () => {
       mediaFile: null,
       mediaPreview: getStatusMediaUrl(status),
       mediaType: getStatusMediaType(status),
+      removeExistingMedia: false,
       backgroundColor: status.backgroundColor || '#1f2937',
       textColor: status.textColor || '#ffffff',
       fontFamily: status.fontFamily || 'Inter',
       textAlign: status.textAlign || 'center',
+      textPosX: clampStatusTextPosition(status.textPosX),
+      textPosY: clampStatusTextPosition(status.textPosY),
       durationSec: status.durationSec || 7,
     });
     setEditingStatusId(status._id);
@@ -467,6 +528,7 @@ const ProfileNew = () => {
       mediaFile: file,
       mediaPreview: URL.createObjectURL(file),
       mediaType: nextType,
+      removeExistingMedia: false,
     }));
   };
 
@@ -489,7 +551,12 @@ const ProfileNew = () => {
     formData.append('textColor', statusForm.textColor);
     formData.append('fontFamily', statusForm.fontFamily);
     formData.append('textAlign', statusForm.textAlign);
+    formData.append('textPosX', String(statusForm.textPosX));
+    formData.append('textPosY', String(statusForm.textPosY));
     formData.append('durationSec', String(statusForm.durationSec || 7));
+    if (editingStatusId && statusForm.removeExistingMedia && !statusForm.mediaFile) {
+      formData.append('removeMedia', 'true');
+    }
     if (statusForm.mediaFile) {
       formData.append('statusMedia', statusForm.mediaFile);
     }
@@ -1803,8 +1870,8 @@ const ProfileNew = () => {
 
       {/* Status Composer Modal */}
       {showStatusComposer && (
-        <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-[70] p-4">
-          <div className="theme-modal-card rounded-2xl p-6 max-w-lg w-full">
+        <div className="fixed inset-0 theme-modal-overlay flex items-stretch sm:items-center justify-center z-[70] p-2 sm:p-4 overflow-y-auto">
+          <div className="theme-modal-card rounded-2xl p-4 sm:p-6 max-w-6xl w-full min-h-[88vh]">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-[var(--text-primary)]">
                 {editingStatusId ? t('Edit Status') : t('Set Status')}
@@ -1821,131 +1888,196 @@ const ProfileNew = () => {
               </button>
             </div>
 
-            <form onSubmit={handleStatusSave} className="space-y-4">
-              <textarea
-                value={statusForm.text}
-                onChange={(e) => setStatusForm((prev) => ({ ...prev, text: e.target.value }))}
-                placeholder={t('Share a quick update...')}
-                rows="4"
-                className="w-full px-4 py-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--brand-primary)] focus:outline-none"
-              />
+            <form onSubmit={handleStatusSave} className="h-[calc(88vh-88px)] min-h-[560px] flex flex-col">
+              <div className="grid grid-cols-1 lg:grid-cols-[350px_minmax(0,1fr)] gap-5 flex-1 min-h-0">
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3">
+                    <div className="text-xs text-[var(--text-secondary)] mb-2">
+                      Story Preview (9:16)
+                    </div>
+                    <div
+                      ref={statusPreviewRef}
+                      className="relative mx-auto w-full max-w-[320px] aspect-[9/16] rounded-2xl overflow-hidden border border-[var(--border-default)] bg-black"
+                      onPointerDown={(event) => {
+                        if (event.target === event.currentTarget) {
+                          updateStatusTextPositionFromPointer(event.clientX, event.clientY);
+                        }
+                      }}
+                    >
+                      {statusForm.mediaPreview ? (
+                        statusForm.mediaType === 'video' ? (
+                          <video
+                            src={statusForm.mediaPreview}
+                            className="absolute inset-0 w-full h-full object-cover"
+                            playsInline
+                            muted
+                            autoPlay
+                            loop
+                          />
+                        ) : (
+                          <img
+                            src={statusForm.mediaPreview}
+                            alt="Status preview"
+                            className="absolute inset-0 w-full h-full object-cover"
+                          />
+                        )
+                      ) : (
+                        <div
+                          className="absolute inset-0"
+                          style={{ backgroundColor: statusForm.backgroundColor }}
+                        />
+                      )}
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-                  Background
-                  <input
-                    type="color"
-                    value={statusForm.backgroundColor}
-                    onChange={(e) => setStatusForm((prev) => ({ ...prev, backgroundColor: e.target.value }))}
-                    className="h-10 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)]"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-                  Text Color
-                  <input
-                    type="color"
-                    value={statusForm.textColor}
-                    onChange={(e) => setStatusForm((prev) => ({ ...prev, textColor: e.target.value }))}
-                    className="h-10 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)]"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-                  Font
-                  <select
-                    value={statusForm.fontFamily}
-                    onChange={(e) => setStatusForm((prev) => ({ ...prev, fontFamily: e.target.value }))}
-                    className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
-                  >
-                    <option value="Inter">Inter</option>
-                    <option value="Playfair Display">Playfair</option>
-                    <option value="DM Sans">DM Sans</option>
-                    <option value="Space Grotesk">Space Grotesk</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-                  Alignment
-                  <select
-                    value={statusForm.textAlign}
-                    onChange={(e) => setStatusForm((prev) => ({ ...prev, textAlign: e.target.value }))}
-                    className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
-                  >
-                    <option value="left">Left</option>
-                    <option value="center">Center</option>
-                    <option value="right">Right</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-                  Duration (sec)
-                  <input
-                    type="number"
-                    min="3"
-                    max="30"
-                    value={statusForm.durationSec}
-                    onChange={(e) => setStatusForm((prev) => ({ ...prev, durationSec: Math.max(3, Math.min(30, Number(e.target.value) || 7)) }))}
-                    className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
-                  />
-                </label>
-              </div>
-
-              {statusForm.mediaPreview && (
-                <div className="rounded-xl overflow-hidden border border-[var(--border-default)] bg-[var(--background-secondary)]">
-                  {statusForm.mediaType === 'video' ? (
-                    <video src={statusForm.mediaPreview} className="w-full max-h-64 object-cover" controls playsInline />
-                  ) : (
-                    <img src={statusForm.mediaPreview} alt="Status preview" className="w-full max-h-64 object-cover" />
-                  )}
-                </div>
-              )}
-
-              {!statusForm.mediaPreview && (
-                <div
-                  className="rounded-xl border border-[var(--border-default)] min-h-[180px] flex items-center justify-center p-6"
-                  style={{ backgroundColor: statusForm.backgroundColor }}
-                >
-                  <p
-                    className="text-lg"
-                    style={{
-                      color: statusForm.textColor,
-                      fontFamily: statusForm.fontFamily,
-                      textAlign: statusForm.textAlign,
-                      width: '100%',
-                    }}
-                  >
-                    {statusForm.text || 'Story text preview'}
+                      <div
+                        className={`absolute max-w-[88%] px-3 py-2 rounded-lg select-none shadow-lg transition-opacity ${
+                          statusTextDragging ? 'cursor-grabbing' : 'cursor-grab'
+                        }`}
+                        style={{
+                          left: `${statusForm.textPosX}%`,
+                          top: `${statusForm.textPosY}%`,
+                          transform: 'translate(-50%, -50%)',
+                          color: statusForm.textColor,
+                          fontFamily: statusForm.fontFamily,
+                          textAlign: statusForm.textAlign,
+                          backgroundColor: statusForm.mediaPreview ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.22)',
+                          width: '82%',
+                        }}
+                        onPointerDown={handleStatusTextPointerDown}
+                        onPointerMove={handleStatusTextPointerMove}
+                        onPointerUp={handleStatusTextPointerUp}
+                        onPointerCancel={handleStatusTextPointerUp}
+                      >
+                        {statusForm.text.trim() || 'Type text and drag it anywhere'}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    Drag the text box to place it. Tap any empty area in preview to reposition quickly.
                   </p>
                 </div>
-              )}
 
-              <div className="flex items-center justify-between gap-3">
-                <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--surface-card)] border border-[var(--border-default)] text-[var(--text-primary)] cursor-pointer hover:bg-[var(--surface-elevated)]">
-                  {statusForm.mediaType === 'video' ? <FaVideo size={14} /> : <FaCamera size={14} />}
-                  {statusForm.mediaPreview ? t('Change Media') : t('Add Image/Video')}
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept="image/*,video/*"
-                    onChange={handleStatusMediaChange}
+                <div className="space-y-4 overflow-y-auto pr-1">
+                  <textarea
+                    value={statusForm.text}
+                    onChange={(e) => setStatusForm((prev) => ({ ...prev, text: e.target.value }))}
+                    placeholder={t('Share a quick update...')}
+                    rows="4"
+                    className="w-full px-4 py-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--brand-primary)] focus:outline-none"
                   />
-                </label>
-                {statusForm.mediaPreview && statusForm.mediaPreview.startsWith('blob:') && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      URL.revokeObjectURL(statusForm.mediaPreview);
-                      setStatusForm((prev) => ({ ...prev, mediaFile: null, mediaPreview: '', mediaType: 'text' }));
-                    }}
-                    className="text-sm font-semibold text-red-600 hover:text-red-700"
-                  >
-                    {t('Remove Selected')}
-                  </button>
-                )}
+
+                  <div className="flex items-center justify-between gap-3">
+                    <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--surface-card)] border border-[var(--border-default)] text-[var(--text-primary)] cursor-pointer hover:bg-[var(--surface-elevated)]">
+                      {statusForm.mediaType === 'video' ? <FaVideo size={14} /> : <FaCamera size={14} />}
+                      {statusForm.mediaPreview ? t('Change Media') : t('Add Image/Video')}
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*,video/*"
+                        onChange={handleStatusMediaChange}
+                      />
+                    </label>
+                    {statusForm.mediaPreview && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const shouldMarkRemove =
+                            Boolean(editingStatusId) &&
+                            Boolean(statusForm.mediaPreview) &&
+                            !statusForm.mediaPreview.startsWith('blob:');
+                          if (statusForm.mediaPreview.startsWith('blob:')) {
+                            URL.revokeObjectURL(statusForm.mediaPreview);
+                          }
+                          setStatusForm((prev) => ({
+                            ...prev,
+                            mediaFile: null,
+                            mediaPreview: '',
+                            mediaType: 'text',
+                            removeExistingMedia: shouldMarkRemove,
+                          }));
+                        }}
+                        className="text-sm font-semibold text-red-600 hover:text-red-700"
+                      >
+                        {t('Remove Media')}
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                      Background
+                      <input
+                        type="color"
+                        value={statusForm.backgroundColor}
+                        onChange={(e) => setStatusForm((prev) => ({ ...prev, backgroundColor: e.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)]"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                      Text Color
+                      <input
+                        type="color"
+                        value={statusForm.textColor}
+                        onChange={(e) => setStatusForm((prev) => ({ ...prev, textColor: e.target.value }))}
+                        className="h-10 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)]"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                      Font
+                      <select
+                        value={statusForm.fontFamily}
+                        onChange={(e) => setStatusForm((prev) => ({ ...prev, fontFamily: e.target.value }))}
+                        className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
+                      >
+                        <option value="Inter">Inter</option>
+                        <option value="Playfair Display">Playfair</option>
+                        <option value="DM Sans">DM Sans</option>
+                        <option value="Space Grotesk">Space Grotesk</option>
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                      Alignment
+                      <select
+                        value={statusForm.textAlign}
+                        onChange={(e) => setStatusForm((prev) => ({ ...prev, textAlign: e.target.value }))}
+                        className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
+                      >
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                      Duration (sec)
+                      <input
+                        type="number"
+                        min="3"
+                        max="30"
+                        value={statusForm.durationSec}
+                        onChange={(e) => setStatusForm((prev) => ({ ...prev, durationSec: Math.max(3, Math.min(30, Number(e.target.value) || 7)) }))}
+                        className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
+                      />
+                    </label>
+                    <div className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                      Text Position
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setStatusForm((prev) => ({ ...prev, textPosX: 50, textPosY: 50 }))
+                        }
+                        className="h-10 px-3 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] hover:bg-[var(--surface-elevated)]"
+                      >
+                        Center Text
+                      </button>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    {t('Statuses expire automatically after 24 hours.')}
+                  </p>
+                </div>
               </div>
 
-              <p className="text-xs text-[var(--text-secondary)]">
-                {t('Statuses expire automatically after 24 hours.')}
-              </p>
-
-              <div className="flex gap-3">
+              <div className="flex gap-3 mt-5">
                 <button
                   type="submit"
                   disabled={statusSaving}
