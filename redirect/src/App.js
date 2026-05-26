@@ -22,7 +22,6 @@ import { captureFrontendException } from './utils/sentry';
 
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
-const Register = lazy(() => import('./pages/Register'));
 const CreateBlog = lazy(() => import('./pages/CreateBlog'));
 const EditBlog = lazy(() => import('./pages/EditBlog'));
 const BlogDetail = lazy(() => import('./pages/BlogDetail'));
@@ -42,6 +41,8 @@ const About = lazy(() => import('./pages/About'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
 const TermsOfService = lazy(() => import('./pages/TermsOfService'));
 const GoogleAuthCallback = lazy(() => import('./pages/GoogleAuthCallback'));
+const FacebookAuthCallback = lazy(() => import('./pages/FacebookAuthCallback'));
+const TwitterAuthCallback = lazy(() => import('./pages/TwitterAuthCallback'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ModernChatbot = lazy(() => import('./components/ModernChatbot'));
 
@@ -51,7 +52,7 @@ const LoadingFallback = () => (
   </div>
 );
 
-const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/privacy', '/terms', '/auth/google/callback']);
+const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/privacy', '/terms', '/auth/google/callback', '/auth/facebook/callback', '/auth/twitter/callback']);
 
 function AppContent() {
   const { user, sessionExpired, guestExpired, setGuestExpired } = useContext(AuthContext);
@@ -378,8 +379,8 @@ function AppContent() {
         <Suspense fallback={<LoadingFallback />}>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            <Route path="/login" element={<Login initialTab="login" />} />
+            <Route path="/register" element={<Login initialTab="register" />} />
             <Route path="/create" element={<CreateBlog />} />
             <Route path="/edit/:id" element={<EditBlog />} />
             <Route path="/blog/:id" element={<BlogDetail />} />
@@ -401,6 +402,8 @@ function AppContent() {
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
             <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
+            <Route path="/auth/facebook/callback" element={<FacebookAuthCallback />} />
+            <Route path="/auth/twitter/callback" element={<TwitterAuthCallback />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

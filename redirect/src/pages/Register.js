@@ -12,6 +12,19 @@ import GuestUsernameModal from '../components/GuestUsernameModal';
 import GuestInfoModal from '../components/GuestInfoModal';
 import axios from 'axios';
 
+const getTwitterRedirectUri = () => {
+  const configured = String(process.env.REACT_APP_TWITTER_REDIRECT_URI || '').trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+    } catch (error) {
+      console.warn('Invalid REACT_APP_TWITTER_REDIRECT_URI, falling back to current origin.');
+    }
+  }
+  return `${window.location.origin}/auth/twitter/callback`;
+};
+
 const Register = () => {
   const { t } = useTranslation();
   const [username, setUsername] = useState('');
@@ -171,6 +184,23 @@ const Register = () => {
     const apiBase = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
     const redirectUri = `${window.location.origin}/auth/google/callback`;
     const oauthStartUrl = `${apiBase}/api/auth/google/start?redirect_uri=${encodeURIComponent(redirectUri)}`;
+    sessionStorage.removeItem('socialConnectIntent');
+    window.location.href = oauthStartUrl;
+  };
+
+  const handleFacebookLoginRedirect = () => {
+    const apiBase = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+    const redirectUri = `${window.location.origin}/auth/facebook/callback`;
+    const oauthStartUrl = `${apiBase}/api/auth/facebook/start?redirect_uri=${encodeURIComponent(redirectUri)}`;
+    sessionStorage.removeItem('socialConnectIntent');
+    window.location.href = oauthStartUrl;
+  };
+
+  const handleTwitterLoginRedirect = () => {
+    const apiBase = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+    const redirectUri = getTwitterRedirectUri();
+    const oauthStartUrl = `${apiBase}/api/auth/twitter/start?redirect_uri=${encodeURIComponent(redirectUri)}&r=${Date.now()}`;
+    sessionStorage.removeItem('socialConnectIntent');
     window.location.href = oauthStartUrl;
   };
 
@@ -521,7 +551,7 @@ const Register = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleSocialLogin('Facebook')}
+                onClick={handleFacebookLoginRedirect}
                 className="p-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition"
                 title="Continue with Facebook"
               >
@@ -529,7 +559,7 @@ const Register = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleSocialLogin('Twitter')}
+                onClick={handleTwitterLoginRedirect}
                 className="p-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition"
                 title="Continue with Twitter"
               >

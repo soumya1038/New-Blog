@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaTimes, FaArrowLeft, FaArrowRight, FaShare, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaFacebookF } from 'react-icons/fa';
+import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaTimes, FaArrowLeft, FaArrowRight, FaShare, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaFacebookF, FaGoogle, FaLinkedinIn, FaGithub } from 'react-icons/fa';
 import { PiBookOpenTextThin } from 'react-icons/pi';
 import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified, GoUnverified } from 'react-icons/go';
@@ -19,6 +19,19 @@ import PrivacySettings from '../components/PrivacySettings';
 import EmailNotificationSettings from '../components/EmailNotificationSettings';
 import Achievements from '../components/Achievements';
 import QRCodeModal from '../components/QRCodeModal';
+
+const getTwitterRedirectUri = () => {
+  const configured = String(process.env.REACT_APP_TWITTER_REDIRECT_URI || '').trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+    } catch (error) {
+      console.warn('Invalid REACT_APP_TWITTER_REDIRECT_URI, falling back to current origin.');
+    }
+  }
+  return `${window.location.origin}/auth/twitter/callback`;
+};
 
 const ProfileNew = () => {
   const { t } = useTranslation();
@@ -42,6 +55,7 @@ const ProfileNew = () => {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showPasswordSetupNotice, setShowPasswordSetupNotice] = useState(false);
+  const [showSocialEmailNotice, setShowSocialEmailNotice] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '' });
@@ -64,6 +78,7 @@ const ProfileNew = () => {
   const [usernameLoading, setUsernameLoading] = useState(false);
   const [showSocialSection, setShowSocialSection] = useState(false);
   const [socialForm, setSocialForm] = useState({ name: '', url: '', editIndex: -1 });
+  const [socialConnectLoading, setSocialConnectLoading] = useState('');
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [shareTitle, setShareTitle] = useState('');
@@ -115,6 +130,22 @@ const ProfileNew = () => {
     }
   }, [location.search, navigate]);
 
+  useEffect(() => {
+    const onboardingSource = sessionStorage.getItem('socialEmailSetupRequired');
+    if (!onboardingSource) return;
+
+    setShowSocialEmailNotice(true);
+    sessionStorage.removeItem('socialEmailSetupRequired');
+  }, []);
+
+  useEffect(() => {
+    const connectedProvider = sessionStorage.getItem('socialConnectSuccess');
+    if (!connectedProvider) return;
+    sessionStorage.removeItem('socialConnectSuccess');
+    const label = connectedProvider.charAt(0).toUpperCase() + connectedProvider.slice(1);
+    showModal('success', 'Connected', `${label} account connected successfully.`);
+  }, []);
+
   // Click outside to collapse
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -129,6 +160,68 @@ const ProfileNew = () => {
   const showModal = (type, title, message, onConfirm = null) => {
     setModal({ show: true, type, title, message, onConfirm });
   };
+
+  const socialProviderOptions = [
+    {
+      key: 'google',
+      label: 'Google',
+      icon: <FaGoogle size={16} className="text-red-500" />,
+      connectMode: 'oauth',
+      matches: ['google.com', 'accounts.google.com'],
+    },
+    {
+      key: 'facebook',
+      label: 'Facebook',
+      icon: <FaFacebookF size={16} className="text-blue-600" />,
+      connectMode: 'oauth',
+      matches: ['facebook.com', 'fb.com'],
+    },
+    {
+      key: 'twitter',
+      label: 'Twitter',
+      icon: <FaXTwitter size={16} className="text-gray-900 dark:text-gray-100" />,
+      connectMode: 'oauth',
+      matches: ['twitter.com', 'x.com'],
+    },
+    {
+      key: 'linkedin',
+      label: 'LinkedIn',
+      icon: <FaLinkedinIn size={16} className="text-blue-700" />,
+      connectMode: 'manual',
+      suggestedUrl: 'https://www.linkedin.com/in/',
+      matches: ['linkedin.com'],
+    },
+    {
+      key: 'github',
+      label: 'GitHub',
+      icon: <FaGithub size={16} className="text-[var(--text-primary)]" />,
+      connectMode: 'manual',
+      suggestedUrl: 'https://github.com/',
+      matches: ['github.com'],
+    },
+  ];
+
+  const normalizeSocialUrl = (value = '') => String(value).trim().toLowerCase();
+
+  const isUrlForProvider = (url, provider) => {
+    const normalizedUrl = normalizeSocialUrl(url);
+    return provider.matches.some((domain) => normalizedUrl.includes(domain));
+  };
+
+  const linkedProviders = socialProviderOptions.reduce((acc, provider) => {
+    const linkedByOauth =
+      provider.connectMode === 'oauth' && Boolean(profile?.oauthProviders?.[provider.key]?.id);
+    const linkedByUrl = Array.isArray(profile?.socialMedia)
+      ? profile.socialMedia.some((entry) => isUrlForProvider(entry?.url, provider))
+      : false;
+
+    acc[provider.key] = Boolean(linkedByOauth || linkedByUrl);
+    return acc;
+  }, {});
+
+  const availableSocialConnectProviders = socialProviderOptions.filter(
+    (provider) => !linkedProviders[provider.key]
+  );
 
   const closeModal = () => {
     setModal({ show: false, type: '', title: '', message: '', onConfirm: null });
@@ -149,6 +242,9 @@ const ProfileNew = () => {
     e.preventDefault();
     try {
       await api.put('/users/profile', profile);
+      if (String(profile?.email || '').trim()) {
+        setShowSocialEmailNotice(false);
+      }
       showModal('success', 'Success', 'Profile updated!');
       setShowProfileForm(false);
     } catch (error) {
@@ -246,8 +342,22 @@ const ProfileNew = () => {
   };
 
   const saveSocialMedia = async () => {
-    if (!socialForm.url.trim()) return;
-    const updatedSocial = [...profile.socialMedia];
+    const trimmedUrl = socialForm.url.trim();
+    if (!trimmedUrl) return;
+
+    const updatedSocial = [...(profile.socialMedia || [])];
+    const normalizedNewUrl = normalizeSocialUrl(trimmedUrl);
+    const isDuplicate = updatedSocial.some(
+      (entry, idx) =>
+        idx !== socialForm.editIndex &&
+        normalizeSocialUrl(entry?.url) === normalizedNewUrl
+    );
+
+    if (isDuplicate) {
+      showModal('error', 'Duplicate Link', 'This social link is already connected.');
+      return;
+    }
+
     const newItem = { name: socialForm.name.trim(), url: socialForm.url.trim() };
     if (socialForm.editIndex >= 0) {
       updatedSocial[socialForm.editIndex] = newItem;
@@ -276,6 +386,68 @@ const ProfileNew = () => {
         showModal('error', 'Error', 'Failed to delete');
       }
     });
+  };
+
+  const findExistingSocialLinkIndexByProvider = (provider) => {
+    if (!Array.isArray(profile?.socialMedia)) return -1;
+    return profile.socialMedia.findIndex((entry) => isUrlForProvider(entry?.url, provider));
+  };
+
+  const handlePrepareManualSocialLink = (provider) => {
+    if (!provider) return;
+
+    const existingIndex = findExistingSocialLinkIndexByProvider(provider);
+    if (existingIndex >= 0) {
+      const existingEntry = profile.socialMedia[existingIndex];
+      setSocialForm({
+        name: existingEntry?.name || provider.label,
+        url: existingEntry?.url || provider.suggestedUrl || '',
+        editIndex: existingIndex,
+      });
+      setShowSocialSection(true);
+      return;
+    }
+
+    setSocialForm({
+      name: provider.label,
+      url: provider.suggestedUrl || '',
+      editIndex: -1,
+    });
+    setShowSocialSection(true);
+  };
+
+  const handleStartSocialConnect = async (provider) => {
+    if (!provider) return;
+    setSocialConnectLoading(provider);
+    try {
+      const redirectUri = provider === 'twitter'
+        ? getTwitterRedirectUri()
+        : `${window.location.origin}/auth/${provider}/callback`;
+      const { data } = await api.get(`/auth/${provider}/connect/start`, {
+        params: { redirect_uri: redirectUri }
+      });
+
+      const authUrl = data?.authUrl;
+      if (!authUrl) {
+        throw new Error(`Unable to start ${provider} connection`);
+      }
+
+      sessionStorage.setItem('socialConnectIntent', provider);
+      window.location.href = authUrl;
+    } catch (error) {
+      sessionStorage.removeItem('socialConnectIntent');
+      showModal('error', 'Connection Failed', error.response?.data?.message || `Failed to connect ${provider}`);
+      setSocialConnectLoading('');
+    }
+  };
+
+  const handleSocialProviderAction = (provider) => {
+    if (!provider) return;
+    if (provider.connectMode === 'oauth') {
+      handleStartSocialConnect(provider.key);
+      return;
+    }
+    handlePrepareManualSocialLink(provider);
   };
 
   const handleUpdateUsername = async (e) => {
@@ -528,6 +700,33 @@ const ProfileNew = () => {
               {showSocialSection && (
                 <div className="p-4 rounded-lg mb-4 border border-[var(--border-default)] bg-[var(--background-secondary)]">
                   <div className="space-y-3">
+                    <div className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] p-3">
+                      <p className="text-sm font-semibold text-[var(--text-primary)] mb-2">{t('Connect or add social account')}</p>
+                      {availableSocialConnectProviders.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {availableSocialConnectProviders.map((provider) => (
+                            <button
+                              key={provider.key}
+                              type="button"
+                              onClick={() => handleSocialProviderAction(provider)}
+                              disabled={provider.connectMode === 'oauth' && socialConnectLoading === provider.key}
+                              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)] text-[var(--text-primary)] hover:opacity-90 disabled:opacity-60"
+                            >
+                              {provider.connectMode === 'oauth' && socialConnectLoading === provider.key ? (
+                                <SyncLoader color="var(--brand-primary)" size={6} />
+                              ) : (
+                                provider.icon
+                              )}
+                              <span className="text-sm">
+                                {provider.connectMode === 'oauth' ? `Connect ${provider.label}` : `Add ${provider.label}`}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-[var(--text-secondary)]">{t('All supported social accounts are already connected.')}</p>
+                      )}
+                    </div>
                     <input type="text" value={socialForm.name} onChange={(e) => setSocialForm({ ...socialForm, name: e.target.value })} placeholder="Name (optional)" className="w-full px-4 py-2 border border-[var(--border-default)] rounded-lg focus:ring-2 focus:ring-[var(--brand-primary)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" />
                     <input type="url" value={socialForm.url} onChange={(e) => setSocialForm({ ...socialForm, url: e.target.value })} placeholder="https://..." className="w-full px-4 py-2 border border-[var(--border-default)] rounded-lg focus:ring-2 focus:ring-[var(--brand-primary)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" required />
                     <div className="flex gap-2">
@@ -538,21 +737,16 @@ const ProfileNew = () => {
                 </div>
               )}
               
-              <div className={`grid gap-3 ${
-                profile.socialMedia?.length === 1 ? 'grid-cols-1' :
-                profile.socialMedia?.length === 2 ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-1' :
-                'grid-cols-1 md:grid-cols-3 lg:grid-cols-1'
-              }`}>
+              <div className="grid gap-3">
                 {profile.socialMedia?.map((social, index) => (
-                  <div key={index} className="flex flex-col gap-2 bg-[var(--background-secondary)] border border-[var(--border-default)] p-3 rounded-lg">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-[var(--text-primary)] truncate">{social.name || 'Link'}</p>
-                      <a href={social.url} target="_blank" rel="noopener noreferrer" className="text-xs text-[var(--brand-primary)] hover:opacity-80 truncate block">{social.url}</a>
+                  <div key={index} className="flex items-center justify-between gap-3 bg-[var(--background-secondary)] border border-[var(--border-default)] px-4 py-3 rounded-xl">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-base text-[var(--text-primary)] truncate">{social.name || 'Link'}</p>
+                      <a href={social.url} target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--brand-primary)] hover:opacity-80 truncate block">{social.url}</a>
                     </div>
-                    <div className="flex gap-2 justify-end">
-                      <button onClick={() => { setSocialForm({ ...social, editIndex: index }); setShowSocialSection(true); }} className="text-blue-600 hover:text-blue-800"><FaEdit size={14} /></button>
-                      <button onClick={() => deleteSocialMedia(index)} className="text-red-600 hover:text-red-800"><FaTrash size={14} /></button>
-                    </div>
+                    <button onClick={() => deleteSocialMedia(index)} className="text-red-600 hover:text-red-800 shrink-0" aria-label={`Delete ${social.name || 'social link'}`}>
+                      <FaTrash size={16} />
+                    </button>
                   </div>
                 ))}
                 {(!profile.socialMedia || profile.socialMedia.length === 0) && (
@@ -856,6 +1050,23 @@ const ProfileNew = () => {
                   <p className="text-xs mt-1 text-amber-700 dark:text-amber-400">
                     {t('Use the temporary password from your welcome email as the current password, then set a new one.')}
                   </p>
+                </div>
+              )}
+              {showSocialEmailNotice && (
+                <div className="mb-4 rounded-lg border border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-700 p-3">
+                  <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">
+                    {t('Add an email to complete onboarding')}
+                  </p>
+                  <p className="text-xs mt-1 text-blue-700 dark:text-blue-400">
+                    {t('Your social sign-in account did not provide an email. Add your email in profile details to receive welcome and security notifications.')}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowProfileForm(true)}
+                    className="mt-2 text-xs font-semibold text-blue-700 dark:text-blue-300 underline"
+                  >
+                    {t('Open profile details')}
+                  </button>
                 </div>
               )}
               <div className="flex gap-3">

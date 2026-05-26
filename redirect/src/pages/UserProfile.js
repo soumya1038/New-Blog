@@ -575,7 +575,7 @@ return (
             )}
 
             {/* Social Media Links */}
-            {profile.socialMedia && profile.socialMedia.length > 0 && (
+            {profile.privacy?.showSocialLinks !== false && profile.socialMedia && profile.socialMedia.length > 0 && (
               <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
                 {profile.socialMedia.map((social, index) => (
                   <a

@@ -10,6 +10,12 @@ const { validationResult } = require('express-validator');
 const GOOGLE_AUTH_BASE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
+const FACEBOOK_AUTH_BASE_URL = 'https://www.facebook.com/v20.0/dialog/oauth';
+const FACEBOOK_TOKEN_URL = 'https://graph.facebook.com/v20.0/oauth/access_token';
+const FACEBOOK_USERINFO_URL = 'https://graph.facebook.com/me';
+const TWITTER_AUTH_BASE_URL = 'https://x.com/i/oauth2/authorize';
+const TWITTER_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token';
+const TWITTER_USERINFO_URL = 'https://api.twitter.com/2/users/me';
 
 const normalizeAbsoluteUrl = (value = '') => {
   const trimmed = String(value || '').trim();
@@ -28,6 +34,41 @@ const getGoogleClientId = () =>
 
 const getGoogleClientSecret = () =>
   (process.env.GOOGLE_CLIENT_SECRET || process.env.google_client_Secret || '').trim();
+
+const getFacebookAppId = () =>
+  (process.env.FACEBOOK_APP_ID || process.env.facebook_app_id || '').trim();
+
+const getFacebookAppSecret = () =>
+  (process.env.FACEBOOK_APP_SECRET || process.env.facebook_app_secret || '').trim();
+
+const getTwitterClientId = () =>
+  (process.env.TWITTER_CLIENT_ID || process.env.twitter_client_id || '').trim();
+
+const getTwitterClientSecret = () =>
+  (process.env.TWITTER_CLIENT_SECRET || process.env.twitter_client_secret || '').trim();
+
+const getTwitterOauthScopes = () => {
+  const raw = String(process.env.TWITTER_OAUTH_SCOPES || '').trim();
+  const parsed = raw
+    ? raw.split(/[,\s]+/).map((entry) => entry.trim()).filter(Boolean)
+    : [];
+
+  // Use the explicit env value when provided, otherwise use minimum login scopes.
+  const requested = parsed.length > 0 ? parsed : ['tweet.read', 'users.read'];
+  const normalized = [...new Set(requested)];
+  if (!normalized.includes('users.read')) {
+    normalized.push('users.read');
+  }
+  return normalized;
+};
+
+const parseTwitterScopeSet = (value = '') =>
+  new Set(
+    String(value || '')
+      .split(/[,\s]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  );
 
 const getAllowedGoogleRedirectUris = () => {
   const configured = (process.env.GOOGLE_ALLOWED_REDIRECT_URIS || '')
@@ -50,10 +91,64 @@ const getAllowedGoogleRedirectUris = () => {
   return [...new Set([...defaults, ...configured].map((entry) => normalizeAbsoluteUrl(entry)).filter(Boolean))];
 };
 
+const getAllowedFacebookRedirectUris = () => {
+  const configured = (process.env.FACEBOOK_ALLOWED_REDIRECT_URIS || '')
+    .split(',')
+    .map((entry) => normalizeAbsoluteUrl(entry))
+    .filter(Boolean);
+
+  const defaults = [
+    'https://lekhon-development.netlify.app/auth/facebook/callback',
+    'http://localhost:3000/auth/facebook/callback',
+    'http://localhost:3001/auth/facebook/callback',
+  ];
+
+  const frontendProd = normalizeAbsoluteUrl(process.env.FRONTEND_URL_PROD || '');
+  const frontendLocal = normalizeAbsoluteUrl(process.env.FRONTEND_URL || '');
+
+  if (frontendProd) defaults.push(`${frontendProd}/auth/facebook/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
+  if (frontendLocal) defaults.push(`${frontendLocal}/auth/facebook/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
+
+  return [...new Set([...defaults, ...configured].map((entry) => normalizeAbsoluteUrl(entry)).filter(Boolean))];
+};
+
+const getAllowedTwitterRedirectUris = () => {
+  const configured = (process.env.TWITTER_ALLOWED_REDIRECT_URIS || '')
+    .split(',')
+    .map((entry) => normalizeAbsoluteUrl(entry))
+    .filter(Boolean);
+
+  const defaults = [
+    'https://lekhon-development.netlify.app/auth/twitter/callback',
+    'http://localhost:3000/auth/twitter/callback',
+    'http://localhost:3001/auth/twitter/callback',
+  ];
+
+  const frontendProd = normalizeAbsoluteUrl(process.env.FRONTEND_URL_PROD || '');
+  const frontendLocal = normalizeAbsoluteUrl(process.env.FRONTEND_URL || '');
+
+  if (frontendProd) defaults.push(`${frontendProd}/auth/twitter/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
+  if (frontendLocal) defaults.push(`${frontendLocal}/auth/twitter/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
+
+  return [...new Set([...defaults, ...configured].map((entry) => normalizeAbsoluteUrl(entry)).filter(Boolean))];
+};
+
 const isGoogleRedirectUriAllowed = (redirectUri) => {
   const normalized = normalizeAbsoluteUrl(redirectUri);
   if (!normalized) return false;
   return getAllowedGoogleRedirectUris().includes(normalized);
+};
+
+const isFacebookRedirectUriAllowed = (redirectUri) => {
+  const normalized = normalizeAbsoluteUrl(redirectUri);
+  if (!normalized) return false;
+  return getAllowedFacebookRedirectUris().includes(normalized);
+};
+
+const isTwitterRedirectUriAllowed = (redirectUri) => {
+  const normalized = normalizeAbsoluteUrl(redirectUri);
+  if (!normalized) return false;
+  return getAllowedTwitterRedirectUris().includes(normalized);
 };
 
 const createGoogleState = (redirectUri) => {
@@ -95,6 +190,226 @@ const consumeGoogleStateToken = (stateToken, ttlMs = 10 * 60 * 1000) => {
 
   global.consumedGoogleStateTokens.set(token, now + ttlMs);
   return true;
+};
+
+const createOAuthState = (payload = {}, expiresIn = '10m') => {
+  return jwt.sign(
+    {
+      ...payload,
+      nonce: crypto.randomBytes(8).toString('hex'),
+    },
+    process.env.JWT_SECRET,
+    { expiresIn }
+  );
+};
+
+const readOAuthState = (stateToken) => {
+  if (!stateToken || !process.env.JWT_SECRET) return null;
+  try {
+    return jwt.verify(String(stateToken), process.env.JWT_SECRET);
+  } catch (error) {
+    return null;
+  }
+};
+
+const consumeOAuthStateToken = (stateToken, ttlMs = 10 * 60 * 1000) => {
+  const token = String(stateToken || '').trim();
+  if (!token) return false;
+
+  global.consumedOAuthStateTokens = global.consumedOAuthStateTokens || new Map();
+  const now = Date.now();
+
+  for (const [savedToken, expiresAt] of global.consumedOAuthStateTokens.entries()) {
+    if (expiresAt <= now) {
+      global.consumedOAuthStateTokens.delete(savedToken);
+    }
+  }
+
+  if (global.consumedOAuthStateTokens.has(token)) {
+    return false;
+  }
+
+  global.consumedOAuthStateTokens.set(token, now + ttlMs);
+  return true;
+};
+
+const toBase64Url = (input) =>
+  Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+
+const buildGoogleProfileUrl = () => 'https://accounts.google.com';
+
+const buildFacebookProfileUrl = (facebookUserId) => {
+  const id = String(facebookUserId || '').trim();
+  if (!id) return '';
+  return `https://www.facebook.com/${encodeURIComponent(id)}`;
+};
+
+const buildTwitterProfileUrl = (twitterHandle, twitterUserId) => {
+  const handle = String(twitterHandle || '').trim().replace(/^@+/, '');
+  if (handle) {
+    return `https://x.com/${encodeURIComponent(handle)}`;
+  }
+
+  const id = String(twitterUserId || '').trim();
+  if (!id) return '';
+  return `https://x.com/i/user/${encodeURIComponent(id)}`;
+};
+
+const ensureSocialLink = (user, name, matcher, url) => {
+  if (!user || !url) return false;
+  const currentSocial = Array.isArray(user.socialMedia) ? user.socialMedia : [];
+  const exists = currentSocial.some((entry) => matcher(String(entry?.name || '').toLowerCase(), String(entry?.url || '').toLowerCase()));
+  if (exists) return false;
+  user.socialMedia = [...currentSocial, { name, url }];
+  return true;
+};
+
+const ensureGoogleSocialLink = (user) =>
+  ensureSocialLink(
+    user,
+    'Google',
+    (name, url) => name.includes('google') || url.includes('google.com'),
+    buildGoogleProfileUrl()
+  );
+
+const ensureFacebookSocialLink = (user, facebookUserId) =>
+  ensureSocialLink(
+    user,
+    'Facebook',
+    (name, url) => name.includes('facebook') || url.includes('facebook.com'),
+    buildFacebookProfileUrl(facebookUserId)
+  );
+
+const ensureTwitterSocialLink = (user, twitterHandle, twitterUserId) =>
+  ensureSocialLink(
+    user,
+    'Twitter',
+    (name, url) => name.includes('twitter') || name === 'x' || url.includes('twitter.com') || url.includes('x.com'),
+    buildTwitterProfileUrl(twitterHandle, twitterUserId)
+  );
+
+const getLinkedProvidersSummary = (user) => ({
+  google: Boolean(user?.oauthProviders?.google?.id),
+  facebook: Boolean(user?.oauthProviders?.facebook?.id),
+  twitter: Boolean(user?.oauthProviders?.twitter?.id),
+});
+
+const findUserByProviderOrEmail = async ({ provider = '', providerId = '', email = '' }) => {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  const normalizedProviderId = String(providerId || '').trim();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+
+  if (normalizedProvider && normalizedProviderId) {
+    const providerMatch = await User.findOne({ [`oauthProviders.${normalizedProvider}.id`]: normalizedProviderId });
+    if (providerMatch) return providerMatch;
+  }
+  if (normalizedEmail) {
+    const emailMatch = await User.findOne({ email: normalizedEmail });
+    if (emailMatch) return emailMatch;
+  }
+  return null;
+};
+
+const linkProviderToExistingUser = async ({
+  currentUser,
+  provider,
+  providerId,
+  email = '',
+  displayName = '',
+  picture = '',
+  facebookUserId = '',
+  twitterHandle = '',
+  twitterUserId = '',
+}) => {
+  const providerName = String(provider || '').trim().toLowerCase();
+  const normalizedProviderId = String(providerId || '').trim();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+
+  if (!currentUser) {
+    return { ok: false, status: 404, message: 'Current user not found' };
+  }
+
+  if (!['google', 'facebook', 'twitter'].includes(providerName)) {
+    return { ok: false, status: 400, message: 'Unsupported provider' };
+  }
+
+  if (!normalizedProviderId) {
+    return { ok: false, status: 400, message: `${providerName} account id is unavailable` };
+  }
+
+  const providerConflictUser = await User.findOne({ [`oauthProviders.${providerName}.id`]: normalizedProviderId })
+    .select('_id username');
+  if (providerConflictUser && String(providerConflictUser._id) !== String(currentUser._id)) {
+    return {
+      ok: false,
+      status: 409,
+      message: `This ${providerName} account is already linked to another Lekhon account.`,
+    };
+  }
+
+  if (normalizedEmail) {
+    const emailConflictUser = await User.findOne({ email: normalizedEmail }).select('_id username');
+    if (emailConflictUser && String(emailConflictUser._id) !== String(currentUser._id)) {
+      return {
+        ok: false,
+        status: 409,
+        message: 'This email is already used by another Lekhon account. Please log in with that account to link this provider.',
+      };
+    }
+  }
+
+  let shouldSave = false;
+
+  if (currentUser?.oauthProviders?.[providerName]?.id !== normalizedProviderId) {
+    currentUser.oauthProviders = {
+      ...(currentUser.oauthProviders || {}),
+      google: { id: providerName === 'google' ? normalizedProviderId : currentUser?.oauthProviders?.google?.id || '' },
+      facebook: { id: providerName === 'facebook' ? normalizedProviderId : currentUser?.oauthProviders?.facebook?.id || '' },
+      twitter: { id: providerName === 'twitter' ? normalizedProviderId : currentUser?.oauthProviders?.twitter?.id || '' },
+    };
+    shouldSave = true;
+  }
+
+  if (normalizedEmail && !currentUser.email) {
+    currentUser.email = normalizedEmail;
+    shouldSave = true;
+  }
+  if (!currentUser.fullName && displayName) {
+    currentUser.fullName = displayName;
+    shouldSave = true;
+  }
+  if (!currentUser.name && displayName) {
+    currentUser.name = displayName;
+    shouldSave = true;
+  }
+  if (!currentUser.profileImage && picture) {
+    currentUser.profileImage = picture;
+    shouldSave = true;
+  }
+
+  if (providerName === 'google' && ensureGoogleSocialLink(currentUser)) {
+    shouldSave = true;
+  }
+  if (providerName === 'facebook' && ensureFacebookSocialLink(currentUser, facebookUserId || normalizedProviderId)) {
+    shouldSave = true;
+  }
+  if (providerName === 'twitter' && ensureTwitterSocialLink(currentUser, twitterHandle, twitterUserId || normalizedProviderId)) {
+    shouldSave = true;
+  }
+
+  if (shouldSave) {
+    await currentUser.save();
+  }
+
+  return {
+    ok: true,
+    user: currentUser,
+    linkedProviders: getLinkedProvidersSummary(currentUser),
+  };
 };
 
 const buildWelcomeEmailJobId = (email) =>
@@ -404,6 +719,7 @@ exports.exchangeGoogleCode = async (req, res) => {
     });
 
     const profile = profileResponse?.data || {};
+    const googleUserId = String(profile.sub || '').trim();
     const email = String(profile.email || '').trim().toLowerCase();
     const emailVerified = Boolean(profile.email_verified);
     const displayName = String(profile.name || '').trim();
@@ -417,7 +733,11 @@ exports.exchangeGoogleCode = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Google account email is not verified' });
     }
 
-    let user = await User.findOne({ email });
+    let user = await findUserByProviderOrEmail({
+      provider: 'google',
+      providerId: googleUserId,
+      email,
+    });
     let temporaryPassword = '';
     if (!user) {
       const usernameSeed = email.split('@')[0] || displayName || 'user';
@@ -433,6 +753,10 @@ exports.exchangeGoogleCode = async (req, res) => {
         profileImage: picture,
         isVerified: false,
         mustChangePasswordAfterGoogle: true,
+        socialMedia: [{ name: 'Google', url: buildGoogleProfileUrl() }],
+        oauthProviders: {
+          google: { id: googleUserId },
+        },
       });
 
       try {
@@ -458,6 +782,18 @@ exports.exchangeGoogleCode = async (req, res) => {
       }
       if (!user.profileImage && picture) {
         user.profileImage = picture;
+        shouldSave = true;
+      }
+      if (googleUserId && user?.oauthProviders?.google?.id !== googleUserId) {
+        user.oauthProviders = {
+          ...(user.oauthProviders || {}),
+          google: { id: googleUserId },
+          facebook: { id: user?.oauthProviders?.facebook?.id || '' },
+          twitter: { id: user?.oauthProviders?.twitter?.id || '' },
+        };
+        shouldSave = true;
+      }
+      if (ensureGoogleSocialLink(user)) {
         shouldSave = true;
       }
       if (shouldSave) {
@@ -494,6 +830,1103 @@ exports.exchangeGoogleCode = async (req, res) => {
       details,
     });
   }
+};
+
+const generateTwitterPkcePair = () => {
+  const codeVerifier = toBase64Url(crypto.randomBytes(64));
+  const codeChallenge = toBase64Url(crypto.createHash('sha256').update(codeVerifier).digest());
+  return { codeVerifier, codeChallenge };
+};
+
+const exchangeTwitterAuthorizationCode = async ({
+  code,
+  redirectUri,
+  codeVerifier,
+  clientId,
+  clientSecret,
+}) => {
+  const tokenParams = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code: String(code),
+    redirect_uri: String(redirectUri),
+    client_id: String(clientId),
+    code_verifier: String(codeVerifier),
+  });
+
+  const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+  const tokenResponse = await axios.post(TWITTER_TOKEN_URL, tokenParams.toString(), {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: `Basic ${basicAuth}`,
+    },
+  });
+
+  return tokenResponse?.data || {};
+};
+
+const fetchTwitterProfile = async (accessToken, { includeEmail = false } = {}) => {
+  const baseFields = ['id', 'name', 'username', 'profile_image_url'];
+  const userFields = includeEmail ? [...baseFields, 'email'] : baseFields;
+
+  const response = await axios.get(TWITTER_USERINFO_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    params: {
+      'user.fields': userFields.join(','),
+    },
+  });
+  return response?.data || {};
+};
+
+const fetchTwitterProfileWithFallback = async (accessToken, tokenScope = '') => {
+  const grantedScopes = parseTwitterScopeSet(tokenScope);
+  const shouldRequestEmail = grantedScopes.has('users.email');
+
+  if (!shouldRequestEmail) {
+    return fetchTwitterProfile(accessToken, { includeEmail: false });
+  }
+
+  try {
+    return await fetchTwitterProfile(accessToken, { includeEmail: true });
+  } catch (error) {
+    const upstreamStatus = error?.response?.status;
+    const details = error?.response?.data;
+    const detailText = typeof details === 'string'
+      ? details.toLowerCase()
+      : JSON.stringify(details || {}).toLowerCase();
+    const missingEmailScope =
+      upstreamStatus === 403 &&
+      detailText.includes('missing') &&
+      detailText.includes('scope') &&
+      detailText.includes('users.email');
+
+    if (missingEmailScope) {
+      return fetchTwitterProfile(accessToken, { includeEmail: false });
+    }
+    throw error;
+  }
+};
+
+const createSocialPlaceholderEmail = (provider, providerId) =>
+  `${String(provider || 'social')}_${String(providerId || crypto.randomBytes(4).toString('hex'))}@${String(provider || 'social')}.local`;
+
+// Start Facebook OAuth redirect flow
+exports.startFacebookAuth = async (req, res) => {
+  try {
+    const appId = getFacebookAppId();
+    if (!appId) {
+      return res.status(500).json({ success: false, message: 'Facebook OAuth is not configured on server' });
+    }
+
+    const redirectUri = normalizeAbsoluteUrl(req.query.redirect_uri || '');
+    if (!redirectUri) {
+      return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
+    }
+    if (!isFacebookRedirectUriAllowed(redirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirect_uri is not allowed',
+        allowedRedirectUris: getAllowedFacebookRedirectUris(),
+      });
+    }
+
+    const state = createOAuthState({
+      provider: 'facebook',
+      mode: 'login',
+      redirectUri,
+    });
+
+    const params = new URLSearchParams({
+      client_id: appId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'email,public_profile',
+      state,
+    });
+
+    return res.redirect(`${FACEBOOK_AUTH_BASE_URL}?${params.toString()}`);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Exchange Facebook OAuth code for local session
+exports.exchangeFacebookCode = async (req, res) => {
+  try {
+    const appId = getFacebookAppId();
+    const appSecret = getFacebookAppSecret();
+    if (!appId || !appSecret) {
+      return res.status(500).json({ success: false, message: 'Facebook OAuth is not configured on server' });
+    }
+
+    const { code, redirectUri, state } = req.body || {};
+    const normalizedRedirectUri = normalizeAbsoluteUrl(redirectUri || '');
+    if (!code || !normalizedRedirectUri) {
+      return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
+    }
+    if (!isFacebookRedirectUriAllowed(normalizedRedirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirectUri is not allowed',
+        allowedRedirectUris: getAllowedFacebookRedirectUris(),
+      });
+    }
+
+    const statePayload = readOAuthState(state);
+    if (
+      !statePayload ||
+      statePayload.provider !== 'facebook' ||
+      statePayload.mode !== 'login' ||
+      normalizeAbsoluteUrl(statePayload.redirectUri) !== normalizedRedirectUri
+    ) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
+    }
+    if (!consumeOAuthStateToken(state)) {
+      return res.status(409).json({
+        success: false,
+        message: 'This Facebook sign-in request has already been used. Please try again.',
+      });
+    }
+
+    const tokenResponse = await axios.get(FACEBOOK_TOKEN_URL, {
+      params: {
+        client_id: appId,
+        client_secret: appSecret,
+        redirect_uri: normalizedRedirectUri,
+        code: String(code),
+      },
+    });
+
+    const accessToken = tokenResponse?.data?.access_token;
+    if (!accessToken) {
+      return res.status(400).json({ success: false, message: 'Facebook access token not received' });
+    }
+
+    const profileResponse = await axios.get(FACEBOOK_USERINFO_URL, {
+      params: {
+        fields: 'id,name,email,picture.type(large)',
+        access_token: accessToken,
+      },
+    });
+
+    const profile = profileResponse?.data || {};
+    const facebookUserId = String(profile.id || '').trim();
+    const email = String(profile.email || '').trim().toLowerCase();
+    const displayName = String(profile.name || '').trim();
+    const picture = String(profile?.picture?.data?.url || '').trim();
+
+    if (!facebookUserId) {
+      return res.status(400).json({ success: false, message: 'Facebook account id is unavailable' });
+    }
+
+    let user = await findUserByProviderOrEmail({
+      provider: 'facebook',
+      providerId: facebookUserId,
+      email,
+    });
+
+    let temporaryPassword = '';
+    const missingEmailForWelcome = !email;
+    if (!user) {
+      const usernameSeed = email.split('@')[0] || displayName || `fb_${facebookUserId.slice(-6)}`;
+      const username = await makeUniqueUsername(usernameSeed);
+      temporaryPassword = generateTemporaryPassword();
+
+      user = await User.create({
+        username,
+        email: email || createSocialPlaceholderEmail('facebook', facebookUserId),
+        password: temporaryPassword,
+        fullName: displayName,
+        name: displayName,
+        profileImage: picture,
+        isVerified: false,
+        mustChangePasswordAfterGoogle: true,
+        socialMedia: buildFacebookProfileUrl(facebookUserId)
+          ? [{ name: 'Facebook', url: buildFacebookProfileUrl(facebookUserId) }]
+          : [],
+        oauthProviders: {
+          facebook: { id: facebookUserId },
+        },
+      });
+
+      if (email) {
+        try {
+          await enqueueEmailJob('welcome-email', {
+            email,
+            username,
+            temporaryPassword,
+          }, {
+            jobId: buildWelcomeEmailJobId(email),
+          });
+        } catch (mailError) {
+          console.error('Failed to send Facebook onboarding welcome email:', mailError);
+        }
+      }
+    } else {
+      let shouldSave = false;
+      if (!user.fullName && displayName) {
+        user.fullName = displayName;
+        shouldSave = true;
+      }
+      if (!user.name && displayName) {
+        user.name = displayName;
+        shouldSave = true;
+      }
+      if (!user.profileImage && picture) {
+        user.profileImage = picture;
+        shouldSave = true;
+      }
+      if (facebookUserId && user?.oauthProviders?.facebook?.id !== facebookUserId) {
+        user.oauthProviders = {
+          ...(user.oauthProviders || {}),
+          google: { id: user?.oauthProviders?.google?.id || '' },
+          facebook: { id: facebookUserId },
+          twitter: { id: user?.oauthProviders?.twitter?.id || '' },
+        };
+        shouldSave = true;
+      }
+      if (ensureFacebookSocialLink(user, facebookUserId)) {
+        shouldSave = true;
+      }
+      if (shouldSave) {
+        await user.save();
+      }
+    }
+
+    const guardFailure = await ensureUserCanLogin(user);
+    if (guardFailure) {
+      return res.status(guardFailure.status).json(guardFailure.body);
+    }
+
+    user.lastActive = new Date();
+    await user.save();
+
+    const token = generateToken(user._id);
+    return res.json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        profileImage: user.profileImage,
+        role: user.role,
+      },
+      passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
+      rememberMe: true,
+      missingEmailForWelcome,
+    });
+  } catch (error) {
+    const details = error?.response?.data || error.message;
+    return res.status(500).json({
+      success: false,
+      message: 'Facebook authentication failed',
+      details,
+    });
+  }
+};
+
+// Start Twitter OAuth redirect flow
+exports.startTwitterAuth = async (req, res) => {
+  try {
+    const clientId = getTwitterClientId();
+    if (!clientId) {
+      return res.status(500).json({ success: false, message: 'Twitter OAuth is not configured on server' });
+    }
+
+    const redirectUri = normalizeAbsoluteUrl(req.query.redirect_uri || '');
+    if (!redirectUri) {
+      return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
+    }
+    if (!isTwitterRedirectUriAllowed(redirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirect_uri is not allowed',
+        allowedRedirectUris: getAllowedTwitterRedirectUris(),
+      });
+    }
+
+    const { codeVerifier, codeChallenge } = generateTwitterPkcePair();
+    const state = createOAuthState({
+      provider: 'twitter',
+      mode: 'login',
+      redirectUri,
+      codeVerifier,
+    });
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: getTwitterOauthScopes().join(' '),
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+    });
+
+    return res.redirect(`${TWITTER_AUTH_BASE_URL}?${params.toString()}`);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Exchange Twitter OAuth code for local session
+exports.exchangeTwitterCode = async (req, res) => {
+  try {
+    const clientId = getTwitterClientId();
+    const clientSecret = getTwitterClientSecret();
+    if (!clientId || !clientSecret) {
+      return res.status(500).json({ success: false, message: 'Twitter OAuth is not configured on server' });
+    }
+
+    const { code, redirectUri, state } = req.body || {};
+    const normalizedRedirectUri = normalizeAbsoluteUrl(redirectUri || '');
+    if (!code || !normalizedRedirectUri) {
+      return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
+    }
+    if (!isTwitterRedirectUriAllowed(normalizedRedirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirectUri is not allowed',
+        allowedRedirectUris: getAllowedTwitterRedirectUris(),
+      });
+    }
+
+    const statePayload = readOAuthState(state);
+    if (
+      !statePayload ||
+      statePayload.provider !== 'twitter' ||
+      statePayload.mode !== 'login' ||
+      normalizeAbsoluteUrl(statePayload.redirectUri) !== normalizedRedirectUri
+    ) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
+    }
+    if (!consumeOAuthStateToken(state)) {
+      return res.status(409).json({
+        success: false,
+        message: 'This Twitter sign-in request has already been used. Please try again.',
+      });
+    }
+
+    const codeVerifier = String(statePayload.codeVerifier || '').trim();
+    if (!codeVerifier) {
+      return res.status(400).json({ success: false, message: 'Invalid OAuth verifier state' });
+    }
+
+    const tokenData = await exchangeTwitterAuthorizationCode({
+      code,
+      redirectUri: normalizedRedirectUri,
+      codeVerifier,
+      clientId,
+      clientSecret,
+    });
+
+    const accessToken = tokenData?.access_token;
+    if (!accessToken) {
+      return res.status(400).json({ success: false, message: 'Twitter access token not received' });
+    }
+
+    let profileData;
+    try {
+      profileData = await fetchTwitterProfileWithFallback(accessToken, tokenData?.scope || '');
+    } catch (error) {
+      const upstreamStatus = error?.response?.status;
+      const details = error?.response?.data || error.message;
+      if (upstreamStatus >= 400 && upstreamStatus < 500) {
+        return res.status(400).json({
+          success: false,
+          message: 'Twitter OAuth request was rejected. Please try again.',
+          details,
+        });
+      }
+      throw error;
+    }
+
+    const profile = profileData?.data || {};
+    const twitterUserId = String(profile.id || '').trim();
+    const twitterHandle = String(profile.username || '').trim();
+    const displayName = String(profile.name || '').trim();
+    const email = String(profile.email || profile.confirmed_email || '').trim().toLowerCase();
+    const picture = String(profile.profile_image_url || '').trim();
+
+    if (!twitterUserId) {
+      return res.status(400).json({ success: false, message: 'Twitter account id is unavailable' });
+    }
+
+    let user = await findUserByProviderOrEmail({
+      provider: 'twitter',
+      providerId: twitterUserId,
+      email,
+    });
+
+    let temporaryPassword = '';
+    const missingEmailForWelcome = !email;
+    if (!user) {
+      const usernameSeed = twitterHandle || (email ? email.split('@')[0] : '') || `tw_${twitterUserId.slice(-6)}`;
+      const username = await makeUniqueUsername(usernameSeed);
+      temporaryPassword = generateTemporaryPassword();
+
+      user = await User.create({
+        username,
+        email: email || createSocialPlaceholderEmail('twitter', twitterUserId),
+        password: temporaryPassword,
+        fullName: displayName,
+        name: displayName,
+        profileImage: picture,
+        isVerified: false,
+        mustChangePasswordAfterGoogle: true,
+        socialMedia: buildTwitterProfileUrl(twitterHandle, twitterUserId)
+          ? [{ name: 'Twitter', url: buildTwitterProfileUrl(twitterHandle, twitterUserId) }]
+          : [],
+        oauthProviders: {
+          twitter: { id: twitterUserId },
+        },
+      });
+
+      if (email) {
+        try {
+          await enqueueEmailJob('welcome-email', {
+            email,
+            username,
+            temporaryPassword,
+          }, {
+            jobId: buildWelcomeEmailJobId(email),
+          });
+        } catch (mailError) {
+          console.error('Failed to send Twitter onboarding welcome email:', mailError);
+        }
+      }
+    } else {
+      let shouldSave = false;
+      if (!user.fullName && displayName) {
+        user.fullName = displayName;
+        shouldSave = true;
+      }
+      if (!user.name && displayName) {
+        user.name = displayName;
+        shouldSave = true;
+      }
+      if (!user.profileImage && picture) {
+        user.profileImage = picture;
+        shouldSave = true;
+      }
+      if (twitterUserId && user?.oauthProviders?.twitter?.id !== twitterUserId) {
+        user.oauthProviders = {
+          ...(user.oauthProviders || {}),
+          google: { id: user?.oauthProviders?.google?.id || '' },
+          facebook: { id: user?.oauthProviders?.facebook?.id || '' },
+          twitter: { id: twitterUserId },
+        };
+        shouldSave = true;
+      }
+      if (ensureTwitterSocialLink(user, twitterHandle, twitterUserId)) {
+        shouldSave = true;
+      }
+      if (shouldSave) {
+        await user.save();
+      }
+    }
+
+    const guardFailure = await ensureUserCanLogin(user);
+    if (guardFailure) {
+      return res.status(guardFailure.status).json(guardFailure.body);
+    }
+
+    user.lastActive = new Date();
+    await user.save();
+
+    const token = generateToken(user._id);
+    return res.json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        profileImage: user.profileImage,
+        role: user.role,
+      },
+      passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
+      rememberMe: true,
+      missingEmailForWelcome,
+    });
+  } catch (error) {
+    const details = error?.response?.data || error.message;
+    return res.status(500).json({
+      success: false,
+      message: 'Twitter authentication failed',
+      details,
+    });
+  }
+};
+
+exports.startGoogleConnectAuth = async (req, res) => {
+  try {
+    const clientId = getGoogleClientId();
+    if (!clientId) {
+      return res.status(500).json({ success: false, message: 'Google OAuth is not configured on server' });
+    }
+
+    const redirectUri = normalizeAbsoluteUrl(req.query.redirect_uri || '');
+    if (!redirectUri) {
+      return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
+    }
+    if (!isGoogleRedirectUriAllowed(redirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirect_uri is not allowed',
+        allowedRedirectUris: getAllowedGoogleRedirectUris(),
+      });
+    }
+
+    const state = createOAuthState({
+      provider: 'google',
+      mode: 'connect',
+      userId: req.user?._id,
+      redirectUri,
+    });
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      access_type: 'offline',
+      include_granted_scopes: 'true',
+      prompt: 'consent',
+      state,
+    });
+
+    return res.json({
+      success: true,
+      authUrl: `${GOOGLE_AUTH_BASE_URL}?${params.toString()}`,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.exchangeGoogleConnectCode = async (req, res) => {
+  try {
+    const clientId = getGoogleClientId();
+    const clientSecret = getGoogleClientSecret();
+    if (!clientId || !clientSecret) {
+      return res.status(500).json({ success: false, message: 'Google OAuth is not configured on server' });
+    }
+
+    const { code, redirectUri, state } = req.body || {};
+    const normalizedRedirectUri = normalizeAbsoluteUrl(redirectUri || '');
+    if (!code || !normalizedRedirectUri) {
+      return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
+    }
+    if (!isGoogleRedirectUriAllowed(normalizedRedirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirectUri is not allowed',
+        allowedRedirectUris: getAllowedGoogleRedirectUris(),
+      });
+    }
+
+    const statePayload = readOAuthState(state);
+    if (
+      !statePayload ||
+      statePayload.provider !== 'google' ||
+      statePayload.mode !== 'connect' ||
+      String(statePayload.userId || '') !== String(req.user?._id || '') ||
+      normalizeAbsoluteUrl(statePayload.redirectUri) !== normalizedRedirectUri
+    ) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
+    }
+    if (!consumeOAuthStateToken(state)) {
+      return res.status(409).json({
+        success: false,
+        message: 'This Google connect request has already been used. Please try again.',
+      });
+    }
+
+    const tokenParams = new URLSearchParams({
+      code: String(code),
+      client_id: clientId,
+      client_secret: clientSecret,
+      redirect_uri: normalizedRedirectUri,
+      grant_type: 'authorization_code',
+    });
+
+    const tokenResponse = await axios.post(GOOGLE_TOKEN_URL, tokenParams.toString(), {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    const accessToken = tokenResponse?.data?.access_token;
+    if (!accessToken) {
+      return res.status(400).json({ success: false, message: 'Google access token not received' });
+    }
+
+    const profileResponse = await axios.get(GOOGLE_USERINFO_URL, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const profile = profileResponse?.data || {};
+    const googleUserId = String(profile.sub || '').trim();
+    const email = String(profile.email || '').trim().toLowerCase();
+    const emailVerified = Boolean(profile.email_verified);
+    const displayName = String(profile.name || '').trim();
+    const picture = String(profile.picture || '').trim();
+
+    if (!googleUserId) {
+      return res.status(400).json({ success: false, message: 'Google account id is unavailable' });
+    }
+    if (email && !emailVerified) {
+      return res.status(400).json({ success: false, message: 'Google account email is not verified' });
+    }
+
+    const currentUser = await User.findById(req.user._id);
+    const linkResult = await linkProviderToExistingUser({
+      currentUser,
+      provider: 'google',
+      providerId: googleUserId,
+      email,
+      displayName,
+      picture,
+    });
+
+    if (!linkResult.ok) {
+      return res.status(linkResult.status).json({
+        success: false,
+        message: linkResult.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Google account connected successfully',
+      linkedProviders: linkResult.linkedProviders,
+      user: {
+        id: linkResult.user._id,
+        username: linkResult.user.username,
+        email: linkResult.user.email,
+      },
+    });
+  } catch (error) {
+    const details = error?.response?.data || error.message;
+    return res.status(500).json({
+      success: false,
+      message: 'Google account connection failed',
+      details,
+    });
+  }
+};
+
+exports.startFacebookConnectAuth = async (req, res) => {
+  try {
+    const appId = getFacebookAppId();
+    if (!appId) {
+      return res.status(500).json({ success: false, message: 'Facebook OAuth is not configured on server' });
+    }
+
+    const redirectUri = normalizeAbsoluteUrl(req.query.redirect_uri || '');
+    if (!redirectUri) {
+      return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
+    }
+    if (!isFacebookRedirectUriAllowed(redirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirect_uri is not allowed',
+        allowedRedirectUris: getAllowedFacebookRedirectUris(),
+      });
+    }
+
+    const state = createOAuthState({
+      provider: 'facebook',
+      mode: 'connect',
+      userId: req.user?._id,
+      redirectUri,
+    });
+
+    const params = new URLSearchParams({
+      client_id: appId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'email,public_profile',
+      state,
+    });
+
+    return res.json({
+      success: true,
+      authUrl: `${FACEBOOK_AUTH_BASE_URL}?${params.toString()}`,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.exchangeFacebookConnectCode = async (req, res) => {
+  try {
+    const appId = getFacebookAppId();
+    const appSecret = getFacebookAppSecret();
+    if (!appId || !appSecret) {
+      return res.status(500).json({ success: false, message: 'Facebook OAuth is not configured on server' });
+    }
+
+    const { code, redirectUri, state } = req.body || {};
+    const normalizedRedirectUri = normalizeAbsoluteUrl(redirectUri || '');
+    if (!code || !normalizedRedirectUri) {
+      return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
+    }
+    if (!isFacebookRedirectUriAllowed(normalizedRedirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirectUri is not allowed',
+        allowedRedirectUris: getAllowedFacebookRedirectUris(),
+      });
+    }
+
+    const statePayload = readOAuthState(state);
+    if (
+      !statePayload ||
+      statePayload.provider !== 'facebook' ||
+      statePayload.mode !== 'connect' ||
+      String(statePayload.userId || '') !== String(req.user?._id || '') ||
+      normalizeAbsoluteUrl(statePayload.redirectUri) !== normalizedRedirectUri
+    ) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
+    }
+    if (!consumeOAuthStateToken(state)) {
+      return res.status(409).json({
+        success: false,
+        message: 'This Facebook connect request has already been used. Please try again.',
+      });
+    }
+
+    const tokenResponse = await axios.get(FACEBOOK_TOKEN_URL, {
+      params: {
+        client_id: appId,
+        client_secret: appSecret,
+        redirect_uri: normalizedRedirectUri,
+        code: String(code),
+      },
+    });
+
+    const accessToken = tokenResponse?.data?.access_token;
+    if (!accessToken) {
+      return res.status(400).json({ success: false, message: 'Facebook access token not received' });
+    }
+
+    const profileResponse = await axios.get(FACEBOOK_USERINFO_URL, {
+      params: {
+        fields: 'id,name,email,picture.type(large)',
+        access_token: accessToken,
+      },
+    });
+
+    const profile = profileResponse?.data || {};
+    const facebookUserId = String(profile.id || '').trim();
+    const email = String(profile.email || '').trim().toLowerCase();
+    const displayName = String(profile.name || '').trim();
+    const picture = String(profile?.picture?.data?.url || '').trim();
+
+    if (!facebookUserId) {
+      return res.status(400).json({ success: false, message: 'Facebook account id is unavailable' });
+    }
+
+    const currentUser = await User.findById(req.user._id);
+    const linkResult = await linkProviderToExistingUser({
+      currentUser,
+      provider: 'facebook',
+      providerId: facebookUserId,
+      email,
+      displayName,
+      picture,
+      facebookUserId,
+    });
+
+    if (!linkResult.ok) {
+      return res.status(linkResult.status).json({
+        success: false,
+        message: linkResult.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Facebook account connected successfully',
+      linkedProviders: linkResult.linkedProviders,
+      user: {
+        id: linkResult.user._id,
+        username: linkResult.user.username,
+        email: linkResult.user.email,
+      },
+    });
+  } catch (error) {
+    const details = error?.response?.data || error.message;
+    return res.status(500).json({
+      success: false,
+      message: 'Facebook account connection failed',
+      details,
+    });
+  }
+};
+
+exports.startTwitterConnectAuth = async (req, res) => {
+  try {
+    const clientId = getTwitterClientId();
+    if (!clientId) {
+      return res.status(500).json({ success: false, message: 'Twitter OAuth is not configured on server' });
+    }
+
+    const redirectUri = normalizeAbsoluteUrl(req.query.redirect_uri || '');
+    if (!redirectUri) {
+      return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
+    }
+    if (!isTwitterRedirectUriAllowed(redirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirect_uri is not allowed',
+        allowedRedirectUris: getAllowedTwitterRedirectUris(),
+      });
+    }
+
+    const { codeVerifier, codeChallenge } = generateTwitterPkcePair();
+    const state = createOAuthState({
+      provider: 'twitter',
+      mode: 'connect',
+      userId: req.user?._id,
+      redirectUri,
+      codeVerifier,
+    });
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: getTwitterOauthScopes().join(' '),
+      state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+    });
+
+    return res.json({
+      success: true,
+      authUrl: `${TWITTER_AUTH_BASE_URL}?${params.toString()}`,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.exchangeTwitterConnectCode = async (req, res) => {
+  try {
+    const clientId = getTwitterClientId();
+    const clientSecret = getTwitterClientSecret();
+    if (!clientId || !clientSecret) {
+      return res.status(500).json({ success: false, message: 'Twitter OAuth is not configured on server' });
+    }
+
+    const { code, redirectUri, state } = req.body || {};
+    const normalizedRedirectUri = normalizeAbsoluteUrl(redirectUri || '');
+    if (!code || !normalizedRedirectUri) {
+      return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
+    }
+    if (!isTwitterRedirectUriAllowed(normalizedRedirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirectUri is not allowed',
+        allowedRedirectUris: getAllowedTwitterRedirectUris(),
+      });
+    }
+
+    const statePayload = readOAuthState(state);
+    if (
+      !statePayload ||
+      statePayload.provider !== 'twitter' ||
+      statePayload.mode !== 'connect' ||
+      String(statePayload.userId || '') !== String(req.user?._id || '') ||
+      normalizeAbsoluteUrl(statePayload.redirectUri) !== normalizedRedirectUri
+    ) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
+    }
+    if (!consumeOAuthStateToken(state)) {
+      return res.status(409).json({
+        success: false,
+        message: 'This Twitter connect request has already been used. Please try again.',
+      });
+    }
+
+    const codeVerifier = String(statePayload.codeVerifier || '').trim();
+    if (!codeVerifier) {
+      return res.status(400).json({ success: false, message: 'Invalid OAuth verifier state' });
+    }
+
+    const tokenData = await exchangeTwitterAuthorizationCode({
+      code,
+      redirectUri: normalizedRedirectUri,
+      codeVerifier,
+      clientId,
+      clientSecret,
+    });
+
+    const accessToken = tokenData?.access_token;
+    if (!accessToken) {
+      return res.status(400).json({ success: false, message: 'Twitter access token not received' });
+    }
+
+    let profileData;
+    try {
+      profileData = await fetchTwitterProfileWithFallback(accessToken, tokenData?.scope || '');
+    } catch (error) {
+      const upstreamStatus = error?.response?.status;
+      const details = error?.response?.data || error.message;
+      if (upstreamStatus >= 400 && upstreamStatus < 500) {
+        return res.status(400).json({
+          success: false,
+          message: 'Twitter OAuth request was rejected. Please try again.',
+          details,
+        });
+      }
+      throw error;
+    }
+
+    const profile = profileData?.data || {};
+    const twitterUserId = String(profile.id || '').trim();
+    const twitterHandle = String(profile.username || '').trim();
+    const displayName = String(profile.name || '').trim();
+    const email = String(profile.email || profile.confirmed_email || '').trim().toLowerCase();
+    const picture = String(profile.profile_image_url || '').trim();
+
+    if (!twitterUserId) {
+      return res.status(400).json({ success: false, message: 'Twitter account id is unavailable' });
+    }
+
+    const currentUser = await User.findById(req.user._id);
+    const linkResult = await linkProviderToExistingUser({
+      currentUser,
+      provider: 'twitter',
+      providerId: twitterUserId,
+      email,
+      displayName,
+      picture,
+      twitterHandle,
+      twitterUserId,
+    });
+
+    if (!linkResult.ok) {
+      return res.status(linkResult.status).json({
+        success: false,
+        message: linkResult.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'Twitter account connected successfully',
+      linkedProviders: linkResult.linkedProviders,
+      user: {
+        id: linkResult.user._id,
+        username: linkResult.user.username,
+        email: linkResult.user.email,
+      },
+      missingEmailForWelcome: !email,
+    });
+  } catch (error) {
+    const details = error?.response?.data || error.message;
+    return res.status(500).json({
+      success: false,
+      message: 'Twitter account connection failed',
+      details,
+    });
+  }
+};
+
+const parseFacebookSignedRequest = (signedRequest, appSecret) => {
+  const [encodedSignature, payload] = String(signedRequest || '').split('.');
+  if (!encodedSignature || !payload || !appSecret) return null;
+
+  const expectedSignature = toBase64Url(
+    crypto.createHmac('sha256', appSecret).update(payload).digest()
+  );
+
+  if (expectedSignature !== encodedSignature) return null;
+  try {
+    const decodedPayload = Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+      .toString('utf8');
+    return JSON.parse(decodedPayload);
+  } catch (error) {
+    return null;
+  }
+};
+
+exports.facebookDeauthorizeCallback = async (req, res) => {
+  try {
+    const appSecret = getFacebookAppSecret();
+    const payload = parseFacebookSignedRequest(req.body?.signed_request, appSecret);
+    if (!payload?.user_id) {
+      return res.status(400).send('Invalid signed request');
+    }
+
+    const facebookUserId = String(payload.user_id);
+    await User.updateMany(
+      { 'oauthProviders.facebook.id': facebookUserId },
+      { $set: { 'oauthProviders.facebook.id': '' } }
+    );
+
+    return res.status(200).send('OK');
+  } catch (error) {
+    return res.status(500).send('ERROR');
+  }
+};
+
+exports.facebookDataDeletionRequest = async (req, res) => {
+  try {
+    const appSecret = getFacebookAppSecret();
+    const backendPublicUrl = (process.env.BACKEND_PUBLIC_URL || '').replace(/\/$/, '');
+    const payload = parseFacebookSignedRequest(req.body?.signed_request, appSecret);
+    if (!payload?.user_id) {
+      return res.status(400).json({ success: false, message: 'Invalid signed request' });
+    }
+
+    const facebookUserId = String(payload.user_id);
+    const matchedUser = await User.findOne({ 'oauthProviders.facebook.id': facebookUserId }).select('_id');
+    const confirmationCode = crypto.randomBytes(12).toString('hex');
+
+    global.facebookDeletionRequests = global.facebookDeletionRequests || {};
+    global.facebookDeletionRequests[confirmationCode] = {
+      userId: matchedUser?._id ? String(matchedUser._id) : null,
+      facebookUserId,
+      createdAt: Date.now(),
+      status: 'completed',
+    };
+
+    await User.updateMany(
+      { 'oauthProviders.facebook.id': facebookUserId },
+      { $set: { 'oauthProviders.facebook.id': '' } }
+    );
+
+    return res.json({
+      url: backendPublicUrl
+        ? `${backendPublicUrl}/api/auth/facebook/data-deletion-status/${confirmationCode}`
+        : `https://example.com/data-deletion-status/${confirmationCode}`,
+      confirmation_code: confirmationCode,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to process data deletion request' });
+  }
+};
+
+exports.facebookDataDeletionStatus = async (req, res) => {
+  const code = String(req.params.code || '');
+  const requestMap = global.facebookDeletionRequests || {};
+  const request = requestMap[code];
+  if (!request) {
+    return res.status(404).json({ success: false, message: 'Deletion request not found' });
+  }
+  return res.json({
+    success: true,
+    confirmationCode: code,
+    status: request.status || 'completed',
+    processedAt: request.createdAt,
+  });
 };
 
 // Get current user

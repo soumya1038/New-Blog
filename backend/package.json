@@ -8,7 +8,9 @@
     "worker": "node jobs/queueWorker.js",
     "check-livekit": "node check-livekit.js",
     "check-startup": "node check-startup.js",
-    "diagnose": "node check-startup.js"
+    "diagnose": "node check-startup.js",
+    "backfill:facebook-social:dry": "node scripts/backfillFacebookSocialLinks.js",
+    "backfill:facebook-social": "node scripts/backfillFacebookSocialLinks.js --apply"
   },
   "dependencies": {
     "@sentry/node": "^7.120.4",

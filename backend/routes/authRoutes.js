@@ -18,7 +18,20 @@ const {
   checkGuestUsername,
   guestLogin,
   startGoogleAuth,
-  exchangeGoogleCode
+  exchangeGoogleCode,
+  startFacebookAuth,
+  exchangeFacebookCode,
+  startTwitterAuth,
+  exchangeTwitterCode,
+  startGoogleConnectAuth,
+  exchangeGoogleConnectCode,
+  startFacebookConnectAuth,
+  exchangeFacebookConnectCode,
+  startTwitterConnectAuth,
+  exchangeTwitterConnectCode,
+  facebookDeauthorizeCallback,
+  facebookDataDeletionRequest,
+  facebookDataDeletionStatus
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 const trackActivity = require('../middleware/trackActivity');
@@ -44,6 +57,19 @@ router.post('/forgot-password/change-authenticated', protect, requestAuthenticat
 router.post('/forgot-password/confirm-authenticated', protect, confirmAuthenticatedPasswordChange);
 router.get('/google/start', startGoogleAuth);
 router.post('/google/exchange', exchangeGoogleCode);
+router.get('/google/connect/start', protect, startGoogleConnectAuth);
+router.post('/google/connect/exchange', protect, exchangeGoogleConnectCode);
+router.get('/facebook/start', startFacebookAuth);
+router.post('/facebook/exchange', exchangeFacebookCode);
+router.get('/facebook/connect/start', protect, startFacebookConnectAuth);
+router.post('/facebook/connect/exchange', protect, exchangeFacebookConnectCode);
+router.get('/twitter/start', startTwitterAuth);
+router.post('/twitter/exchange', exchangeTwitterCode);
+router.get('/twitter/connect/start', protect, startTwitterConnectAuth);
+router.post('/twitter/connect/exchange', protect, exchangeTwitterConnectCode);
+router.post('/facebook/deauthorize', facebookDeauthorizeCallback);
+router.post('/facebook/data-deletion', facebookDataDeletionRequest);
+router.get('/facebook/data-deletion-status/:code', facebookDataDeletionStatus);
 router.get('/verify-email/:token', verifyEmail);
 router.get('/check-guest-username/:username', checkGuestUsername);
 router.post('/guest-login', guestLogin);

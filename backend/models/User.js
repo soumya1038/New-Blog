@@ -18,6 +18,17 @@ const userSchema = new mongoose.Schema({
     name: { type: String, default: '' },
     url: { type: String, required: true }
   }],
+  oauthProviders: {
+    google: {
+      id: { type: String, default: '' },
+    },
+    facebook: {
+      id: { type: String, default: '' },
+    },
+    twitter: {
+      id: { type: String, default: '' },
+    },
+  },
   privacy: {
     profileVisibility: {
       type: String,
@@ -26,6 +37,7 @@ const userSchema = new mongoose.Schema({
     },
     showEmail: { type: Boolean, default: true },
     showPhone: { type: Boolean, default: true },
+    showSocialLinks: { type: Boolean, default: true },
     allowMessages: { type: Boolean, default: true },
   },
   emailNotifications: {

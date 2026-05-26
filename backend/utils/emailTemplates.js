@@ -221,7 +221,7 @@ const renderWelcomeEmail = ({ username, temporaryPassword = '' }) => {
     ? [
         heading('Important: Secure your account password'),
         paragraph(
-          'You signed up using Google for the first time. We created a temporary Lekhon password for your account so that you can also access password-based security features.'
+          'You signed up using social sign-in for the first time. We created a temporary Lekhon password for your account so that you can also access password-based security features.'
         ),
         card(`<table width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr><td style="padding:0 0 8px;">

@@ -5,6 +5,7 @@ const DEFAULT_PRIVACY = {
   profileVisibility: 'public',
   showEmail: true,
   showPhone: true,
+  showSocialLinks: true,
   allowMessages: true,
 };
 
@@ -95,6 +96,12 @@ const PrivacySettings = ({ profile, onUpdate }) => {
             label="Show Phone"
             checked={settings.showPhone}
             onChange={(next) => setSettings((prev) => ({ ...prev, showPhone: next }))}
+          />
+
+          <ToggleRow
+            label="Show Social Media Links"
+            checked={settings.showSocialLinks}
+            onChange={(next) => setSettings((prev) => ({ ...prev, showSocialLinks: next }))}
           />
 
           <ToggleRow

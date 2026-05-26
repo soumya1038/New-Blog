@@ -4,7 +4,7 @@ import axios from 'axios';
 import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 
-const GoogleAuthCallback = () => {
+const FacebookAuthCallback = () => {
   const navigate = useNavigate();
   const [error, setError] = useState('');
 
@@ -14,7 +14,7 @@ const GoogleAuthCallback = () => {
   );
 
   useEffect(() => {
-    const finalizeGoogleAuth = async () => {
+    const finalizeFacebookAuth = async () => {
       let guardKey = '';
       try {
         const params = new URLSearchParams(window.location.search);
@@ -23,9 +23,9 @@ const GoogleAuthCallback = () => {
         const code = params.get('code');
         const state = params.get('state');
         const socialConnectIntent = sessionStorage.getItem('socialConnectIntent');
-        const isConnectFlow = socialConnectIntent === 'google' && Boolean(localStorage.getItem('token'));
+        const isConnectFlow = socialConnectIntent === 'facebook' && Boolean(localStorage.getItem('token'));
 
-        guardKey = `google_oauth_exchange:${code || 'no_code'}:${state || 'no_state'}`;
+        guardKey = `facebook_oauth_exchange:${code || 'no_code'}:${state || 'no_state'}`;
         if (sessionStorage.getItem(guardKey) === '1') {
           return;
         }
@@ -36,28 +36,28 @@ const GoogleAuthCallback = () => {
         }
 
         if (!code) {
-          throw new Error('Missing authorization code from Google redirect.');
+          throw new Error('Missing authorization code from Facebook redirect.');
         }
 
-        const redirectUri = `${window.location.origin}/auth/google/callback`;
+        const redirectUri = `${window.location.origin}/auth/facebook/callback`;
         if (isConnectFlow) {
-          const connectResponse = await api.post('/auth/google/connect/exchange', {
+          const connectResponse = await api.post('/auth/facebook/connect/exchange', {
             code,
             state,
             redirectUri,
           });
 
           if (!connectResponse?.data?.success) {
-            throw new Error('Google account connection failed.');
+            throw new Error('Facebook account connection failed.');
           }
 
           sessionStorage.removeItem('socialConnectIntent');
-          sessionStorage.setItem('socialConnectSuccess', 'google');
+          sessionStorage.setItem('socialConnectSuccess', 'facebook');
           window.location.href = '/profile';
           return;
         }
 
-        const response = await axios.post(`${apiBase}/api/auth/google/exchange`, {
+        const response = await axios.post(`${apiBase}/api/auth/facebook/exchange`, {
           code,
           state,
           redirectUri,
@@ -65,7 +65,7 @@ const GoogleAuthCallback = () => {
 
         const token = response?.data?.token;
         if (!token) {
-          throw new Error('Google login did not return an application token.');
+          throw new Error('Facebook login did not return an application token.');
         }
         const passwordSetupRequired = Boolean(response?.data?.passwordSetupRequired);
 
@@ -93,7 +93,7 @@ const GoogleAuthCallback = () => {
           sessionStorage.removeItem(guardKey);
         }
         sessionStorage.removeItem('socialConnectIntent');
-        const fallback = 'Google sign-in failed. Please try again.';
+        const fallback = 'Facebook sign-in failed. Please try again.';
         const detail =
           err?.response?.data?.details?.detail ||
           err?.response?.data?.details?.message ||
@@ -105,7 +105,7 @@ const GoogleAuthCallback = () => {
       }
     };
 
-    finalizeGoogleAuth();
+    finalizeFacebookAuth();
   }, [apiBase, navigate]);
 
   if (error) {
@@ -123,7 +123,7 @@ const GoogleAuthCallback = () => {
             <img src="/image/lekhon_url.png" alt="Lekhon Logo" className="h-11 w-11 rounded-lg object-cover" />
             <div>
               <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)]">Lekhon</p>
-              <h1 className="text-2xl sm:text-3xl font-bold text-red-500">Google Sign-in Failed</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-red-500">Facebook Sign-in Failed</h1>
             </div>
           </div>
           <p className="mb-6 text-base sm:text-lg" style={{ color: 'var(--text-secondary)' }}>{error}</p>
@@ -158,7 +158,7 @@ const GoogleAuthCallback = () => {
       >
         <img src="/image/lekhon_url.png" alt="Lekhon Logo" className="h-14 w-14 rounded-xl object-cover mx-auto mb-4" />
         <h1 className="text-2xl font-bold mb-3" style={{ color: 'var(--text-primary)' }}>Completing Secure Sign-In</h1>
-        <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>Please wait while we finish your Google authentication.</p>
+        <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>Please wait while we finish your Facebook authentication.</p>
         <div className="flex justify-center">
           <ScaleLoader color="var(--brand-primary)" height={28} width={4} />
         </div>
@@ -167,4 +167,4 @@ const GoogleAuthCallback = () => {
   );
 };
 
-export default GoogleAuthCallback;
+export default FacebookAuthCallback;

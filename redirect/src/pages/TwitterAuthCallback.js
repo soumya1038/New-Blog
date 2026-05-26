@@ -4,7 +4,43 @@ import axios from 'axios';
 import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 
-const GoogleAuthCallback = () => {
+const getTwitterRedirectUri = () => {
+  const configured = String(process.env.REACT_APP_TWITTER_REDIRECT_URI || '').trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+    } catch (error) {
+      console.warn('Invalid REACT_APP_TWITTER_REDIRECT_URI, falling back to current origin.');
+    }
+  }
+  return `${window.location.origin}/auth/twitter/callback`;
+};
+
+const extractTwitterErrorDetail = (payload = {}) => {
+  if (!payload || typeof payload !== 'object') return '';
+  const details = payload.details;
+  if (typeof details === 'string') return details;
+  if (details && typeof details === 'object') {
+    const candidates = [
+      details.error_description,
+      details.error,
+      details.detail,
+      details.message,
+    ].filter(Boolean);
+    if (candidates.length > 0) return String(candidates[0]);
+    if (Array.isArray(details.errors) && details.errors.length > 0) {
+      const first = details.errors[0];
+      if (typeof first === 'string') return first;
+      if (first && typeof first === 'object') {
+        return String(first.message || first.detail || first.title || '');
+      }
+    }
+  }
+  return '';
+};
+
+const TwitterAuthCallback = () => {
   const navigate = useNavigate();
   const [error, setError] = useState('');
 
@@ -14,7 +50,7 @@ const GoogleAuthCallback = () => {
   );
 
   useEffect(() => {
-    const finalizeGoogleAuth = async () => {
+    const finalizeTwitterAuth = async () => {
       let guardKey = '';
       try {
         const params = new URLSearchParams(window.location.search);
@@ -23,9 +59,9 @@ const GoogleAuthCallback = () => {
         const code = params.get('code');
         const state = params.get('state');
         const socialConnectIntent = sessionStorage.getItem('socialConnectIntent');
-        const isConnectFlow = socialConnectIntent === 'google' && Boolean(localStorage.getItem('token'));
+        const isConnectFlow = socialConnectIntent === 'twitter' && Boolean(localStorage.getItem('token'));
 
-        guardKey = `google_oauth_exchange:${code || 'no_code'}:${state || 'no_state'}`;
+        guardKey = `twitter_oauth_exchange:${code || 'no_code'}:${state || 'no_state'}`;
         if (sessionStorage.getItem(guardKey) === '1') {
           return;
         }
@@ -36,28 +72,32 @@ const GoogleAuthCallback = () => {
         }
 
         if (!code) {
-          throw new Error('Missing authorization code from Google redirect.');
+          throw new Error('Missing authorization code from Twitter redirect.');
         }
 
-        const redirectUri = `${window.location.origin}/auth/google/callback`;
+        const redirectUri = getTwitterRedirectUri();
         if (isConnectFlow) {
-          const connectResponse = await api.post('/auth/google/connect/exchange', {
+          const connectResponse = await api.post('/auth/twitter/connect/exchange', {
             code,
             state,
             redirectUri,
           });
 
           if (!connectResponse?.data?.success) {
-            throw new Error('Google account connection failed.');
+            throw new Error('Twitter account connection failed.');
           }
 
+          const missingEmailForWelcome = Boolean(connectResponse?.data?.missingEmailForWelcome);
+          if (missingEmailForWelcome) {
+            sessionStorage.setItem('socialEmailSetupRequired', 'twitter');
+          }
           sessionStorage.removeItem('socialConnectIntent');
-          sessionStorage.setItem('socialConnectSuccess', 'google');
+          sessionStorage.setItem('socialConnectSuccess', 'twitter');
           window.location.href = '/profile';
           return;
         }
 
-        const response = await axios.post(`${apiBase}/api/auth/google/exchange`, {
+        const response = await axios.post(`${apiBase}/api/auth/twitter/exchange`, {
           code,
           state,
           redirectUri,
@@ -65,17 +105,26 @@ const GoogleAuthCallback = () => {
 
         const token = response?.data?.token;
         if (!token) {
-          throw new Error('Google login did not return an application token.');
+          throw new Error('Twitter login did not return an application token.');
         }
         const passwordSetupRequired = Boolean(response?.data?.passwordSetupRequired);
+        const missingEmailForWelcome = Boolean(response?.data?.missingEmailForWelcome);
 
         localStorage.setItem('token', token);
         localStorage.setItem('rememberMe', 'true');
         sessionStorage.setItem('showLoginIntro', 'true');
+        if (missingEmailForWelcome) {
+          sessionStorage.setItem('socialEmailSetupRequired', 'twitter');
+        }
         if (passwordSetupRequired) {
           sessionStorage.setItem('googlePasswordSetupRequired', 'true');
           sessionStorage.removeItem('redirectAfterLogin');
           window.location.href = '/profile?forcePasswordChange=1';
+          return;
+        }
+        if (missingEmailForWelcome) {
+          sessionStorage.removeItem('redirectAfterLogin');
+          window.location.href = '/profile';
           return;
         }
         sessionStorage.removeItem('googlePasswordSetupRequired');
@@ -93,19 +142,22 @@ const GoogleAuthCallback = () => {
           sessionStorage.removeItem(guardKey);
         }
         sessionStorage.removeItem('socialConnectIntent');
-        const fallback = 'Google sign-in failed. Please try again.';
+        const fallback = 'Twitter sign-in failed. Please try again.';
+        const payload = err?.response?.data;
+        const extractedDetail = extractTwitterErrorDetail(payload);
         const detail =
-          err?.response?.data?.details?.detail ||
-          err?.response?.data?.details?.message ||
-          err?.response?.data?.message ||
-          err?.response?.data?.details?.error_description ||
+          extractedDetail ||
+          payload?.message ||
           err?.message ||
           fallback;
+        if (payload) {
+          console.error('Twitter auth exchange error:', payload);
+        }
         setError(detail);
       }
     };
 
-    finalizeGoogleAuth();
+    finalizeTwitterAuth();
   }, [apiBase, navigate]);
 
   if (error) {
@@ -123,7 +175,7 @@ const GoogleAuthCallback = () => {
             <img src="/image/lekhon_url.png" alt="Lekhon Logo" className="h-11 w-11 rounded-lg object-cover" />
             <div>
               <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)]">Lekhon</p>
-              <h1 className="text-2xl sm:text-3xl font-bold text-red-500">Google Sign-in Failed</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-red-500">Twitter Sign-in Failed</h1>
             </div>
           </div>
           <p className="mb-6 text-base sm:text-lg" style={{ color: 'var(--text-secondary)' }}>{error}</p>
@@ -158,7 +210,7 @@ const GoogleAuthCallback = () => {
       >
         <img src="/image/lekhon_url.png" alt="Lekhon Logo" className="h-14 w-14 rounded-xl object-cover mx-auto mb-4" />
         <h1 className="text-2xl font-bold mb-3" style={{ color: 'var(--text-primary)' }}>Completing Secure Sign-In</h1>
-        <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>Please wait while we finish your Google authentication.</p>
+        <p className="mb-6" style={{ color: 'var(--text-secondary)' }}>Please wait while we finish your Twitter authentication.</p>
         <div className="flex justify-center">
           <ScaleLoader color="var(--brand-primary)" height={28} width={4} />
         </div>
@@ -167,4 +219,4 @@ const GoogleAuthCallback = () => {
   );
 };
 
-export default GoogleAuthCallback;
+export default TwitterAuthCallback;

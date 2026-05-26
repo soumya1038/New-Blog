@@ -486,30 +486,6 @@ const Navbar = () => {
           </div>
         </div>
 
-        {/* Logout Modal */}
-        {showLogoutModal && (
-          <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4">
-            <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold text-[var(--text-primary)] mb-4">{t('Confirm Logout')}</h3>
-              <p className="text-[var(--text-secondary)] mb-6">{t('Are you sure you want to logout?')}</p>
-              <div className="flex gap-3">
-                <button
-                  onClick={confirmLogout}
-                  className="flex-1 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 font-semibold"
-                >
-                  {t('Logout')}
-                </button>
-                <button
-                  onClick={() => setShowLogoutModal(false)}
-                  className="flex-1 theme-soft-button px-6 py-2 rounded-lg font-semibold"
-                >
-                  {t('Cancel')}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Mobile Menu */}
         {showMobileMenu && (
           <div className="md:hidden mt-4 pb-4 backdrop-blur-xl bg-white/5 rounded-2xl mx-2 border border-white/20">
@@ -579,6 +555,29 @@ const Navbar = () => {
         </div>
       </div>
       </nav>
+
+      {showLogoutModal && (
+        <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-[9999] p-4">
+          <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-[var(--text-primary)] mb-4">{t('Confirm Logout')}</h3>
+            <p className="text-[var(--text-secondary)] mb-6">{t('Are you sure you want to logout?')}</p>
+            <div className="flex gap-3">
+              <button
+                onClick={confirmLogout}
+                className="flex-1 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 font-semibold"
+              >
+                {t('Logout')}
+              </button>
+              <button
+                onClick={() => setShowLogoutModal(false)}
+                className="flex-1 theme-soft-button px-6 py-2 rounded-lg font-semibold"
+              >
+                {t('Cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
