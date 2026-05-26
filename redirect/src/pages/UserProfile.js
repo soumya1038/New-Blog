@@ -330,6 +330,68 @@ const UserProfile = () => {
     return <FaGlobe className="text-[var(--text-secondary)]" />;
   };
 
+  const parseSocialHostname = (rawUrl = '') => {
+    const value = String(rawUrl || '').trim();
+    if (!value) return '';
+    try {
+      return new URL(value).hostname.toLowerCase().replace(/^www\./, '');
+    } catch (error) {
+      try {
+        return new URL(`https://${value}`).hostname.toLowerCase().replace(/^www\./, '');
+      } catch (nestedError) {
+        return '';
+      }
+    }
+  };
+
+  const slugifySocialValue = (value = '') =>
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '');
+
+  const getSocialProviderKey = (social = {}) => {
+    const value = `${social?.name || ''} ${social?.url || ''}`.toLowerCase();
+    if (value.includes('facebook') || value.includes('fb.com')) return 'facebook';
+    if (value.includes('twitter') || value.includes('x.com')) return 'twitter';
+    if (value.includes('linkedin')) return 'linkedin';
+    if (value.includes('github')) return 'github';
+    if (value.includes('google') || value.includes('accounts.google.com')) return 'google';
+    return 'other';
+  };
+
+  const getSocialPrivacyKey = (social = {}) => {
+    const provider = getSocialProviderKey(social);
+    if (provider !== 'other') return provider;
+
+    const host = parseSocialHostname(social?.url);
+    if (host) return `domain:${host}`;
+
+    const fallback = slugifySocialValue(social?.name || 'website') || 'website';
+    return `name:${fallback}`;
+  };
+
+  const shouldShowSocialByPrivacy = (social = {}) => {
+    const rawVisibilityMap = profile?.privacy?.socialLinkVisibility;
+    const visibilityMap =
+      rawVisibilityMap && typeof rawVisibilityMap.get === 'function'
+        ? Object.fromEntries(rawVisibilityMap.entries())
+        : (rawVisibilityMap || {});
+    const visibilityKey = getSocialPrivacyKey(social);
+    if (Object.prototype.hasOwnProperty.call(visibilityMap, visibilityKey)) {
+      return visibilityMap[visibilityKey] !== false;
+    }
+
+    const providerKey = getSocialProviderKey(social);
+    if (providerKey === 'facebook') return profile?.privacy?.showFacebookLinks !== false;
+    if (providerKey === 'twitter') return profile?.privacy?.showTwitterLinks !== false;
+    if (providerKey === 'linkedin') return profile?.privacy?.showLinkedInLinks !== false;
+    if (providerKey === 'github') return profile?.privacy?.showGitHubLinks !== false;
+    if (providerKey === 'google') return true;
+    return true;
+  };
+
   const handleShare = async (post, type) => {
     const url = `${window.location.origin}/${type}/${post._id}`;
     setShareUrl(url);
@@ -479,7 +541,7 @@ return (
           <div className="flex-1 text-center sm:text-left">
             <h1
               className={`text-3xl font-bold mb-2 flex items-center gap-2 ${profile.hasActiveStatus
-                ? 'animate-gradient cursor-pointer'
+                ? 'cursor-pointer text-[var(--text-primary)]'
                 : 'text-[var(--text-primary)]'
                 }`}
               onClick={() => {
@@ -493,7 +555,12 @@ return (
                 }
               }}
             >
-              {profile.username}
+              <span
+                className={profile.hasActiveStatus ? 'status-name-shimmer' : ''}
+                data-text={profile.username}
+              >
+                {profile.username}
+              </span>
               {!profile.isGuest && profile.role !== 'guest' && (
                 profile.isVerified ? (
                   <div className="bg-blue-600 rounded-full p-1 flex items-center justify-center" title="Verified">
@@ -575,9 +642,9 @@ return (
             )}
 
             {/* Social Media Links */}
-            {profile.privacy?.showSocialLinks !== false && profile.socialMedia && profile.socialMedia.length > 0 && (
+            {profile.socialMedia && profile.socialMedia.length > 0 && profile.socialMedia.some((social) => shouldShowSocialByPrivacy(social)) && (
               <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
-                {profile.socialMedia.map((social, index) => (
+                {profile.socialMedia.filter((social) => shouldShowSocialByPrivacy(social)).map((social, index) => (
                   <a
                     key={index}
                     href={social.url}

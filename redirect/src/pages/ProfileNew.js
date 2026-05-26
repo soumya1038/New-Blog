@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaTimes, FaArrowLeft, FaArrowRight, FaShare, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaFacebookF, FaGoogle, FaLinkedinIn, FaGithub } from 'react-icons/fa';
+import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaTimes, FaArrowLeft, FaArrowRight, FaShare, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaFacebookF, FaGoogle, FaLinkedinIn, FaGithub, FaGlobe, FaVideo } from 'react-icons/fa';
 import { PiBookOpenTextThin } from 'react-icons/pi';
 import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified, GoUnverified } from 'react-icons/go';
@@ -19,6 +19,7 @@ import PrivacySettings from '../components/PrivacySettings';
 import EmailNotificationSettings from '../components/EmailNotificationSettings';
 import Achievements from '../components/Achievements';
 import QRCodeModal from '../components/QRCodeModal';
+import StatusViewer from '../components/StatusViewer';
 
 const getTwitterRedirectUri = () => {
   const configured = String(process.env.REACT_APP_TWITTER_REDIRECT_URI || '').trim();
@@ -31,6 +32,19 @@ const getTwitterRedirectUri = () => {
     }
   }
   return `${window.location.origin}/auth/twitter/callback`;
+};
+
+const getFacebookRedirectUri = () => {
+  const configured = String(process.env.REACT_APP_FACEBOOK_REDIRECT_URI || '').trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+    } catch (error) {
+      console.warn('Invalid REACT_APP_FACEBOOK_REDIRECT_URI, falling back to current origin.');
+    }
+  }
+  return `${window.location.origin}/auth/facebook/callback`;
 };
 
 const ProfileNew = () => {
@@ -85,10 +99,30 @@ const ProfileNew = () => {
   const [modal, setModal] = useState({ show: false, type: '', title: '', message: '', onConfirm: null });
   const [showQRModal, setShowQRModal] = useState(false);
   const [showProfileShareModal, setShowProfileShareModal] = useState(false);
+  const [statuses, setStatuses] = useState([]);
+  const [showStatusComposer, setShowStatusComposer] = useState(false);
+  const [showStatusViewer, setShowStatusViewer] = useState(false);
+  const [statusViewerIndex, setStatusViewerIndex] = useState(0);
+  const [statusForm, setStatusForm] = useState({
+    text: '',
+    mediaFile: null,
+    mediaPreview: '',
+    mediaType: 'text',
+    backgroundColor: '#1f2937',
+    textColor: '#ffffff',
+    fontFamily: 'Inter',
+    textAlign: 'center',
+    durationSec: 7,
+  });
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [statusDeletingId, setStatusDeletingId] = useState('');
+  const [editingStatusId, setEditingStatusId] = useState('');
 
   // Fetch data
   useEffect(() => {
-    if (!user) return;
+    if (!user?._id) return;
+    let isMounted = true;
+
     const loadData = async () => {
       setLoading(true);
       try {
@@ -99,19 +133,36 @@ const ProfileNew = () => {
           api.get(`/articles?author=${user._id}`),
           api.get(`/shorts?author=${user._id}`)
         ]);
+        if (!isMounted) return;
+
         setProfile(profileRes.data.user);
         setApiKeys(keysRes.data.apiKeys);
         setBlogs(blogsRes.data.blogs);
         setArticles(articlesRes.data.articles);
         setShorts(shortsRes.data.shorts);
+        try {
+          const statusesRes = await api.get('/users/statuses');
+          if (isMounted) {
+            syncStatuses(statusesRes.data?.statuses || []);
+          }
+        } catch (statusError) {
+          if (isMounted) {
+            syncStatuses(profileRes.data?.user?.statuses || []);
+          }
+        }
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
     loadData();
-  }, [user]);
+    return () => {
+      isMounted = false;
+    };
+  }, [user?._id]);
 
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search || '');
@@ -156,6 +207,12 @@ const ProfileNew = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [expandedCard]);
+
+  useEffect(() => () => {
+    if (statusForm.mediaPreview && statusForm.mediaPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(statusForm.mediaPreview);
+    }
+  }, [statusForm.mediaPreview]);
 
   const showModal = (type, title, message, onConfirm = null) => {
     setModal({ show: true, type, title, message, onConfirm });
@@ -203,9 +260,35 @@ const ProfileNew = () => {
 
   const normalizeSocialUrl = (value = '') => String(value).trim().toLowerCase();
 
+  const parseSocialHostname = (rawUrl = '') => {
+    const value = String(rawUrl || '').trim();
+    if (!value) return '';
+
+    try {
+      return new URL(value).hostname.toLowerCase().replace(/^www\./, '');
+    } catch (error) {
+      try {
+        return new URL(`https://${value}`).hostname.toLowerCase().replace(/^www\./, '');
+      } catch (nestedError) {
+        return '';
+      }
+    }
+  };
+
   const isUrlForProvider = (url, provider) => {
     const normalizedUrl = normalizeSocialUrl(url);
     return provider.matches.some((domain) => normalizedUrl.includes(domain));
+  };
+
+  const findProviderForSocialEntry = (entry) => {
+    const nameValue = normalizeSocialUrl(entry?.name);
+    return (
+      socialProviderOptions.find((provider) => {
+        if (isUrlForProvider(entry?.url, provider)) return true;
+        if (nameValue.includes(provider.key)) return true;
+        return nameValue.includes(provider.label.toLowerCase());
+      }) || null
+    );
   };
 
   const linkedProviders = socialProviderOptions.reduce((acc, provider) => {
@@ -223,8 +306,238 @@ const ProfileNew = () => {
     (provider) => !linkedProviders[provider.key]
   );
 
+  const connectedSocialAccounts = React.useMemo(() => {
+    const accounts = [];
+    const knownProvidersAdded = new Set();
+    const customEntriesAdded = new Set();
+    const socialMedia = Array.isArray(profile?.socialMedia) ? profile.socialMedia : [];
+
+    socialMedia.forEach((entry, index) => {
+      const matchedProvider = findProviderForSocialEntry(entry);
+      if (matchedProvider) {
+        if (knownProvidersAdded.has(matchedProvider.key)) return;
+        accounts.push({
+          key: `provider:${matchedProvider.key}`,
+          providerKey: matchedProvider.key,
+          label: matchedProvider.label,
+          icon: matchedProvider.icon,
+          actionType: 'provider',
+        });
+        knownProvidersAdded.add(matchedProvider.key);
+        return;
+      }
+
+      const rawUrl = String(entry?.url || '').trim();
+      const host = parseSocialHostname(rawUrl);
+      const displayLabel = String(entry?.name || '').trim() || host || 'Website';
+      const customKey = `custom:${rawUrl.toLowerCase() || displayLabel.toLowerCase()}:${index}`;
+      if (customEntriesAdded.has(customKey)) return;
+
+      accounts.push({
+        key: customKey,
+        providerKey: '',
+        label: displayLabel,
+        icon: <FaGlobe size={16} className="text-[var(--text-secondary)]" />,
+        actionType: 'custom',
+        socialIndex: index,
+      });
+      customEntriesAdded.add(customKey);
+    });
+
+    socialProviderOptions.forEach((provider) => {
+      if (provider.connectMode !== 'oauth') return;
+      const linkedByOauth = Boolean(String(profile?.oauthProviders?.[provider.key]?.id || '').trim());
+      if (!linkedByOauth || knownProvidersAdded.has(provider.key)) return;
+
+      accounts.push({
+        key: `provider:${provider.key}`,
+        providerKey: provider.key,
+        label: provider.label,
+        icon: provider.icon,
+        actionType: 'provider',
+      });
+      knownProvidersAdded.add(provider.key);
+    });
+
+    return accounts;
+  }, [profile?.socialMedia, profile?.oauthProviders]);
+
   const closeModal = () => {
     setModal({ show: false, type: '', title: '', message: '', onConfirm: null });
+  };
+
+  const MAX_ACTIVE_STATUSES = 5;
+  const hasActiveStatus = statuses.length > 0;
+  const statusSlotsRemaining = Math.max(0, MAX_ACTIVE_STATUSES - statuses.length);
+  const avatarUser = React.useMemo(
+    () => ({ ...(user || {}), hasActiveStatus }),
+    [user, hasActiveStatus]
+  );
+
+  const getActiveStatuses = (items = []) =>
+    Array.isArray(items)
+      ? items.filter((status) => status?.expiresAt && new Date(status.expiresAt) > new Date())
+      : [];
+
+  const syncStatuses = (incomingStatuses = []) => {
+    const nextStatuses = getActiveStatuses(incomingStatuses);
+    setStatuses(nextStatuses);
+  };
+
+  const getStatusMediaType = (status) => {
+    if (!status) return 'text';
+    if (status.mediaType) return status.mediaType;
+    if (status.video) return 'video';
+    if (status.image) return 'image';
+    return 'text';
+  };
+
+  const getStatusMediaUrl = (status) => {
+    if (!status) return '';
+    return status.video || status.image || '';
+  };
+
+  const resetStatusComposer = () => {
+    if (statusForm.mediaPreview && statusForm.mediaPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(statusForm.mediaPreview);
+    }
+    setStatusForm({
+      text: '',
+      mediaFile: null,
+      mediaPreview: '',
+      mediaType: 'text',
+      backgroundColor: '#1f2937',
+      textColor: '#ffffff',
+      fontFamily: 'Inter',
+      textAlign: 'center',
+      durationSec: 7,
+    });
+    setEditingStatusId('');
+  };
+
+  const openCreateStatusComposer = () => {
+    if (statusSlotsRemaining <= 0) {
+      showModal('error', 'Status Limit Reached', 'You can have up to 5 active statuses at a time.');
+      return;
+    }
+    resetStatusComposer();
+    setShowStatusComposer(true);
+  };
+
+  const openEditStatusComposer = (status) => {
+    if (!status) return;
+    if (statusForm.mediaPreview && statusForm.mediaPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(statusForm.mediaPreview);
+    }
+    setStatusForm({
+      text: status.text || '',
+      mediaFile: null,
+      mediaPreview: getStatusMediaUrl(status),
+      mediaType: getStatusMediaType(status),
+      backgroundColor: status.backgroundColor || '#1f2937',
+      textColor: status.textColor || '#ffffff',
+      fontFamily: status.fontFamily || 'Inter',
+      textAlign: status.textAlign || 'center',
+      durationSec: status.durationSec || 7,
+    });
+    setEditingStatusId(status._id);
+    setShowStatusComposer(true);
+  };
+
+  const fetchStatuses = async () => {
+    try {
+      const { data } = await api.get('/users/statuses');
+      syncStatuses(data?.statuses || []);
+    } catch (error) {
+      console.error('Error loading statuses:', error);
+    }
+  };
+
+  const handleStatusMediaChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (statusForm.mediaPreview && statusForm.mediaPreview.startsWith('blob:')) {
+      URL.revokeObjectURL(statusForm.mediaPreview);
+    }
+
+    const nextType = String(file.type || '').startsWith('video/') ? 'video' : 'image';
+    setStatusForm((prev) => ({
+      ...prev,
+      mediaFile: file,
+      mediaPreview: URL.createObjectURL(file),
+      mediaType: nextType,
+    }));
+  };
+
+  const handleStatusSave = async (e) => {
+    e.preventDefault();
+    const trimmedText = statusForm.text.trim();
+    if (!trimmedText && !statusForm.mediaFile && !editingStatusId) {
+      showModal('error', 'Status Required', 'Please add text, image, or video to post a status.');
+      return;
+    }
+
+    if (!trimmedText && !statusForm.mediaFile && editingStatusId && !statusForm.mediaPreview) {
+      showModal('error', 'Status Required', 'Please add text, image, or video to post a status.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('text', trimmedText);
+    formData.append('backgroundColor', statusForm.backgroundColor);
+    formData.append('textColor', statusForm.textColor);
+    formData.append('fontFamily', statusForm.fontFamily);
+    formData.append('textAlign', statusForm.textAlign);
+    formData.append('durationSec', String(statusForm.durationSec || 7));
+    if (statusForm.mediaFile) {
+      formData.append('statusMedia', statusForm.mediaFile);
+    }
+
+    setStatusSaving(true);
+    try {
+      if (editingStatusId) {
+        await api.put(`/users/statuses/${editingStatusId}`, formData);
+        showModal('success', 'Success', 'Status updated successfully.');
+      } else {
+        await api.post('/users/statuses', formData);
+        showModal('success', 'Success', 'Status posted successfully.');
+      }
+
+      await fetchStatuses();
+      setShowStatusComposer(false);
+      resetStatusComposer();
+    } catch (error) {
+      showModal('error', 'Error', error.response?.data?.message || 'Failed to save status.');
+    } finally {
+      setStatusSaving(false);
+    }
+  };
+
+  const handleDeleteStatus = (statusId) => {
+    showModal('confirm', 'Delete Status', 'Delete this status?', async () => {
+      setStatusDeletingId(statusId);
+      try {
+        await api.delete(`/users/statuses/${statusId}`);
+        await fetchStatuses();
+        showModal('success', 'Success', 'Status deleted successfully.');
+      } catch (error) {
+        showModal('error', 'Error', error.response?.data?.message || 'Failed to delete status.');
+      } finally {
+        setStatusDeletingId('');
+      }
+    });
+  };
+
+  const formatStatusTimeLeft = (expiresAt) => {
+    if (!expiresAt) return 'Expires soon';
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    if (diff <= 0) return 'Expired';
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours <= 0) return `${minutes}m left`;
+    return `${hours}h ${minutes}m left`;
   };
 
   const handleUpdateProfileSettings = async (updates, successMessage) => {
@@ -375,9 +688,24 @@ const ProfileNew = () => {
     }
   };
 
-  const deleteSocialMedia = (index) => {
+  const disconnectSocialAccount = (providerKey) => {
+    showModal('confirm', 'Remove Connection', 'Remove this connected social account?', async () => {
+      try {
+        const { data } = await api.delete(`/users/social/${providerKey}`);
+        if (data?.user) {
+          setProfile(data.user);
+        }
+        showModal('success', 'Success', 'Connection removed!');
+      } catch (error) {
+        showModal('error', 'Error', error.response?.data?.message || 'Failed to remove connection');
+      }
+    });
+  };
+
+  const deleteCustomSocialMedia = (index) => {
     showModal('confirm', 'Delete Link', 'Delete this link?', async () => {
-      const updatedSocial = profile.socialMedia.filter((_, i) => i !== index);
+      const currentSocial = Array.isArray(profile?.socialMedia) ? profile.socialMedia : [];
+      const updatedSocial = currentSocial.filter((_, i) => i !== index);
       try {
         await api.put('/users/profile', { ...profile, socialMedia: updatedSocial });
         setProfile({ ...profile, socialMedia: updatedSocial });
@@ -422,7 +750,9 @@ const ProfileNew = () => {
     try {
       const redirectUri = provider === 'twitter'
         ? getTwitterRedirectUri()
-        : `${window.location.origin}/auth/${provider}/callback`;
+        : provider === 'facebook'
+          ? getFacebookRedirectUri()
+          : `${window.location.origin}/auth/${provider}/callback`;
       const { data } = await api.get(`/auth/${provider}/connect/start`, {
         params: { redirect_uri: redirectUri }
       });
@@ -596,7 +926,19 @@ const ProfileNew = () => {
                 {/* Avatar Section */}
                 <div className="flex flex-col items-center md:items-start lg:items-center mb-4 md:mb-0 lg:mb-4">
                   <div className="relative mb-3">
-                    <Avatar user={user} size="xl" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (hasActiveStatus) {
+                          setStatusViewerIndex(0);
+                          setShowStatusViewer(true);
+                        }
+                      }}
+                      className={`${hasActiveStatus ? 'cursor-pointer hover:opacity-90 transition' : 'cursor-default'}`}
+                      title={hasActiveStatus ? 'View status' : 'No active status'}
+                    >
+                      <Avatar user={avatarUser} size="xl" showStatusRing />
+                    </button>
                     {(imageUploading || imageDeleting) && (
                       <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center">
                         <ScaleLoader color="#fff" height={20} width={3} />
@@ -607,6 +949,15 @@ const ProfileNew = () => {
                         <FaTimes size={12} />
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={openCreateStatusComposer}
+                      disabled={statusSaving}
+                      className="absolute bottom-0 left-0 bg-emerald-600 text-white p-2 rounded-full hover:bg-emerald-700 disabled:opacity-60"
+                      title={statusSlotsRemaining > 0 ? 'Set status' : 'Status limit reached'}
+                    >
+                      {hasActiveStatus ? <FaEdit size={13} /> : <FaPlus size={13} />}
+                    </button>
                     <label className="absolute bottom-0 right-0 bg-indigo-600 text-white p-2 rounded-full cursor-pointer hover:bg-indigo-700">
                       <FaCamera />
                       <input type="file" onChange={handleImageUpload} className="hidden" accept="image/*" disabled={imageUploading || imageDeleting} />
@@ -622,9 +973,27 @@ const ProfileNew = () => {
                           <GoUnverified className="text-gray-400" size={20} />
                         )
                       )}
-                      {(user?.isGuest || user?.role === 'guest') && <GuestBadge size="lg" />}
+                     {(user?.isGuest || user?.role === 'guest') && <GuestBadge size="lg" />}
                     </div>
                     <p className="text-sm text-gray-500 dark:text-gray-400">{t('Member since')} {new Date(user?.createdAt).toLocaleDateString()}</p>
+                    <div className="mt-2 flex items-center justify-center md:justify-start lg:justify-center gap-2">
+                      <span className="text-xs text-[var(--text-secondary)]">
+                        {statuses.length}/{MAX_ACTIVE_STATUSES} active status
+                      </span>
+                      {hasActiveStatus && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatusViewerIndex(0);
+                            setShowStatusViewer(true);
+                          }}
+                          className="text-xs font-semibold text-[var(--brand-primary)] hover:opacity-80"
+                        >
+                          <FaEye className="inline mr-1" />
+                          View
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -688,6 +1057,109 @@ const ProfileNew = () => {
               </div>
             </div>
 
+            {/* Status Card */}
+            <div className="theme-panel rounded-3xl shadow-xl p-6 transition-all duration-300">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('My Status')}</h3>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    {statuses.length} active - {statusSlotsRemaining} slot{statusSlotsRemaining === 1 ? '' : 's'} left
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openCreateStatusComposer}
+                  disabled={statusSaving || statusSlotsRemaining <= 0}
+                  className="inline-flex items-center gap-2 bg-emerald-600 text-white px-3 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  <FaPlus size={12} />
+                  {t('Set Status')}
+                </button>
+              </div>
+
+              {statuses.length > 0 ? (
+                <div className="space-y-3">
+                  {statuses.map((status, index) => (
+                    <div
+                      key={status._id}
+                      className="rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)] p-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        {getStatusMediaType(status) === 'video' && getStatusMediaUrl(status) ? (
+                          <div className="relative h-14 w-14 rounded-lg overflow-hidden border border-[var(--border-default)] bg-black/80">
+                            <video
+                              src={getStatusMediaUrl(status)}
+                              className="h-full w-full object-cover"
+                              muted
+                              playsInline
+                            />
+                            <span className="absolute inset-0 flex items-center justify-center text-white/90">
+                              <FaVideo size={14} />
+                            </span>
+                          </div>
+                        ) : getStatusMediaType(status) === 'image' && getStatusMediaUrl(status) ? (
+                          <img
+                            src={getStatusMediaUrl(status)}
+                            alt="status"
+                            className="h-14 w-14 rounded-lg object-cover border border-[var(--border-default)]"
+                          />
+                        ) : (
+                          <div
+                            className="h-14 w-14 rounded-lg border border-[var(--border-default)] flex items-center justify-center text-[var(--text-secondary)]"
+                            style={{ backgroundColor: status.backgroundColor || '#1f2937' }}
+                          >
+                            <FaEdit size={14} className="text-white/90" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-[var(--text-primary)] line-clamp-2">
+                            {status.text || (getStatusMediaType(status) === 'video' ? 'Video status' : getStatusMediaType(status) === 'image' ? 'Image status' : 'Story status')}
+                          </p>
+                          <p className="text-xs text-[var(--text-secondary)] mt-1">
+                            {formatStatusTimeLeft(status.expiresAt)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStatusViewerIndex(index);
+                            setShowStatusViewer(true);
+                          }}
+                          className="flex-1 bg-[var(--surface-card)] border border-[var(--border-default)] text-[var(--text-primary)] px-3 py-2 rounded-lg hover:bg-[var(--surface-elevated)] text-sm font-semibold inline-flex items-center justify-center gap-2"
+                        >
+                          <FaEye size={12} />
+                          {t('View')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEditStatusComposer(status)}
+                          className="flex-1 bg-[var(--surface-card)] border border-[var(--border-default)] text-[var(--text-primary)] px-3 py-2 rounded-lg hover:bg-[var(--surface-elevated)] text-sm font-semibold inline-flex items-center justify-center gap-2"
+                        >
+                          <FaEdit size={12} />
+                          {t('Edit')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteStatus(status._id)}
+                          disabled={statusDeletingId === status._id}
+                          className="px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                          title={t('Delete')}
+                        >
+                          {statusDeletingId === status._id ? <SyncLoader color="#fff" size={5} /> : <FaTrash size={12} />}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-[var(--border-default)] bg-[var(--background-secondary)] p-4 text-center">
+                  <p className="text-sm text-[var(--text-secondary)]">{t('No active status yet. Add one to show your latest update.')}</p>
+                </div>
+              )}
+            </div>
+
             {/* Social Media Card */}
             <div className="theme-panel rounded-3xl shadow-xl p-6 transition-all duration-300">
               <div className="flex justify-between items-center mb-4">
@@ -738,19 +1210,29 @@ const ProfileNew = () => {
               )}
               
               <div className="grid gap-3">
-                {profile.socialMedia?.map((social, index) => (
-                  <div key={index} className="flex items-center justify-between gap-3 bg-[var(--background-secondary)] border border-[var(--border-default)] px-4 py-3 rounded-xl">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-base text-[var(--text-primary)] truncate">{social.name || 'Link'}</p>
-                      <a href={social.url} target="_blank" rel="noopener noreferrer" className="text-sm text-[var(--brand-primary)] hover:opacity-80 truncate block">{social.url}</a>
+                {connectedSocialAccounts.map((account) => (
+                  <div key={account.key} className="flex items-center justify-between gap-3 bg-[var(--background-secondary)] border border-[var(--border-default)] px-4 py-3 rounded-xl">
+                    <div className="min-w-0 flex items-center gap-3">
+                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-[var(--surface-card)] border border-[var(--border-default)]">
+                        {account.icon}
+                      </span>
+                      <p className="font-semibold text-base text-[var(--text-primary)] truncate">{account.label}</p>
                     </div>
-                    <button onClick={() => deleteSocialMedia(index)} className="text-red-600 hover:text-red-800 shrink-0" aria-label={`Delete ${social.name || 'social link'}`}>
+                    <button
+                      onClick={() =>
+                        account.actionType === 'provider'
+                          ? disconnectSocialAccount(account.providerKey)
+                          : deleteCustomSocialMedia(account.socialIndex)
+                      }
+                      className="text-red-600 hover:text-red-800 shrink-0"
+                      aria-label={`Delete ${account.label} connection`}
+                    >
                       <FaTrash size={16} />
                     </button>
                   </div>
                 ))}
-                {(!profile.socialMedia || profile.socialMedia.length === 0) && (
-                  <p className="text-[var(--text-secondary)] text-sm text-center py-4">{t('No links added')}</p>
+                {connectedSocialAccounts.length === 0 && (
+                  <p className="text-[var(--text-secondary)] text-sm text-center py-4">{t('No connected accounts')}</p>
                 )}
               </div>
             </div>
@@ -1318,6 +1800,183 @@ const ProfileNew = () => {
         profileUrl={`${window.location.origin}/user/${user._id}`}
         username={user.username}
       />
+
+      {/* Status Composer Modal */}
+      {showStatusComposer && (
+        <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-[70] p-4">
+          <div className="theme-modal-card rounded-2xl p-6 max-w-lg w-full">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-[var(--text-primary)]">
+                {editingStatusId ? t('Edit Status') : t('Set Status')}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowStatusComposer(false);
+                  resetStatusComposer();
+                }}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              >
+                <FaTimes size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleStatusSave} className="space-y-4">
+              <textarea
+                value={statusForm.text}
+                onChange={(e) => setStatusForm((prev) => ({ ...prev, text: e.target.value }))}
+                placeholder={t('Share a quick update...')}
+                rows="4"
+                className="w-full px-4 py-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--brand-primary)] focus:outline-none"
+              />
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                  Background
+                  <input
+                    type="color"
+                    value={statusForm.backgroundColor}
+                    onChange={(e) => setStatusForm((prev) => ({ ...prev, backgroundColor: e.target.value }))}
+                    className="h-10 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)]"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                  Text Color
+                  <input
+                    type="color"
+                    value={statusForm.textColor}
+                    onChange={(e) => setStatusForm((prev) => ({ ...prev, textColor: e.target.value }))}
+                    className="h-10 w-full rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)]"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                  Font
+                  <select
+                    value={statusForm.fontFamily}
+                    onChange={(e) => setStatusForm((prev) => ({ ...prev, fontFamily: e.target.value }))}
+                    className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
+                  >
+                    <option value="Inter">Inter</option>
+                    <option value="Playfair Display">Playfair</option>
+                    <option value="DM Sans">DM Sans</option>
+                    <option value="Space Grotesk">Space Grotesk</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                  Alignment
+                  <select
+                    value={statusForm.textAlign}
+                    onChange={(e) => setStatusForm((prev) => ({ ...prev, textAlign: e.target.value }))}
+                    className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
+                  >
+                    <option value="left">Left</option>
+                    <option value="center">Center</option>
+                    <option value="right">Right</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                  Duration (sec)
+                  <input
+                    type="number"
+                    min="3"
+                    max="30"
+                    value={statusForm.durationSec}
+                    onChange={(e) => setStatusForm((prev) => ({ ...prev, durationSec: Math.max(3, Math.min(30, Number(e.target.value) || 7)) }))}
+                    className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
+                  />
+                </label>
+              </div>
+
+              {statusForm.mediaPreview && (
+                <div className="rounded-xl overflow-hidden border border-[var(--border-default)] bg-[var(--background-secondary)]">
+                  {statusForm.mediaType === 'video' ? (
+                    <video src={statusForm.mediaPreview} className="w-full max-h-64 object-cover" controls playsInline />
+                  ) : (
+                    <img src={statusForm.mediaPreview} alt="Status preview" className="w-full max-h-64 object-cover" />
+                  )}
+                </div>
+              )}
+
+              {!statusForm.mediaPreview && (
+                <div
+                  className="rounded-xl border border-[var(--border-default)] min-h-[180px] flex items-center justify-center p-6"
+                  style={{ backgroundColor: statusForm.backgroundColor }}
+                >
+                  <p
+                    className="text-lg"
+                    style={{
+                      color: statusForm.textColor,
+                      fontFamily: statusForm.fontFamily,
+                      textAlign: statusForm.textAlign,
+                      width: '100%',
+                    }}
+                  >
+                    {statusForm.text || 'Story text preview'}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-3">
+                <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--surface-card)] border border-[var(--border-default)] text-[var(--text-primary)] cursor-pointer hover:bg-[var(--surface-elevated)]">
+                  {statusForm.mediaType === 'video' ? <FaVideo size={14} /> : <FaCamera size={14} />}
+                  {statusForm.mediaPreview ? t('Change Media') : t('Add Image/Video')}
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*,video/*"
+                    onChange={handleStatusMediaChange}
+                  />
+                </label>
+                {statusForm.mediaPreview && statusForm.mediaPreview.startsWith('blob:') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      URL.revokeObjectURL(statusForm.mediaPreview);
+                      setStatusForm((prev) => ({ ...prev, mediaFile: null, mediaPreview: '', mediaType: 'text' }));
+                    }}
+                    className="text-sm font-semibold text-red-600 hover:text-red-700"
+                  >
+                    {t('Remove Selected')}
+                  </button>
+                )}
+              </div>
+
+              <p className="text-xs text-[var(--text-secondary)]">
+                {t('Statuses expire automatically after 24 hours.')}
+              </p>
+
+              <div className="flex gap-3">
+                <button
+                  type="submit"
+                  disabled={statusSaving}
+                  className="flex-1 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {statusSaving ? <SyncLoader color="#fff" size={7} /> : editingStatusId ? t('Update Status') : t('Post Status')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowStatusComposer(false);
+                    resetStatusComposer();
+                  }}
+                  className="flex-1 theme-soft-button px-4 py-2 rounded-lg"
+                >
+                  {t('Cancel')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showStatusViewer && statuses.length > 0 && (
+        <StatusViewer
+          statuses={statuses}
+          initialIndex={statusViewerIndex}
+          onClose={() => setShowStatusViewer(false)}
+          userName={user?.username || t('User')}
+        />
+      )}
     </div>
   );
 };

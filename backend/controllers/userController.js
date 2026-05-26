@@ -8,6 +8,26 @@ const generateApiKey = require('../utils/generateApiKey');
 const cloudinary = require('../utils/cloudinary');
 const { enqueueEmailJob } = require('../jobs/queueService');
 
+const SOCIAL_PROVIDER_DOMAIN_MATCHERS = {
+  google: ['google.com', 'accounts.google.com'],
+  facebook: ['facebook.com', 'fb.com'],
+  twitter: ['twitter.com', 'x.com'],
+  linkedin: ['linkedin.com'],
+  github: ['github.com'],
+};
+
+const SOCIAL_OAUTH_PROVIDERS = new Set(['google', 'facebook', 'twitter']);
+
+const normalizeSocialValue = (value = '') => String(value || '').trim().toLowerCase();
+
+const doesSocialEntryMatchProvider = (entry, provider) => {
+  const key = normalizeSocialValue(provider);
+  const domains = SOCIAL_PROVIDER_DOMAIN_MATCHERS[key] || [];
+  const nameValue = normalizeSocialValue(entry?.name);
+  const urlValue = normalizeSocialValue(entry?.url);
+  return domains.some((domain) => nameValue.includes(domain) || urlValue.includes(domain));
+};
+
 // Get user profile
 exports.getProfile = async (req, res) => {
   try {
@@ -60,6 +80,58 @@ exports.getProfile = async (req, res) => {
   } catch (error) {
     console.error('Error in getProfile:', error);
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Disconnect social provider and remove linked social URL entries.
+exports.disconnectSocialProvider = async (req, res) => {
+  try {
+    const provider = normalizeSocialValue(req.params.provider);
+    const allowedProviders = Object.keys(SOCIAL_PROVIDER_DOMAIN_MATCHERS);
+
+    if (!allowedProviders.includes(provider)) {
+      return res.status(400).json({ success: false, message: 'Unsupported social provider' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const originalSocial = Array.isArray(user.socialMedia) ? user.socialMedia : [];
+    const nextSocial = originalSocial.filter((entry) => !doesSocialEntryMatchProvider(entry, provider));
+    let changed = nextSocial.length !== originalSocial.length;
+
+    if (SOCIAL_OAUTH_PROVIDERS.has(provider)) {
+      const currentProviderId = String(user?.oauthProviders?.[provider]?.id || '').trim();
+      if (currentProviderId) {
+        user.oauthProviders = {
+          ...(user.oauthProviders || {}),
+          google: { id: provider === 'google' ? '' : user?.oauthProviders?.google?.id || '' },
+          facebook: { id: provider === 'facebook' ? '' : user?.oauthProviders?.facebook?.id || '' },
+          twitter: { id: provider === 'twitter' ? '' : user?.oauthProviders?.twitter?.id || '' },
+        };
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      return res.status(404).json({ success: false, message: 'Provider is not connected' });
+    }
+
+    user.socialMedia = nextSocial;
+    await user.save();
+
+    const safeUser = user.toObject();
+    delete safeUser.password;
+
+    return res.json({
+      success: true,
+      message: `${provider} disconnected successfully`,
+      user: safeUser,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -455,14 +527,97 @@ exports.updateUsername = async (req, res) => {
   }
 };
 
+const clampStatusDuration = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 7;
+  return Math.max(3, Math.min(30, Math.floor(parsed)));
+};
+
+const extractCloudinaryPublicId = (url) => {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    const pathParts = parsed.pathname.split('/').filter(Boolean);
+    const uploadIndex = pathParts.findIndex((part) => part === 'upload');
+    if (uploadIndex < 0) return '';
+
+    let publicIdParts = pathParts.slice(uploadIndex + 1);
+    if (publicIdParts[0] && /^v\d+$/.test(publicIdParts[0])) {
+      publicIdParts = publicIdParts.slice(1);
+    }
+
+    const fullPath = publicIdParts.join('/');
+    return fullPath.replace(/\.[^/.]+$/, '');
+  } catch (error) {
+    return '';
+  }
+};
+
+const resolveStatusPublicId = (status) => {
+  if (status?.mediaPublicId) return status.mediaPublicId;
+  return extractCloudinaryPublicId(status?.video || status?.image || '');
+};
+
+const destroyStatusMedia = async (status) => {
+  const publicId = resolveStatusPublicId(status);
+  if (!publicId) return;
+
+  const isVideo = status?.mediaType === 'video' || Boolean(status?.video);
+  try {
+    await cloudinary.uploader.destroy(publicId, isVideo ? { resource_type: 'video' } : {});
+  } catch (error) {
+    console.log('Status media not found on Cloudinary');
+  }
+};
+
+const uploadStatusMedia = async (file) => {
+  const isVideo = String(file?.mimetype || '').startsWith('video/');
+  const uploadOptions = isVideo
+    ? {
+        folder: 'blog-status/videos',
+        resource_type: 'video',
+      }
+    : {
+        folder: 'blog-status/images',
+        resource_type: 'image',
+        transformation: [
+          { width: 1080, height: 1920, crop: 'limit' },
+          { quality: 'auto' },
+        ],
+      };
+
+  const result = await new Promise((resolve, reject) => {
+    cloudinary.uploader.upload_stream(uploadOptions, (error, uploaded) => {
+      if (error) reject(error);
+      else resolve(uploaded);
+    }).end(file.buffer);
+  });
+
+  return {
+    mediaType: isVideo ? 'video' : 'image',
+    mediaUrl: result.secure_url,
+    mediaPublicId: result.public_id,
+  };
+};
+
 // Create status
 exports.createStatus = async (req, res) => {
   try {
-    const { text } = req.body;
+    const {
+      text,
+      backgroundColor,
+      textColor,
+      fontFamily,
+      textAlign,
+      durationSec,
+    } = req.body;
     let imageUrl = '';
+    let videoUrl = '';
+    let mediaType = 'text';
+    let mediaPublicId = '';
 
     if (!text && !req.file) {
-      return res.status(400).json({ success: false, message: 'Please provide text or image' });
+      return res.status(400).json({ success: false, message: 'Please provide text, image, or video' });
     }
 
     const user = await User.findById(req.user._id);
@@ -473,24 +628,16 @@ exports.createStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Maximum 5 active statuses allowed' });
     }
 
-    // Upload image if provided
+    // Upload media if provided
     if (req.file) {
-      const result = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
-          {
-            folder: 'blog-status',
-            transformation: [
-              { width: 1080, height: 1920, crop: 'limit' },
-              { quality: 'auto' }
-            ]
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        ).end(req.file.buffer);
-      });
-      imageUrl = result.secure_url;
+      const uploadResult = await uploadStatusMedia(req.file);
+      mediaType = uploadResult.mediaType;
+      mediaPublicId = uploadResult.mediaPublicId;
+      if (mediaType === 'video') {
+        videoUrl = uploadResult.mediaUrl;
+      } else {
+        imageUrl = uploadResult.mediaUrl;
+      }
     }
 
     const now = new Date();
@@ -499,13 +646,22 @@ exports.createStatus = async (req, res) => {
     user.statuses.push({
       text: text || '',
       image: imageUrl,
+      video: videoUrl,
+      mediaType,
+      mediaPublicId,
+      backgroundColor: String(backgroundColor || '#1f2937'),
+      textColor: String(textColor || '#ffffff'),
+      fontFamily: String(fontFamily || 'Inter'),
+      textAlign: ['left', 'center', 'right'].includes(textAlign) ? textAlign : 'center',
+      durationSec: clampStatusDuration(durationSec),
       createdAt: now,
       expiresAt
     });
 
     await user.save();
 
-    res.json({ success: true, statuses: user.statuses });
+    const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
+    res.json({ success: true, statuses: activeStatuses });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -522,14 +678,7 @@ exports.getStatuses = async (req, res) => {
     // Clean up expired statuses
     const expiredStatuses = user.statuses.filter(s => new Date() >= new Date(s.expiresAt));
     for (const status of expiredStatuses) {
-      if (status.image && status.image.includes('cloudinary')) {
-        const publicId = status.image.split('/').pop().split('.')[0];
-        try {
-          await cloudinary.uploader.destroy(`blog-status/${publicId}`);
-        } catch (err) {
-          console.log('Status image not found on Cloudinary');
-        }
-      }
+      await destroyStatusMedia(status);
     }
 
     user.statuses = activeStatuses;
@@ -545,7 +694,14 @@ exports.getStatuses = async (req, res) => {
 exports.updateStatus = async (req, res) => {
   try {
     const { statusId } = req.params;
-    const { text } = req.body;
+    const {
+      text,
+      backgroundColor,
+      textColor,
+      fontFamily,
+      textAlign,
+      durationSec,
+    } = req.body;
 
     const user = await User.findById(req.user._id);
     const status = user.statuses.id(statusId);
@@ -558,41 +714,45 @@ exports.updateStatus = async (req, res) => {
     if (text !== undefined) {
       status.text = text;
     }
+    if (backgroundColor !== undefined) {
+      status.backgroundColor = String(backgroundColor || '#1f2937');
+    }
+    if (textColor !== undefined) {
+      status.textColor = String(textColor || '#ffffff');
+    }
+    if (fontFamily !== undefined) {
+      status.fontFamily = String(fontFamily || 'Inter');
+    }
+    if (textAlign !== undefined) {
+      status.textAlign = ['left', 'center', 'right'].includes(textAlign) ? textAlign : 'center';
+    }
+    if (durationSec !== undefined) {
+      status.durationSec = clampStatusDuration(durationSec);
+    }
 
-    // Update image if new one provided
+    // Update media if new one provided
     if (req.file) {
-      // Delete old image from Cloudinary
-      if (status.image && status.image.includes('cloudinary')) {
-        const publicId = status.image.split('/').pop().split('.')[0];
-        try {
-          await cloudinary.uploader.destroy(`blog-status/${publicId}`);
-        } catch (err) {
-          console.log('Old status image not found on Cloudinary');
-        }
-      }
+      await destroyStatusMedia(status);
 
-      // Upload new image
-      const result = await new Promise((resolve, reject) => {
-        cloudinary.uploader.upload_stream(
-          {
-            folder: 'blog-status',
-            transformation: [
-              { width: 1080, height: 1920, crop: 'limit' },
-              { quality: 'auto' }
-            ]
-          },
-          (error, result) => {
-            if (error) reject(error);
-            else resolve(result);
-          }
-        ).end(req.file.buffer);
-      });
-      status.image = result.secure_url;
+      const uploadResult = await uploadStatusMedia(req.file);
+      status.mediaType = uploadResult.mediaType;
+      status.mediaPublicId = uploadResult.mediaPublicId;
+      if (uploadResult.mediaType === 'video') {
+        status.video = uploadResult.mediaUrl;
+        status.image = '';
+      } else {
+        status.image = uploadResult.mediaUrl;
+        status.video = '';
+      }
+    } else if (!status.image && !status.video) {
+      status.mediaType = 'text';
+      status.mediaPublicId = '';
     }
 
     await user.save();
 
-    res.json({ success: true, statuses: user.statuses });
+    const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
+    res.json({ success: true, statuses: activeStatuses });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -610,20 +770,13 @@ exports.deleteStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Status not found' });
     }
 
-    // Delete image from Cloudinary
-    if (status.image && status.image.includes('cloudinary')) {
-      const publicId = status.image.split('/').pop().split('.')[0];
-      try {
-        await cloudinary.uploader.destroy(`blog-status/${publicId}`);
-      } catch (err) {
-        console.log('Status image not found on Cloudinary');
-      }
-    }
+    await destroyStatusMedia(status);
 
     user.statuses.pull(statusId);
     await user.save();
 
-    res.json({ success: true, statuses: user.statuses });
+    const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
+    res.json({ success: true, statuses: activeStatuses });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

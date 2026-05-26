@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { FaHeart, FaRegHeart } from 'react-icons/fa';
 import { getArticlePath } from '../utils/contentRoutes';
+import Avatar from './Avatar';
 
 const ArticleCard = ({ article, index = 0, onLike, onTagClick }) => {
   const [isLiked, setIsLiked] = React.useState(false);
@@ -104,13 +105,7 @@ const ArticleCard = ({ article, index = 0, onLike, onTagClick }) => {
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', borderTop: '1px solid rgba(184,150,12,0.2)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {article.author?.profileImage && (
-              <img
-                src={article.author.profileImage}
-                alt={article.author.username}
-                style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }}
-              />
-            )}
+            <Avatar user={article.author} size="sm" showStatusRing />
             <div>
               <p style={{ fontFamily: 'var(--font-primary)', fontSize: '13px', fontWeight: 600, color: 'var(--art-text)' }}>
                 {article.author?.username}

@@ -16,10 +16,12 @@ const {
   getStatuses,
   updateStatus,
   deleteStatus,
-  guestLogout
+  guestLogout,
+  disconnectSocialProvider,
 } = require('../controllers/userController');
 const { protect, optionalAuth } = require('../middleware/auth');
 const upload = require('../utils/fileUpload');
+const statusUpload = require('../utils/statusUpload');
 const trackActivity = require('../middleware/trackActivity');
 
 const router = express.Router();
@@ -36,9 +38,10 @@ router.post('/api-keys', protect, generateApiKey);
 router.get('/api-keys', protect, getApiKeys);
 router.delete('/api-keys/:keyId', protect, revokeApiKey);
 router.put('/username', protect, updateUsername);
-router.post('/statuses', protect, trackActivity, upload.single('statusImage'), createStatus);
+router.delete('/social/:provider', protect, disconnectSocialProvider);
+router.post('/statuses', protect, trackActivity, statusUpload.single('statusMedia'), createStatus);
 router.get('/statuses', protect, getStatuses);
-router.put('/statuses/:statusId', protect, trackActivity, upload.single('statusImage'), updateStatus);
+router.put('/statuses/:statusId', protect, trackActivity, statusUpload.single('statusMedia'), updateStatus);
 router.delete('/statuses/:statusId', protect, trackActivity, deleteStatus);
 router.post('/guest-logout', protect, guestLogout);
 router.post('/contact', protect, async (req, res) => {

@@ -616,6 +616,42 @@
   animation: shimmer-wave 3s linear infinite;
 }
 
+@keyframes status-name-shimmer-wave {
+  0% {
+    background-position: 220% center;
+  }
+  100% {
+    background-position: -220% center;
+  }
+}
+
+.status-name-shimmer {
+  position: relative;
+  display: inline-block;
+  color: var(--text-primary);
+}
+
+.status-name-shimmer::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: linear-gradient(
+    45deg,
+    transparent 0%,
+    transparent 44%,
+    var(--brand-primary) 50%,
+    transparent 56%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: status-name-shimmer-wave 3.6s linear infinite;
+  pointer-events: none;
+}
+
 @keyframes water-wave {
   0% {
     box-shadow: 0 0 0 0 rgb(var(--success-rgb) / 0.7),

@@ -1,22 +1,109 @@
 import React, { useEffect, useState } from 'react';
 import { FaLock, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 
+const KNOWN_SOCIAL_PROVIDERS = [
+  { key: 'google', label: 'Google', aliases: ['google.com', 'accounts.google.com', 'google'] },
+  { key: 'facebook', label: 'Facebook', aliases: ['facebook.com', 'fb.com', 'facebook'] },
+  { key: 'twitter', label: 'Twitter', aliases: ['twitter.com', 'x.com', 'twitter', 'x'] },
+  { key: 'linkedin', label: 'LinkedIn', aliases: ['linkedin.com', 'linkedin'] },
+  { key: 'github', label: 'GitHub', aliases: ['github.com', 'github'] },
+];
+
 const DEFAULT_PRIVACY = {
   profileVisibility: 'public',
   showEmail: true,
   showPhone: true,
-  showSocialLinks: true,
+  socialLinkVisibility: {},
   allowMessages: true,
+};
+
+const normalizeText = (value = '') => String(value || '').trim().toLowerCase();
+
+const slugify = (value = '') =>
+  normalizeText(value)
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const parseHostname = (rawUrl = '') => {
+  const value = String(rawUrl || '').trim();
+  if (!value) return '';
+
+  try {
+    return new URL(value).hostname.toLowerCase().replace(/^www\./, '');
+  } catch (error) {
+    try {
+      return new URL(`https://${value}`).hostname.toLowerCase().replace(/^www\./, '');
+    } catch (nestedError) {
+      return '';
+    }
+  }
+};
+
+const findKnownProvider = (name = '', url = '') => {
+  const lookup = `${normalizeText(name)} ${normalizeText(url)}`;
+  return KNOWN_SOCIAL_PROVIDERS.find((provider) =>
+    provider.aliases.some((alias) => lookup.includes(alias))
+  );
+};
+
+const buildPrivacyOptionFromSocialEntry = (entry = {}) => {
+  const name = String(entry?.name || '').trim();
+  const url = String(entry?.url || '').trim();
+  const knownProvider = findKnownProvider(name, url);
+  if (knownProvider) {
+    return { key: knownProvider.key, label: `${knownProvider.label} links` };
+  }
+
+  const host = parseHostname(url);
+  if (host) {
+    return { key: `domain:${host}`, label: `${host} links` };
+  }
+
+  const fallbackName = name || 'website';
+  return {
+    key: `name:${slugify(fallbackName) || 'website'}`,
+    label: `${fallbackName} links`,
+  };
+};
+
+const buildPrivacyOptions = (profile = {}) => {
+  const optionsMap = new Map();
+  const socialMedia = Array.isArray(profile?.socialMedia) ? profile.socialMedia : [];
+
+  socialMedia.forEach((entry) => {
+    const option = buildPrivacyOptionFromSocialEntry(entry);
+    optionsMap.set(option.key, option);
+  });
+
+  const oauthProviders = profile?.oauthProviders || {};
+  KNOWN_SOCIAL_PROVIDERS.forEach((provider) => {
+    const isLinkedByOauth = Boolean(String(oauthProviders?.[provider.key]?.id || '').trim());
+    if (!isLinkedByOauth) return;
+    optionsMap.set(provider.key, { key: provider.key, label: `${provider.label} links` });
+  });
+
+  return Array.from(optionsMap.values());
 };
 
 const PrivacySettings = ({ profile, onUpdate }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [settings, setSettings] = useState(DEFAULT_PRIVACY);
+  const privacyOptions = buildPrivacyOptions(profile);
 
   useEffect(() => {
+    const rawVisibilityMap = profile?.privacy?.socialLinkVisibility;
+    const normalizedVisibilityMap =
+      rawVisibilityMap && typeof rawVisibilityMap.get === 'function'
+        ? Object.fromEntries(rawVisibilityMap.entries())
+        : (rawVisibilityMap || {});
+
     setSettings({
       ...DEFAULT_PRIVACY,
       ...(profile?.privacy || {}),
+      socialLinkVisibility: {
+        ...DEFAULT_PRIVACY.socialLinkVisibility,
+        ...normalizedVisibilityMap,
+      },
     });
   }, [profile?.privacy]);
 
@@ -98,11 +185,28 @@ const PrivacySettings = ({ profile, onUpdate }) => {
             onChange={(next) => setSettings((prev) => ({ ...prev, showPhone: next }))}
           />
 
-          <ToggleRow
-            label="Show Social Media Links"
-            checked={settings.showSocialLinks}
-            onChange={(next) => setSettings((prev) => ({ ...prev, showSocialLinks: next }))}
-          />
+          {privacyOptions.length > 0 ? (
+            privacyOptions.map((option) => (
+              <ToggleRow
+                key={option.key}
+                label={`Show ${option.label}`}
+                checked={settings?.socialLinkVisibility?.[option.key] !== false}
+                onChange={(next) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    socialLinkVisibility: {
+                      ...(prev?.socialLinkVisibility || {}),
+                      [option.key]: next,
+                    },
+                  }))
+                }
+              />
+            ))
+          ) : (
+            <p className="text-xs text-[var(--text-secondary)] px-1 py-2">
+              No social links connected yet.
+            </p>
+          )}
 
           <ToggleRow
             label="Allow Messages"

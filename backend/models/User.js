@@ -38,6 +38,15 @@ const userSchema = new mongoose.Schema({
     showEmail: { type: Boolean, default: true },
     showPhone: { type: Boolean, default: true },
     showSocialLinks: { type: Boolean, default: true },
+    showFacebookLinks: { type: Boolean, default: true },
+    showTwitterLinks: { type: Boolean, default: true },
+    showLinkedInLinks: { type: Boolean, default: true },
+    showGitHubLinks: { type: Boolean, default: true },
+    socialLinkVisibility: {
+      type: Map,
+      of: Boolean,
+      default: {},
+    },
     allowMessages: { type: Boolean, default: true },
   },
   emailNotifications: {
@@ -58,6 +67,14 @@ const userSchema = new mongoose.Schema({
   statuses: [{
     text: { type: String, default: '' },
     image: { type: String, default: '' },
+    video: { type: String, default: '' },
+    mediaType: { type: String, enum: ['text', 'image', 'video'], default: 'text' },
+    mediaPublicId: { type: String, default: '' },
+    backgroundColor: { type: String, default: '#1f2937' },
+    textColor: { type: String, default: '#ffffff' },
+    fontFamily: { type: String, default: 'Inter' },
+    textAlign: { type: String, enum: ['left', 'center', 'right'], default: 'center' },
+    durationSec: { type: Number, default: 7, min: 3, max: 30 },
     createdAt: { type: Date, default: Date.now },
     expiresAt: { type: Date }
   }],

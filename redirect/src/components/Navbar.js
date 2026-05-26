@@ -60,6 +60,18 @@ const Navbar = () => {
           'Content-Type': 'application/json'
         }
       });
+
+      if (!response.ok) {
+        setUnreadCount(0);
+        return;
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        setUnreadCount(0);
+        return;
+      }
+
       const data = await response.json();
       setUnreadCount(data.unreadCount || 0);
     } catch (error) {

@@ -24,6 +24,19 @@ const getTwitterRedirectUri = () => {
   return `${window.location.origin}/auth/twitter/callback`;
 };
 
+const getFacebookRedirectUri = () => {
+  const configured = String(process.env.REACT_APP_FACEBOOK_REDIRECT_URI || '').trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+    } catch (error) {
+      console.warn('Invalid REACT_APP_FACEBOOK_REDIRECT_URI, falling back to current origin.');
+    }
+  }
+  return `${window.location.origin}/auth/facebook/callback`;
+};
+
 const Login = () => {
   const { t } = useTranslation();
   const [username, setUsername] = useState('');
@@ -230,7 +243,7 @@ const Login = () => {
 
   const handleFacebookLoginRedirect = () => {
     const apiBase = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
-    const redirectUri = `${window.location.origin}/auth/facebook/callback`;
+    const redirectUri = getFacebookRedirectUri();
     const oauthStartUrl = `${apiBase}/api/auth/facebook/start?redirect_uri=${encodeURIComponent(redirectUri)}`;
     sessionStorage.removeItem('socialConnectIntent');
     window.location.href = oauthStartUrl;

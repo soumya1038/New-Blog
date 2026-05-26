@@ -22,6 +22,7 @@ import { captureFrontendException } from './utils/sentry';
 
 const Home = lazy(() => import('./pages/Home'));
 const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
 const CreateBlog = lazy(() => import('./pages/CreateBlog'));
 const EditBlog = lazy(() => import('./pages/EditBlog'));
 const BlogDetail = lazy(() => import('./pages/BlogDetail'));
@@ -379,8 +380,8 @@ function AppContent() {
         <Suspense fallback={<LoadingFallback />}>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/login" element={<Login initialTab="login" />} />
-            <Route path="/register" element={<Login initialTab="register" />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
             <Route path="/create" element={<CreateBlog />} />
             <Route path="/edit/:id" element={<EditBlog />} />
             <Route path="/blog/:id" element={<BlogDetail />} />

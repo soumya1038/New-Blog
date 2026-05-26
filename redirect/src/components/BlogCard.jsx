@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { FaHeart, FaRegHeart } from 'react-icons/fa';
 import { getBlogPath } from '../utils/contentRoutes';
+import Avatar from './Avatar';
 
 const BlogCard = ({ blog, index = 0, onLike, onTagClick }) => {
   const [isLiked, setIsLiked] = React.useState(false);
@@ -104,13 +105,7 @@ const BlogCard = ({ blog, index = 0, onLike, onTagClick }) => {
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '14px', borderTop: '1px solid rgba(37,99,235,0.15)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {blog.author?.profileImage && (
-              <img
-                src={blog.author.profileImage}
-                alt={blog.author.username}
-                style={{ width: '30px', height: '30px', borderRadius: '50%', objectFit: 'cover' }}
-              />
-            )}
+            <Avatar user={blog.author} size="sm" showStatusRing />
             <div>
               <p style={{ fontFamily: 'var(--font-primary)', fontSize: '13px', fontWeight: 600, color: 'var(--blog-text)' }}>
                 {blog.author?.username}

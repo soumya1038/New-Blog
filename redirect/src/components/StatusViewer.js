@@ -1,106 +1,219 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FaTimes, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
 
-const StatusViewer = ({ statuses, onClose, userName }) => {
-  const [currentIndex, setCurrentIndex] = useState(0);
+const clampDurationSec = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 7;
+  return Math.max(3, Math.min(30, Math.floor(parsed)));
+};
+
+const getMediaType = (status) => {
+  if (!status) return 'text';
+  if (status.mediaType) return status.mediaType;
+  if (status.video) return 'video';
+  if (status.image) return 'image';
+  return 'text';
+};
+
+const getMediaUrl = (status) => {
+  if (!status) return '';
+  return status.video || status.image || '';
+};
+
+const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) => {
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const safeIndex = Number.isInteger(initialIndex) ? initialIndex : 0;
+    return Math.max(0, Math.min(safeIndex, Math.max(0, statuses.length - 1)));
+  });
   const [progress, setProgress] = useState(0);
+  const videoRef = useRef(null);
+
+  const currentStatus = statuses[currentIndex] || null;
+  const currentMediaType = useMemo(() => getMediaType(currentStatus), [currentStatus]);
+  const currentMediaUrl = useMemo(() => getMediaUrl(currentStatus), [currentStatus]);
+  const currentDurationMs = useMemo(
+    () => clampDurationSec(currentStatus?.durationSec) * 1000,
+    [currentStatus?.durationSec]
+  );
+  const isVideoStatus = currentMediaType === 'video' && Boolean(currentMediaUrl);
 
   useEffect(() => {
+    if (statuses.length === 0) return;
+    const safeIndex = Number.isInteger(initialIndex) ? initialIndex : 0;
+    const nextIndex = Math.max(0, Math.min(safeIndex, Math.max(0, statuses.length - 1)));
+    setCurrentIndex(nextIndex);
+    setProgress(0);
+  }, [initialIndex, statuses.length]);
+
+  const handleNext = useCallback(() => {
+    setCurrentIndex((prevIndex) => {
+      if (prevIndex < statuses.length - 1) {
+        return prevIndex + 1;
+      }
+      onClose();
+      return prevIndex;
+    });
+    setProgress(0);
+  }, [onClose, statuses.length]);
+
+  const handlePrev = useCallback(() => {
+    setCurrentIndex((prevIndex) => {
+      if (prevIndex > 0) {
+        return prevIndex - 1;
+      }
+      return prevIndex;
+    });
+    setProgress(0);
+  }, []);
+
+  useEffect(() => {
+    if (!currentStatus || isVideoStatus) return undefined;
+
+    const startedAt = Date.now();
     const timer = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          handleNext();
-          return 0;
-        }
-        return prev + 2;
-      });
+      const elapsedMs = Date.now() - startedAt;
+      const nextProgress = Math.min(100, (elapsedMs / currentDurationMs) * 100);
+      setProgress(nextProgress);
+
+      if (elapsedMs >= currentDurationMs) {
+        clearInterval(timer);
+        handleNext();
+      }
     }, 100);
 
     return () => clearInterval(timer);
-  }, [currentIndex]);
+  }, [currentStatus, currentDurationMs, handleNext, isVideoStatus]);
 
-  const handleNext = () => {
-    if (currentIndex < statuses.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      setProgress(0);
-    } else {
-      onClose();
+  useEffect(() => {
+    if (!currentStatus || !isVideoStatus) return undefined;
+
+    const videoEl = videoRef.current;
+    if (!videoEl) return undefined;
+
+    const updateFromPlayback = () => {
+      const mediaDurationMs =
+        Number.isFinite(videoEl.duration) && videoEl.duration > 0
+          ? videoEl.duration * 1000
+          : currentDurationMs;
+      const playedMs = Math.max(0, videoEl.currentTime * 1000);
+      setProgress(Math.min(100, (playedMs / mediaDurationMs) * 100));
+    };
+
+    const onLoadedMetadata = () => {
+      updateFromPlayback();
+      videoEl.play().catch(() => {
+        // Ignore autoplay failures; user can still navigate manually.
+      });
+    };
+
+    const onTimeUpdate = () => {
+      updateFromPlayback();
+    };
+
+    const onEnded = () => {
+      setProgress(100);
+      handleNext();
+    };
+
+    videoEl.addEventListener('loadedmetadata', onLoadedMetadata);
+    videoEl.addEventListener('timeupdate', onTimeUpdate);
+    videoEl.addEventListener('ended', onEnded);
+
+    if (videoEl.readyState >= 1) {
+      onLoadedMetadata();
     }
-  };
 
-  const handlePrev = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
-      setProgress(0);
-    }
-  };
+    return () => {
+      videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
+      videoEl.removeEventListener('timeupdate', onTimeUpdate);
+      videoEl.removeEventListener('ended', onEnded);
+    };
+  }, [currentStatus, currentDurationMs, handleNext, isVideoStatus]);
 
-  const currentStatus = statuses[currentIndex];
+  if (!currentStatus) return null;
 
   return (
-    <div className="fixed inset-0 bg-black z-50 flex items-center justify-center">
-      {/* Progress bars */}
+    <div className="fixed inset-0 bg-black/95 backdrop-blur-sm z-50 flex items-center justify-center">
       <div className="absolute top-4 left-4 right-4 flex gap-1 z-10">
         {statuses.map((_, idx) => (
           <div key={idx} className="flex-1 h-1 bg-white/30 rounded-full overflow-hidden">
-            <div 
+            <div
               className="h-full bg-white transition-all duration-100"
-              style={{ width: idx === currentIndex ? `${progress}%` : idx < currentIndex ? '100%' : '0%' }}
+              style={{
+                width: idx === currentIndex ? `${progress}%` : idx < currentIndex ? '100%' : '0%',
+              }}
             />
           </div>
         ))}
       </div>
 
-      {/* Close button */}
-      <button
-        onClick={onClose}
-        className="absolute top-4 right-4 text-white z-10 hover:opacity-80"
-      >
+      <button onClick={onClose} className="absolute top-4 right-4 text-white z-10 hover:opacity-80">
         <FaTimes size={24} />
       </button>
 
-      {/* User info */}
       <div className="absolute top-12 left-4 text-white z-10">
         <p className="font-semibold">{userName}</p>
         <p className="text-xs opacity-80">
-          {new Date(currentStatus.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {new Date(currentStatus.createdAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
         </p>
       </div>
 
-      {/* Navigation */}
       {currentIndex > 0 && (
-        <button
-          onClick={handlePrev}
-          className="absolute left-4 text-white z-10 hover:opacity-80"
-        >
+        <button onClick={handlePrev} className="absolute left-4 text-white z-10 hover:opacity-80">
           <FaChevronLeft size={32} />
         </button>
       )}
       {currentIndex < statuses.length - 1 && (
-        <button
-          onClick={handleNext}
-          className="absolute right-4 text-white z-10 hover:opacity-80"
-        >
+        <button onClick={handleNext} className="absolute right-4 text-white z-10 hover:opacity-80">
           <FaChevronRight size={32} />
         </button>
       )}
 
-      {/* Status content */}
-      <div className="max-w-md w-full h-full flex items-center justify-center p-4">
-        {currentStatus.image ? (
-          <img
-            src={currentStatus.image}
-            alt="Status"
-            className="max-w-full max-h-full object-contain"
+      <div className="max-w-md w-full h-full flex items-center justify-center p-4 relative">
+        {isVideoStatus ? (
+          <video
+            ref={videoRef}
+            src={currentMediaUrl}
+            className="max-w-full max-h-full object-contain rounded-lg"
+            playsInline
+            autoPlay
+            muted
+            controls={false}
           />
+        ) : currentMediaType === 'image' && currentMediaUrl ? (
+          <img src={currentMediaUrl} alt="Status" className="max-w-full max-h-full object-contain rounded-lg" />
         ) : (
-          <div className="bg-gradient-to-br from-purple-600 to-blue-600 w-full h-full rounded-lg flex items-center justify-center p-8">
-            <p className="text-white text-2xl text-center">{currentStatus.text}</p>
+          <div
+            className="w-full h-full rounded-lg flex items-center justify-center p-8"
+            style={{ backgroundColor: currentStatus.backgroundColor || '#1f2937' }}
+          >
+            <p
+              className="text-2xl w-full"
+              style={{
+                color: currentStatus.textColor || '#ffffff',
+                fontFamily: currentStatus.fontFamily || 'Inter',
+                textAlign: currentStatus.textAlign || 'center',
+              }}
+            >
+              {currentStatus.text || 'Status'}
+            </p>
           </div>
         )}
-        {currentStatus.text && currentStatus.image && (
-          <div className="absolute bottom-20 left-0 right-0 text-center">
-            <p className="text-white text-lg px-4 py-2 bg-black/50 rounded-lg inline-block">
+
+        {currentStatus.text && currentMediaUrl && (
+          <div className="absolute bottom-20 left-0 right-0 text-center px-4">
+            <p
+              className="inline-block text-lg px-4 py-2 rounded-lg backdrop-blur-sm"
+              style={{
+                color: currentStatus.textColor || '#ffffff',
+                fontFamily: currentStatus.fontFamily || 'Inter',
+                textAlign: currentStatus.textAlign || 'center',
+                backgroundColor: 'rgba(0, 0, 0, 0.45)',
+              }}
+            >
               {currentStatus.text}
             </p>
           </div>

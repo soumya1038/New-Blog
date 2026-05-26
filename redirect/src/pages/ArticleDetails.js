@@ -15,6 +15,7 @@ import EnhancedComment from '../components/EnhancedComment';
 import ArticleCard from '../components/ArticleCard';
 import ArticleTemplateFrame from '../components/ArticleTemplateFrame';
 import SEOHead from '../components/SEOHead';
+import StatusViewer from '../components/StatusViewer';
 
 const ArticleDetails = () => {
   const { t } = useTranslation();
@@ -39,6 +40,7 @@ const ArticleDetails = () => {
   const [editText, setEditText] = useState('');
   const [moreByAuthor, setMoreByAuthor] = useState([]);
   const [progress, setProgress] = useState(0);
+  const [showAuthorStatusViewer, setShowAuthorStatusViewer] = useState(false);
   const contentId = article?._id || id;
 
   useEffect(() => {
@@ -569,16 +571,32 @@ const ArticleDetails = () => {
             {t('About the Author')}
           </h3>
           <div className="flex items-start gap-4">
-            <Link to={`/user/${article.author._id}`}>
-              <Avatar user={article.author} size="lg" />
-            </Link>
+            {article.author?.hasActiveStatus && article.author?.statuses?.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => setShowAuthorStatusViewer(true)}
+                className="cursor-pointer hover:opacity-90 transition"
+                title={t('View author status')}
+              >
+                <Avatar user={article.author} size="lg" showStatusRing />
+              </button>
+            ) : (
+              <Link to={`/user/${article.author._id}`}>
+                <Avatar user={article.author} size="lg" showStatusRing />
+              </Link>
+            )}
             <div className="flex-1">
               <Link 
                 to={`/user/${article.author._id}`}
                 className="flex items-center gap-2 mb-2 hover:text-blue-600 dark:hover:text-blue-400 transition"
               >
-                <h4 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                  {article.author.username}
+                <h4 className="text-lg font-bold text-[var(--text-primary)]">
+                  <span
+                    className={article.author?.hasActiveStatus ? 'status-name-shimmer' : ''}
+                    data-text={article.author?.username || ''}
+                  >
+                    {article.author.username}
+                  </span>
                 </h4>
                 <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs px-2 py-0.5 rounded font-semibold">
                   Author
@@ -599,6 +617,15 @@ const ArticleDetails = () => {
             </div>
           </div>
         </div>
+
+        {showAuthorStatusViewer && article.author?.statuses?.length > 0 && (
+          <StatusViewer
+            statuses={article.author.statuses}
+            initialIndex={0}
+            onClose={() => setShowAuthorStatusViewer(false)}
+            userName={article.author?.username || t('Author')}
+          />
+        )}
 
         {/* Comments */}
         <div className="mb-8">
