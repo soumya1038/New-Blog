@@ -187,6 +187,26 @@ const normalizeStoryMusicSourceType = (value) => {
 
 const normalizeStoryMusicSourceUrl = (value) => String(value || '').trim().slice(0, 240);
 
+const clampStoryTrimValue = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(300, Number(parsed.toFixed(2))));
+};
+
+const normalizeStoryTrimRange = (startValue, endValue, durationValue) => {
+  const duration = Number.isFinite(Number(durationValue)) ? Math.max(0, Number(durationValue)) : 0;
+  const start = clampStoryTrimValue(startValue);
+  const cappedStart = duration > 0 ? Math.min(start, Math.max(0, duration - 0.1)) : start;
+  const endCandidate = Number.isFinite(Number(endValue)) ? clampStoryTrimValue(endValue) : null;
+  const cappedEnd = endCandidate !== null && duration > 0 ? Math.min(endCandidate, duration) : endCandidate;
+  const end = cappedEnd !== null && cappedEnd > cappedStart ? Number(cappedEnd.toFixed(2)) : null;
+
+  return {
+    trimStartSec: Number(cappedStart.toFixed(2)),
+    trimEndSec: end,
+  };
+};
+
 const ProfileNew = () => {
   const { t } = useTranslation();
   const { user, setUser } = useContext(AuthContext);
@@ -249,6 +269,8 @@ const ProfileNew = () => {
     musicLabel: '',
     musicSourceType: 'none',
     musicSourceUrl: '',
+    trimStartSec: 0,
+    trimEndSec: null,
     stickers: [],
     mediaFile: null,
     mediaPreview: '',
@@ -270,6 +292,7 @@ const ProfileNew = () => {
   const [statusDraggingStickerId, setStatusDraggingStickerId] = useState('');
   const [statusStickerTab, setStatusStickerTab] = useState('popular');
   const [recentStatusStickers, setRecentStatusStickers] = useState([]);
+  const [statusVideoDurationSec, setStatusVideoDurationSec] = useState(0);
 
   // Fetch data
   useEffect(() => {
@@ -765,6 +788,8 @@ const ProfileNew = () => {
       musicLabel: '',
       musicSourceType: 'none',
       musicSourceUrl: '',
+      trimStartSec: 0,
+      trimEndSec: null,
       stickers: [],
       mediaFile: null,
       mediaPreview: '',
@@ -779,6 +804,7 @@ const ProfileNew = () => {
       audience: 'public',
       durationSec: 7,
     });
+    setStatusVideoDurationSec(0);
     setEditingStatusId('');
   };
 
@@ -801,6 +827,8 @@ const ProfileNew = () => {
       musicLabel: status.musicLabel || '',
       musicSourceType: normalizeStoryMusicSourceType(status.musicSourceType),
       musicSourceUrl: normalizeStoryMusicSourceUrl(status.musicSourceUrl),
+      trimStartSec: Number.isFinite(Number(status.trimStartSec)) ? Number(status.trimStartSec) : 0,
+      trimEndSec: Number.isFinite(Number(status.trimEndSec)) ? Number(status.trimEndSec) : null,
       stickers: normalizeStatusStickerList(status.stickers),
       mediaFile: null,
       mediaPreview: getStatusMediaUrl(status),
@@ -815,6 +843,7 @@ const ProfileNew = () => {
       audience: ['public', 'followers', 'private'].includes(status.audience) ? status.audience : 'public',
       durationSec: status.durationSec || 7,
     });
+    setStatusVideoDurationSec(0);
     setStatusStickerTab('popular');
     setStatusDraggingStickerId('');
     setEditingStatusId(status._id);
@@ -839,13 +868,53 @@ const ProfileNew = () => {
     }
 
     const nextType = String(file.type || '').startsWith('video/') ? 'video' : 'image';
+    const baseTrimRange = normalizeStoryTrimRange(0, null, 0);
     setStatusForm((prev) => ({
       ...prev,
       mediaFile: file,
       mediaPreview: URL.createObjectURL(file),
       mediaType: nextType,
+      trimStartSec: nextType === 'video' ? baseTrimRange.trimStartSec : 0,
+      trimEndSec: nextType === 'video' ? baseTrimRange.trimEndSec : null,
       removeExistingMedia: false,
     }));
+    setStatusVideoDurationSec(0);
+  };
+
+  const handleStatusPreviewVideoLoadedMetadata = (event) => {
+    const duration = Number(event?.target?.duration);
+    if (!Number.isFinite(duration) || duration <= 0) return;
+    setStatusVideoDurationSec(Number(duration.toFixed(2)));
+    setStatusForm((prev) => {
+      const nextRange = normalizeStoryTrimRange(prev.trimStartSec, prev.trimEndSec, duration);
+      return {
+        ...prev,
+        trimStartSec: nextRange.trimStartSec,
+        trimEndSec: nextRange.trimEndSec,
+      };
+    });
+  };
+
+  const setStatusVideoTrimStart = (value) => {
+    setStatusForm((prev) => {
+      const nextRange = normalizeStoryTrimRange(value, prev.trimEndSec, statusVideoDurationSec);
+      return {
+        ...prev,
+        trimStartSec: nextRange.trimStartSec,
+        trimEndSec: nextRange.trimEndSec,
+      };
+    });
+  };
+
+  const setStatusVideoTrimEnd = (value) => {
+    setStatusForm((prev) => {
+      const nextRange = normalizeStoryTrimRange(prev.trimStartSec, value, statusVideoDurationSec);
+      return {
+        ...prev,
+        trimStartSec: nextRange.trimStartSec,
+        trimEndSec: nextRange.trimEndSec,
+      };
+    });
   };
 
   const handleStatusSave = async (e) => {
@@ -876,6 +945,17 @@ const ProfileNew = () => {
     formData.append('textPosY', String(statusForm.textPosY));
     formData.append('audience', statusForm.audience);
     formData.append('durationSec', String(statusForm.durationSec || 7));
+    if (statusForm.mediaFile && statusForm.mediaType === 'video') {
+      const normalizedTrim = normalizeStoryTrimRange(
+        statusForm.trimStartSec,
+        statusForm.trimEndSec,
+        statusVideoDurationSec
+      );
+      formData.append('trimStartSec', String(normalizedTrim.trimStartSec));
+      if (normalizedTrim.trimEndSec !== null) {
+        formData.append('trimEndSec', String(normalizedTrim.trimEndSec));
+      }
+    }
     if (editingStatusId && statusForm.removeExistingMedia && !statusForm.mediaFile) {
       formData.append('removeMedia', 'true');
     }
@@ -1521,6 +1601,14 @@ const ProfileNew = () => {
                             <p className="text-[11px] text-[var(--text-secondary)] mt-1 inline-flex items-center gap-1">
                               <FaRegSmile size={10} />
                               {status.stickers.length} sticker{status.stickers.length === 1 ? '' : 's'}
+                            </p>
+                          ) : null}
+                          {getStatusMediaType(status) === 'video' ? (
+                            <p className="text-[11px] text-[var(--text-secondary)] mt-1">
+                              Trim: {Number(status.trimStartSec || 0).toFixed(1)}s
+                              {Number.isFinite(Number(status.trimEndSec))
+                                ? ` - ${Number(status.trimEndSec).toFixed(1)}s`
+                                : ' - full end'}
                             </p>
                           ) : null}
                           <p className="text-[11px] text-[var(--text-secondary)] mt-1">
@@ -2254,6 +2342,7 @@ const ProfileNew = () => {
                             muted
                             autoPlay
                             loop
+                            onLoadedMetadata={handleStatusPreviewVideoLoadedMetadata}
                           />
                         ) : (
                           <img
@@ -2602,8 +2691,11 @@ const ProfileNew = () => {
                             mediaFile: null,
                             mediaPreview: '',
                             mediaType: 'text',
+                            trimStartSec: 0,
+                            trimEndSec: null,
                             removeExistingMedia: shouldMarkRemove,
                           }));
+                          setStatusVideoDurationSec(0);
                         }}
                         className="text-sm font-semibold text-red-600 hover:text-red-700"
                       >
@@ -2611,6 +2703,90 @@ const ProfileNew = () => {
                       </button>
                     )}
                   </div>
+
+                  {statusForm.mediaType === 'video' && statusForm.mediaPreview ? (
+                    <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-[var(--text-secondary)]">Video trim before upload</p>
+                        <span className="text-xs text-[var(--text-secondary)]">
+                          {statusVideoDurationSec > 0
+                            ? `Duration ${statusVideoDurationSec.toFixed(1)}s`
+                            : 'Reading duration...'}
+                        </span>
+                      </div>
+                      {statusForm.mediaFile ? (
+                        <>
+                          <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                            Start at: {Number(statusForm.trimStartSec || 0).toFixed(1)}s
+                            <input
+                              type="range"
+                              min="0"
+                              max={statusVideoDurationSec > 0 ? Math.max(0, statusVideoDurationSec - 0.1) : 300}
+                              step="0.1"
+                              value={statusForm.trimStartSec || 0}
+                              onChange={(e) => setStatusVideoTrimStart(e.target.value)}
+                              className="w-full"
+                              disabled={statusVideoDurationSec <= 0}
+                            />
+                          </label>
+                          <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                            End at: {statusForm.trimEndSec !== null ? `${Number(statusForm.trimEndSec).toFixed(1)}s` : 'Full video'}
+                            <input
+                              type="range"
+                              min={statusForm.trimStartSec || 0}
+                              max={statusVideoDurationSec > 0 ? statusVideoDurationSec : 300}
+                              step="0.1"
+                              value={
+                                statusForm.trimEndSec !== null
+                                  ? statusForm.trimEndSec
+                                  : statusVideoDurationSec > 0
+                                    ? statusVideoDurationSec
+                                    : statusForm.trimStartSec || 0
+                              }
+                              onChange={(e) => setStatusVideoTrimEnd(e.target.value)}
+                              className="w-full"
+                              disabled={statusVideoDurationSec <= 0}
+                            />
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setStatusForm((prev) => ({
+                                  ...prev,
+                                  trimEndSec: null,
+                                }))
+                              }
+                              className="px-2 py-1 rounded border border-[var(--border-default)] text-xs text-[var(--text-primary)] hover:bg-[var(--surface-elevated)]"
+                            >
+                              Use full end
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const autoTrim = normalizeStoryTrimRange(0, statusVideoDurationSec > 0 ? Math.min(15, statusVideoDurationSec) : null, statusVideoDurationSec);
+                                setStatusForm((prev) => ({
+                                  ...prev,
+                                  trimStartSec: autoTrim.trimStartSec,
+                                  trimEndSec: autoTrim.trimEndSec,
+                                }));
+                              }}
+                              className="px-2 py-1 rounded border border-[var(--border-default)] text-xs text-[var(--text-primary)] hover:bg-[var(--surface-elevated)]"
+                            >
+                              Quick 15s
+                            </button>
+                          </div>
+                          <p className="text-xs text-[var(--text-secondary)]">
+                            Trim applies when you upload this video. Existing remote videos need re-upload to re-trim.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-xs text-[var(--text-secondary)]">
+                          Select a local video to apply trim settings before posting.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">

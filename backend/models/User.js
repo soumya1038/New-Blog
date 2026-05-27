@@ -83,6 +83,8 @@ const userSchema = new mongoose.Schema({
       default: 'none',
     },
     musicSourceUrl: { type: String, default: '' },
+    trimStartSec: { type: Number, default: 0, min: 0 },
+    trimEndSec: { type: Number, default: null, min: 0 },
     stickers: [{
       id: { type: String, default: '' },
       emoji: { type: String, default: '' },

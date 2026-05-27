@@ -210,6 +210,14 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
             Seen by {Number.isFinite(currentStatus?.seenByCount) ? currentStatus.seenByCount : currentStatus.seenBy.length}
           </p>
         ) : null}
+        {currentMediaType === 'video' ? (
+          <p className="text-xs opacity-80">
+            Trim {Number(currentStatus?.trimStartSec || 0).toFixed(1)}s
+            {Number.isFinite(Number(currentStatus?.trimEndSec))
+              ? ` - ${Number(currentStatus.trimEndSec).toFixed(1)}s`
+              : ' - full end'}
+          </p>
+        ) : null}
       </div>
 
       {currentIndex > 0 && (

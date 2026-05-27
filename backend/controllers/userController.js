@@ -569,6 +569,24 @@ const clampStatusPosition = (value) => {
   return Math.max(0, Math.min(100, parsed));
 };
 
+const clampStatusTrimSec = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.min(300, Number(parsed.toFixed(2))));
+};
+
+const normalizeStatusTrimRange = (startValue, endValue) => {
+  const nextStart = clampStatusTrimSec(startValue);
+  const nextEnd = clampStatusTrimSec(endValue);
+  const trimStartSec = nextStart === null ? 0 : nextStart;
+  const trimEndSec =
+    nextEnd !== null && nextEnd > trimStartSec
+      ? nextEnd
+      : null;
+
+  return { trimStartSec, trimEndSec };
+};
+
 const clampStatusStickerSize = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 48;
@@ -655,7 +673,7 @@ const destroyStatusMedia = async (status) => {
   }
 };
 
-const uploadStatusMedia = async (file) => {
+const uploadStatusMedia = async (file, trimRange = null) => {
   const isVideo = String(file?.mimetype || '').startsWith('video/');
   const uploadOptions = isVideo
     ? {
@@ -670,6 +688,21 @@ const uploadStatusMedia = async (file) => {
           { quality: 'auto' },
         ],
       };
+
+  if (isVideo && trimRange) {
+    const trimStart = clampStatusTrimSec(trimRange.trimStartSec);
+    const trimEnd = clampStatusTrimSec(trimRange.trimEndSec);
+
+    if (trimStart !== null && trimStart > 0) {
+      uploadOptions.start_offset = trimStart;
+    }
+    if (
+      trimEnd !== null &&
+      (trimStart === null || trimEnd > trimStart)
+    ) {
+      uploadOptions.end_offset = trimEnd;
+    }
+  }
 
   const result = await new Promise((resolve, reject) => {
     cloudinary.uploader.upload_stream(uploadOptions, (error, uploaded) => {
@@ -700,6 +733,8 @@ exports.createStatus = async (req, res) => {
       textAlign,
       textPosX,
       textPosY,
+      trimStartSec,
+      trimEndSec,
       audience,
       durationSec,
     } = req.body;
@@ -712,6 +747,7 @@ exports.createStatus = async (req, res) => {
     const normalizedMusicSourceType = normalizeStatusMusicSourceType(musicSourceType);
     const normalizedMusicSourceUrl =
       normalizedMusicSourceType === 'none' ? '' : normalizeStatusMusicSourceUrl(musicSourceUrl);
+    const normalizedTrimRange = normalizeStatusTrimRange(trimStartSec, trimEndSec);
 
     if (!text && !req.file && normalizedStickers.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide text, image, video, or stickers' });
@@ -730,7 +766,7 @@ exports.createStatus = async (req, res) => {
 
     // Upload media if provided
     if (req.file) {
-      const uploadResult = await uploadStatusMedia(req.file);
+      const uploadResult = await uploadStatusMedia(req.file, normalizedTrimRange);
       mediaType = uploadResult.mediaType;
       mediaPublicId = uploadResult.mediaPublicId;
       if (mediaType === 'video') {
@@ -756,6 +792,8 @@ exports.createStatus = async (req, res) => {
       musicLabel: normalizedMusicLabel,
       musicSourceType: normalizedMusicSourceType,
       musicSourceUrl: normalizedMusicSourceUrl,
+      trimStartSec: mediaType === 'video' ? normalizedTrimRange.trimStartSec : 0,
+      trimEndSec: mediaType === 'video' ? normalizedTrimRange.trimEndSec : null,
       stickers: normalizedStickers,
       textPosX: clampStatusPosition(textPosX),
       textPosY: clampStatusPosition(textPosY),
@@ -942,6 +980,8 @@ exports.updateStatus = async (req, res) => {
       textAlign,
       textPosX,
       textPosY,
+      trimStartSec,
+      trimEndSec,
       audience,
       durationSec,
       removeMedia,
@@ -957,6 +997,8 @@ exports.updateStatus = async (req, res) => {
     if (!status) {
       return res.status(404).json({ success: false, message: 'Status not found' });
     }
+
+    const normalizedTrimRange = normalizeStatusTrimRange(trimStartSec, trimEndSec);
 
     // Update text
     if (text !== undefined) {
@@ -1006,15 +1048,19 @@ exports.updateStatus = async (req, res) => {
     if (req.file) {
       await destroyStatusMedia(status);
 
-      const uploadResult = await uploadStatusMedia(req.file);
+      const uploadResult = await uploadStatusMedia(req.file, normalizedTrimRange);
       status.mediaType = uploadResult.mediaType;
       status.mediaPublicId = uploadResult.mediaPublicId;
       if (uploadResult.mediaType === 'video') {
         status.video = uploadResult.mediaUrl;
         status.image = '';
+        status.trimStartSec = normalizedTrimRange.trimStartSec;
+        status.trimEndSec = normalizedTrimRange.trimEndSec;
       } else {
         status.image = uploadResult.mediaUrl;
         status.video = '';
+        status.trimStartSec = 0;
+        status.trimEndSec = null;
       }
     } else if (shouldRemoveMedia && (status.image || status.video)) {
       await destroyStatusMedia(status);
@@ -1022,9 +1068,13 @@ exports.updateStatus = async (req, res) => {
       status.video = '';
       status.mediaType = 'text';
       status.mediaPublicId = '';
+      status.trimStartSec = 0;
+      status.trimEndSec = null;
     } else if (!status.image && !status.video) {
       status.mediaType = 'text';
       status.mediaPublicId = '';
+      status.trimStartSec = 0;
+      status.trimEndSec = null;
     }
 
     await user.save();
