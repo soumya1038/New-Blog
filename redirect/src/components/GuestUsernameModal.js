@@ -35,10 +35,17 @@ const GuestUsernameModal = ({ onClose, onContinue }) => {
       return;
     }
 
+    if (username.length < 3) {
+      setChecking(false);
+      setStatus('invalid');
+      setMessage('Username must be at least 3 characters');
+      return;
+    }
+
     const timer = setTimeout(async () => {
       setChecking(true);
       try {
-        const { data } = await api.get(`/auth/check-guest-username/${username}`);
+        const { data } = await api.get(`/auth/check-guest-username/${encodeURIComponent(username)}`);
         if (data.available) {
           setStatus('available');
           setMessage('Username available');
@@ -58,6 +65,10 @@ const GuestUsernameModal = ({ onClose, onContinue }) => {
   }, [username]);
 
   const handleContinue = () => {
+    if (username.trim().length < 3) {
+      setError('Username must be at least 3 characters.');
+      return;
+    }
     if (captchaInput !== captcha) {
       setError('Incorrect captcha. Please try again.');
       generateCaptcha();
@@ -85,7 +96,10 @@ const GuestUsernameModal = ({ onClose, onContinue }) => {
             <input
               type="text"
               value={username}
-              onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
+              onChange={(e) => {
+                setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''));
+                setError('');
+              }}
               placeholder="username_123"
               className="theme-input w-full px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
               maxLength={20}
@@ -101,7 +115,10 @@ const GuestUsernameModal = ({ onClose, onContinue }) => {
               {message}
             </p>
           )}
-          <p className="theme-modal-muted text-xs mt-2">Only letters, numbers, and underscores allowed</p>
+          <div className="theme-modal-muted text-xs mt-2 flex items-center justify-between gap-3">
+            <span>Minimum 3 characters. Only letters, numbers, and underscores allowed</span>
+            <span className={username.length >= 3 ? 'text-green-600' : ''}>{username.length}/20</span>
+          </div>
         </div>
 
         <div className="mb-6">
@@ -133,13 +150,13 @@ const GuestUsernameModal = ({ onClose, onContinue }) => {
         <div className="flex gap-3">
           <button
             onClick={handleContinue}
-            disabled={status !== 'available' || !username || !captchaInput}
+            disabled={status !== 'available' || username.length < 3 || !captchaInput}
             className={`flex-1 py-3 rounded-lg font-semibold transition ${
-              status === 'available' && username && captchaInput
+              status === 'available' && username.length >= 3 && captchaInput
                 ? 'text-white hover:opacity-90'
                 : 'theme-soft-button cursor-not-allowed opacity-60'
             }`}
-            style={status === 'available' && username && captchaInput ? { background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))' } : undefined}
+            style={status === 'available' && username.length >= 3 && captchaInput ? { background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))' } : undefined}
           >
             Continue
           </button>

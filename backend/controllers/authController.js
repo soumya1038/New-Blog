@@ -2876,10 +2876,14 @@ exports.confirmAuthenticatedPasswordChange = async (req, res) => {
 // Check guest username availability
 exports.checkGuestUsername = async (req, res) => {
   try {
-    const { username } = req.params;
+    const username = String(req.params.username || '').trim();
     
     if (!username) {
       return res.status(400).json({ success: false, message: 'Username is required' });
+    }
+
+    if (username.length < 3) {
+      return res.json({ success: true, available: false, message: 'Username must be at least 3 characters' });
     }
 
     // Validate username format (letters, numbers, underscore only)
@@ -2903,10 +2907,14 @@ exports.checkGuestUsername = async (req, res) => {
 // Guest login
 exports.guestLogin = async (req, res) => {
   try {
-    const { username } = req.body;
+    const username = String(req.body.username || '').trim();
 
     if (!username) {
       return res.status(400).json({ success: false, message: 'Username is required' });
+    }
+
+    if (username.length < 3) {
+      return res.status(400).json({ success: false, message: 'Username must be at least 3 characters' });
     }
 
     // Validate username format
