@@ -1,6 +1,43 @@
 const User = require('../models/User');
 const cloudinary = require('./cloudinary');
 
+const extractCloudinaryPublicId = (url) => {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    const pathParts = parsed.pathname.split('/').filter(Boolean);
+    const uploadIndex = pathParts.findIndex((part) => part === 'upload');
+    if (uploadIndex < 0) return '';
+
+    let publicIdParts = pathParts.slice(uploadIndex + 1);
+    if (publicIdParts[0] && /^v\d+$/.test(publicIdParts[0])) {
+      publicIdParts = publicIdParts.slice(1);
+    }
+
+    const fullPath = publicIdParts.join('/');
+    return fullPath.replace(/\.[^/.]+$/, '');
+  } catch (error) {
+    return '';
+  }
+};
+
+const resolveStatusPublicId = (status) => {
+  if (status?.mediaPublicId) return status.mediaPublicId;
+  return extractCloudinaryPublicId(status?.video || status?.image || '');
+};
+
+const destroyExpiredStatusMedia = async (status) => {
+  const publicId = resolveStatusPublicId(status);
+  if (!publicId) return;
+
+  const isVideo = status?.mediaType === 'video' || Boolean(status?.video);
+  try {
+    await cloudinary.uploader.destroy(publicId, isVideo ? { resource_type: 'video' } : {});
+  } catch (error) {
+    console.log('Expired status media not found on Cloudinary');
+  }
+};
+
 const cleanupExpiredStatuses = async () => {
   try {
     const users = await User.find({
@@ -13,14 +50,7 @@ const cleanupExpiredStatuses = async () => {
       const expiredStatuses = user.statuses.filter(s => new Date() >= new Date(s.expiresAt));
       
       for (const status of expiredStatuses) {
-        if (status.image && status.image.includes('cloudinary')) {
-          const publicId = status.image.split('/').pop().split('.')[0];
-          try {
-            await cloudinary.uploader.destroy(`blog-status/${publicId}`);
-          } catch (err) {
-            console.log('Status image not found on Cloudinary');
-          }
-        }
+        await destroyExpiredStatusMedia(status);
         totalCleaned++;
       }
 

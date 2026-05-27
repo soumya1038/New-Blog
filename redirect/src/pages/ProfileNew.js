@@ -194,12 +194,16 @@ const clampStoryTrimValue = (value) => {
 };
 
 const normalizeStoryTrimRange = (startValue, endValue, durationValue) => {
+  const maxClipDurationSec = 10;
   const duration = Number.isFinite(Number(durationValue)) ? Math.max(0, Number(durationValue)) : 0;
   const start = clampStoryTrimValue(startValue);
   const cappedStart = duration > 0 ? Math.min(start, Math.max(0, duration - 0.1)) : start;
+  const maxAllowedEnd = duration > 0
+    ? Math.min(duration, cappedStart + maxClipDurationSec)
+    : cappedStart + maxClipDurationSec;
   const endCandidate = Number.isFinite(Number(endValue)) ? clampStoryTrimValue(endValue) : null;
-  const cappedEnd = endCandidate !== null && duration > 0 ? Math.min(endCandidate, duration) : endCandidate;
-  const end = cappedEnd !== null && cappedEnd > cappedStart ? Number(cappedEnd.toFixed(2)) : null;
+  const cappedEnd = endCandidate !== null ? Math.min(endCandidate, maxAllowedEnd) : maxAllowedEnd;
+  const end = cappedEnd > cappedStart ? Number(cappedEnd.toFixed(2)) : Number(maxAllowedEnd.toFixed(2));
 
   return {
     trimStartSec: Number(cappedStart.toFixed(2)),
@@ -917,6 +921,11 @@ const ProfileNew = () => {
     });
   };
 
+  const previewVideoTrimRange = React.useMemo(
+    () => normalizeStoryTrimRange(statusForm.trimStartSec, statusForm.trimEndSec, statusVideoDurationSec),
+    [statusForm.trimStartSec, statusForm.trimEndSec, statusVideoDurationSec]
+  );
+
   const handleStatusSave = async (e) => {
     e.preventDefault();
     const trimmedText = statusForm.text.trim();
@@ -1606,9 +1615,11 @@ const ProfileNew = () => {
                           {getStatusMediaType(status) === 'video' ? (
                             <p className="text-[11px] text-[var(--text-secondary)] mt-1">
                               Trim: {Number(status.trimStartSec || 0).toFixed(1)}s
-                              {Number.isFinite(Number(status.trimEndSec))
-                                ? ` - ${Number(status.trimEndSec).toFixed(1)}s`
-                                : ' - full end'}
+                              {` - ${Number(
+                                Number.isFinite(Number(status.trimEndSec))
+                                  ? Number(status.trimEndSec)
+                                  : Number(status.trimStartSec || 0) + 10
+                              ).toFixed(1)}s`}
                             </p>
                           ) : null}
                           <p className="text-[11px] text-[var(--text-secondary)] mt-1">
@@ -2707,7 +2718,7 @@ const ProfileNew = () => {
                   {statusForm.mediaType === 'video' && statusForm.mediaPreview ? (
                     <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs text-[var(--text-secondary)]">Video trim before upload</p>
+                        <p className="text-xs text-[var(--text-secondary)]">Video trim before upload (max 10s)</p>
                         <span className="text-xs text-[var(--text-secondary)]">
                           {statusVideoDurationSec > 0
                             ? `Duration ${statusVideoDurationSec.toFixed(1)}s`
@@ -2730,19 +2741,17 @@ const ProfileNew = () => {
                             />
                           </label>
                           <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-                            End at: {statusForm.trimEndSec !== null ? `${Number(statusForm.trimEndSec).toFixed(1)}s` : 'Full video'}
+                            End at: {Number(previewVideoTrimRange.trimEndSec).toFixed(1)}s
                             <input
                               type="range"
-                              min={statusForm.trimStartSec || 0}
-                              max={statusVideoDurationSec > 0 ? statusVideoDurationSec : 300}
-                              step="0.1"
-                              value={
-                                statusForm.trimEndSec !== null
-                                  ? statusForm.trimEndSec
-                                  : statusVideoDurationSec > 0
-                                    ? statusVideoDurationSec
-                                    : statusForm.trimStartSec || 0
+                              min={previewVideoTrimRange.trimStartSec}
+                              max={
+                                statusVideoDurationSec > 0
+                                  ? Math.min(statusVideoDurationSec, previewVideoTrimRange.trimStartSec + 10)
+                                  : previewVideoTrimRange.trimStartSec + 10
                               }
+                              step="0.1"
+                              value={previewVideoTrimRange.trimEndSec}
                               onChange={(e) => setStatusVideoTrimEnd(e.target.value)}
                               className="w-full"
                               disabled={statusVideoDurationSec <= 0}
@@ -2751,20 +2760,8 @@ const ProfileNew = () => {
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() =>
-                                setStatusForm((prev) => ({
-                                  ...prev,
-                                  trimEndSec: null,
-                                }))
-                              }
-                              className="px-2 py-1 rounded border border-[var(--border-default)] text-xs text-[var(--text-primary)] hover:bg-[var(--surface-elevated)]"
-                            >
-                              Use full end
-                            </button>
-                            <button
-                              type="button"
                               onClick={() => {
-                                const autoTrim = normalizeStoryTrimRange(0, statusVideoDurationSec > 0 ? Math.min(15, statusVideoDurationSec) : null, statusVideoDurationSec);
+                                const autoTrim = normalizeStoryTrimRange(0, 10, statusVideoDurationSec);
                                 setStatusForm((prev) => ({
                                   ...prev,
                                   trimStartSec: autoTrim.trimStartSec,
@@ -2773,7 +2770,7 @@ const ProfileNew = () => {
                               }}
                               className="px-2 py-1 rounded border border-[var(--border-default)] text-xs text-[var(--text-primary)] hover:bg-[var(--surface-elevated)]"
                             >
-                              Quick 15s
+                              Quick 10s
                             </button>
                           </div>
                           <p className="text-xs text-[var(--text-secondary)]">

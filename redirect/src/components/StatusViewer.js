@@ -213,9 +213,11 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
         {currentMediaType === 'video' ? (
           <p className="text-xs opacity-80">
             Trim {Number(currentStatus?.trimStartSec || 0).toFixed(1)}s
-            {Number.isFinite(Number(currentStatus?.trimEndSec))
-              ? ` - ${Number(currentStatus.trimEndSec).toFixed(1)}s`
-              : ' - full end'}
+            {` - ${Number(
+              Number.isFinite(Number(currentStatus?.trimEndSec))
+                ? Number(currentStatus.trimEndSec)
+                : Number(currentStatus?.trimStartSec || 0) + 10
+            ).toFixed(1)}s`}
           </p>
         ) : null}
       </div>

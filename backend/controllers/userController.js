@@ -576,13 +576,18 @@ const clampStatusTrimSec = (value) => {
 };
 
 const normalizeStatusTrimRange = (startValue, endValue) => {
+  const maxClipDurationSec = 10;
   const nextStart = clampStatusTrimSec(startValue);
   const nextEnd = clampStatusTrimSec(endValue);
   const trimStartSec = nextStart === null ? 0 : nextStart;
-  const trimEndSec =
-    nextEnd !== null && nextEnd > trimStartSec
-      ? nextEnd
-      : null;
+  const maxAllowedEnd = Number((trimStartSec + maxClipDurationSec).toFixed(2));
+  const trimEndSec = Number(
+    (
+      nextEnd !== null && nextEnd > trimStartSec
+        ? Math.min(nextEnd, maxAllowedEnd)
+        : maxAllowedEnd
+    ).toFixed(2)
+  );
 
   return { trimStartSec, trimEndSec };
 };
@@ -696,10 +701,7 @@ const uploadStatusMedia = async (file, trimRange = null) => {
     if (trimStart !== null && trimStart > 0) {
       uploadOptions.start_offset = trimStart;
     }
-    if (
-      trimEnd !== null &&
-      (trimStart === null || trimEnd > trimStart)
-    ) {
+    if (trimEnd !== null && (trimStart === null || trimEnd > trimStart)) {
       uploadOptions.end_offset = trimEnd;
     }
   }
