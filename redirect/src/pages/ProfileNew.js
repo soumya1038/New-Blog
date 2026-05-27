@@ -47,6 +47,49 @@ const getFacebookRedirectUri = () => {
   return `${window.location.origin}/auth/facebook/callback`;
 };
 
+const STORY_STYLE_PRESETS = [
+  {
+    id: 'sunset',
+    label: 'Sunset',
+    backgroundColor: '#ea580c',
+    textColor: '#fff7ed',
+    fontFamily: 'Playfair Display',
+    textAlign: 'center',
+    textPosX: 50,
+    textPosY: 50,
+  },
+  {
+    id: 'ocean',
+    label: 'Ocean',
+    backgroundColor: '#0f172a',
+    textColor: '#67e8f9',
+    fontFamily: 'Space Grotesk',
+    textAlign: 'left',
+    textPosX: 40,
+    textPosY: 58,
+  },
+  {
+    id: 'mint',
+    label: 'Mint',
+    backgroundColor: '#14532d',
+    textColor: '#ecfdf5',
+    fontFamily: 'DM Sans',
+    textAlign: 'center',
+    textPosX: 50,
+    textPosY: 44,
+  },
+  {
+    id: 'mono',
+    label: 'Mono',
+    backgroundColor: '#111827',
+    textColor: '#f9fafb',
+    fontFamily: 'Inter',
+    textAlign: 'right',
+    textPosX: 60,
+    textPosY: 54,
+  },
+];
+
 const ProfileNew = () => {
   const { t } = useTranslation();
   const { user, setUser } = useContext(AuthContext);
@@ -450,6 +493,21 @@ const ProfileNew = () => {
         event.currentTarget.releasePointerCapture(event.pointerId);
       } catch (_) {}
     }
+  };
+
+  const applyStoryStylePreset = (presetId) => {
+    const preset = STORY_STYLE_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+
+    setStatusForm((prev) => ({
+      ...prev,
+      backgroundColor: preset.backgroundColor,
+      textColor: preset.textColor,
+      fontFamily: preset.fontFamily,
+      textAlign: preset.textAlign,
+      textPosX: preset.textPosX,
+      textPosY: preset.textPosY,
+    }));
   };
 
   const resetStatusComposer = () => {
@@ -1964,6 +2022,27 @@ const ProfileNew = () => {
                 </div>
 
                 <div className="space-y-4 overflow-y-auto pr-1">
+                  <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3">
+                    <p className="text-xs text-[var(--text-secondary)] mb-2">Quick style presets</p>
+                    <div className="flex flex-wrap gap-2">
+                      {STORY_STYLE_PRESETS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => applyStoryStylePreset(preset.id)}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--border-default)] text-[var(--text-primary)] text-xs hover:bg-[var(--surface-elevated)]"
+                          title={`Apply ${preset.label} preset`}
+                        >
+                          <span
+                            className="w-3 h-3 rounded-full border border-white/50"
+                            style={{ backgroundColor: preset.backgroundColor }}
+                          />
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <textarea
                     value={statusForm.text}
                     onChange={(e) => setStatusForm((prev) => ({ ...prev, text: e.target.value }))}
