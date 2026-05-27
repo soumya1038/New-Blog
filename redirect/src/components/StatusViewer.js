@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FaTimes, FaChevronLeft, FaChevronRight } from 'react-icons/fa';
+import { FaTimes, FaChevronLeft, FaChevronRight, FaMusic } from 'react-icons/fa';
 
 const clampDurationSec = (value) => {
   const parsed = Number(value);
@@ -80,6 +80,8 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
   const hasMedia = Boolean(currentMediaUrl);
   const currentStickers = useMemo(() => normalizeStickers(currentStatus?.stickers), [currentStatus?.stickers]);
   const currentMusicLabel = useMemo(() => String(currentStatus?.musicLabel || '').trim(), [currentStatus?.musicLabel]);
+  const currentMusicSourceType = useMemo(() => String(currentStatus?.musicSourceType || '').trim().toLowerCase(), [currentStatus?.musicSourceType]);
+  const currentMusicSourceUrl = useMemo(() => String(currentStatus?.musicSourceUrl || '').trim(), [currentStatus?.musicSourceUrl]);
 
   useEffect(() => {
     if (statuses.length === 0) return;
@@ -285,7 +287,12 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
         {currentMusicLabel ? (
           <div className="absolute left-4 right-4 bottom-5">
             <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs backdrop-blur-sm">
+              <FaMusic size={11} />
               {currentMusicLabel}
+              {currentMusicSourceType && currentMusicSourceType !== 'none'
+                ? ` - ${currentMusicSourceType}`
+                : ''}
+              {currentMusicSourceUrl ? ' * linked' : ''}
             </span>
           </div>
         ) : null}

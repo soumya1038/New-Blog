@@ -582,6 +582,14 @@ const clampStatusStickerRotate = (value) => {
 };
 
 const normalizeStatusMusicLabel = (value) => String(value || '').trim().slice(0, 80);
+const normalizeStatusMusicSourceType = (value) => {
+  const sourceType = String(value || 'none').trim().toLowerCase();
+  if (['none', 'spotify', 'youtube', 'apple', 'soundcloud', 'custom'].includes(sourceType)) {
+    return sourceType;
+  }
+  return 'none';
+};
+const normalizeStatusMusicSourceUrl = (value) => String(value || '').trim().slice(0, 240);
 
 const normalizeStatusStickers = (value) => {
   if (value === undefined || value === null || value === '') return [];
@@ -683,6 +691,8 @@ exports.createStatus = async (req, res) => {
     const {
       text,
       musicLabel,
+      musicSourceType,
+      musicSourceUrl,
       stickers,
       backgroundColor,
       textColor,
@@ -699,6 +709,9 @@ exports.createStatus = async (req, res) => {
     let mediaPublicId = '';
     const normalizedStickers = normalizeStatusStickers(stickers);
     const normalizedMusicLabel = normalizeStatusMusicLabel(musicLabel);
+    const normalizedMusicSourceType = normalizeStatusMusicSourceType(musicSourceType);
+    const normalizedMusicSourceUrl =
+      normalizedMusicSourceType === 'none' ? '' : normalizeStatusMusicSourceUrl(musicSourceUrl);
 
     if (!text && !req.file && normalizedStickers.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide text, image, video, or stickers' });
@@ -741,6 +754,8 @@ exports.createStatus = async (req, res) => {
       fontFamily: String(fontFamily || 'Inter'),
       textAlign: ['left', 'center', 'right'].includes(textAlign) ? textAlign : 'center',
       musicLabel: normalizedMusicLabel,
+      musicSourceType: normalizedMusicSourceType,
+      musicSourceUrl: normalizedMusicSourceUrl,
       stickers: normalizedStickers,
       textPosX: clampStatusPosition(textPosX),
       textPosY: clampStatusPosition(textPosY),
@@ -918,6 +933,8 @@ exports.updateStatus = async (req, res) => {
     const {
       text,
       musicLabel,
+      musicSourceType,
+      musicSourceUrl,
       stickers,
       backgroundColor,
       textColor,
@@ -959,6 +976,15 @@ exports.updateStatus = async (req, res) => {
     }
     if (musicLabel !== undefined) {
       status.musicLabel = normalizeStatusMusicLabel(musicLabel);
+    }
+    if (musicSourceType !== undefined) {
+      status.musicSourceType = normalizeStatusMusicSourceType(musicSourceType);
+      if (status.musicSourceType === 'none') {
+        status.musicSourceUrl = '';
+      }
+    }
+    if (musicSourceUrl !== undefined && status.musicSourceType !== 'none') {
+      status.musicSourceUrl = normalizeStatusMusicSourceUrl(musicSourceUrl);
     }
     if (stickers !== undefined) {
       status.stickers = normalizeStatusStickers(stickers);

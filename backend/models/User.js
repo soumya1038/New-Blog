@@ -77,6 +77,12 @@ const userSchema = new mongoose.Schema({
     fontFamily: { type: String, default: 'Inter' },
     textAlign: { type: String, enum: ['left', 'center', 'right'], default: 'center' },
     musicLabel: { type: String, default: '' },
+    musicSourceType: {
+      type: String,
+      enum: ['none', 'spotify', 'youtube', 'apple', 'soundcloud', 'custom'],
+      default: 'none',
+    },
+    musicSourceUrl: { type: String, default: '' },
     stickers: [{
       id: { type: String, default: '' },
       emoji: { type: String, default: '' },

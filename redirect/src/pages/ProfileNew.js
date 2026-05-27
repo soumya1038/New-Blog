@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+﻿import React, { useState, useEffect, useContext } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
@@ -90,8 +90,60 @@ const STORY_STYLE_PRESETS = [
   },
 ];
 
-const STORY_STICKER_EMOJI_PACK = ['🔥', '✨', '💫', '💖', '🎉', '🚀', '🌙', '🌈', '☀️', '💡', '🎯', '✅'];
+const STORY_STICKER_RECENT_STORAGE_KEY = 'lekhon_story_recent_stickers_v1';
 const MAX_STATUS_STICKERS = 8;
+const MAX_RECENT_STICKERS = 12;
+
+const STORY_STICKER_GROUPS = [
+  {
+    id: 'popular',
+    label: 'Popular',
+    items: ['\u{1F525}', '\u{2728}', '\u{1F4AB}', '\u{1F496}', '\u{1F389}', '\u{1F680}', '\u{1F4A1}', '\u{2705}'],
+  },
+  {
+    id: 'mood',
+    label: 'Mood',
+    items: ['\u{1F60E}', '\u{1F60A}', '\u{1F62E}', '\u{1F60D}', '\u{1F622}', '\u{1F970}', '\u{1F9E0}', '\u{1F44F}'],
+  },
+  {
+    id: 'travel',
+    label: 'Travel',
+    items: ['\u{1F30D}', '\u{1F30A}', '\u{1F5FA}', '\u{1F3D6}', '\u{1F31E}', '\u{1F319}', '\u{1F6F8}', '\u{1F6F0}'],
+  },
+];
+
+const STORY_MUSIC_SOURCE_OPTIONS = [
+  { value: 'none', label: 'None' },
+  { value: 'spotify', label: 'Spotify' },
+  { value: 'youtube', label: 'YouTube' },
+  { value: 'apple', label: 'Apple Music' },
+  { value: 'soundcloud', label: 'SoundCloud' },
+  { value: 'custom', label: 'Custom' },
+];
+
+const STORY_MUSIC_PRESETS = [
+  {
+    id: 'night-drive',
+    label: 'Night Drive',
+    musicLabel: 'Night Drive - Ambient Edit',
+    musicSourceType: 'spotify',
+    musicSourceUrl: 'https://open.spotify.com/',
+  },
+  {
+    id: 'focus-flow',
+    label: 'Focus Flow',
+    musicLabel: 'Focus Flow - Instrumental',
+    musicSourceType: 'youtube',
+    musicSourceUrl: 'https://www.youtube.com/',
+  },
+  {
+    id: 'sunrise-notes',
+    label: 'Sunrise Notes',
+    musicLabel: 'Sunrise Notes - Acoustic',
+    musicSourceType: 'apple',
+    musicSourceUrl: 'https://music.apple.com/',
+  },
+];
 
 const clampStatusStickerSize = (value) => {
   const parsed = Number(value);
@@ -119,6 +171,21 @@ const normalizeStatusStickerList = (stickers = []) =>
         }))
         .filter((sticker) => sticker.emoji.length > 0)
     : [];
+
+const normalizeRecentStickerList = (items = []) =>
+  Array.isArray(items)
+    ? items
+        .map((item) => String(item || '').trim().slice(0, 8))
+        .filter(Boolean)
+        .slice(0, MAX_RECENT_STICKERS)
+    : [];
+
+const normalizeStoryMusicSourceType = (value) => {
+  const nextValue = String(value || 'none').trim().toLowerCase();
+  return STORY_MUSIC_SOURCE_OPTIONS.some((item) => item.value === nextValue) ? nextValue : 'none';
+};
+
+const normalizeStoryMusicSourceUrl = (value) => String(value || '').trim().slice(0, 240);
 
 const ProfileNew = () => {
   const { t } = useTranslation();
@@ -180,6 +247,8 @@ const ProfileNew = () => {
   const [statusForm, setStatusForm] = useState({
     text: '',
     musicLabel: '',
+    musicSourceType: 'none',
+    musicSourceUrl: '',
     stickers: [],
     mediaFile: null,
     mediaPreview: '',
@@ -199,6 +268,8 @@ const ProfileNew = () => {
   const [editingStatusId, setEditingStatusId] = useState('');
   const [statusTextDragging, setStatusTextDragging] = useState(false);
   const [statusDraggingStickerId, setStatusDraggingStickerId] = useState('');
+  const [statusStickerTab, setStatusStickerTab] = useState('popular');
+  const [recentStatusStickers, setRecentStatusStickers] = useState([]);
 
   // Fetch data
   useEffect(() => {
@@ -295,6 +366,28 @@ const ProfileNew = () => {
       URL.revokeObjectURL(statusForm.mediaPreview);
     }
   }, [statusForm.mediaPreview]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(STORY_STICKER_RECENT_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      setRecentStatusStickers(normalizeRecentStickerList(parsed));
+    } catch (error) {
+      setRecentStatusStickers([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STORY_STICKER_RECENT_STORAGE_KEY,
+        JSON.stringify(normalizeRecentStickerList(recentStatusStickers))
+      );
+    } catch (error) {
+      // Ignore localStorage write failures in private mode or restricted environments.
+    }
+  }, [recentStatusStickers]);
 
   const showModal = (type, title, message, onConfirm = null) => {
     setModal({ show: true, type, title, message, onConfirm });
@@ -528,6 +621,23 @@ const ProfileNew = () => {
     }
   };
 
+  const activeStickerChoices = React.useMemo(() => {
+    if (statusStickerTab === 'recent') {
+      return recentStatusStickers;
+    }
+    const activeGroup = STORY_STICKER_GROUPS.find((group) => group.id === statusStickerTab);
+    return activeGroup?.items || STORY_STICKER_GROUPS[0]?.items || [];
+  }, [recentStatusStickers, statusStickerTab]);
+
+  const rememberRecentSticker = (emoji) => {
+    const nextEmoji = String(emoji || '').trim().slice(0, 8);
+    if (!nextEmoji) return;
+    setRecentStatusStickers((prev) => {
+      const next = [nextEmoji, ...prev.filter((item) => item !== nextEmoji)];
+      return normalizeRecentStickerList(next);
+    });
+  };
+
   const addStatusSticker = (emoji) => {
     const nextEmoji = String(emoji || '').trim();
     if (!nextEmoji) return;
@@ -548,6 +658,7 @@ const ProfileNew = () => {
         ],
       };
     });
+    rememberRecentSticker(nextEmoji);
   };
 
   const removeStatusSticker = (stickerId) => {
@@ -631,15 +742,29 @@ const ProfileNew = () => {
     }));
   };
 
+  const applyStoryMusicPreset = (presetId) => {
+    const preset = STORY_MUSIC_PRESETS.find((item) => item.id === presetId);
+    if (!preset) return;
+    setStatusForm((prev) => ({
+      ...prev,
+      musicLabel: preset.musicLabel,
+      musicSourceType: normalizeStoryMusicSourceType(preset.musicSourceType),
+      musicSourceUrl: normalizeStoryMusicSourceUrl(preset.musicSourceUrl),
+    }));
+  };
+
   const resetStatusComposer = () => {
     if (statusForm.mediaPreview && statusForm.mediaPreview.startsWith('blob:')) {
       URL.revokeObjectURL(statusForm.mediaPreview);
     }
     setStatusTextDragging(false);
     setStatusDraggingStickerId('');
+    setStatusStickerTab('popular');
     setStatusForm({
       text: '',
       musicLabel: '',
+      musicSourceType: 'none',
+      musicSourceUrl: '',
       stickers: [],
       mediaFile: null,
       mediaPreview: '',
@@ -674,6 +799,8 @@ const ProfileNew = () => {
     setStatusForm({
       text: status.text || '',
       musicLabel: status.musicLabel || '',
+      musicSourceType: normalizeStoryMusicSourceType(status.musicSourceType),
+      musicSourceUrl: normalizeStoryMusicSourceUrl(status.musicSourceUrl),
       stickers: normalizeStatusStickerList(status.stickers),
       mediaFile: null,
       mediaPreview: getStatusMediaUrl(status),
@@ -688,6 +815,7 @@ const ProfileNew = () => {
       audience: ['public', 'followers', 'private'].includes(status.audience) ? status.audience : 'public',
       durationSec: status.durationSec || 7,
     });
+    setStatusStickerTab('popular');
     setStatusDraggingStickerId('');
     setEditingStatusId(status._id);
     setShowStatusComposer(true);
@@ -737,6 +865,8 @@ const ProfileNew = () => {
     const formData = new FormData();
     formData.append('text', trimmedText);
     formData.append('musicLabel', String(statusForm.musicLabel || '').trim());
+    formData.append('musicSourceType', normalizeStoryMusicSourceType(statusForm.musicSourceType));
+    formData.append('musicSourceUrl', normalizeStoryMusicSourceUrl(statusForm.musicSourceUrl));
     formData.append('stickers', JSON.stringify(statusForm.stickers || []));
     formData.append('backgroundColor', statusForm.backgroundColor);
     formData.append('textColor', statusForm.textColor);
@@ -1381,6 +1511,10 @@ const ProfileNew = () => {
                             <p className="text-[11px] text-[var(--text-secondary)] mt-1 inline-flex items-center gap-1">
                               <FaMusic size={10} />
                               {status.musicLabel}
+                              {status.musicSourceType && status.musicSourceType !== 'none'
+                                ? ` (${status.musicSourceType})`
+                                : ''}
+                              {status.musicSourceUrl ? ' * linked' : ''}
                             </p>
                           ) : null}
                           {Array.isArray(status.stickers) && status.stickers.length > 0 ? (
@@ -2186,6 +2320,9 @@ const ProfileNew = () => {
                           <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs backdrop-blur-sm">
                             <FaMusic size={11} />
                             {statusForm.musicLabel.trim()}
+                            {statusForm.musicSourceType && statusForm.musicSourceType !== 'none'
+                              ? ` - ${statusForm.musicSourceType}`
+                              : ''}
                           </span>
                         </div>
                       ) : null}
@@ -2218,21 +2355,79 @@ const ProfileNew = () => {
                     </div>
                   </div>
 
-                  <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
-                    Music label (optional)
-                    <input
-                      type="text"
-                      value={statusForm.musicLabel}
-                      onChange={(e) =>
-                        setStatusForm((prev) => ({
-                          ...prev,
-                          musicLabel: e.target.value.slice(0, 80),
-                        }))
-                      }
-                      placeholder="e.g. Midnight Waves - Lekhon Mix"
-                      className="h-10 px-3 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
-                    />
-                  </label>
+                  <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-[var(--text-secondary)]">Music (optional)</p>
+                      <div className="flex flex-wrap gap-2">
+                        {STORY_MUSIC_PRESETS.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => applyStoryMusicPreset(preset.id)}
+                            className="px-2 py-1 rounded border border-[var(--border-default)] text-xs text-[var(--text-primary)] hover:bg-[var(--surface-elevated)]"
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                      Music label
+                      <input
+                        type="text"
+                        value={statusForm.musicLabel}
+                        onChange={(e) =>
+                          setStatusForm((prev) => ({
+                            ...prev,
+                            musicLabel: e.target.value.slice(0, 80),
+                          }))
+                        }
+                        placeholder="e.g. Midnight Waves - Lekhon Mix"
+                        className="h-10 px-3 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+                      />
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                        Source
+                        <select
+                          value={statusForm.musicSourceType}
+                          onChange={(e) =>
+                            setStatusForm((prev) => {
+                              const nextType = normalizeStoryMusicSourceType(e.target.value);
+                              return {
+                                ...prev,
+                                musicSourceType: nextType,
+                                musicSourceUrl: nextType === 'none' ? '' : prev.musicSourceUrl,
+                              };
+                            })
+                          }
+                          className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
+                        >
+                          {STORY_MUSIC_SOURCE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                        Source URL
+                        <input
+                          type="url"
+                          value={statusForm.musicSourceUrl}
+                          onChange={(e) =>
+                            setStatusForm((prev) => ({
+                              ...prev,
+                              musicSourceUrl: normalizeStoryMusicSourceUrl(e.target.value),
+                            }))
+                          }
+                          disabled={statusForm.musicSourceType === 'none'}
+                          placeholder={statusForm.musicSourceType === 'none' ? 'Select a source first' : 'https://...'}
+                          className="h-10 px-3 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] disabled:opacity-60"
+                        />
+                      </label>
+                    </div>
+                  </div>
 
                   <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3 space-y-3">
                     <div className="flex items-center justify-between gap-2">
@@ -2247,20 +2442,54 @@ const ProfileNew = () => {
                         </button>
                       ) : null}
                     </div>
+
                     <div className="flex flex-wrap gap-2">
-                      {STORY_STICKER_EMOJI_PACK.map((emoji) => (
+                      <button
+                        type="button"
+                        onClick={() => setStatusStickerTab('recent')}
+                        className={`px-2.5 py-1 rounded-full border text-xs ${
+                          statusStickerTab === 'recent'
+                            ? 'border-[var(--brand-primary)] text-[var(--brand-primary)]'
+                            : 'border-[var(--border-default)] text-[var(--text-secondary)]'
+                        }`}
+                      >
+                        Recent
+                      </button>
+                      {STORY_STICKER_GROUPS.map((group) => (
                         <button
-                          key={emoji}
+                          key={group.id}
                           type="button"
-                          onClick={() => addStatusSticker(emoji)}
-                          disabled={statusForm.stickers.length >= MAX_STATUS_STICKERS}
-                          className="h-9 w-9 rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)] text-lg inline-flex items-center justify-center hover:bg-[var(--surface-elevated)] disabled:opacity-45"
-                          title="Add sticker"
+                          onClick={() => setStatusStickerTab(group.id)}
+                          className={`px-2.5 py-1 rounded-full border text-xs ${
+                            statusStickerTab === group.id
+                              ? 'border-[var(--brand-primary)] text-[var(--brand-primary)]'
+                              : 'border-[var(--border-default)] text-[var(--text-secondary)]'
+                          }`}
                         >
-                          {emoji}
+                          {group.label}
                         </button>
                       ))}
                     </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {activeStickerChoices.length > 0 ? (
+                        activeStickerChoices.map((emoji) => (
+                          <button
+                            key={`${statusStickerTab}-${emoji}`}
+                            type="button"
+                            onClick={() => addStatusSticker(emoji)}
+                            disabled={statusForm.stickers.length >= MAX_STATUS_STICKERS}
+                            className="h-9 w-9 rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)] text-lg inline-flex items-center justify-center hover:bg-[var(--surface-elevated)] disabled:opacity-45"
+                            title="Add sticker"
+                          >
+                            {emoji}
+                          </button>
+                        ))
+                      ) : (
+                        <p className="text-xs text-[var(--text-secondary)]">No recent stickers yet. Add one to see it here.</p>
+                      )}
+                    </div>
+
                     {statusForm.stickers.length > 0 ? (
                       <div className="space-y-2">
                         {statusForm.stickers.map((sticker, index) => (
@@ -2507,5 +2736,6 @@ const ProfileNew = () => {
 };
 
 export default ProfileNew;
+
 
 
