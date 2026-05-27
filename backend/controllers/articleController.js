@@ -277,7 +277,7 @@ exports.getArticles = async (req, res) => {
     }
 
     const query = Article.find(filter)
-      .populate('author', 'username profileImage isGuest role isVerified statuses')
+      .populate('author', 'username profileImage isGuest role isVerified statuses followers')
       .sort({ createdAt: -1, _id: -1 });
 
     if (useCursor) {
@@ -289,16 +289,31 @@ exports.getArticles = async (req, res) => {
       ? extractNextCursor(articles, limit)
       : { pageItems: articles, hasMore: false, nextCursor: null };
 
-    // Add commentCount and hasActiveStatus to each article
+    const viewerId = String(req.user?._id || '');
+    const canViewerSeeStatus = (status, { isOwner, isFollower }) => {
+      if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
+      if (isOwner) return true;
+      const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
+      if (audience === 'public') return true;
+      if (audience === 'followers' && isFollower) return true;
+      return false;
+    };
+
+    // Add commentCount and audience-aware hasActiveStatus to each article
     const articlesWithStatus = await Promise.all(pagedArticles.map(async (article) => {
       const articleObj = article.toObject();
       articleObj.commentCount = await Comment.countDocuments({ article: article._id });
       if (articleObj.author && articleObj.author.statuses) {
-        const now = new Date();
-        articleObj.author.hasActiveStatus = articleObj.author.statuses.some(status => 
-          status.expiresAt && new Date(status.expiresAt) > now
+        const authorId = String(articleObj.author._id || '');
+        const isOwner = viewerId && viewerId === authorId;
+        const isFollower = Array.isArray(articleObj.author.followers)
+          ? articleObj.author.followers.some((id) => String(id) === viewerId)
+          : false;
+        articleObj.author.hasActiveStatus = articleObj.author.statuses.some((status) =>
+          canViewerSeeStatus(status, { isOwner, isFollower })
         );
         delete articleObj.author.statuses;
+        delete articleObj.author.followers;
       }
       return articleObj;
     }));
@@ -330,7 +345,8 @@ exports.getArticles = async (req, res) => {
 
 exports.getArticle = async (req, res) => {
   try {
-    const detailCacheKey = `article:detail:${req.params.id}`;
+    const viewerId = String(req.user?._id || 'anon');
+    const detailCacheKey = `article:detail:${req.params.id}:viewer:${viewerId}`;
     const cachedPayload = await getCache(detailCacheKey);
     if (cachedPayload) {
       return res.json(cachedPayload);
@@ -338,7 +354,7 @@ exports.getArticle = async (req, res) => {
 
     const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id, {
       populate: [
-        { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses' },
+        { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses followers' },
         { path: 'likes', select: 'username profileImage' }
       ]
     });
@@ -353,12 +369,22 @@ exports.getArticle = async (req, res) => {
 
     const articleObj = article.toObject();
     if (articleObj.author && articleObj.author.statuses) {
-      const now = new Date();
-      const activeStatuses = articleObj.author.statuses.filter(status => 
-        status.expiresAt && new Date(status.expiresAt) > now
-      );
-      articleObj.author.hasActiveStatus = activeStatuses.length > 0;
-      articleObj.author.statuses = activeStatuses;
+      const authorId = String(articleObj.author._id || '');
+      const isOwner = viewerId !== 'anon' && viewerId === authorId;
+      const isFollower = Array.isArray(articleObj.author.followers)
+        ? articleObj.author.followers.some((id) => String(id) === viewerId)
+        : false;
+      const visibleStatuses = (articleObj.author.statuses || []).filter((status) => {
+        if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
+        if (isOwner) return true;
+        const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
+        if (audience === 'public') return true;
+        if (audience === 'followers' && isFollower) return true;
+        return false;
+      });
+      articleObj.author.hasActiveStatus = visibleStatuses.length > 0;
+      articleObj.author.statuses = visibleStatuses;
+      delete articleObj.author.followers;
     }
 
     const payload = {

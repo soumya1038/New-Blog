@@ -116,6 +116,7 @@ const ProfileNew = () => {
     textAlign: 'center',
     textPosX: 50,
     textPosY: 50,
+    audience: 'public',
     durationSec: 7,
   });
   const [statusSaving, setStatusSaving] = useState(false);
@@ -468,6 +469,7 @@ const ProfileNew = () => {
       textAlign: 'center',
       textPosX: 50,
       textPosY: 50,
+      audience: 'public',
       durationSec: 7,
     });
     setEditingStatusId('');
@@ -499,6 +501,7 @@ const ProfileNew = () => {
       textAlign: status.textAlign || 'center',
       textPosX: clampStatusTextPosition(status.textPosX),
       textPosY: clampStatusTextPosition(status.textPosY),
+      audience: ['public', 'followers', 'private'].includes(status.audience) ? status.audience : 'public',
       durationSec: status.durationSec || 7,
     });
     setEditingStatusId(status._id);
@@ -553,6 +556,7 @@ const ProfileNew = () => {
     formData.append('textAlign', statusForm.textAlign);
     formData.append('textPosX', String(statusForm.textPosX));
     formData.append('textPosY', String(statusForm.textPosY));
+    formData.append('audience', statusForm.audience);
     formData.append('durationSec', String(statusForm.durationSec || 7));
     if (editingStatusId && statusForm.removeExistingMedia && !statusForm.mediaFile) {
       formData.append('removeMedia', 'true');
@@ -1183,7 +1187,10 @@ const ProfileNew = () => {
                             {status.text || (getStatusMediaType(status) === 'video' ? 'Video status' : getStatusMediaType(status) === 'image' ? 'Image status' : 'Story status')}
                           </p>
                           <p className="text-xs text-[var(--text-secondary)] mt-1">
-                            {formatStatusTimeLeft(status.expiresAt)}
+                            {formatStatusTimeLeft(status.expiresAt)} - Audience: {status.audience === 'followers' ? 'Followers' : status.audience === 'private' ? 'Only me' : 'Public'}
+                          </p>
+                          <p className="text-[11px] text-[var(--text-secondary)] mt-1">
+                            Seen by {Array.isArray(status.seenBy) ? status.seenBy.length : status.seenByCount || 0}
                           </p>
                         </div>
                       </div>
@@ -2056,6 +2063,18 @@ const ProfileNew = () => {
                         onChange={(e) => setStatusForm((prev) => ({ ...prev, durationSec: Math.max(3, Math.min(30, Number(e.target.value) || 7)) }))}
                         className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
                       />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                      Audience
+                      <select
+                        value={statusForm.audience}
+                        onChange={(e) => setStatusForm((prev) => ({ ...prev, audience: e.target.value }))}
+                        className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
+                      >
+                        <option value="public">Public</option>
+                        <option value="followers">Followers</option>
+                        <option value="private">Only me</option>
+                      </select>
                     </label>
                     <div className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
                       Text Position

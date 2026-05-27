@@ -154,18 +154,33 @@ exports.getShorts = async (req, res) => {
     }
 
     const shorts = await Short.find(filter)
-      .populate('author', 'username profileImage isGuest role isVerified statuses')
+      .populate('author', 'username profileImage isGuest role isVerified statuses followers')
       .sort({ createdAt: -1 });
 
-    // Add hasActiveStatus to each short author
+    const viewerId = String(req.user?._id || '');
+    const canViewerSeeStatus = (status, { isOwner, isFollower }) => {
+      if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
+      if (isOwner) return true;
+      const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
+      if (audience === 'public') return true;
+      if (audience === 'followers' && isFollower) return true;
+      return false;
+    };
+
+    // Add audience-aware hasActiveStatus to each short author
     const shortsWithStatus = shorts.map(short => {
       const shortObj = short.toObject();
       if (shortObj.author && shortObj.author.statuses) {
-        const now = new Date();
-        shortObj.author.hasActiveStatus = shortObj.author.statuses.some(status => 
-          status.expiresAt && new Date(status.expiresAt) > now
+        const authorId = String(shortObj.author._id || '');
+        const isOwner = viewerId && viewerId === authorId;
+        const isFollower = Array.isArray(shortObj.author.followers)
+          ? shortObj.author.followers.some((id) => String(id) === viewerId)
+          : false;
+        shortObj.author.hasActiveStatus = shortObj.author.statuses.some((status) =>
+          canViewerSeeStatus(status, { isOwner, isFollower })
         );
         delete shortObj.author.statuses;
+        delete shortObj.author.followers;
       }
       return shortObj;
     });
@@ -185,14 +200,15 @@ exports.getShorts = async (req, res) => {
 // Get single short
 exports.getShort = async (req, res) => {
   try {
-    const detailCacheKey = `short:detail:${req.params.id}`;
+    const viewerId = String(req.user?._id || 'anon');
+    const detailCacheKey = `short:detail:${req.params.id}:viewer:${viewerId}`;
     const cachedPayload = await getCache(detailCacheKey);
     if (cachedPayload) {
       return res.json(cachedPayload);
     }
 
     const short = await Short.findById(req.params.id)
-      .populate('author', 'username profileImage fullName bio statuses')
+      .populate('author', 'username profileImage fullName bio statuses followers')
       .populate('likes', 'username profileImage');
 
     if (!short) {
@@ -203,12 +219,22 @@ exports.getShort = async (req, res) => {
 
     const shortObj = short.toObject();
     if (shortObj.author && shortObj.author.statuses) {
-      const now = new Date();
-      const activeStatuses = shortObj.author.statuses.filter(status => 
-        status.expiresAt && new Date(status.expiresAt) > now
-      );
-      shortObj.author.hasActiveStatus = activeStatuses.length > 0;
-      shortObj.author.statuses = activeStatuses;
+      const authorId = String(shortObj.author._id || '');
+      const isOwner = viewerId !== 'anon' && viewerId === authorId;
+      const isFollower = Array.isArray(shortObj.author.followers)
+        ? shortObj.author.followers.some((id) => String(id) === viewerId)
+        : false;
+      const visibleStatuses = (shortObj.author.statuses || []).filter((status) => {
+        if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
+        if (isOwner) return true;
+        const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
+        if (audience === 'public') return true;
+        if (audience === 'followers' && isFollower) return true;
+        return false;
+      });
+      shortObj.author.hasActiveStatus = visibleStatuses.length > 0;
+      shortObj.author.statuses = visibleStatuses;
+      delete shortObj.author.followers;
     }
 
     const payload = {

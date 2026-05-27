@@ -174,6 +174,11 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
             minute: '2-digit',
           })}
         </p>
+        {Number.isFinite(currentStatus?.seenByCount) || Array.isArray(currentStatus?.seenBy) ? (
+          <p className="text-xs opacity-80">
+            Seen by {Number.isFinite(currentStatus?.seenByCount) ? currentStatus.seenByCount : currentStatus.seenBy.length}
+          </p>
+        ) : null}
       </div>
 
       {currentIndex > 0 && (

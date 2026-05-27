@@ -199,7 +199,7 @@ exports.getBlogs = async (req, res) => {
     }
 
     const query = Blog.find(filter)
-      .populate('author', 'username profileImage isGuest role isVerified statuses')
+      .populate('author', 'username profileImage isGuest role isVerified statuses followers')
       .sort({ createdAt: -1, _id: -1 });
 
     if (useCursor) {
@@ -211,17 +211,32 @@ exports.getBlogs = async (req, res) => {
       ? extractNextCursor(blogs, limit)
       : { pageItems: blogs, hasMore: false, nextCursor: null };
 
-    // Add commentCount and hasActiveStatus to each blog
+    const viewerId = String(req.user?._id || '');
+    const canViewerSeeStatus = (status, { isOwner, isFollower }) => {
+      if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
+      if (isOwner) return true;
+      const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
+      if (audience === 'public') return true;
+      if (audience === 'followers' && isFollower) return true;
+      return false;
+    };
+
+    // Add commentCount and audience-aware hasActiveStatus to each blog
     const Comment = require('../models/Comment');
     const blogsWithStatus = await Promise.all(pagedBlogs.map(async (blog) => {
       const blogObj = blog.toObject();
       blogObj.commentCount = await Comment.countDocuments({ blog: blog._id });
       if (blogObj.author && blogObj.author.statuses) {
-        const now = new Date();
-        blogObj.author.hasActiveStatus = blogObj.author.statuses.some(status => 
-          status.expiresAt && new Date(status.expiresAt) > now
+        const authorId = String(blogObj.author._id || '');
+        const isOwner = viewerId && viewerId === authorId;
+        const isFollower = Array.isArray(blogObj.author.followers)
+          ? blogObj.author.followers.some((id) => String(id) === viewerId)
+          : false;
+        blogObj.author.hasActiveStatus = blogObj.author.statuses.some((status) =>
+          canViewerSeeStatus(status, { isOwner, isFollower })
         );
         delete blogObj.author.statuses;
+        delete blogObj.author.followers;
       }
       return blogObj;
     }));
@@ -254,7 +269,8 @@ exports.getBlogs = async (req, res) => {
 // Get single blog
 exports.getBlog = async (req, res) => {
   try {
-    const detailCacheKey = `blog:detail:${req.params.id}`;
+    const viewerId = String(req.user?._id || 'anon');
+    const detailCacheKey = `blog:detail:${req.params.id}:viewer:${viewerId}`;
     const cachedPayload = await getCache(detailCacheKey);
     if (cachedPayload) {
       return res.json(cachedPayload);
@@ -262,7 +278,7 @@ exports.getBlog = async (req, res) => {
 
     const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id, {
       populate: [
-        { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses' },
+        { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses followers' },
         { path: 'likes', select: 'username profileImage' }
       ]
     });
@@ -276,14 +292,24 @@ exports.getBlog = async (req, res) => {
     const commentCount = await Comment.countDocuments({ blog: blog._id });
 
     const blogObj = blog.toObject();
-    // Add hasActiveStatus to author and keep statuses for viewing
+    // Add audience-aware hasActiveStatus and visible statuses for viewing
     if (blogObj.author && blogObj.author.statuses) {
-      const now = new Date();
-      const activeStatuses = blogObj.author.statuses.filter(status => 
-        status.expiresAt && new Date(status.expiresAt) > now
-      );
-      blogObj.author.hasActiveStatus = activeStatuses.length > 0;
-      blogObj.author.statuses = activeStatuses; // Keep active statuses for viewing
+      const authorId = String(blogObj.author._id || '');
+      const isOwner = viewerId !== 'anon' && viewerId === authorId;
+      const isFollower = Array.isArray(blogObj.author.followers)
+        ? blogObj.author.followers.some((id) => String(id) === viewerId)
+        : false;
+      const visibleStatuses = (blogObj.author.statuses || []).filter((status) => {
+        if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
+        if (isOwner) return true;
+        const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
+        if (audience === 'public') return true;
+        if (audience === 'followers' && isFollower) return true;
+        return false;
+      });
+      blogObj.author.hasActiveStatus = visibleStatuses.length > 0;
+      blogObj.author.statuses = visibleStatuses;
+      delete blogObj.author.followers;
     }
 
     const payload = {

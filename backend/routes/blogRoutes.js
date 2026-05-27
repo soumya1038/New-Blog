@@ -68,7 +68,7 @@ router.delete('/delete-image/:publicId', protect, async (req, res) => {
 router.post('/', protect, trackActivity, createBlog);
 router.get('/', optionalAuth, getBlogs);
 router.get('/short/all', getShortBlogs);
-router.get('/:id', getBlog);
+router.get('/:id', optionalAuth, getBlog);
 router.post('/:id/view', optionalAuth, trackView);
 router.put('/:id', protect, trackActivity, updateBlog);
 router.delete('/:id', protect, trackActivity, deleteBlog);

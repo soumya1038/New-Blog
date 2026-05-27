@@ -14,8 +14,11 @@ const {
   updateUsername,
   createStatus,
   getStatuses,
+  getUserStatuses,
   updateStatus,
   deleteStatus,
+  getStoryPreferences,
+  updateStoryPreference,
   guestLogout,
   disconnectSocialProvider,
 } = require('../controllers/userController');
@@ -41,6 +44,9 @@ router.put('/username', protect, updateUsername);
 router.delete('/social/:provider', protect, disconnectSocialProvider);
 router.post('/statuses', protect, trackActivity, statusUpload.single('statusMedia'), createStatus);
 router.get('/statuses', protect, getStatuses);
+router.get('/statuses/user/:userId', protect, getUserStatuses);
+router.get('/statuses/preferences', protect, getStoryPreferences);
+router.put('/statuses/preferences', protect, updateStoryPreference);
 router.put('/statuses/:statusId', protect, trackActivity, statusUpload.single('statusMedia'), updateStatus);
 router.delete('/statuses/:statusId', protect, trackActivity, deleteStatus);
 router.post('/guest-logout', protect, guestLogout);
@@ -65,11 +71,27 @@ router.post('/contact', protect, async (req, res) => {
 router.post('/statuses/check', protect, async (req, res) => {
   try {
     const { userIds } = req.body;
-    const users = await require('../models/User').find({ _id: { $in: userIds } }).select('_id statuses');
+    const users = await require('../models/User').find({ _id: { $in: userIds } }).select('_id statuses followers');
+    const viewerId = String(req.user?._id || '');
     const statusMap = {};
+
+    const canSeeStatus = (status, isFollower, isOwner) => {
+      if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
+      if (isOwner) return true;
+      const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
+      if (audience === 'public') return true;
+      if (audience === 'followers' && isFollower) return true;
+      return false;
+    };
+
     users.forEach(user => {
-      const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
-      statusMap[user._id.toString()] = activeStatuses.length > 0;
+      const ownerId = String(user._id);
+      const isOwner = viewerId && viewerId === ownerId;
+      const isFollower = Array.isArray(user.followers)
+        ? user.followers.some((followerId) => String(followerId) === viewerId)
+        : false;
+      const visibleStatuses = (user.statuses || []).filter((status) => canSeeStatus(status, isFollower, isOwner));
+      statusMap[ownerId] = visibleStatuses.length > 0;
     });
     res.json({ success: true, statusMap });
   } catch (error) {

@@ -13,7 +13,7 @@ const {
 
 router.post('/', protect, createArticle);
 router.get('/', optionalAuth, getArticles);
-router.get('/:id', getArticle);
+router.get('/:id', optionalAuth, getArticle);
 router.put('/:id', protect, updateArticle);
 router.delete('/:id', protect, deleteArticle);
 router.post('/:id/view', trackView);

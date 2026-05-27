@@ -28,6 +28,35 @@ const doesSocialEntryMatchProvider = (entry, provider) => {
   return domains.some((domain) => nameValue.includes(domain) || urlValue.includes(domain));
 };
 
+const normalizeStatusAudience = (value) => {
+  const audience = String(value || 'public').toLowerCase();
+  if (['public', 'followers', 'private'].includes(audience)) return audience;
+  return 'public';
+};
+
+const isStatusActive = (status) => {
+  if (!status?.expiresAt) return false;
+  return new Date(status.expiresAt) > new Date();
+};
+
+const getViewerId = (viewer) => String(viewer?._id || '');
+
+const isFollowerOfTarget = (targetUser, viewerId) => {
+  if (!viewerId) return false;
+  const followers = Array.isArray(targetUser?.followers) ? targetUser.followers : [];
+  return followers.some((follower) => String(follower?._id || follower) === viewerId);
+};
+
+const filterVisibleStatusesForViewer = (allStatuses = [], { isOwner = false, isFollower = false } = {}) =>
+  (Array.isArray(allStatuses) ? allStatuses : []).filter((status) => {
+    if (!isStatusActive(status)) return false;
+    if (isOwner) return true;
+    const audience = normalizeStatusAudience(status?.audience);
+    if (audience === 'public') return true;
+    if (audience === 'followers' && isFollower) return true;
+    return false;
+  });
+
 // Get user profile
 exports.getProfile = async (req, res) => {
   try {
@@ -60,16 +89,17 @@ exports.getProfile = async (req, res) => {
 
     const blogCount = await Blog.countDocuments({ author: user._id, isDraft: false });
     const articleCount = await Article.countDocuments({ author: user._id, isDraft: false });
-
-    // Filter active statuses
-    const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
-    const hasActiveStatus = activeStatuses.length > 0;
+    const viewerId = getViewerId(req.user);
+    const isOwner = viewerId && viewerId === String(user._id);
+    const isFollower = isFollowerOfTarget(user, viewerId);
+    const visibleStatuses = filterVisibleStatusesForViewer(user.statuses, { isOwner, isFollower });
+    const hasActiveStatus = visibleStatuses.length > 0;
 
     res.json({
       success: true,
       user: {
         ...user.toObject(),
-        statuses: activeStatuses,
+        statuses: visibleStatuses,
         hasActiveStatus,
         blogCount,
         articleCount,
@@ -617,6 +647,7 @@ exports.createStatus = async (req, res) => {
       textAlign,
       textPosX,
       textPosY,
+      audience,
       durationSec,
     } = req.body;
     let imageUrl = '';
@@ -666,6 +697,8 @@ exports.createStatus = async (req, res) => {
       textAlign: ['left', 'center', 'right'].includes(textAlign) ? textAlign : 'center',
       textPosX: clampStatusPosition(textPosX),
       textPosY: clampStatusPosition(textPosY),
+      audience: normalizeStatusAudience(audience),
+      seenBy: [],
       durationSec: clampStatusDuration(durationSec),
       createdAt: now,
       expiresAt
@@ -706,6 +739,131 @@ exports.getStatuses = async (req, res) => {
   }
 };
 
+// Get visible statuses for a specific user and track story views
+exports.getUserStatuses = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const viewerId = getViewerId(req.user);
+
+    const targetUser = await User.findById(userId).select('username followers statuses');
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const isOwner = viewerId && viewerId === String(targetUser._id);
+    const isFollower = isFollowerOfTarget(targetUser, viewerId);
+    const visibleStatuses = filterVisibleStatusesForViewer(targetUser.statuses, { isOwner, isFollower });
+
+    // Track viewers for stories they can see (except owner viewing own statuses)
+    if (!isOwner && viewerId && visibleStatuses.length > 0) {
+      let touched = false;
+      for (const status of visibleStatuses) {
+        const alreadySeen = Array.isArray(status.seenBy)
+          ? status.seenBy.some((entry) => String(entry?.user) === viewerId)
+          : false;
+        if (!alreadySeen) {
+          status.seenBy = Array.isArray(status.seenBy) ? status.seenBy : [];
+          status.seenBy.push({ user: req.user._id, seenAt: new Date() });
+          touched = true;
+        }
+      }
+      if (touched) {
+        await targetUser.save();
+      }
+    }
+
+    const statusesWithMeta = visibleStatuses.map((status) => {
+      const obj = status.toObject ? status.toObject() : status;
+      const seenByCount = Array.isArray(status?.seenBy) ? status.seenBy.length : 0;
+      if (!isOwner) {
+        delete obj.seenBy;
+      }
+      return {
+        ...obj,
+        seenByCount,
+      };
+    });
+
+    res.json({
+      success: true,
+      userId: String(targetUser._id),
+      username: targetUser.username || 'User',
+      statuses: statusesWithMeta,
+      hasActiveStatus: statusesWithMeta.length > 0,
+      relationship: {
+        isOwner,
+        isFollower,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Read story mute/hide preferences
+exports.getStoryPreferences = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('mutedStoryUsers hiddenStoryUsers');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    res.json({
+      success: true,
+      mutedStoryUsers: (user.mutedStoryUsers || []).map((id) => String(id)),
+      hiddenStoryUsers: (user.hiddenStoryUsers || []).map((id) => String(id)),
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Update story mute/hide preferences for a target user
+exports.updateStoryPreference = async (req, res) => {
+  try {
+    const { targetUserId, action } = req.body;
+    const nextAction = String(action || '').toLowerCase();
+    const validActions = new Set(['mute', 'unmute', 'hide', 'unhide']);
+    if (!targetUserId || !validActions.has(nextAction)) {
+      return res.status(400).json({ success: false, message: 'Invalid story preference request' });
+    }
+
+    if (String(targetUserId) === String(req.user._id)) {
+      return res.status(400).json({ success: false, message: 'Cannot apply this action to your own stories' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const targetUserExists = await User.exists({ _id: targetUserId });
+    if (!targetUserExists) {
+      return res.status(404).json({ success: false, message: 'Target user not found' });
+    }
+
+    const muted = new Set((user.mutedStoryUsers || []).map((id) => String(id)));
+    const hidden = new Set((user.hiddenStoryUsers || []).map((id) => String(id)));
+
+    if (nextAction === 'mute') muted.add(String(targetUserId));
+    if (nextAction === 'unmute') muted.delete(String(targetUserId));
+    if (nextAction === 'hide') hidden.add(String(targetUserId));
+    if (nextAction === 'unhide') hidden.delete(String(targetUserId));
+
+    user.mutedStoryUsers = Array.from(muted);
+    user.hiddenStoryUsers = Array.from(hidden);
+    await user.save();
+
+    res.json({
+      success: true,
+      mutedStoryUsers: Array.from(muted),
+      hiddenStoryUsers: Array.from(hidden),
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Update status
 exports.updateStatus = async (req, res) => {
   try {
@@ -718,6 +876,7 @@ exports.updateStatus = async (req, res) => {
       textAlign,
       textPosX,
       textPosY,
+      audience,
       durationSec,
       removeMedia,
     } = req.body;
@@ -754,6 +913,9 @@ exports.updateStatus = async (req, res) => {
     }
     if (textPosY !== undefined) {
       status.textPosY = clampStatusPosition(textPosY);
+    }
+    if (audience !== undefined) {
+      status.audience = normalizeStatusAudience(audience);
     }
     if (durationSec !== undefined) {
       status.durationSec = clampStatusDuration(durationSec);

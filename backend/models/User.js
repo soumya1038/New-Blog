@@ -62,6 +62,8 @@ const userSchema = new mongoose.Schema({
   following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   mutedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  mutedStoryUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  hiddenStoryUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   lastSeen: { type: Date, default: Date.now },
   lastActive: { type: Date, default: Date.now },
   statuses: [{
@@ -76,6 +78,11 @@ const userSchema = new mongoose.Schema({
     textAlign: { type: String, enum: ['left', 'center', 'right'], default: 'center' },
     textPosX: { type: Number, default: 50, min: 0, max: 100 },
     textPosY: { type: Number, default: 50, min: 0, max: 100 },
+    audience: { type: String, enum: ['public', 'followers', 'private'], default: 'public' },
+    seenBy: [{
+      user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+      seenAt: { type: Date, default: Date.now },
+    }],
     durationSec: { type: Number, default: 7, min: 3, max: 30 },
     createdAt: { type: Date, default: Date.now },
     expiresAt: { type: Date }

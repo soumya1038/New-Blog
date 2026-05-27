@@ -58,6 +58,11 @@ const Home = () => {
   const [myStoryStatuses, setMyStoryStatuses] = useState([]);
   const [storyStatusCache, setStoryStatusCache] = useState({});
   const [seenStories, setSeenStories] = useState({});
+  const [storyPreferences, setStoryPreferences] = useState({
+    mutedStoryUsers: [],
+    hiddenStoryUsers: [],
+  });
+  const [storyPreferenceSavingUserId, setStoryPreferenceSavingUserId] = useState('');
   const [storyViewerState, setStoryViewerState] = useState({
     open: false,
     userId: '',
@@ -116,6 +121,38 @@ const Home = () => {
       // Ignore storage write failures
     }
   }, [storySeenStorageKey, seenStories]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchStoryPreferences = async () => {
+      if (!user?._id) {
+        if (isMounted) {
+          setStoryPreferences({ mutedStoryUsers: [], hiddenStoryUsers: [] });
+        }
+        return;
+      }
+
+      try {
+        const { data } = await api.get('/users/statuses/preferences');
+        if (!isMounted) return;
+        setStoryPreferences({
+          mutedStoryUsers: Array.isArray(data?.mutedStoryUsers) ? data.mutedStoryUsers : [],
+          hiddenStoryUsers: Array.isArray(data?.hiddenStoryUsers) ? data.hiddenStoryUsers : [],
+        });
+      } catch (error) {
+        if (isMounted) {
+          setStoryPreferences({ mutedStoryUsers: [], hiddenStoryUsers: [] });
+        }
+      }
+    };
+
+    fetchStoryPreferences();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?._id]);
 
   useEffect(() => {
     let isMounted = true;
@@ -304,6 +341,8 @@ const Home = () => {
   const storyEntries = useMemo(() => {
     if (!user?._id) return [];
 
+    const hiddenSet = new Set((storyPreferences.hiddenStoryUsers || []).map((id) => String(id)));
+    const mutedSet = new Set((storyPreferences.mutedStoryUsers || []).map((id) => String(id)));
     const authorMap = new Map();
     const allSources = [...blogs, ...articles, ...shortBlogs];
 
@@ -330,7 +369,15 @@ const Home = () => {
 
     const activeAuthors = Array.from(authorMap.values())
       .filter((entry) => entry.userId !== user._id && entry.hasActiveStatus)
-      .sort((a, b) => a.username.localeCompare(b.username));
+      .map((entry) => ({
+        ...entry,
+        isMuted: mutedSet.has(entry.userId),
+        isHidden: hiddenSet.has(entry.userId),
+      }))
+      .sort((a, b) => {
+        if (a.isHidden !== b.isHidden) return a.isHidden ? 1 : -1;
+        return a.username.localeCompare(b.username);
+      });
 
     const selfEntry = {
       userId: user._id,
@@ -342,7 +389,18 @@ const Home = () => {
     };
 
     return [selfEntry, ...activeAuthors];
-  }, [user?._id, user?.profileImage, user?.isGuest, user?.role, blogs, articles, shortBlogs, myStoryStatuses.length]);
+  }, [
+    user?._id,
+    user?.profileImage,
+    user?.isGuest,
+    user?.role,
+    blogs,
+    articles,
+    shortBlogs,
+    myStoryStatuses.length,
+    storyPreferences.hiddenStoryUsers,
+    storyPreferences.mutedStoryUsers,
+  ]);
 
   const markStoryAsSeen = (userId, latestStatusAt) => {
     if (!userId || !latestStatusAt) return;
@@ -368,12 +426,32 @@ const Home = () => {
     return Date.now() - Number(seenMeta.seenAt || 0) < 24 * 60 * 60 * 1000;
   };
 
+  const updateStoryPreference = async (entry, action) => {
+    if (!entry || entry.isSelf || !entry.userId) return;
+    setStoryPreferenceSavingUserId(entry.userId);
+    try {
+      const { data } = await api.put('/users/statuses/preferences', {
+        targetUserId: entry.userId,
+        action,
+      });
+      setStoryPreferences({
+        mutedStoryUsers: Array.isArray(data?.mutedStoryUsers) ? data.mutedStoryUsers : [],
+        hiddenStoryUsers: Array.isArray(data?.hiddenStoryUsers) ? data.hiddenStoryUsers : [],
+      });
+    } catch (error) {
+      console.error('Failed to update story preference:', error);
+    } finally {
+      setStoryPreferenceSavingUserId('');
+    }
+  };
+
   const openStoryForEntry = async (entry) => {
     if (!entry || !entry.userId) return;
     if (!user) {
       navigate('/login');
       return;
     }
+    if (entry.isHidden) return;
 
     if (entry.isSelf && !entry.hasActiveStatus) {
       navigate('/profile');
@@ -393,9 +471,9 @@ const Home = () => {
           statuses = normalizeActiveStatuses(data?.statuses || []);
           userName = user?.username || 'You';
         } else {
-          const { data } = await api.get(`/users/profile/${entry.userId}`);
-          statuses = normalizeActiveStatuses(data?.user?.statuses || []);
-          userName = data?.user?.username || userName;
+          const { data } = await api.get(`/users/statuses/user/${entry.userId}`);
+          statuses = normalizeActiveStatuses(data?.statuses || []);
+          userName = data?.username || userName;
         }
 
         statusPayload = {
@@ -623,9 +701,16 @@ const Home = () => {
                   const seen = isStorySeen(entry);
                   const hasActive = Boolean(entry.hasActiveStatus);
                   const isLoading = storyLoadingUserId === entry.userId;
+                  const isMuted = Boolean(entry.isMuted);
+                  const isHidden = Boolean(entry.isHidden);
+                  const isSavingPreference = storyPreferenceSavingUserId === entry.userId;
                   const ringColor = !hasActive
                     ? 'var(--border-default)'
-                    : seen
+                    : isHidden
+                      ? 'var(--border-subtle)'
+                      : isMuted
+                      ? 'var(--text-muted)'
+                      : seen
                       ? 'var(--border-subtle)'
                       : 'var(--brand-primary)';
 
@@ -645,7 +730,7 @@ const Home = () => {
                       <button
                         type="button"
                         onClick={() => openStoryForEntry(entry)}
-                        disabled={isLoading}
+                        disabled={isLoading || isHidden}
                         style={{
                           width: 'clamp(58px, 15vw, 74px)',
                           height: 'clamp(58px, 15vw, 74px)',
@@ -655,11 +740,17 @@ const Home = () => {
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          cursor: isLoading ? 'wait' : 'pointer',
-                          opacity: isLoading ? 0.7 : 1,
+                          cursor: isLoading ? 'wait' : isHidden ? 'not-allowed' : 'pointer',
+                          opacity: isLoading ? 0.7 : isHidden ? 0.45 : isMuted ? 0.72 : 1,
                           transition: 'all 180ms ease',
                         }}
-                        title={entry.isSelf && !hasActive ? t('Add status') : t('View status')}
+                        title={
+                          isHidden
+                            ? 'Story hidden. Unhide to view.'
+                            : entry.isSelf && !hasActive
+                              ? t('Add status')
+                              : t('View status')
+                        }
                       >
                         <Avatar
                           user={entry}
@@ -687,8 +778,49 @@ const Home = () => {
                         }}
                         title={entry.isSelf ? t('Go to profile') : t('Open profile')}
                       >
-                        {entry.username}
+                        {entry.username}{isHidden ? ' (Hidden)' : isMuted ? ' (Muted)' : ''}
                       </button>
+
+                      {!entry.isSelf && (
+                        <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
+                          <button
+                            type="button"
+                            disabled={isSavingPreference}
+                            onClick={() => updateStoryPreference(entry, isMuted ? 'unmute' : 'mute')}
+                            style={{
+                              border: '1px solid var(--border-default)',
+                              background: 'var(--surface-card)',
+                              color: 'var(--text-secondary)',
+                              borderRadius: '999px',
+                              padding: '2px 6px',
+                              fontSize: '10px',
+                              cursor: isSavingPreference ? 'wait' : 'pointer',
+                              opacity: isSavingPreference ? 0.7 : 1,
+                            }}
+                            title={isMuted ? 'Unmute stories' : 'Mute stories'}
+                          >
+                            {isMuted ? 'Unmute' : 'Mute'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSavingPreference}
+                            onClick={() => updateStoryPreference(entry, isHidden ? 'unhide' : 'hide')}
+                            style={{
+                              border: '1px solid var(--border-default)',
+                              background: 'var(--surface-card)',
+                              color: 'var(--text-secondary)',
+                              borderRadius: '999px',
+                              padding: '2px 6px',
+                              fontSize: '10px',
+                              cursor: isSavingPreference ? 'wait' : 'pointer',
+                              opacity: isSavingPreference ? 0.7 : 1,
+                            }}
+                            title={isHidden ? 'Unhide stories' : 'Hide stories'}
+                          >
+                            {isHidden ? 'Unhide' : 'Hide'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
