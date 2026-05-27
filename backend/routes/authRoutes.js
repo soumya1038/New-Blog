@@ -21,12 +21,16 @@ const {
   exchangeGoogleCode,
   startFacebookAuth,
   exchangeFacebookCode,
+  startLinkedInAuth,
+  exchangeLinkedInCode,
   startTwitterAuth,
   exchangeTwitterCode,
   startGoogleConnectAuth,
   exchangeGoogleConnectCode,
   startFacebookConnectAuth,
   exchangeFacebookConnectCode,
+  startLinkedInConnectAuth,
+  exchangeLinkedInConnectCode,
   startTwitterConnectAuth,
   exchangeTwitterConnectCode,
   facebookDeauthorizeCallback,
@@ -63,6 +67,10 @@ router.get('/facebook/start', startFacebookAuth);
 router.post('/facebook/exchange', exchangeFacebookCode);
 router.get('/facebook/connect/start', protect, startFacebookConnectAuth);
 router.post('/facebook/connect/exchange', protect, exchangeFacebookConnectCode);
+router.get('/linkedin/start', startLinkedInAuth);
+router.post('/linkedin/exchange', exchangeLinkedInCode);
+router.get('/linkedin/connect/start', protect, startLinkedInConnectAuth);
+router.post('/linkedin/connect/exchange', protect, exchangeLinkedInConnectCode);
 router.get('/twitter/start', startTwitterAuth);
 router.post('/twitter/exchange', exchangeTwitterCode);
 router.get('/twitter/connect/start', protect, startTwitterConnectAuth);

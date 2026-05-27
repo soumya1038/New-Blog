@@ -47,6 +47,19 @@ const getFacebookRedirectUri = () => {
   return `${window.location.origin}/auth/facebook/callback`;
 };
 
+const getLinkedInRedirectUri = () => {
+  const configured = String(process.env.REACT_APP_LINKEDIN_REDIRECT_URI || '').trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+    } catch (error) {
+      console.warn('Invalid REACT_APP_LINKEDIN_REDIRECT_URI, falling back to current origin.');
+    }
+  }
+  return `${window.location.origin}/auth/linkedin/callback`;
+};
+
 const STORY_STYLE_PRESETS = [
   {
     id: 'sunset',
@@ -269,6 +282,7 @@ const ProfileNew = () => {
   const [showStatusViewer, setShowStatusViewer] = useState(false);
   const [statusViewerIndex, setStatusViewerIndex] = useState(0);
   const [statusForm, setStatusForm] = useState({
+    contentType: 'story',
     text: '',
     musicLabel: '',
     musicSourceType: 'none',
@@ -446,7 +460,7 @@ const ProfileNew = () => {
       key: 'linkedin',
       label: 'LinkedIn',
       icon: <FaLinkedinIn size={16} className="text-blue-700" />,
-      connectMode: 'manual',
+      connectMode: 'oauth',
       suggestedUrl: 'https://www.linkedin.com/in/',
       matches: ['linkedin.com'],
     },
@@ -581,8 +595,16 @@ const ProfileNew = () => {
       ? items.filter((status) => status?.expiresAt && new Date(status.expiresAt) > new Date())
       : [];
 
+  const normalizeStatusContentType = (value) => {
+    const nextType = String(value || 'story').trim().toLowerCase();
+    return nextType === 'post' ? 'post' : 'story';
+  };
+
   const syncStatuses = (incomingStatuses = []) => {
-    const nextStatuses = getActiveStatuses(incomingStatuses);
+    const nextStatuses = getActiveStatuses(incomingStatuses).map((status) => ({
+      ...status,
+      contentType: normalizeStatusContentType(status?.contentType),
+    }));
     setStatuses(nextStatuses);
   };
 
@@ -780,6 +802,38 @@ const ProfileNew = () => {
     }));
   };
 
+  const setStatusComposerContentType = (nextType) => {
+    const normalizedType = normalizeStatusContentType(nextType);
+    setStatusForm((prev) => {
+      const nextForm = {
+        ...prev,
+        contentType: normalizedType,
+      };
+
+      if (normalizedType === 'post' && prev.mediaType === 'video') {
+        if (prev.mediaPreview && prev.mediaPreview.startsWith('blob:')) {
+          URL.revokeObjectURL(prev.mediaPreview);
+        }
+        const shouldMarkRemove =
+          Boolean(editingStatusId) &&
+          Boolean(prev.mediaPreview) &&
+          !prev.mediaPreview.startsWith('blob:');
+        nextForm.mediaFile = null;
+        nextForm.mediaPreview = '';
+        nextForm.mediaType = 'text';
+        nextForm.trimStartSec = 0;
+        nextForm.trimEndSec = null;
+        nextForm.removeExistingMedia = shouldMarkRemove;
+      }
+
+      return nextForm;
+    });
+
+    if (normalizedType === 'post') {
+      setStatusVideoDurationSec(0);
+    }
+  };
+
   const resetStatusComposer = () => {
     if (statusForm.mediaPreview && statusForm.mediaPreview.startsWith('blob:')) {
       URL.revokeObjectURL(statusForm.mediaPreview);
@@ -788,6 +842,7 @@ const ProfileNew = () => {
     setStatusDraggingStickerId('');
     setStatusStickerTab('popular');
     setStatusForm({
+      contentType: 'story',
       text: '',
       musicLabel: '',
       musicSourceType: 'none',
@@ -827,6 +882,7 @@ const ProfileNew = () => {
       URL.revokeObjectURL(statusForm.mediaPreview);
     }
     setStatusForm({
+      contentType: normalizeStatusContentType(status.contentType),
       text: status.text || '',
       musicLabel: status.musicLabel || '',
       musicSourceType: normalizeStoryMusicSourceType(status.musicSourceType),
@@ -866,12 +922,20 @@ const ProfileNew = () => {
   const handleStatusMediaChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const isVideoFile = String(file.type || '').startsWith('video/');
+    const isPostMode = normalizeStatusContentType(statusForm.contentType) === 'post';
+
+    if (isPostMode && isVideoFile) {
+      showModal('error', 'Video Not Allowed', 'Post mode supports image uploads only. Switch to Story mode to use video.');
+      e.target.value = '';
+      return;
+    }
 
     if (statusForm.mediaPreview && statusForm.mediaPreview.startsWith('blob:')) {
       URL.revokeObjectURL(statusForm.mediaPreview);
     }
 
-    const nextType = String(file.type || '').startsWith('video/') ? 'video' : 'image';
+    const nextType = isVideoFile ? 'video' : 'image';
     const baseTrimRange = normalizeStoryTrimRange(0, null, 0);
     setStatusForm((prev) => ({
       ...prev,
@@ -925,22 +989,40 @@ const ProfileNew = () => {
     () => normalizeStoryTrimRange(statusForm.trimStartSec, statusForm.trimEndSec, statusVideoDurationSec),
     [statusForm.trimStartSec, statusForm.trimEndSec, statusVideoDurationSec]
   );
+  const statusComposerMode = normalizeStatusContentType(statusForm.contentType);
+  const isPostComposer = statusComposerMode === 'post';
+  const isStoryComposer = statusComposerMode === 'story';
+  const statusMediaAccept = isPostComposer ? 'image/*' : 'image/*,video/*';
 
   const handleStatusSave = async (e) => {
     e.preventDefault();
+    const normalizedContentType = normalizeStatusContentType(statusForm.contentType);
+    const isPostMode = normalizedContentType === 'post';
     const trimmedText = statusForm.text.trim();
     const hasStickers = Array.isArray(statusForm.stickers) && statusForm.stickers.length > 0;
+    const hasVideoInComposer =
+      statusForm.mediaType === 'video' && Boolean(statusForm.mediaFile || statusForm.mediaPreview);
+    const requiredMessage = isPostMode
+      ? 'Please add text, image, or stickers to publish this post.'
+      : 'Please add text, image, video, or stickers to post a status.';
+
+    if (isPostMode && hasVideoInComposer) {
+      showModal('error', 'Video Not Allowed', 'Post mode supports image uploads only. Remove video or switch to Story mode.');
+      return;
+    }
+
     if (!trimmedText && !statusForm.mediaFile && !hasStickers && !editingStatusId) {
-      showModal('error', 'Status Required', 'Please add text, image, video, or stickers to post a status.');
+      showModal('error', 'Status Required', requiredMessage);
       return;
     }
 
     if (!trimmedText && !statusForm.mediaFile && !hasStickers && editingStatusId && !statusForm.mediaPreview) {
-      showModal('error', 'Status Required', 'Please add text, image, video, or stickers to post a status.');
+      showModal('error', 'Status Required', requiredMessage);
       return;
     }
 
     const formData = new FormData();
+    formData.append('contentType', normalizedContentType);
     formData.append('text', trimmedText);
     formData.append('musicLabel', String(statusForm.musicLabel || '').trim());
     formData.append('musicSourceType', normalizeStoryMusicSourceType(statusForm.musicSourceType));
@@ -954,7 +1036,7 @@ const ProfileNew = () => {
     formData.append('textPosY', String(statusForm.textPosY));
     formData.append('audience', statusForm.audience);
     formData.append('durationSec', String(statusForm.durationSec || 7));
-    if (statusForm.mediaFile && statusForm.mediaType === 'video') {
+    if (normalizedContentType === 'story' && statusForm.mediaFile && statusForm.mediaType === 'video') {
       const normalizedTrim = normalizeStoryTrimRange(
         statusForm.trimStartSec,
         statusForm.trimEndSec,
@@ -1230,6 +1312,8 @@ const ProfileNew = () => {
         ? getTwitterRedirectUri()
         : provider === 'facebook'
           ? getFacebookRedirectUri()
+          : provider === 'linkedin'
+            ? getLinkedInRedirectUri()
           : `${window.location.origin}/auth/${provider}/callback`;
       const { data } = await api.get(`/auth/${provider}/connect/start`, {
         params: { redirect_uri: redirectUri }
@@ -1590,8 +1674,20 @@ const ProfileNew = () => {
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
+                          <div className="mb-1">
+                            <span className="inline-flex items-center rounded-full border border-[var(--border-default)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
+                              {normalizeStatusContentType(status.contentType) === 'post' ? 'Post' : 'Story'}
+                            </span>
+                          </div>
                           <p className="text-sm text-[var(--text-primary)] line-clamp-2">
-                            {status.text || (getStatusMediaType(status) === 'video' ? 'Video status' : getStatusMediaType(status) === 'image' ? 'Image status' : 'Story status')}
+                            {status.text ||
+                              (getStatusMediaType(status) === 'video'
+                                ? 'Video update'
+                                : getStatusMediaType(status) === 'image'
+                                  ? 'Image update'
+                                  : normalizeStatusContentType(status.contentType) === 'post'
+                                    ? 'Post update'
+                                    : 'Story update')}
                           </p>
                           <p className="text-xs text-[var(--text-secondary)] mt-1">
                             {formatStatusTimeLeft(status.expiresAt)} - Audience: {status.audience === 'followers' ? 'Followers' : status.audience === 'private' ? 'Only me' : 'Public'}
@@ -2310,9 +2406,9 @@ const ProfileNew = () => {
 
       {/* Status Composer Modal */}
       {showStatusComposer && (
-        <div className="fixed inset-0 theme-modal-overlay flex items-stretch sm:items-center justify-center z-[70] p-2 sm:p-4 overflow-y-auto">
-          <div className="theme-modal-card rounded-2xl p-4 sm:p-6 max-w-6xl w-full min-h-[88vh]">
-            <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 theme-modal-overlay flex items-stretch sm:items-center justify-center z-[70] p-0 sm:p-4">
+          <div className="theme-modal-card w-full h-full sm:h-auto sm:max-h-[92vh] max-w-6xl rounded-none sm:rounded-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[var(--border-default)]">
               <h3 className="text-xl font-bold text-[var(--text-primary)]">
                 {editingStatusId ? t('Edit Status') : t('Set Status')}
               </h3>
@@ -2328,12 +2424,40 @@ const ProfileNew = () => {
               </button>
             </div>
 
-            <form onSubmit={handleStatusSave} className="h-[calc(88vh-88px)] min-h-[560px] flex flex-col">
-              <div className="grid grid-cols-1 lg:grid-cols-[350px_minmax(0,1fr)] gap-5 flex-1 min-h-0">
+            <div className="px-4 sm:px-6 pt-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--border-default)] p-1 bg-[var(--surface-card)]">
+                <button
+                  type="button"
+                  onClick={() => setStatusComposerContentType('story')}
+                  className={`px-3 py-1.5 rounded-full text-sm font-semibold transition ${
+                    isStoryComposer
+                      ? 'bg-[var(--brand-primary)] text-white'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  Story
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusComposerContentType('post')}
+                  className={`px-3 py-1.5 rounded-full text-sm font-semibold transition ${
+                    isPostComposer
+                      ? 'bg-[var(--brand-primary)] text-white'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  Post
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleStatusSave} className="flex-1 min-h-0 flex flex-col">
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 pb-4 pt-4">
+                <div className="grid grid-cols-1 xl:grid-cols-[350px_minmax(0,1fr)] gap-5 min-h-0">
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3">
                     <div className="text-xs text-[var(--text-secondary)] mb-2">
-                      Story Preview (9:16)
+                      {isPostComposer ? 'Post Preview (9:16)' : 'Story Preview (9:16)'}
                     </div>
                     <div
                       ref={statusPreviewRef}
@@ -2433,7 +2557,7 @@ const ProfileNew = () => {
                   </p>
                 </div>
 
-                <div className="space-y-4 overflow-y-auto pr-1">
+                <div className="space-y-4 pb-2">
                   <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3">
                     <p className="text-xs text-[var(--text-secondary)] mb-2">Quick style presets</p>
                     <div className="flex flex-wrap gap-2">
@@ -2678,11 +2802,11 @@ const ProfileNew = () => {
                   <div className="flex items-center justify-between gap-3">
                     <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--surface-card)] border border-[var(--border-default)] text-[var(--text-primary)] cursor-pointer hover:bg-[var(--surface-elevated)]">
                       {statusForm.mediaType === 'video' ? <FaVideo size={14} /> : <FaCamera size={14} />}
-                      {statusForm.mediaPreview ? t('Change Media') : t('Add Image/Video')}
+                      {statusForm.mediaPreview ? t('Change Media') : isPostComposer ? t('Add Image') : t('Add Image/Video')}
                       <input
                         type="file"
                         className="hidden"
-                        accept="image/*,video/*"
+                        accept={statusMediaAccept}
                         onChange={handleStatusMediaChange}
                       />
                     </label>
@@ -2715,7 +2839,7 @@ const ProfileNew = () => {
                     )}
                   </div>
 
-                  {statusForm.mediaType === 'video' && statusForm.mediaPreview ? (
+                  {isStoryComposer && statusForm.mediaType === 'video' && statusForm.mediaPreview ? (
                     <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3 space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-xs text-[var(--text-secondary)]">Video trim before upload (max 10s)</p>
@@ -2829,7 +2953,8 @@ const ProfileNew = () => {
                         <option value="right">Right</option>
                       </select>
                     </label>
-                    <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                    {isStoryComposer ? (
+                      <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
                       Duration (sec)
                       <input
                         type="number"
@@ -2840,6 +2965,7 @@ const ProfileNew = () => {
                         className="h-10 px-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)]"
                       />
                     </label>
+                    ) : null}
                     <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
                       Audience
                       <select
@@ -2867,12 +2993,16 @@ const ProfileNew = () => {
                   </div>
 
                   <p className="text-xs text-[var(--text-secondary)]">
-                    {t('Statuses expire automatically after 24 hours.')}
+                    {isPostComposer
+                      ? 'Post mode currently uses the same 24-hour lifecycle as stories. Video is disabled in this mode.'
+                      : t('Statuses expire automatically after 24 hours.')}
                   </p>
                 </div>
               </div>
+              </div>
 
-              <div className="flex gap-3 mt-5">
+              <div className="border-t border-[var(--border-default)] px-4 sm:px-6 py-3 bg-[var(--surface-card)]/90 backdrop-blur-sm">
+                <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="submit"
                   disabled={statusSaving}
@@ -2890,6 +3020,7 @@ const ProfileNew = () => {
                 >
                   {t('Cancel')}
                 </button>
+                </div>
               </div>
             </form>
           </div>

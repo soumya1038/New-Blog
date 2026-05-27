@@ -44,6 +44,7 @@ const TermsOfService = lazy(() => import('./pages/TermsOfService'));
 const GoogleAuthCallback = lazy(() => import('./pages/GoogleAuthCallback'));
 const FacebookAuthCallback = lazy(() => import('./pages/FacebookAuthCallback'));
 const TwitterAuthCallback = lazy(() => import('./pages/TwitterAuthCallback'));
+const LinkedInAuthCallback = lazy(() => import('./pages/LinkedInAuthCallback'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ModernChatbot = lazy(() => import('./components/ModernChatbot'));
 
@@ -53,7 +54,7 @@ const LoadingFallback = () => (
   </div>
 );
 
-const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/privacy', '/terms', '/auth/google/callback', '/auth/facebook/callback', '/auth/twitter/callback']);
+const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/privacy', '/terms', '/auth/google/callback', '/auth/facebook/callback', '/auth/twitter/callback', '/auth/linkedin/callback']);
 
 function AppContent() {
   const { user, sessionExpired, guestExpired, setGuestExpired } = useContext(AuthContext);
@@ -405,6 +406,7 @@ function AppContent() {
             <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
             <Route path="/auth/facebook/callback" element={<FacebookAuthCallback />} />
             <Route path="/auth/twitter/callback" element={<TwitterAuthCallback />} />
+            <Route path="/auth/linkedin/callback" element={<LinkedInAuthCallback />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

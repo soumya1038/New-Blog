@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import { VscEye, VscEyeClosed } from 'react-icons/vsc';
 import { FaCheckCircle, FaRedo } from 'react-icons/fa';
-import { FaGoogle, FaFacebook, FaTwitter, FaGithub, FaLinkedin } from 'react-icons/fa';
+import { FaGoogle, FaFacebook, FaTwitter, FaLinkedin } from 'react-icons/fa';
 import { TbBrandAmongUs } from 'react-icons/tb';
 import { SyncLoader, ScaleLoader } from 'react-spinners';
 import axios from 'axios';
@@ -35,6 +35,19 @@ const getFacebookRedirectUri = () => {
     }
   }
   return `${window.location.origin}/auth/facebook/callback`;
+};
+
+const getLinkedInRedirectUri = () => {
+  const configured = String(process.env.REACT_APP_LINKEDIN_REDIRECT_URI || '').trim();
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
+    } catch (error) {
+      console.warn('Invalid REACT_APP_LINKEDIN_REDIRECT_URI, falling back to current origin.');
+    }
+  }
+  return `${window.location.origin}/auth/linkedin/callback`;
 };
 
 const Login = () => {
@@ -73,9 +86,6 @@ const Login = () => {
   const [showGuestModal, setShowGuestModal] = useState(false);
   const [showGuestInfoModal, setShowGuestInfoModal] = useState(false);
   const [guestUsername, setGuestUsername] = useState('');
-  
-  // Flash message state
-  const [flashMessage, setFlashMessage] = useState('');
   
   // Timer states for forgot password flow
   const [verifyTimer, setVerifyTimer] = useState(120);
@@ -228,11 +238,6 @@ const Login = () => {
     }
   }, [showFinalCodeModal, finalTimer]);
 
-  const handleSocialLogin = (provider) => {
-    setFlashMessage(`${provider} login is under development`);
-    setTimeout(() => setFlashMessage(''), 3000);
-  };
-
   const handleGoogleLoginRedirect = () => {
     const apiBase = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
     const redirectUri = `${window.location.origin}/auth/google/callback`;
@@ -253,6 +258,14 @@ const Login = () => {
     const apiBase = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
     const redirectUri = getTwitterRedirectUri();
     const oauthStartUrl = `${apiBase}/api/auth/twitter/start?redirect_uri=${encodeURIComponent(redirectUri)}&r=${Date.now()}`;
+    sessionStorage.removeItem('socialConnectIntent');
+    window.location.href = oauthStartUrl;
+  };
+
+  const handleLinkedInLoginRedirect = () => {
+    const apiBase = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+    const redirectUri = getLinkedInRedirectUri();
+    const oauthStartUrl = `${apiBase}/api/auth/linkedin/start?redirect_uri=${encodeURIComponent(redirectUri)}&r=${Date.now()}`;
     sessionStorage.removeItem('socialConnectIntent');
     window.location.href = oauthStartUrl;
   };
@@ -436,13 +449,6 @@ const Login = () => {
 
   return (
     <>
-      {/* Flash Message */}
-      {flashMessage && (
-        <div className="fixed top-4 right-4 bg-blue-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fadeIn">
-          {flashMessage}
-        </div>
-      )}
-
       <div className="min-h-screen flex items-center justify-center px-4" style={{ background: 'var(--background-primary)' }}>
       <div className="p-8 rounded-2xl shadow-xl w-full max-w-md" style={{ background: 'var(--surface-card)' }}>
         <h2 className="text-3xl font-bold text-center mb-6" style={{ color: 'var(--text-primary)' }}>{t('Welcome Back')}</h2>
@@ -625,15 +631,7 @@ const Login = () => {
             </button>
             <button
               type="button"
-              onClick={() => handleSocialLogin('GitHub')}
-              className="p-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition"
-              title="Continue with GitHub"
-            >
-              <FaGithub className="text-gray-800 dark:text-gray-200" size={24} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSocialLogin('LinkedIn')}
+              onClick={handleLinkedInLoginRedirect}
               className="p-3 bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600 transition"
               title="Continue with LinkedIn"
             >

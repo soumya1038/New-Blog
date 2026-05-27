@@ -13,6 +13,9 @@ const GOOGLE_USERINFO_URL = 'https://openidconnect.googleapis.com/v1/userinfo';
 const FACEBOOK_AUTH_BASE_URL = 'https://www.facebook.com/v20.0/dialog/oauth';
 const FACEBOOK_TOKEN_URL = 'https://graph.facebook.com/v20.0/oauth/access_token';
 const FACEBOOK_USERINFO_URL = 'https://graph.facebook.com/me';
+const LINKEDIN_AUTH_BASE_URL = 'https://www.linkedin.com/oauth/v2/authorization';
+const LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken';
+const LINKEDIN_USERINFO_URL = 'https://api.linkedin.com/v2/userinfo';
 const TWITTER_AUTH_BASE_URL = 'https://x.com/i/oauth2/authorize';
 const TWITTER_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token';
 const TWITTER_USERINFO_URL = 'https://api.twitter.com/2/users/me';
@@ -40,6 +43,12 @@ const getFacebookAppId = () =>
 
 const getFacebookAppSecret = () =>
   (process.env.FACEBOOK_APP_SECRET || process.env.facebook_app_secret || '').trim();
+
+const getLinkedInClientId = () =>
+  (process.env.LINKEDIN_CLIENT_ID || process.env.linkedin_client_id || '').trim();
+
+const getLinkedInClientSecret = () =>
+  (process.env.LINKEDIN_CLIENT_SECRET || process.env.linkedin_client_secret || '').trim();
 
 const getTwitterClientId = () =>
   (process.env.TWITTER_CLIENT_ID || process.env.twitter_client_id || '').trim();
@@ -69,6 +78,20 @@ const parseTwitterScopeSet = (value = '') =>
       .map((entry) => entry.trim())
       .filter(Boolean)
   );
+
+const getLinkedInOauthScopes = () => {
+  const raw = String(process.env.LINKEDIN_OAUTH_SCOPES || '').trim();
+  const parsed = raw
+    ? raw.split(/[,\s]+/).map((entry) => entry.trim()).filter(Boolean)
+    : [];
+
+  const requested = parsed.length > 0 ? parsed : ['openid', 'profile', 'email'];
+  const normalized = [...new Set(requested)];
+  if (!normalized.includes('openid')) {
+    normalized.unshift('openid');
+  }
+  return normalized;
+};
 
 const getAllowedGoogleRedirectUris = () => {
   const configured = (process.env.GOOGLE_ALLOWED_REDIRECT_URIS || '')
@@ -133,6 +156,27 @@ const getAllowedTwitterRedirectUris = () => {
   return [...new Set([...defaults, ...configured].map((entry) => normalizeAbsoluteUrl(entry)).filter(Boolean))];
 };
 
+const getAllowedLinkedInRedirectUris = () => {
+  const configured = (process.env.LINKEDIN_ALLOWED_REDIRECT_URIS || '')
+    .split(',')
+    .map((entry) => normalizeAbsoluteUrl(entry))
+    .filter(Boolean);
+
+  const defaults = [
+    'https://lekhon-development.netlify.app/auth/linkedin/callback',
+    'http://localhost:3000/auth/linkedin/callback',
+    'http://localhost:3001/auth/linkedin/callback',
+  ];
+
+  const frontendProd = normalizeAbsoluteUrl(process.env.FRONTEND_URL_PROD || '');
+  const frontendLocal = normalizeAbsoluteUrl(process.env.FRONTEND_URL || '');
+
+  if (frontendProd) defaults.push(`${frontendProd}/auth/linkedin/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
+  if (frontendLocal) defaults.push(`${frontendLocal}/auth/linkedin/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
+
+  return [...new Set([...defaults, ...configured].map((entry) => normalizeAbsoluteUrl(entry)).filter(Boolean))];
+};
+
 const isGoogleRedirectUriAllowed = (redirectUri) => {
   const normalized = normalizeAbsoluteUrl(redirectUri);
   if (!normalized) return false;
@@ -149,6 +193,12 @@ const isTwitterRedirectUriAllowed = (redirectUri) => {
   const normalized = normalizeAbsoluteUrl(redirectUri);
   if (!normalized) return false;
   return getAllowedTwitterRedirectUris().includes(normalized);
+};
+
+const isLinkedInRedirectUriAllowed = (redirectUri) => {
+  const normalized = normalizeAbsoluteUrl(redirectUri);
+  if (!normalized) return false;
+  return getAllowedLinkedInRedirectUris().includes(normalized);
 };
 
 const createGoogleState = (redirectUri) => {
@@ -259,6 +309,8 @@ const buildTwitterProfileUrl = (twitterHandle, twitterUserId) => {
   return `https://x.com/i/user/${encodeURIComponent(id)}`;
 };
 
+const buildLinkedInProfileUrl = () => 'https://www.linkedin.com';
+
 const ensureSocialLink = (user, name, matcher, url) => {
   if (!user || !url) return false;
   const currentSocial = Array.isArray(user.socialMedia) ? user.socialMedia : [];
@@ -292,10 +344,19 @@ const ensureTwitterSocialLink = (user, twitterHandle, twitterUserId) =>
     buildTwitterProfileUrl(twitterHandle, twitterUserId)
   );
 
+const ensureLinkedInSocialLink = (user) =>
+  ensureSocialLink(
+    user,
+    'LinkedIn',
+    (name, url) => name.includes('linkedin') || url.includes('linkedin.com'),
+    buildLinkedInProfileUrl()
+  );
+
 const getLinkedProvidersSummary = (user) => ({
   google: Boolean(user?.oauthProviders?.google?.id),
   facebook: Boolean(user?.oauthProviders?.facebook?.id),
   twitter: Boolean(user?.oauthProviders?.twitter?.id),
+  linkedin: Boolean(user?.oauthProviders?.linkedin?.id),
 });
 
 const findUserByProviderOrEmail = async ({ provider = '', providerId = '', email = '' }) => {
@@ -324,6 +385,7 @@ const linkProviderToExistingUser = async ({
   facebookUserId = '',
   twitterHandle = '',
   twitterUserId = '',
+  linkedInUserId = '',
 }) => {
   const providerName = String(provider || '').trim().toLowerCase();
   const normalizedProviderId = String(providerId || '').trim();
@@ -333,7 +395,7 @@ const linkProviderToExistingUser = async ({
     return { ok: false, status: 404, message: 'Current user not found' };
   }
 
-  if (!['google', 'facebook', 'twitter'].includes(providerName)) {
+  if (!['google', 'facebook', 'twitter', 'linkedin'].includes(providerName)) {
     return { ok: false, status: 400, message: 'Unsupported provider' };
   }
 
@@ -370,6 +432,7 @@ const linkProviderToExistingUser = async ({
       google: { id: providerName === 'google' ? normalizedProviderId : currentUser?.oauthProviders?.google?.id || '' },
       facebook: { id: providerName === 'facebook' ? normalizedProviderId : currentUser?.oauthProviders?.facebook?.id || '' },
       twitter: { id: providerName === 'twitter' ? normalizedProviderId : currentUser?.oauthProviders?.twitter?.id || '' },
+      linkedin: { id: providerName === 'linkedin' ? normalizedProviderId : currentUser?.oauthProviders?.linkedin?.id || '' },
     };
     shouldSave = true;
   }
@@ -398,6 +461,9 @@ const linkProviderToExistingUser = async ({
     shouldSave = true;
   }
   if (providerName === 'twitter' && ensureTwitterSocialLink(currentUser, twitterHandle, twitterUserId || normalizedProviderId)) {
+    shouldSave = true;
+  }
+  if (providerName === 'linkedin' && ensureLinkedInSocialLink(currentUser, linkedInUserId || normalizedProviderId)) {
     shouldSave = true;
   }
 
@@ -790,6 +856,7 @@ exports.exchangeGoogleCode = async (req, res) => {
           google: { id: googleUserId },
           facebook: { id: user?.oauthProviders?.facebook?.id || '' },
           twitter: { id: user?.oauthProviders?.twitter?.id || '' },
+          linkedin: { id: user?.oauthProviders?.linkedin?.id || '' },
         };
         shouldSave = true;
       }
@@ -910,6 +977,38 @@ const fetchTwitterProfileWithFallback = async (accessToken, tokenScope = '') => 
 
 const createSocialPlaceholderEmail = (provider, providerId) =>
   `${String(provider || 'social')}_${String(providerId || crypto.randomBytes(4).toString('hex'))}@${String(provider || 'social')}.local`;
+
+const exchangeLinkedInAuthorizationCode = async ({
+  code,
+  redirectUri,
+  clientId,
+  clientSecret,
+}) => {
+  const tokenParams = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code: String(code),
+    redirect_uri: String(redirectUri),
+    client_id: String(clientId),
+    client_secret: String(clientSecret),
+  });
+
+  const tokenResponse = await axios.post(LINKEDIN_TOKEN_URL, tokenParams.toString(), {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+  });
+
+  return tokenResponse?.data || {};
+};
+
+const fetchLinkedInProfile = async (accessToken) => {
+  const response = await axios.get(LINKEDIN_USERINFO_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  return response?.data || {};
+};
 
 // Start Facebook OAuth redirect flow
 exports.startFacebookAuth = async (req, res) => {
@@ -1083,6 +1182,7 @@ exports.exchangeFacebookCode = async (req, res) => {
           google: { id: user?.oauthProviders?.google?.id || '' },
           facebook: { id: facebookUserId },
           twitter: { id: user?.oauthProviders?.twitter?.id || '' },
+          linkedin: { id: user?.oauthProviders?.linkedin?.id || '' },
         };
         shouldSave = true;
       }
@@ -1121,6 +1221,229 @@ exports.exchangeFacebookCode = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Facebook authentication failed',
+      details,
+    });
+  }
+};
+
+// Start LinkedIn OAuth redirect flow
+exports.startLinkedInAuth = async (req, res) => {
+  try {
+    const clientId = getLinkedInClientId();
+    if (!clientId) {
+      return res.status(500).json({ success: false, message: 'LinkedIn OAuth is not configured on server' });
+    }
+
+    const redirectUri = normalizeAbsoluteUrl(req.query.redirect_uri || '');
+    if (!redirectUri) {
+      return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
+    }
+    if (!isLinkedInRedirectUriAllowed(redirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirect_uri is not allowed',
+        allowedRedirectUris: getAllowedLinkedInRedirectUris(),
+      });
+    }
+
+    const state = createOAuthState({
+      provider: 'linkedin',
+      mode: 'login',
+      redirectUri,
+    });
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: getLinkedInOauthScopes().join(' '),
+      state,
+    });
+
+    return res.redirect(`${LINKEDIN_AUTH_BASE_URL}?${params.toString()}`);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Exchange LinkedIn OAuth code for local session
+exports.exchangeLinkedInCode = async (req, res) => {
+  try {
+    const clientId = getLinkedInClientId();
+    const clientSecret = getLinkedInClientSecret();
+    if (!clientId || !clientSecret) {
+      return res.status(500).json({ success: false, message: 'LinkedIn OAuth is not configured on server' });
+    }
+
+    const { code, redirectUri, state } = req.body || {};
+    const normalizedRedirectUri = normalizeAbsoluteUrl(redirectUri || '');
+    if (!code || !normalizedRedirectUri) {
+      return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
+    }
+    if (!isLinkedInRedirectUriAllowed(normalizedRedirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirectUri is not allowed',
+        allowedRedirectUris: getAllowedLinkedInRedirectUris(),
+      });
+    }
+
+    const statePayload = readOAuthState(state);
+    if (
+      !statePayload ||
+      statePayload.provider !== 'linkedin' ||
+      statePayload.mode !== 'login' ||
+      normalizeAbsoluteUrl(statePayload.redirectUri) !== normalizedRedirectUri
+    ) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
+    }
+    if (!consumeOAuthStateToken(state)) {
+      return res.status(409).json({
+        success: false,
+        message: 'This LinkedIn sign-in request has already been used. Please try again.',
+      });
+    }
+
+    const tokenData = await exchangeLinkedInAuthorizationCode({
+      code,
+      redirectUri: normalizedRedirectUri,
+      clientId,
+      clientSecret,
+    });
+
+    const accessToken = tokenData?.access_token;
+    if (!accessToken) {
+      return res.status(400).json({ success: false, message: 'LinkedIn access token not received' });
+    }
+
+    const profile = await fetchLinkedInProfile(accessToken);
+    const linkedInUserId = String(profile.sub || profile.id || '').trim();
+    const email = String(profile.email || '').trim().toLowerCase();
+    const emailVerified = profile?.email_verified !== false;
+    const displayName = String(profile.name || `${profile.given_name || ''} ${profile.family_name || ''}` || '').trim();
+    const rawPicture = profile?.picture;
+    const picture = typeof rawPicture === 'string'
+      ? rawPicture.trim()
+      : typeof rawPicture?.url === 'string'
+        ? rawPicture.url.trim()
+        : '';
+
+    if (!linkedInUserId) {
+      return res.status(400).json({ success: false, message: 'LinkedIn account id is unavailable' });
+    }
+
+    if (email && !emailVerified) {
+      return res.status(400).json({ success: false, message: 'LinkedIn account email is not verified' });
+    }
+
+    let user = await findUserByProviderOrEmail({
+      provider: 'linkedin',
+      providerId: linkedInUserId,
+      email,
+    });
+
+    let temporaryPassword = '';
+    const missingEmailForWelcome = !email;
+    if (!user) {
+      const usernameSeed = (email ? email.split('@')[0] : '') || displayName || `li_${linkedInUserId.slice(-6)}`;
+      const username = await makeUniqueUsername(usernameSeed);
+      temporaryPassword = generateTemporaryPassword();
+
+      user = await User.create({
+        username,
+        email: email || createSocialPlaceholderEmail('linkedin', linkedInUserId),
+        password: temporaryPassword,
+        fullName: displayName,
+        name: displayName,
+        profileImage: picture,
+        isVerified: false,
+        mustChangePasswordAfterGoogle: true,
+        socialMedia: [{ name: 'LinkedIn', url: buildLinkedInProfileUrl() }],
+        oauthProviders: {
+          linkedin: { id: linkedInUserId },
+        },
+      });
+
+      if (email) {
+        try {
+          await enqueueEmailJob('welcome-email', {
+            email,
+            username,
+            temporaryPassword,
+          }, {
+            jobId: buildWelcomeEmailJobId(email),
+          });
+        } catch (mailError) {
+          console.error('Failed to send LinkedIn onboarding welcome email:', mailError);
+        }
+      }
+    } else {
+      let shouldSave = false;
+      if (!user.fullName && displayName) {
+        user.fullName = displayName;
+        shouldSave = true;
+      }
+      if (!user.name && displayName) {
+        user.name = displayName;
+        shouldSave = true;
+      }
+      if (!user.profileImage && picture) {
+        user.profileImage = picture;
+        shouldSave = true;
+      }
+      if (linkedInUserId && user?.oauthProviders?.linkedin?.id !== linkedInUserId) {
+        user.oauthProviders = {
+          ...(user.oauthProviders || {}),
+          google: { id: user?.oauthProviders?.google?.id || '' },
+          facebook: { id: user?.oauthProviders?.facebook?.id || '' },
+          twitter: { id: user?.oauthProviders?.twitter?.id || '' },
+          linkedin: { id: linkedInUserId },
+        };
+        shouldSave = true;
+      }
+      if (ensureLinkedInSocialLink(user)) {
+        shouldSave = true;
+      }
+      if (shouldSave) {
+        await user.save();
+      }
+    }
+
+    const guardFailure = await ensureUserCanLogin(user);
+    if (guardFailure) {
+      return res.status(guardFailure.status).json(guardFailure.body);
+    }
+
+    user.lastActive = new Date();
+    await user.save();
+
+    const token = generateToken(user._id);
+    return res.json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        profileImage: user.profileImage,
+        role: user.role,
+      },
+      passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
+      rememberMe: true,
+      missingEmailForWelcome,
+    });
+  } catch (error) {
+    const upstreamStatus = error?.response?.status;
+    const details = error?.response?.data || error.message;
+    if (upstreamStatus >= 400 && upstreamStatus < 500) {
+      return res.status(400).json({
+        success: false,
+        message: 'LinkedIn OAuth request was rejected. Please try again.',
+        details,
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: 'LinkedIn authentication failed',
       details,
     });
   }
@@ -1316,6 +1639,7 @@ exports.exchangeTwitterCode = async (req, res) => {
           google: { id: user?.oauthProviders?.google?.id || '' },
           facebook: { id: user?.oauthProviders?.facebook?.id || '' },
           twitter: { id: twitterUserId },
+          linkedin: { id: user?.oauthProviders?.linkedin?.id || '' },
         };
         shouldSave = true;
       }
@@ -1664,6 +1988,165 @@ exports.exchangeFacebookConnectCode = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Facebook account connection failed',
+      details,
+    });
+  }
+};
+
+exports.startLinkedInConnectAuth = async (req, res) => {
+  try {
+    const clientId = getLinkedInClientId();
+    if (!clientId) {
+      return res.status(500).json({ success: false, message: 'LinkedIn OAuth is not configured on server' });
+    }
+
+    const redirectUri = normalizeAbsoluteUrl(req.query.redirect_uri || '');
+    if (!redirectUri) {
+      return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
+    }
+    if (!isLinkedInRedirectUriAllowed(redirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirect_uri is not allowed',
+        allowedRedirectUris: getAllowedLinkedInRedirectUris(),
+      });
+    }
+
+    const state = createOAuthState({
+      provider: 'linkedin',
+      mode: 'connect',
+      userId: req.user?._id,
+      redirectUri,
+    });
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: getLinkedInOauthScopes().join(' '),
+      state,
+    });
+
+    return res.json({
+      success: true,
+      authUrl: `${LINKEDIN_AUTH_BASE_URL}?${params.toString()}`,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.exchangeLinkedInConnectCode = async (req, res) => {
+  try {
+    const clientId = getLinkedInClientId();
+    const clientSecret = getLinkedInClientSecret();
+    if (!clientId || !clientSecret) {
+      return res.status(500).json({ success: false, message: 'LinkedIn OAuth is not configured on server' });
+    }
+
+    const { code, redirectUri, state } = req.body || {};
+    const normalizedRedirectUri = normalizeAbsoluteUrl(redirectUri || '');
+    if (!code || !normalizedRedirectUri) {
+      return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
+    }
+    if (!isLinkedInRedirectUriAllowed(normalizedRedirectUri)) {
+      return res.status(400).json({
+        success: false,
+        message: 'redirectUri is not allowed',
+        allowedRedirectUris: getAllowedLinkedInRedirectUris(),
+      });
+    }
+
+    const statePayload = readOAuthState(state);
+    if (
+      !statePayload ||
+      statePayload.provider !== 'linkedin' ||
+      statePayload.mode !== 'connect' ||
+      String(statePayload.userId || '') !== String(req.user?._id || '') ||
+      normalizeAbsoluteUrl(statePayload.redirectUri) !== normalizedRedirectUri
+    ) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
+    }
+    if (!consumeOAuthStateToken(state)) {
+      return res.status(409).json({
+        success: false,
+        message: 'This LinkedIn connect request has already been used. Please try again.',
+      });
+    }
+
+    const tokenData = await exchangeLinkedInAuthorizationCode({
+      code,
+      redirectUri: normalizedRedirectUri,
+      clientId,
+      clientSecret,
+    });
+
+    const accessToken = tokenData?.access_token;
+    if (!accessToken) {
+      return res.status(400).json({ success: false, message: 'LinkedIn access token not received' });
+    }
+
+    const profile = await fetchLinkedInProfile(accessToken);
+    const linkedInUserId = String(profile.sub || profile.id || '').trim();
+    const email = String(profile.email || '').trim().toLowerCase();
+    const emailVerified = profile?.email_verified !== false;
+    const displayName = String(profile.name || `${profile.given_name || ''} ${profile.family_name || ''}` || '').trim();
+    const rawPicture = profile?.picture;
+    const picture = typeof rawPicture === 'string'
+      ? rawPicture.trim()
+      : typeof rawPicture?.url === 'string'
+        ? rawPicture.url.trim()
+        : '';
+
+    if (!linkedInUserId) {
+      return res.status(400).json({ success: false, message: 'LinkedIn account id is unavailable' });
+    }
+    if (email && !emailVerified) {
+      return res.status(400).json({ success: false, message: 'LinkedIn account email is not verified' });
+    }
+
+    const currentUser = await User.findById(req.user._id);
+    const linkResult = await linkProviderToExistingUser({
+      currentUser,
+      provider: 'linkedin',
+      providerId: linkedInUserId,
+      email,
+      displayName,
+      picture,
+      linkedInUserId,
+    });
+
+    if (!linkResult.ok) {
+      return res.status(linkResult.status).json({
+        success: false,
+        message: linkResult.message,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'LinkedIn account connected successfully',
+      linkedProviders: linkResult.linkedProviders,
+      user: {
+        id: linkResult.user._id,
+        username: linkResult.user.username,
+        email: linkResult.user.email,
+      },
+      missingEmailForWelcome: !email,
+    });
+  } catch (error) {
+    const upstreamStatus = error?.response?.status;
+    const details = error?.response?.data || error.message;
+    if (upstreamStatus >= 400 && upstreamStatus < 500) {
+      return res.status(400).json({
+        success: false,
+        message: 'LinkedIn OAuth request was rejected. Please try again.',
+        details,
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: 'LinkedIn account connection failed',
       details,
     });
   }

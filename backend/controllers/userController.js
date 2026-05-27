@@ -16,7 +16,7 @@ const SOCIAL_PROVIDER_DOMAIN_MATCHERS = {
   github: ['github.com'],
 };
 
-const SOCIAL_OAUTH_PROVIDERS = new Set(['google', 'facebook', 'twitter']);
+const SOCIAL_OAUTH_PROVIDERS = new Set(['google', 'facebook', 'twitter', 'linkedin']);
 
 const normalizeSocialValue = (value = '') => String(value || '').trim().toLowerCase();
 
@@ -140,6 +140,7 @@ exports.disconnectSocialProvider = async (req, res) => {
           google: { id: provider === 'google' ? '' : user?.oauthProviders?.google?.id || '' },
           facebook: { id: provider === 'facebook' ? '' : user?.oauthProviders?.facebook?.id || '' },
           twitter: { id: provider === 'twitter' ? '' : user?.oauthProviders?.twitter?.id || '' },
+          linkedin: { id: provider === 'linkedin' ? '' : user?.oauthProviders?.linkedin?.id || '' },
         };
         changed = true;
       }
@@ -575,6 +576,11 @@ const clampStatusTrimSec = (value) => {
   return Math.max(0, Math.min(300, Number(parsed.toFixed(2))));
 };
 
+const normalizeStatusContentType = (value) => {
+  const nextType = String(value || 'story').trim().toLowerCase();
+  return nextType === 'post' ? 'post' : 'story';
+};
+
 const normalizeStatusTrimRange = (startValue, endValue) => {
   const maxClipDurationSec = 10;
   const nextStart = clampStatusTrimSec(startValue);
@@ -724,6 +730,7 @@ const uploadStatusMedia = async (file, trimRange = null) => {
 exports.createStatus = async (req, res) => {
   try {
     const {
+      contentType,
       text,
       musicLabel,
       musicSourceType,
@@ -744,12 +751,18 @@ exports.createStatus = async (req, res) => {
     let videoUrl = '';
     let mediaType = 'text';
     let mediaPublicId = '';
+    const normalizedContentType = normalizeStatusContentType(contentType);
     const normalizedStickers = normalizeStatusStickers(stickers);
     const normalizedMusicLabel = normalizeStatusMusicLabel(musicLabel);
     const normalizedMusicSourceType = normalizeStatusMusicSourceType(musicSourceType);
     const normalizedMusicSourceUrl =
       normalizedMusicSourceType === 'none' ? '' : normalizeStatusMusicSourceUrl(musicSourceUrl);
     const normalizedTrimRange = normalizeStatusTrimRange(trimStartSec, trimEndSec);
+    const isVideoUpload = Boolean(req.file && String(req.file.mimetype || '').startsWith('video/'));
+
+    if (normalizedContentType === 'post' && isVideoUpload) {
+      return res.status(400).json({ success: false, message: 'Post mode does not support video uploads' });
+    }
 
     if (!text && !req.file && normalizedStickers.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide text, image, video, or stickers' });
@@ -782,6 +795,7 @@ exports.createStatus = async (req, res) => {
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     user.statuses.push({
+      contentType: normalizedContentType,
       text: text || '',
       image: imageUrl,
       video: videoUrl,
@@ -971,6 +985,7 @@ exports.updateStatus = async (req, res) => {
   try {
     const { statusId } = req.params;
     const {
+      contentType,
       text,
       musicLabel,
       musicSourceType,
@@ -1001,6 +1016,23 @@ exports.updateStatus = async (req, res) => {
     }
 
     const normalizedTrimRange = normalizeStatusTrimRange(trimStartSec, trimEndSec);
+    const requestedContentType =
+      contentType !== undefined
+        ? normalizeStatusContentType(contentType)
+        : normalizeStatusContentType(status.contentType);
+    const incomingVideoUpload = Boolean(req.file && String(req.file.mimetype || '').startsWith('video/'));
+
+    if (requestedContentType === 'post' && incomingVideoUpload) {
+      return res.status(400).json({ success: false, message: 'Post mode does not support video uploads' });
+    }
+    if (requestedContentType === 'post' && !req.file && !shouldRemoveMedia && Boolean(status.video)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Post mode cannot keep an existing video. Remove or replace video first.',
+      });
+    }
+
+    status.contentType = requestedContentType;
 
     // Update text
     if (text !== undefined) {

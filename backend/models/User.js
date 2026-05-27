@@ -28,6 +28,9 @@ const userSchema = new mongoose.Schema({
     twitter: {
       id: { type: String, default: '' },
     },
+    linkedin: {
+      id: { type: String, default: '' },
+    },
   },
   privacy: {
     profileVisibility: {
@@ -67,6 +70,7 @@ const userSchema = new mongoose.Schema({
   lastSeen: { type: Date, default: Date.now },
   lastActive: { type: Date, default: Date.now },
   statuses: [{
+    contentType: { type: String, enum: ['story', 'post'], default: 'story' },
     text: { type: String, default: '' },
     image: { type: String, default: '' },
     video: { type: String, default: '' },
