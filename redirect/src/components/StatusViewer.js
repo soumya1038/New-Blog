@@ -26,6 +26,33 @@ const clampTextPosition = (value) => {
   return Math.max(0, Math.min(100, parsed));
 };
 
+const clampStickerSize = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 48;
+  return Math.max(24, Math.min(96, Math.round(parsed)));
+};
+
+const clampStickerRotate = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(-60, Math.min(60, Math.round(parsed)));
+};
+
+const normalizeStickers = (stickers = []) =>
+  Array.isArray(stickers)
+    ? stickers
+        .slice(0, 8)
+        .map((sticker, index) => ({
+          id: String(sticker?.id || `sticker-${index}`),
+          emoji: String(sticker?.emoji || '').trim().slice(0, 8),
+          x: clampTextPosition(sticker?.x),
+          y: clampTextPosition(sticker?.y),
+          size: clampStickerSize(sticker?.size),
+          rotate: clampStickerRotate(sticker?.rotate),
+        }))
+        .filter((sticker) => sticker.emoji.length > 0)
+    : [];
+
 const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) => {
   const [currentIndex, setCurrentIndex] = useState(() => {
     const safeIndex = Number.isInteger(initialIndex) ? initialIndex : 0;
@@ -51,6 +78,8 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
   );
   const isVideoStatus = currentMediaType === 'video' && Boolean(currentMediaUrl);
   const hasMedia = Boolean(currentMediaUrl);
+  const currentStickers = useMemo(() => normalizeStickers(currentStatus?.stickers), [currentStatus?.stickers]);
+  const currentMusicLabel = useMemo(() => String(currentStatus?.musicLabel || '').trim(), [currentStatus?.musicLabel]);
 
   useEffect(() => {
     if (statuses.length === 0) return;
@@ -235,6 +264,31 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
             </p>
           </div>
         )}
+
+        {currentStickers.map((sticker) => (
+          <span
+            key={sticker.id}
+            className="absolute select-none pointer-events-none"
+            style={{
+              left: `${sticker.x}%`,
+              top: `${sticker.y}%`,
+              transform: `translate(-50%, -50%) rotate(${sticker.rotate}deg)`,
+              fontSize: `${sticker.size}px`,
+              lineHeight: 1,
+              textShadow: '0 2px 8px rgba(0,0,0,0.35)',
+            }}
+          >
+            {sticker.emoji}
+          </span>
+        ))}
+
+        {currentMusicLabel ? (
+          <div className="absolute left-4 right-4 bottom-5">
+            <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs backdrop-blur-sm">
+              {currentMusicLabel}
+            </span>
+          </div>
+        ) : null}
       </div>
     </div>
   );

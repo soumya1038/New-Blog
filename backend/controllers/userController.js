@@ -569,6 +569,47 @@ const clampStatusPosition = (value) => {
   return Math.max(0, Math.min(100, parsed));
 };
 
+const clampStatusStickerSize = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 48;
+  return Math.max(24, Math.min(96, Math.round(parsed)));
+};
+
+const clampStatusStickerRotate = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(-60, Math.min(60, Math.round(parsed)));
+};
+
+const normalizeStatusMusicLabel = (value) => String(value || '').trim().slice(0, 80);
+
+const normalizeStatusStickers = (value) => {
+  if (value === undefined || value === null || value === '') return [];
+
+  let parsed = value;
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value);
+    } catch (error) {
+      parsed = [];
+    }
+  }
+
+  if (!Array.isArray(parsed)) return [];
+
+  return parsed
+    .slice(0, 8)
+    .map((sticker, index) => ({
+      id: String(sticker?.id || `sticker-${Date.now()}-${index}`),
+      emoji: String(sticker?.emoji || '').trim().slice(0, 8),
+      x: clampStatusPosition(sticker?.x),
+      y: clampStatusPosition(sticker?.y),
+      size: clampStatusStickerSize(sticker?.size),
+      rotate: clampStatusStickerRotate(sticker?.rotate),
+    }))
+    .filter((sticker) => sticker.emoji.length > 0);
+};
+
 const extractCloudinaryPublicId = (url) => {
   if (!url) return '';
   try {
@@ -641,6 +682,8 @@ exports.createStatus = async (req, res) => {
   try {
     const {
       text,
+      musicLabel,
+      stickers,
       backgroundColor,
       textColor,
       fontFamily,
@@ -654,9 +697,11 @@ exports.createStatus = async (req, res) => {
     let videoUrl = '';
     let mediaType = 'text';
     let mediaPublicId = '';
+    const normalizedStickers = normalizeStatusStickers(stickers);
+    const normalizedMusicLabel = normalizeStatusMusicLabel(musicLabel);
 
-    if (!text && !req.file) {
-      return res.status(400).json({ success: false, message: 'Please provide text, image, or video' });
+    if (!text && !req.file && normalizedStickers.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please provide text, image, video, or stickers' });
     }
 
     const user = await User.findById(req.user._id);
@@ -695,6 +740,8 @@ exports.createStatus = async (req, res) => {
       textColor: String(textColor || '#ffffff'),
       fontFamily: String(fontFamily || 'Inter'),
       textAlign: ['left', 'center', 'right'].includes(textAlign) ? textAlign : 'center',
+      musicLabel: normalizedMusicLabel,
+      stickers: normalizedStickers,
       textPosX: clampStatusPosition(textPosX),
       textPosY: clampStatusPosition(textPosY),
       audience: normalizeStatusAudience(audience),
@@ -870,6 +917,8 @@ exports.updateStatus = async (req, res) => {
     const { statusId } = req.params;
     const {
       text,
+      musicLabel,
+      stickers,
       backgroundColor,
       textColor,
       fontFamily,
@@ -907,6 +956,12 @@ exports.updateStatus = async (req, res) => {
     }
     if (textAlign !== undefined) {
       status.textAlign = ['left', 'center', 'right'].includes(textAlign) ? textAlign : 'center';
+    }
+    if (musicLabel !== undefined) {
+      status.musicLabel = normalizeStatusMusicLabel(musicLabel);
+    }
+    if (stickers !== undefined) {
+      status.stickers = normalizeStatusStickers(stickers);
     }
     if (textPosX !== undefined) {
       status.textPosX = clampStatusPosition(textPosX);

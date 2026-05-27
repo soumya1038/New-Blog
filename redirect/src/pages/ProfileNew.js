@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaTimes, FaArrowLeft, FaArrowRight, FaShare, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaFacebookF, FaGoogle, FaLinkedinIn, FaGithub, FaGlobe, FaVideo } from 'react-icons/fa';
+import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaTimes, FaArrowLeft, FaArrowRight, FaShare, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaFacebookF, FaGoogle, FaLinkedinIn, FaGithub, FaGlobe, FaVideo, FaMusic, FaRegSmile } from 'react-icons/fa';
 import { PiBookOpenTextThin } from 'react-icons/pi';
 import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified, GoUnverified } from 'react-icons/go';
@@ -90,6 +90,36 @@ const STORY_STYLE_PRESETS = [
   },
 ];
 
+const STORY_STICKER_EMOJI_PACK = ['🔥', '✨', '💫', '💖', '🎉', '🚀', '🌙', '🌈', '☀️', '💡', '🎯', '✅'];
+const MAX_STATUS_STICKERS = 8;
+
+const clampStatusStickerSize = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 48;
+  return Math.max(24, Math.min(96, Math.round(parsed)));
+};
+
+const clampStatusStickerRotate = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(-60, Math.min(60, Math.round(parsed)));
+};
+
+const normalizeStatusStickerList = (stickers = []) =>
+  Array.isArray(stickers)
+    ? stickers
+        .slice(0, MAX_STATUS_STICKERS)
+        .map((sticker, index) => ({
+          id: String(sticker?.id || `sticker-${Date.now()}-${index}`),
+          emoji: String(sticker?.emoji || '').trim().slice(0, 8),
+          x: Number.isFinite(Number(sticker?.x)) ? Math.max(0, Math.min(100, Number(sticker.x))) : 50,
+          y: Number.isFinite(Number(sticker?.y)) ? Math.max(0, Math.min(100, Number(sticker.y))) : 50,
+          size: clampStatusStickerSize(sticker?.size),
+          rotate: clampStatusStickerRotate(sticker?.rotate),
+        }))
+        .filter((sticker) => sticker.emoji.length > 0)
+    : [];
+
 const ProfileNew = () => {
   const { t } = useTranslation();
   const { user, setUser } = useContext(AuthContext);
@@ -149,6 +179,8 @@ const ProfileNew = () => {
   const [statusViewerIndex, setStatusViewerIndex] = useState(0);
   const [statusForm, setStatusForm] = useState({
     text: '',
+    musicLabel: '',
+    stickers: [],
     mediaFile: null,
     mediaPreview: '',
     mediaType: 'text',
@@ -166,6 +198,7 @@ const ProfileNew = () => {
   const [statusDeletingId, setStatusDeletingId] = useState('');
   const [editingStatusId, setEditingStatusId] = useState('');
   const [statusTextDragging, setStatusTextDragging] = useState(false);
+  const [statusDraggingStickerId, setStatusDraggingStickerId] = useState('');
 
   // Fetch data
   useEffect(() => {
@@ -495,6 +528,94 @@ const ProfileNew = () => {
     }
   };
 
+  const addStatusSticker = (emoji) => {
+    const nextEmoji = String(emoji || '').trim();
+    if (!nextEmoji) return;
+    setStatusForm((prev) => {
+      if (prev.stickers.length >= MAX_STATUS_STICKERS) return prev;
+      return {
+        ...prev,
+        stickers: [
+          ...prev.stickers,
+          {
+            id: `sticker-${Date.now()}-${prev.stickers.length}`,
+            emoji: nextEmoji.slice(0, 8),
+            x: 50,
+            y: 50,
+            size: 48,
+            rotate: 0,
+          },
+        ],
+      };
+    });
+  };
+
+  const removeStatusSticker = (stickerId) => {
+    setStatusForm((prev) => ({
+      ...prev,
+      stickers: prev.stickers.filter((sticker) => sticker.id !== stickerId),
+    }));
+    if (statusDraggingStickerId === stickerId) {
+      setStatusDraggingStickerId('');
+    }
+  };
+
+  const updateStatusSticker = (stickerId, updater) => {
+    setStatusForm((prev) => ({
+      ...prev,
+      stickers: prev.stickers.map((sticker) => {
+        if (sticker.id !== stickerId) return sticker;
+        const nextSticker = typeof updater === 'function' ? updater(sticker) : { ...sticker, ...updater };
+        return {
+          ...sticker,
+          ...nextSticker,
+          size: clampStatusStickerSize(nextSticker?.size ?? sticker.size),
+          rotate: clampStatusStickerRotate(nextSticker?.rotate ?? sticker.rotate),
+          x: clampStatusTextPosition(nextSticker?.x ?? sticker.x),
+          y: clampStatusTextPosition(nextSticker?.y ?? sticker.y),
+        };
+      }),
+    }));
+  };
+
+  const updateStatusStickerPositionFromPointer = (stickerId, clientX, clientY) => {
+    const previewNode = statusPreviewRef.current;
+    if (!previewNode) return;
+    const rect = previewNode.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const x = ((clientX - rect.left) / rect.width) * 100;
+    const y = ((clientY - rect.top) / rect.height) * 100;
+    updateStatusSticker(stickerId, { x, y });
+  };
+
+  const handleStatusStickerPointerDown = (event, stickerId) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setStatusDraggingStickerId(stickerId);
+    if (event.currentTarget.setPointerCapture) {
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch (_) {}
+    }
+    updateStatusStickerPositionFromPointer(stickerId, event.clientX, event.clientY);
+  };
+
+  const handleStatusStickerPointerMove = (event, stickerId) => {
+    if (statusDraggingStickerId !== stickerId) return;
+    event.preventDefault();
+    updateStatusStickerPositionFromPointer(stickerId, event.clientX, event.clientY);
+  };
+
+  const handleStatusStickerPointerUp = (event, stickerId) => {
+    if (statusDraggingStickerId !== stickerId) return;
+    setStatusDraggingStickerId('');
+    if (event.currentTarget.releasePointerCapture) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch (_) {}
+    }
+  };
+
   const applyStoryStylePreset = (presetId) => {
     const preset = STORY_STYLE_PRESETS.find((item) => item.id === presetId);
     if (!preset) return;
@@ -515,8 +636,11 @@ const ProfileNew = () => {
       URL.revokeObjectURL(statusForm.mediaPreview);
     }
     setStatusTextDragging(false);
+    setStatusDraggingStickerId('');
     setStatusForm({
       text: '',
+      musicLabel: '',
+      stickers: [],
       mediaFile: null,
       mediaPreview: '',
       mediaType: 'text',
@@ -549,6 +673,8 @@ const ProfileNew = () => {
     }
     setStatusForm({
       text: status.text || '',
+      musicLabel: status.musicLabel || '',
+      stickers: normalizeStatusStickerList(status.stickers),
       mediaFile: null,
       mediaPreview: getStatusMediaUrl(status),
       mediaType: getStatusMediaType(status),
@@ -562,6 +688,7 @@ const ProfileNew = () => {
       audience: ['public', 'followers', 'private'].includes(status.audience) ? status.audience : 'public',
       durationSec: status.durationSec || 7,
     });
+    setStatusDraggingStickerId('');
     setEditingStatusId(status._id);
     setShowStatusComposer(true);
   };
@@ -596,18 +723,21 @@ const ProfileNew = () => {
   const handleStatusSave = async (e) => {
     e.preventDefault();
     const trimmedText = statusForm.text.trim();
-    if (!trimmedText && !statusForm.mediaFile && !editingStatusId) {
-      showModal('error', 'Status Required', 'Please add text, image, or video to post a status.');
+    const hasStickers = Array.isArray(statusForm.stickers) && statusForm.stickers.length > 0;
+    if (!trimmedText && !statusForm.mediaFile && !hasStickers && !editingStatusId) {
+      showModal('error', 'Status Required', 'Please add text, image, video, or stickers to post a status.');
       return;
     }
 
-    if (!trimmedText && !statusForm.mediaFile && editingStatusId && !statusForm.mediaPreview) {
-      showModal('error', 'Status Required', 'Please add text, image, or video to post a status.');
+    if (!trimmedText && !statusForm.mediaFile && !hasStickers && editingStatusId && !statusForm.mediaPreview) {
+      showModal('error', 'Status Required', 'Please add text, image, video, or stickers to post a status.');
       return;
     }
 
     const formData = new FormData();
     formData.append('text', trimmedText);
+    formData.append('musicLabel', String(statusForm.musicLabel || '').trim());
+    formData.append('stickers', JSON.stringify(statusForm.stickers || []));
     formData.append('backgroundColor', statusForm.backgroundColor);
     formData.append('textColor', statusForm.textColor);
     formData.append('fontFamily', statusForm.fontFamily);
@@ -1247,6 +1377,18 @@ const ProfileNew = () => {
                           <p className="text-xs text-[var(--text-secondary)] mt-1">
                             {formatStatusTimeLeft(status.expiresAt)} - Audience: {status.audience === 'followers' ? 'Followers' : status.audience === 'private' ? 'Only me' : 'Public'}
                           </p>
+                          {status.musicLabel ? (
+                            <p className="text-[11px] text-[var(--text-secondary)] mt-1 inline-flex items-center gap-1">
+                              <FaMusic size={10} />
+                              {status.musicLabel}
+                            </p>
+                          ) : null}
+                          {Array.isArray(status.stickers) && status.stickers.length > 0 ? (
+                            <p className="text-[11px] text-[var(--text-secondary)] mt-1 inline-flex items-center gap-1">
+                              <FaRegSmile size={10} />
+                              {status.stickers.length} sticker{status.stickers.length === 1 ? '' : 's'}
+                            </p>
+                          ) : null}
                           <p className="text-[11px] text-[var(--text-secondary)] mt-1">
                             Seen by {Array.isArray(status.seenBy) ? status.seenBy.length : status.seenByCount || 0}
                           </p>
@@ -1993,6 +2135,29 @@ const ProfileNew = () => {
                         />
                       )}
 
+                      {Array.isArray(statusForm.stickers) &&
+                        statusForm.stickers.map((sticker) => (
+                          <button
+                            key={sticker.id}
+                            type="button"
+                            className={`absolute select-none ${statusDraggingStickerId === sticker.id ? 'cursor-grabbing' : 'cursor-grab'}`}
+                            style={{
+                              left: `${sticker.x}%`,
+                              top: `${sticker.y}%`,
+                              transform: `translate(-50%, -50%) rotate(${sticker.rotate || 0}deg)`,
+                              fontSize: `${clampStatusStickerSize(sticker.size)}px`,
+                              lineHeight: 1,
+                              textShadow: '0 2px 8px rgba(0,0,0,0.35)',
+                            }}
+                            onPointerDown={(event) => handleStatusStickerPointerDown(event, sticker.id)}
+                            onPointerMove={(event) => handleStatusStickerPointerMove(event, sticker.id)}
+                            onPointerUp={(event) => handleStatusStickerPointerUp(event, sticker.id)}
+                            onPointerCancel={(event) => handleStatusStickerPointerUp(event, sticker.id)}
+                          >
+                            {sticker.emoji}
+                          </button>
+                        ))}
+
                       <div
                         className={`absolute max-w-[88%] px-3 py-2 rounded-lg select-none shadow-lg transition-opacity ${
                           statusTextDragging ? 'cursor-grabbing' : 'cursor-grab'
@@ -2006,6 +2171,7 @@ const ProfileNew = () => {
                           textAlign: statusForm.textAlign,
                           backgroundColor: statusForm.mediaPreview ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.22)',
                           width: '82%',
+                          opacity: statusForm.text.trim() ? 1 : 0.85,
                         }}
                         onPointerDown={handleStatusTextPointerDown}
                         onPointerMove={handleStatusTextPointerMove}
@@ -2014,10 +2180,19 @@ const ProfileNew = () => {
                       >
                         {statusForm.text.trim() || 'Type text and drag it anywhere'}
                       </div>
+
+                      {statusForm.musicLabel?.trim() ? (
+                        <div className="absolute left-3 right-3 bottom-3">
+                          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/60 text-white text-xs backdrop-blur-sm">
+                            <FaMusic size={11} />
+                            {statusForm.musicLabel.trim()}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                   <p className="text-xs text-[var(--text-secondary)]">
-                    Drag the text box to place it. Tap any empty area in preview to reposition quickly.
+                    Drag text or stickers to position them. Tap empty preview area to quickly move text.
                   </p>
                 </div>
 
@@ -2041,6 +2216,126 @@ const ProfileNew = () => {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  <label className="flex flex-col gap-1 text-xs text-[var(--text-secondary)]">
+                    Music label (optional)
+                    <input
+                      type="text"
+                      value={statusForm.musicLabel}
+                      onChange={(e) =>
+                        setStatusForm((prev) => ({
+                          ...prev,
+                          musicLabel: e.target.value.slice(0, 80),
+                        }))
+                      }
+                      placeholder="e.g. Midnight Waves - Lekhon Mix"
+                      className="h-10 px-3 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+                    />
+                  </label>
+
+                  <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-[var(--text-secondary)]">Stickers ({statusForm.stickers.length}/{MAX_STATUS_STICKERS})</p>
+                      {statusForm.stickers.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => setStatusForm((prev) => ({ ...prev, stickers: [] }))}
+                          className="text-xs text-red-600 hover:text-red-700"
+                        >
+                          Clear all
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {STORY_STICKER_EMOJI_PACK.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => addStatusSticker(emoji)}
+                          disabled={statusForm.stickers.length >= MAX_STATUS_STICKERS}
+                          className="h-9 w-9 rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)] text-lg inline-flex items-center justify-center hover:bg-[var(--surface-elevated)] disabled:opacity-45"
+                          title="Add sticker"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                    {statusForm.stickers.length > 0 ? (
+                      <div className="space-y-2">
+                        {statusForm.stickers.map((sticker, index) => (
+                          <div
+                            key={`control-${sticker.id}`}
+                            className="rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)] p-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-medium text-[var(--text-primary)] inline-flex items-center gap-2">
+                                <span className="text-base">{sticker.emoji}</span>
+                                Sticker {index + 1}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => removeStatusSticker(sticker.id)}
+                                className="text-red-600 hover:text-red-700"
+                                title="Remove sticker"
+                              >
+                                <FaTimes size={12} />
+                              </button>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateStatusSticker(sticker.id, (current) => ({
+                                    ...current,
+                                    size: clampStatusStickerSize(current.size - 6),
+                                  }))
+                                }
+                                className="px-2 py-1 rounded border border-[var(--border-default)] text-xs text-[var(--text-primary)]"
+                              >
+                                Smaller
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateStatusSticker(sticker.id, (current) => ({
+                                    ...current,
+                                    size: clampStatusStickerSize(current.size + 6),
+                                  }))
+                                }
+                                className="px-2 py-1 rounded border border-[var(--border-default)] text-xs text-[var(--text-primary)]"
+                              >
+                                Bigger
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateStatusSticker(sticker.id, (current) => ({
+                                    ...current,
+                                    rotate: clampStatusStickerRotate(current.rotate - 12),
+                                  }))
+                                }
+                                className="px-2 py-1 rounded border border-[var(--border-default)] text-xs text-[var(--text-primary)]"
+                              >
+                                Rotate -
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateStatusSticker(sticker.id, (current) => ({
+                                    ...current,
+                                    rotate: clampStatusStickerRotate(current.rotate + 12),
+                                  }))
+                                }
+                                className="px-2 py-1 rounded border border-[var(--border-default)] text-xs text-[var(--text-primary)]"
+                              >
+                                Rotate +
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
 
                   <textarea
