@@ -17,10 +17,134 @@
       name="description"
       content="Lekhon is a writing, publishing, and social storytelling platform for blogs, articles, short posts, stories, profiles, and community conversations."
     />
+    <script>
+      document.documentElement.classList.add("js-enabled");
+    </script>
+    <style>
+      html.js-enabled #static-public-homepage {
+        display: none;
+      }
+
+      #static-public-homepage {
+        margin: 0;
+        padding: 40px 20px;
+        font-family: "DM Sans", Arial, sans-serif;
+        color: #1f271c;
+        background: linear-gradient(135deg, #fbf6e8 0%, #eef0dd 100%);
+        border-top: 1px solid rgba(107, 122, 58, 0.22);
+      }
+
+      #static-public-homepage .static-public-inner {
+        max-width: 980px;
+        margin: 0 auto;
+        display: grid;
+        gap: 18px;
+      }
+
+      #static-public-homepage .static-brand-row {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      #static-public-homepage img {
+        width: 48px;
+        height: 48px;
+        border-radius: 16px;
+        object-fit: cover;
+        box-shadow: 0 10px 26px rgba(31, 39, 28, 0.16);
+      }
+
+      #static-public-homepage h1 {
+        margin: 0;
+        font-family: "Playfair Display", Georgia, serif;
+        font-size: clamp(1.75rem, 4vw, 2.6rem);
+        line-height: 1.1;
+      }
+
+      #static-public-homepage p {
+        max-width: 760px;
+        margin: 0;
+        color: #4b5634;
+        line-height: 1.65;
+      }
+
+      #static-public-homepage .static-link-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      #static-public-homepage a {
+        color: #4f6027;
+        font-weight: 700;
+      }
+
+      #static-public-homepage .static-link-row a {
+        padding: 10px 14px;
+        border-radius: 999px;
+        text-decoration: none;
+        color: #ffffff;
+        background: #6b7a3a;
+      }
+
+      #static-public-homepage .static-note {
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.58);
+        border: 1px solid rgba(107, 122, 58, 0.18);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        #static-public-homepage {
+          color: #f4efd9;
+          background: linear-gradient(135deg, #0e1811 0%, #18220f 100%);
+        }
+
+        #static-public-homepage p {
+          color: #d8ddc0;
+        }
+
+        #static-public-homepage .static-note {
+          background: rgba(255, 255, 255, 0.07);
+        }
+      }
+    </style>
     <title>Lekhon - Modern Platform</title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <section id="static-public-homepage" aria-label="Lekhon public app information">
+      <div class="static-public-inner">
+        <div class="static-brand-row">
+          <img
+            src="https://res.cloudinary.com/ddpdydsji/image/upload/v1769780228/ChatGPT_Image_Jan_30_2026_03_07_38_AM-photoaidcom-cropped_oq1pfz.png"
+            alt="Lekhon logo"
+          />
+          <div>
+            <h1>Lekhon</h1>
+            <p>Write. Connect. Inspire.</p>
+          </div>
+        </div>
+        <p>
+          Lekhon is a writing, publishing, and social storytelling platform where
+          people create blogs, articles, short posts, stories, profiles, and
+          community conversations.
+        </p>
+        <p class="static-note">
+          Lekhon uses Google Sign-In only for authentication, account creation,
+          account access, and profile setup. With user consent, Lekhon may receive
+          basic Google account information such as name, email address, and profile
+          image to help users access and manage their Lekhon account.
+        </p>
+        <div class="static-link-row" aria-label="Public legal and app links">
+          <a href="/">Home</a>
+          <a href="/about">About Lekhon</a>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/terms">Terms of Service</a>
+        </div>
+      </div>
+    </section>
   </body>
 </html>
