@@ -286,6 +286,56 @@ const About = () => {
           </div>
         </section>
 
+        <section
+          id="trust"
+          data-animate
+          className={`mb-20 transition-all duration-1000 ${
+            isVisible('trust') ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'
+          }`}
+        >
+          <div className="theme-modal-card rounded-3xl border border-[var(--border-default)] p-7 shadow-2xl md:p-10">
+            <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+              <div>
+                <p className="mb-3 text-xs font-extrabold uppercase tracking-[0.18em] text-[var(--brand-primary)]">
+                  Public app overview
+                </p>
+                <h2 className="mb-4 text-3xl font-bold leading-tight text-[var(--text-primary)] md:text-4xl">
+                  A clear home for writing, reading, and creative community.
+                </h2>
+                <p className="text-base leading-7 text-[var(--text-secondary)] md:text-lg">
+                  Lekhon helps users publish blogs, long-form articles, short posts, stories, and community updates.
+                  Readers can discover public content, writers can manage their profiles, and members can connect through
+                  comments, messaging, and social account connections.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-[var(--border-default)] bg-[var(--surface-elevated)] p-6">
+                <h3 className="mb-3 flex items-center gap-2 text-xl font-bold text-[var(--text-primary)]">
+                  <FaUserShield className="text-[var(--brand-primary)]" /> Google Sign-In usage
+                </h3>
+                <p className="mb-5 leading-7 text-[var(--text-secondary)]">
+                  Google Sign-In is used only for authentication, account creation, and account management. With user
+                  consent, Lekhon may receive a name, email address, and profile image to set up and protect the account.
+                </p>
+                <div className="grid gap-3 text-sm text-[var(--text-secondary)]">
+                  {[
+                    ['Authentication', 'Confirm account access securely.'],
+                    ['Profile setup', 'Display approved account identity inside Lekhon.'],
+                    ['Account safety', 'Support essential notices and account recovery workflows.'],
+                  ].map(([label, text]) => (
+                    <div key={label} className="flex gap-3">
+                      <span className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--brand-primary)]" />
+                      <p className="m-0">
+                        <span className="font-bold text-[var(--text-primary)]">{label}:</span> {text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <section className="mb-20">
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-12 text-[var(--text-primary)]">
             What Makes Us Special

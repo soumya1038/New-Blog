@@ -9,6 +9,7 @@ import GuestExpiredModal from './components/GuestExpiredModal';
 import FloatingCallBanner from './components/FloatingCallBanner';
 import GlobalGroupCallListener from './components/GlobalGroupCallListener';
 import MinimizedGroupCall from './components/MinimizedGroupCall';
+import PublicFooter from './components/PublicFooter';
 import { CinematicIntro } from './components/intro/CinematicIntro';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
@@ -55,6 +56,7 @@ const LoadingFallback = () => (
 );
 
 const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/privacy', '/terms', '/auth/google/callback', '/auth/facebook/callback', '/auth/twitter/callback', '/auth/linkedin/callback']);
+const PUBLIC_FOOTER_ROUTES = new Set(['/', '/about', '/privacy', '/terms']);
 
 function AppContent() {
   const { user, sessionExpired, guestExpired, setGuestExpired } = useContext(AuthContext);
@@ -66,6 +68,7 @@ function AppContent() {
     return path || '/';
   }, [location.pathname]);
   const hideGlobalChrome = ROUTES_WITHOUT_GLOBAL_CHROME.has(normalizedPath);
+  const showPublicFooter = PUBLIC_FOOTER_ROUTES.has(normalizedPath);
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   const [globalCallState, setGlobalCallState] = useState(null);
@@ -410,6 +413,7 @@ function AppContent() {
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
+        {showPublicFooter && <PublicFooter />}
       </div>
     </ErrorBoundary>
   );

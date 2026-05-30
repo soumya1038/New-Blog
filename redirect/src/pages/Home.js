@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { FaSearch, FaTimes } from 'react-icons/fa';
