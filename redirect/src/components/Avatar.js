@@ -6,6 +6,7 @@ const Avatar = ({ user, size = 'md', className = '', showStatusRing = false }) =
   const [gravatarError, setGravatarError] = useState(false);
 
   const sizes = {
+    xs: 'w-6 h-6 text-[10px]',
     sm: 'w-8 h-8 text-xs',
     md: 'w-12 h-12 text-base',
     lg: 'w-24 h-24 text-3xl',

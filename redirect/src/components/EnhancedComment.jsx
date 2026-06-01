@@ -1,38 +1,111 @@
-import React, { useState, useContext, useEffect, useRef } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AiOutlineLike, AiFillLike } from 'react-icons/ai';
+import { AiFillLike, AiOutlineDislike, AiOutlineLike } from 'react-icons/ai';
 import { FiHeart } from 'react-icons/fi';
 import { BsPinAngle, BsPinAngleFill } from 'react-icons/bs';
-import { HiArrowUp, HiArrowDown } from 'react-icons/hi';
+import { HiArrowDown, HiArrowUp } from 'react-icons/hi';
 import { BiDotsVerticalRounded } from 'react-icons/bi';
-import { MdEdit, MdDelete } from 'react-icons/md';
+import { MdDelete, MdEdit } from 'react-icons/md';
 import { GoVerified } from 'react-icons/go';
 import { TbBrandAmongUs } from 'react-icons/tb';
 import { AuthContext } from '../context/AuthContext';
 import Avatar from './Avatar';
-import api from '../services/api';
 
-const EnhancedComment = ({ 
-  comment, 
-  isOwner, 
-  onReply, 
-  onLike, 
-  onHeart, 
-  onPin, 
+const MAX_VISUAL_DEPTH = 4;
+
+const getId = (value) => {
+  if (!value) return '';
+  if (typeof value === 'object') return value._id || '';
+  return value;
+};
+
+const idsMatch = (left, right) => String(getId(left)) === String(getId(right));
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const formatTimeAgo = (value) => {
+  if (!value) return '';
+
+  const createdAt = new Date(value).getTime();
+  const diffSeconds = Math.max(1, Math.floor((Date.now() - createdAt) / 1000));
+
+  if (diffSeconds < 60) return 'just now';
+
+  const units = [
+    ['year', 31536000],
+    ['month', 2592000],
+    ['week', 604800],
+    ['day', 86400],
+    ['hour', 3600],
+    ['minute', 60],
+  ];
+
+  const [label, seconds] = units.find(([, unitSeconds]) => diffSeconds >= unitSeconds);
+  const amount = Math.floor(diffSeconds / seconds);
+  return `${amount} ${label}${amount === 1 ? '' : 's'} ago`;
+};
+
+const renderCommentText = (content = '', replyToUser) => {
+  const parts = [];
+  let text = content;
+
+  if (replyToUser?.username) {
+    const mention = `@${replyToUser.username}`;
+    const leadingMention = new RegExp(`^${escapeRegExp(mention)}\\s*`, 'i');
+    text = text.replace(leadingMention, '');
+    parts.push({ type: 'mention', value: mention, key: 'reply-to' });
+    if (text.trim()) {
+      parts.push({ type: 'text', value: ' ', key: 'reply-gap' });
+    }
+  }
+
+  text.split(/(@[\w.-]+)/g).forEach((part, index) => {
+    if (!part) return;
+    parts.push({
+      type: part.startsWith('@') ? 'mention' : 'text',
+      value: part,
+      key: `part-${index}`,
+    });
+  });
+
+  return parts.map((part) => (
+    <span
+      key={part.key}
+      className={part.type === 'mention' ? 'nb-comment-mention' : undefined}
+    >
+      {part.value}
+    </span>
+  ));
+};
+
+const EnhancedComment = ({
+  comment,
+  isOwner,
+  onReply,
+  onLike,
+  onDislike,
+  onHeart,
+  onPin,
   onDelete,
   onEdit,
   onSaveEdit,
+  onCancelEdit,
   editingComment,
   editText,
   setEditText,
   onLoadReplies,
   replies = [],
+  replyMap,
   showReplies = false,
+  showRepliesMap,
   loadingReplies = false,
+  loadingRepliesMap,
   isReply = false,
   deletingComment,
   postOwner,
-  showAuthorBadge = false
+  showAuthorBadge = false,
+  depth = 0,
+  maxDepth = MAX_VISUAL_DEPTH,
 }) => {
   const { user } = useContext(AuthContext);
   const [showReplyInput, setShowReplyInput] = useState(false);
@@ -40,235 +113,251 @@ const EnhancedComment = ({
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef(null);
 
+  const author = comment.author || {};
+  const authorId = getId(author);
+  const commentReplies = replyMap ? (replyMap[comment._id] || []) : replies;
+  const repliesVisible = showRepliesMap ? Boolean(showRepliesMap[comment._id]) : Boolean(showReplies);
+  const repliesLoading = loadingRepliesMap ? Boolean(loadingRepliesMap[comment._id]) : Boolean(loadingReplies);
+  const replyCount = comment.replyCount || commentReplies.length || 0;
+  const hasReplyThread = replyCount > 0 || repliesVisible;
+  const isNested = isReply || depth > 0;
+  const nextDepth = Math.min(depth + 1, maxDepth);
+  const isAtVisualCap = depth + 1 >= maxDepth;
+  const isLiked = comment.likes?.some((like) => idsMatch(like, user?._id));
+  const isDisliked = comment.dislikes?.some((dislike) => idsMatch(dislike, user?._id));
+  const canPin = isOwner && !isNested;
+  const canDeleteAsOwner = user?._id && !idsMatch(user._id, authorId) && isOwner;
+  const canEditOwnComment = user?._id && idsMatch(user._id, authorId);
+
+  const content = useMemo(
+    () => renderCommentText(comment.content, comment.replyTo),
+    [comment.content, comment.replyTo]
+  );
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setShowMenu(false);
       }
     };
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleReplySubmit = async () => {
-    if (replyText.trim()) {
-      const parentId = comment.parentComment || comment._id;
-      await onReply(parentId, replyText, comment.author._id);
-      setReplyText('');
-      setShowReplyInput(false);
-    }
+    const trimmedReply = replyText.trim();
+    if (!trimmedReply) return;
+
+    await onReply(comment._id, trimmedReply, authorId);
+    setReplyText('');
+    setShowReplyInput(false);
   };
 
-  const formatReplyContent = (content, replyToUser) => {
-    if (replyToUser && content.startsWith(`@${replyToUser.username}`)) {
-      return content;
+  const handleCancelEdit = () => {
+    if (typeof onCancelEdit === 'function') {
+      onCancelEdit();
+    } else if (typeof onEdit === 'function') {
+      onEdit(null, '');
     }
-    return replyToUser ? `@${replyToUser.username} ${content}` : content;
+
+    if (typeof setEditText === 'function') {
+      setEditText('');
+    }
   };
 
   return (
-    <div className={`${comment.isPinned ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3' : ''}`}>
-      <div className="flex gap-3">
-        <Avatar user={comment.author} size="sm" />
-        <div className="flex-1">
-          <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 relative">
+    <article
+      className={`nb-comment-item ${isNested ? 'nb-comment-item--nested' : ''} ${repliesVisible ? 'nb-comment-item--open' : ''} ${comment.isPinned ? 'nb-comment-item--pinned' : ''}`}
+      data-depth={Math.min(depth, maxDepth)}
+    >
+      <div className="nb-comment-row">
+        <div className="nb-comment-avatar">
+          <Avatar user={author} size={isNested ? 'xs' : 'sm'} />
+        </div>
+
+        <div className="nb-comment-body">
+          <div className="nb-comment-main">
             {comment.isPinned && (
-              <BsPinAngleFill className="absolute -top-1 -right-1 w-4 h-4 text-blue-600" />
+              <BsPinAngleFill className="nb-comment-pin" aria-label="Pinned comment" />
             )}
-            
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <Link 
-                  to={`/user/${comment.author._id}`}
-                  className="font-semibold text-sm text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 inline-flex items-center gap-1"
-                >
-                  {comment.author?.username}
-                  {showAuthorBadge && postOwner?._id === comment.author._id && (
-                    <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-[10px] px-1.5 py-0.5 rounded font-semibold">
-                      Author
-                    </span>
-                  )}
-                  {(comment.author?.isGuest || comment.author?.role === 'guest') ? (
-                    <TbBrandAmongUs className="text-purple-500" size={14} title="Guest User" />
-                  ) : comment.author?.isVerified && (
-                    <div className="bg-blue-600 rounded-full p-0.5 flex items-center justify-center" title="Verified">
-                      <GoVerified className="text-white flex-shrink-0" size={9} />
-                    </div>
-                  )}
-                </Link>
-                {editingComment === comment._id ? (
-                  <div className="mt-2">
-                    <textarea
-                      value={editText}
-                      onChange={(e) => setEditText(e.target.value)}
-                      className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
-                      rows={2}
-                    />
-                    <div className="flex gap-2 mt-2">
-                      <button
-                        onClick={() => onSaveEdit(comment._id)}
-                        className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setEditingComment(null)}
-                        className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">
-                    {comment.replyTo ? (
-                      <>
-                        <span className="text-blue-600 font-medium">@{comment.replyTo.username}</span>{' '}
-                        {comment.content.replace(`@${comment.replyTo.username}`, '').trim()}
-                      </>
-                    ) : (
-                      comment.content
-                    )}
-                  </p>
+
+            <div className="nb-comment-header">
+              <Link to={`/user/${authorId}`} className="nb-comment-author">
+                <span>{author?.username || 'User'}</span>
+                {showAuthorBadge && postOwner?._id === authorId && (
+                  <span className="nb-comment-author-badge">Author</span>
                 )}
+                {(author?.isGuest || author?.role === 'guest') ? (
+                  <TbBrandAmongUs className="text-purple-500" size={14} title="Guest User" />
+                ) : author?.isVerified ? (
+                  <span className="nb-comment-verified" title="Verified">
+                    <GoVerified size={9} />
+                  </span>
+                ) : null}
+              </Link>
+              <span className="nb-comment-time">{formatTimeAgo(comment.createdAt)}</span>
+            </div>
+
+            {editingComment === comment._id ? (
+              <div className="nb-comment-edit">
+                <textarea
+                  value={editText}
+                  onChange={(event) => setEditText(event.target.value)}
+                  className="nb-comment-textarea"
+                  rows={2}
+                />
+                <div className="nb-comment-form-actions">
+                  <button type="button" onClick={handleCancelEdit} className="nb-comment-soft-button">
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onSaveEdit(comment._id)}
+                    className="nb-comment-primary-button"
+                  >
+                    Save
+                  </button>
+                </div>
               </div>
-              
-              <div className="relative ml-2" ref={menuRef}>
+            ) : (
+              <p className="nb-comment-text">{content}</p>
+            )}
+
+            <div className="nb-comment-actions">
+              <button
+                type="button"
+                onClick={() => onLike(comment._id)}
+                className={`nb-comment-action ${isLiked ? 'nb-comment-action--active' : ''}`}
+                aria-label="Like comment"
+              >
+                {isLiked ? <AiFillLike /> : <AiOutlineLike />}
+                {comment.likes?.length > 0 && <span>{comment.likes.length}</span>}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onDislike(comment._id)}
+                className={`nb-comment-action ${isDisliked ? 'nb-comment-action--active' : ''}`}
+                aria-label="Dislike comment"
+              >
+                <AiOutlineDislike />
+                {comment.dislikes?.length > 0 && <span>{comment.dislikes.length}</span>}
+              </button>
+
+              {(comment.isHearted || isOwner) && (
                 <button
-                  onClick={() => setShowMenu(!showMenu)}
-                  className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                  type="button"
+                  onClick={isOwner ? () => onHeart(comment._id) : undefined}
+                  className={`nb-comment-action ${comment.isHearted ? 'nb-comment-action--hearted' : ''}`}
+                  aria-label={comment.isHearted ? 'Hearted by author' : 'Heart comment'}
                 >
-                  <BiDotsVerticalRounded className="w-4 h-4 text-gray-500" />
+                  {comment.isHearted ? (
+                    <span className="nb-comment-heart-mark">
+                      <Avatar user={postOwner} size="xs" />
+                      <FiHeart />
+                    </span>
+                  ) : (
+                    <FiHeart />
+                  )}
                 </button>
-                {showMenu && (
-                  <div className="absolute right-0 top-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-10 min-w-32">
-                    {isOwner && !isReply && (
-                      <button
-                        onClick={() => { onPin(comment._id); setShowMenu(false); }}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
-                      >
-                        {comment.isPinned ? <BsPinAngleFill className="w-3 h-3" /> : <BsPinAngle className="w-3 h-3" />}
-                        {comment.isPinned ? 'Unpin' : 'Pin'}
-                      </button>
-                    )}
-                    {user?._id === comment.author._id && (
-                      <>
-                        <button 
+              )}
+
+              <button
+                type="button"
+                onClick={() => setShowReplyInput((current) => !current)}
+                className="nb-comment-action nb-comment-reply-button"
+              >
+                Reply
+              </button>
+
+              {(canPin || canEditOwnComment || canDeleteAsOwner) && (
+                <div className="nb-comment-menu" ref={menuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setShowMenu((current) => !current)}
+                    className="nb-comment-menu-button"
+                    aria-label="Comment actions"
+                  >
+                    <BiDotsVerticalRounded />
+                  </button>
+                  {showMenu && (
+                    <div className="nb-comment-menu-popover">
+                      {canPin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onPin(comment._id);
+                            setShowMenu(false);
+                          }}
+                        >
+                          {comment.isPinned ? <BsPinAngleFill /> : <BsPinAngle />}
+                          {comment.isPinned ? 'Unpin' : 'Pin'}
+                        </button>
+                      )}
+                      {canEditOwnComment && (
+                        <button
+                          type="button"
                           onClick={() => {
                             onEdit(comment._id, comment.content);
                             setShowMenu(false);
                           }}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2"
                         >
-                          <MdEdit className="w-3 h-3" /> Edit
+                          <MdEdit />
+                          Edit
                         </button>
-                        <button 
-                          onClick={() => { onDelete(comment._id); setShowMenu(false); }}
+                      )}
+                      {(canEditOwnComment || canDeleteAsOwner) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onDelete(comment._id);
+                            setShowMenu(false);
+                          }}
                           disabled={deletingComment === comment._id}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-red-600 disabled:opacity-50"
+                          className="nb-comment-danger-button"
                         >
-                          <MdDelete className="w-3 h-3" /> 
-                          {deletingComment === comment._id ? 'Deleting...' : 'Delete'}
+                          <MdDelete />
+                          {deletingComment === comment._id
+                            ? (canEditOwnComment ? 'Deleting...' : 'Removing...')
+                            : (canEditOwnComment ? 'Delete' : 'Remove')}
                         </button>
-                      </>
-                    )}
-                    {user?._id !== comment.author._id && isOwner && (
-                      <button 
-                        onClick={() => { onDelete(comment._id); setShowMenu(false); }}
-                        disabled={deletingComment === comment._id}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 text-red-600 disabled:opacity-50"
-                      >
-                        <MdDelete className="w-3 h-3" /> 
-                        {deletingComment === comment._id ? 'Removing...' : 'Remove'}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-          
-          <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
-            <button 
-              onClick={() => onLike(comment._id)}
-              className="flex items-center gap-1 hover:text-blue-600"
-            >
-              {comment.likes?.includes(user?._id) ? (
-                <AiFillLike className="w-4 h-4 text-blue-600" />
-              ) : (
-                <AiOutlineLike className="w-4 h-4" />
-              )}
-              {comment.likes?.length > 0 && <span>{comment.likes.length}</span>}
-            </button>
-            
-            {(comment.isHearted || isOwner) && (
-              <button
-                onClick={isOwner ? () => onHeart(comment._id) : undefined}
-                className={`relative flex items-center ${
-                  isOwner ? 'hover:text-red-600 cursor-pointer' : 'cursor-default'
-                } ${
-                  comment.isHearted ? 'text-red-500' : ''
-                }`}
-              >
-                {comment.isHearted ? (
-                  <div className="relative flex items-center">
-                    <Avatar user={postOwner} size="xs" className="w-5 h-5" />
-                    <FiHeart className="absolute -bottom-1 -right-1 w-3 h-3 text-red-500 fill-current bg-white rounded-full" />
-                  </div>
-                ) : (
-                  <FiHeart className="w-4 h-4" />
-                )}
-              </button>
-            )}
-            
-            <button 
-              onClick={() => setShowReplyInput(!showReplyInput)}
-              className="hover:text-blue-600"
-            >
-              Reply
-            </button>
-            
-            <span>{new Date(comment.createdAt).toLocaleDateString()}</span>
-          </div>
-          
-          {!isReply && comment.replyCount > 0 && (
-            <button
-              onClick={() => onLoadReplies(comment._id)}
-              className="flex items-center gap-1 mt-2 text-xs text-blue-600 hover:text-blue-800"
-            >
-              {showReplies ? (
-                <HiArrowUp className="w-4 h-4" />
-              ) : (
-                <HiArrowDown className="w-4 h-4" />
-              )}
-              {comment.replyCount} {comment.replyCount === 1 ? 'reply' : 'replies'}
-            </button>
-          )}
-          
+
           {showReplyInput && (
-            <div className="mt-3 flex gap-2">
-              <div className="w-6 h-6 rounded-full overflow-hidden flex-shrink-0">
-                <Avatar user={user} size="xs" className="w-full h-full" />
-              </div>
-              <div className="flex-1">
+            <div className="nb-comment-reply-form">
+              {user ? (
+                <Avatar user={user} size="xs" />
+              ) : (
+                <div className="nb-comment-anonymous-avatar" aria-hidden="true" />
+              )}
+              <div className="nb-comment-reply-editor">
                 <textarea
                   value={replyText}
-                  onChange={(e) => setReplyText(e.target.value)}
-                  placeholder={`Reply to ${comment.author.username}...`}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none"
+                  onChange={(event) => setReplyText(event.target.value)}
+                  placeholder={`Reply to ${author.username || 'this comment'}...`}
+                  className="nb-comment-textarea"
                   rows={2}
                 />
-                <div className="flex gap-2 mt-2">
+                <div className="nb-comment-form-actions">
                   <button
+                    type="button"
                     onClick={() => setShowReplyInput(false)}
-                    className="px-3 py-1 text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+                    className="nb-comment-soft-button"
                   >
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={handleReplySubmit}
                     disabled={!replyText.trim()}
-                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="nb-comment-primary-button"
                   >
                     Reply
                   </button>
@@ -276,41 +365,79 @@ const EnhancedComment = ({
               </div>
             </div>
           )}
-          
-          {showReplies && (
-            <div className="mt-3 ml-4 space-y-3 border-l-2 border-gray-200 dark:border-gray-700 pl-4">
-              {loadingReplies ? (
-                <div className="flex justify-center py-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+
+          {hasReplyThread && !repliesVisible && (
+            <button
+              type="button"
+              onClick={() => onLoadReplies(comment._id)}
+              className="nb-comment-toggle"
+              disabled={repliesLoading}
+            >
+              {repliesVisible ? <HiArrowUp /> : <HiArrowDown />}
+              {repliesLoading
+                ? 'Loading replies...'
+                : `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`}
+            </button>
+          )}
+
+          {repliesVisible && (
+            <div
+              className={`nb-comment-replies ${isAtVisualCap ? 'nb-comment-replies--capped' : ''}`}
+            >
+              {repliesLoading ? (
+                <div className="nb-comment-loading">
+                  <span />
                 </div>
               ) : (
-                replies.map((reply) => (
-                  <EnhancedComment
-                    key={reply._id}
-                    comment={reply}
-                    isOwner={isOwner}
-                    onReply={onReply}
-                    onLike={onLike}
-                    onHeart={onHeart}
-                    onPin={onPin}
-                    onDelete={onDelete}
-                    onEdit={onEdit}
-                    onSaveEdit={onSaveEdit}
-                    editingComment={editingComment}
-                    editText={editText}
-                    setEditText={setEditText}
-                    isReply={true}
-                    deletingComment={deletingComment}
-                    postOwner={postOwner}
-                    showAuthorBadge={showAuthorBadge}
-                  />
-                ))
+                <>
+                  {commentReplies.map((reply) => (
+                    <div className="nb-comment-branch" key={reply._id}>
+                      <EnhancedComment
+                        comment={reply}
+                        isOwner={isOwner}
+                        onReply={onReply}
+                        onLike={onLike}
+                        onDislike={onDislike}
+                        onHeart={onHeart}
+                        onPin={onPin}
+                        onDelete={onDelete}
+                        onEdit={onEdit}
+                        onSaveEdit={onSaveEdit}
+                        onCancelEdit={onCancelEdit}
+                        editingComment={editingComment}
+                        editText={editText}
+                        setEditText={setEditText}
+                        onLoadReplies={onLoadReplies}
+                        replyMap={replyMap}
+                        showRepliesMap={showRepliesMap}
+                        loadingRepliesMap={loadingRepliesMap}
+                        isReply
+                        deletingComment={deletingComment}
+                        postOwner={postOwner}
+                        showAuthorBadge={showAuthorBadge}
+                        depth={nextDepth}
+                        maxDepth={maxDepth}
+                      />
+                    </div>
+                  ))}
+                  <div className="nb-comment-branch nb-comment-toggle-branch">
+                    <button
+                      type="button"
+                      onClick={() => onLoadReplies(comment._id)}
+                      className="nb-comment-toggle"
+                      disabled={repliesLoading}
+                    >
+                      <HiArrowUp />
+                      Hide replies
+                    </button>
+                  </div>
+                </>
               )}
             </div>
           )}
         </div>
       </div>
-    </div>
+    </article>
   );
 };
 

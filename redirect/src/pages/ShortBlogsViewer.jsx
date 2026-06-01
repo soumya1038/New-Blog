@@ -23,6 +23,7 @@ import { AuthContext } from '../context/AuthContext';
 import Avatar from '../components/Avatar';
 import EnhancedComment from '../components/EnhancedComment';
 import WaveformBars from '../components/WaveformBars';
+import { bumpReplyCount, removeCommentFromReplyMap, updateCommentsById, updateReplyMapById } from '../utils/commentTree';
 import './ShortBlogsViewer.css';
 
 const ShortBlogsViewer = () => {
@@ -578,12 +579,8 @@ const ShortBlogsViewer = () => {
         replyTo: replyToUserId
       });
 
-      // Update parent comment reply count
-      setComments(prev => prev.map(comment =>
-        comment._id === parentCommentId ?
-          { ...comment, replyCount: (comment.replyCount || 0) + 1 } :
-          comment
-      ));
+      setComments(prev => updateCommentsById(prev, parentCommentId, comment => bumpReplyCount(comment, 1)));
+      setReplies(prev => updateReplyMapById(prev, parentCommentId, comment => bumpReplyCount(comment, 1)));
 
       // Refresh replies and keep them visible
       await fetchReplies(parentCommentId, true);
@@ -603,7 +600,7 @@ const ShortBlogsViewer = () => {
 
       // Update main comments
       setComments(prev => prev.map(comment =>
-        comment._id === commentId ? { ...comment, likes: data.likes } : comment
+        comment._id === commentId ? { ...comment, likes: data.likes, dislikes: data.dislikes } : comment
       ));
 
       // Update replies
@@ -611,13 +608,39 @@ const ShortBlogsViewer = () => {
         const newReplies = { ...prev };
         Object.keys(newReplies).forEach(parentId => {
           newReplies[parentId] = newReplies[parentId].map(reply =>
-            reply._id === commentId ? { ...reply, likes: data.likes } : reply
+            reply._id === commentId ? { ...reply, likes: data.likes, dislikes: data.dislikes } : reply
           );
         });
         return newReplies;
       });
     } catch (error) {
       console.error('Error liking comment:', error);
+    }
+  };
+
+  const handleDislikeComment = async (commentId) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    try {
+      const { data } = await api.post(`/comments/${commentId}/dislike`);
+
+      setComments(prev => prev.map(comment =>
+        comment._id === commentId ? { ...comment, likes: data.likes, dislikes: data.dislikes } : comment
+      ));
+
+      setReplies(prev => {
+        const newReplies = { ...prev };
+        Object.keys(newReplies).forEach(parentId => {
+          newReplies[parentId] = newReplies[parentId].map(reply =>
+            reply._id === commentId ? { ...reply, likes: data.likes, dislikes: data.dislikes } : reply
+          );
+        });
+        return newReplies;
+      });
+    } catch (error) {
+      console.error('Error disliking comment:', error);
     }
   };
 
@@ -711,18 +734,10 @@ const ShortBlogsViewer = () => {
     setDeletingComment(commentId);
     try {
       await api.delete(`/comments/${commentId}`);
-      const deletedComment = comments.find(c => c._id === commentId);
-      const replyCount = deletedComment?.replyCount || 0;
 
       setComments(prev => prev.filter(c => c._id !== commentId));
-      setReplies(prev => {
-        const newReplies = { ...prev };
-        Object.keys(newReplies).forEach(parentId => {
-          newReplies[parentId] = newReplies[parentId].filter(reply => reply._id !== commentId);
-        });
-        return newReplies;
-      });
-      setCommentCount(prev => prev - (1 + replyCount));
+      setReplies(prev => removeCommentFromReplyMap(prev, commentId));
+      setCommentCount(prev => Math.max(prev - 1, 0));
     } catch (error) {
       console.error('Error deleting comment:', error);
     } finally {
@@ -1235,6 +1250,7 @@ const ShortBlogsViewer = () => {
                                 isOwner={user?._id === blog.author._id}
                                 onReply={handleReply}
                                 onLike={handleLikeComment}
+                                onDislike={handleDislikeComment}
                                 onHeart={handleHeartComment}
                                 onPin={handlePinComment}
                                 onDelete={handleDeleteComment}
@@ -1245,8 +1261,11 @@ const ShortBlogsViewer = () => {
                                 setEditText={setEditText}
                                 onLoadReplies={fetchReplies}
                                 replies={replies[comment._id] || []}
+                                replyMap={replies}
                                 showReplies={showReplies[comment._id]}
+                                showRepliesMap={showReplies}
                                 loadingReplies={loadingReplies[comment._id]}
+                                loadingRepliesMap={loadingReplies}
                                 deletingComment={deletingComment}
                                 postOwner={blog.author}
                               />
@@ -1865,6 +1884,7 @@ const ShortBlogsViewer = () => {
                           isOwner={user?._id === blogs[currentIndex]?.author._id}
                           onReply={handleReply}
                           onLike={handleLikeComment}
+                          onDislike={handleDislikeComment}
                           onHeart={handleHeartComment}
                           onPin={handlePinComment}
                           onDelete={handleDeleteComment}
@@ -1875,8 +1895,11 @@ const ShortBlogsViewer = () => {
                           setEditText={setEditText}
                           onLoadReplies={fetchReplies}
                           replies={replies[comment._id] || []}
+                          replyMap={replies}
                           showReplies={showReplies[comment._id]}
+                          showRepliesMap={showReplies}
                           loadingReplies={loadingReplies[comment._id]}
+                          loadingRepliesMap={loadingReplies}
                           deletingComment={deletingComment}
                           postOwner={blogs[currentIndex]?.author}
                         />

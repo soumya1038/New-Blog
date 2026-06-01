@@ -9,6 +9,7 @@ const commentSchema = new mongoose.Schema({
   parentComment: { type: mongoose.Schema.Types.ObjectId, ref: 'Comment' },
   replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  dislikes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   isHearted: { type: Boolean, default: false },
   isPinned: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now }
@@ -24,5 +25,10 @@ commentSchema.pre('validate', function(next) {
     next();
   }
 });
+
+commentSchema.index({ blog: 1, parentComment: 1, createdAt: -1 });
+commentSchema.index({ article: 1, parentComment: 1, createdAt: -1 });
+commentSchema.index({ short: 1, parentComment: 1, createdAt: -1 });
+commentSchema.index({ parentComment: 1, createdAt: 1, _id: 1 });
 
 module.exports = mongoose.model('Comment', commentSchema);

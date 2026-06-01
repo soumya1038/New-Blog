@@ -16,6 +16,7 @@ import ArticleCard from '../components/ArticleCard';
 import ArticleTemplateFrame from '../components/ArticleTemplateFrame';
 import SEOHead from '../components/SEOHead';
 import StatusViewer from '../components/StatusViewer';
+import { bumpReplyCount, removeCommentFromReplyMap, updateCommentsById, updateReplyMapById } from '../utils/commentTree';
 
 const ArticleDetails = () => {
   const { t } = useTranslation();
@@ -199,11 +200,8 @@ const ArticleDetails = () => {
         replyTo: replyToUserId
       });
 
-      setComments(prev => prev.map(comment =>
-        comment._id === parentCommentId ?
-          { ...comment, replyCount: (comment.replyCount || 0) + 1 } :
-          comment
-      ));
+      setComments(prev => updateCommentsById(prev, parentCommentId, comment => bumpReplyCount(comment, 1)));
+      setReplies(prev => updateReplyMapById(prev, parentCommentId, comment => bumpReplyCount(comment, 1)));
 
       await fetchReplies(parentCommentId, true);
       window.dispatchEvent(new CustomEvent('newComment'));
@@ -221,20 +219,46 @@ const ArticleDetails = () => {
       const { data } = await api.post(`/comments/${commentId}/like`);
 
       setComments(prev => prev.map(comment =>
-        comment._id === commentId ? { ...comment, likes: data.likes } : comment
+        comment._id === commentId ? { ...comment, likes: data.likes, dislikes: data.dislikes } : comment
       ));
 
       setReplies(prev => {
         const newReplies = { ...prev };
         Object.keys(newReplies).forEach(parentId => {
           newReplies[parentId] = newReplies[parentId].map(reply =>
-            reply._id === commentId ? { ...reply, likes: data.likes } : reply
+            reply._id === commentId ? { ...reply, likes: data.likes, dislikes: data.dislikes } : reply
           );
         });
         return newReplies;
       });
     } catch (error) {
       console.error('Error liking comment:', error);
+    }
+  };
+
+  const handleDislikeComment = async (commentId) => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    try {
+      const { data } = await api.post(`/comments/${commentId}/dislike`);
+
+      setComments(prev => prev.map(comment =>
+        comment._id === commentId ? { ...comment, likes: data.likes, dislikes: data.dislikes } : comment
+      ));
+
+      setReplies(prev => {
+        const newReplies = { ...prev };
+        Object.keys(newReplies).forEach(parentId => {
+          newReplies[parentId] = newReplies[parentId].map(reply =>
+            reply._id === commentId ? { ...reply, likes: data.likes, dislikes: data.dislikes } : reply
+          );
+        });
+        return newReplies;
+      });
+    } catch (error) {
+      console.error('Error disliking comment:', error);
     }
   };
 
@@ -278,17 +302,9 @@ const ArticleDetails = () => {
     setDeletingComment(commentId);
     try {
       await api.delete(`/comments/${commentId}`);
-      const deletedComment = comments.find(c => c._id === commentId);
-      const replyCount = deletedComment?.replyCount || 0;
 
       setComments(prev => prev.filter(c => c._id !== commentId));
-      setReplies(prev => {
-        const newReplies = { ...prev };
-        Object.keys(newReplies).forEach(parentId => {
-          newReplies[parentId] = newReplies[parentId].filter(reply => reply._id !== commentId);
-        });
-        return newReplies;
-      });
+      setReplies(prev => removeCommentFromReplyMap(prev, commentId));
       await fetchArticle();
       window.dispatchEvent(new CustomEvent('newComment'));
     } catch (error) {
@@ -718,6 +734,7 @@ const ArticleDetails = () => {
                   isOwner={user?._id === article?.author._id}
                   onReply={handleReply}
                   onLike={handleLikeComment}
+                  onDislike={handleDislikeComment}
                   onHeart={handleHeartComment}
                   onPin={handlePinComment}
                   onDelete={handleDeleteComment}
@@ -728,8 +745,11 @@ const ArticleDetails = () => {
                   setEditText={setEditText}
                   onLoadReplies={fetchReplies}
                   replies={replies[comment._id] || []}
+                  replyMap={replies}
                   showReplies={showReplies[comment._id]}
+                  showRepliesMap={showReplies}
                   loadingReplies={loadingReplies[comment._id]}
+                  loadingRepliesMap={loadingReplies}
                   deletingComment={deletingComment}
                   postOwner={article?.author}
                   showAuthorBadge={true}

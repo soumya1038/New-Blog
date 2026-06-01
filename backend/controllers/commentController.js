@@ -65,6 +65,31 @@ const getContentPath = (contentType, post) => {
   return `/blog/${post.slug || post._id}`;
 };
 
+const addReplyCounts = async (commentDocs) => {
+  return Promise.all(commentDocs.map(async (comment) => {
+    const commentObject = typeof comment.toObject === 'function' ? comment.toObject() : comment;
+    const replyCount = await Comment.countDocuments({ parentComment: commentObject._id });
+    return {
+      ...commentObject,
+      replyCount
+    };
+  }));
+};
+
+const collectDescendantCommentIds = async (commentId) => {
+  const descendantIds = [];
+  let frontier = [commentId];
+
+  while (frontier.length > 0) {
+    const children = await Comment.find({ parentComment: { $in: frontier } }).select('_id');
+    const childIds = children.map(child => child._id);
+    descendantIds.push(...childIds);
+    frontier = childIds;
+  }
+
+  return descendantIds;
+};
+
 // Create comment
 exports.createComment = async (req, res) => {
   try {
@@ -97,11 +122,28 @@ exports.createComment = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Content not found' });
     }
 
+    let parentCommentDoc = null;
+    if (parentComment) {
+      parentCommentDoc = await Comment.findById(parentComment);
+
+      if (!parentCommentDoc) {
+        return res.status(404).json({ success: false, message: 'Parent comment not found' });
+      }
+
+      const parentRef = getPostReferenceFromComment(parentCommentDoc);
+      if (parentRef.type !== contentType || String(parentRef.id) !== String(resolvedPostId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Reply parent must belong to the same content'
+        });
+      }
+    }
+
     const comment = await Comment.create({
       content,
       author: req.user._id,
       parentComment: parentComment || null,
-      replyTo: replyTo || null,
+      replyTo: parentCommentDoc ? (replyTo || parentCommentDoc.author) : (replyTo || null),
       ...(isArticle === 'true'
         ? { article: resolvedPostId }
         : (isShort === 'true' ? { short: resolvedPostId } : { blog: resolvedPostId }))
@@ -110,6 +152,10 @@ exports.createComment = async (req, res) => {
     const populatedComment = await Comment.findById(comment._id)
       .populate('author', 'username profileImage isGuest role isVerified')
       .populate('replyTo', 'username');
+    const populatedCommentPayload = {
+      ...populatedComment.toObject(),
+      replyCount: 0
+    };
 
     // Create notification for post author
     if (post.author.toString() !== req.user._id.toString()) {
@@ -143,7 +189,7 @@ exports.createComment = async (req, res) => {
     // Emit socket event for real-time updates
     const io = req.app.get('io');
     if (io) {
-      io.emit('comment:new', { blogId: resolvedPostId, comment: populatedComment });
+      io.emit('comment:new', { blogId: resolvedPostId, comment: populatedCommentPayload });
     }
 
     await invalidateCacheByPrefixes([
@@ -152,7 +198,7 @@ exports.createComment = async (req, res) => {
       ...getContentCachePrefixesByType(contentType)
     ]);
 
-    res.status(201).json({ success: true, comment: populatedComment });
+    res.status(201).json({ success: true, comment: populatedCommentPayload });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -224,14 +270,7 @@ exports.getComments = async (req, res) => {
       ? extractNextCursor(comments, limit)
       : { pageItems: comments, hasMore: false, nextCursor: null };
 
-    // Get reply counts for each comment
-    const commentsWithReplies = await Promise.all(pagedComments.map(async (comment) => {
-      const replyCount = await Comment.countDocuments({ parentComment: comment._id });
-      return {
-        ...comment.toObject(),
-        replyCount
-      };
-    }));
+    const commentsWithReplies = await addReplyCounts(pagedComments);
 
     const payload = {
       success: true,
@@ -295,9 +334,11 @@ exports.getReplies = async (req, res) => {
       ? extractNextCursor(replies, limit)
       : { pageItems: replies, hasMore: false, nextCursor: null };
 
+    const repliesWithCounts = await addReplyCounts(pagedReplies);
+
     const payload = {
       success: true,
-      replies: pagedReplies,
+      replies: repliesWithCounts,
       ...(useCursor
         ? {
             pagination: {
@@ -331,6 +372,7 @@ exports.likeComment = async (req, res) => {
       comment.likes.pull(req.user._id);
     } else {
       comment.likes.push(req.user._id);
+      comment.dislikes.pull(req.user._id);
     }
 
     await comment.save();
@@ -340,7 +382,36 @@ exports.likeComment = async (req, res) => {
       ...(comment.parentComment ? [`comments:replies:${comment.parentComment.toString()}:`] : [])
     ]);
 
-    res.json({ success: true, likes: comment.likes });
+    res.json({ success: true, likes: comment.likes, dislikes: comment.dislikes });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Dislike/undislike comment
+exports.dislikeComment = async (req, res) => {
+  try {
+    const comment = await Comment.findById(req.params.id);
+    if (!comment) {
+      return res.status(404).json({ success: false, message: 'Comment not found' });
+    }
+
+    const isDisliked = comment.dislikes.includes(req.user._id);
+    if (isDisliked) {
+      comment.dislikes.pull(req.user._id);
+    } else {
+      comment.dislikes.push(req.user._id);
+      comment.likes.pull(req.user._id);
+    }
+
+    await comment.save();
+    const postRef = getPostReferenceFromComment(comment);
+    await invalidateCacheByPrefixes([
+      ...(postRef.type && postRef.id ? [`comments:list:${postRef.type}:${postRef.id}:`] : []),
+      ...(comment.parentComment ? [`comments:replies:${comment.parentComment.toString()}:`] : [])
+    ]);
+
+    res.json({ success: true, likes: comment.likes, dislikes: comment.dislikes });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -462,8 +533,12 @@ exports.deleteComment = async (req, res) => {
     const blogId = comment.blog?._id || comment.article?._id || comment.short?._id;
     const postRef = getPostReferenceFromComment(comment);
 
-    // Delete all replies to this comment
-    await Comment.deleteMany({ parentComment: comment._id });
+    const descendantIds = await collectDescendantCommentIds(comment._id);
+
+    if (descendantIds.length > 0) {
+      await Comment.deleteMany({ _id: { $in: descendantIds } });
+    }
+
     await Comment.findByIdAndDelete(comment._id);
 
     await invalidateCacheByPrefixes([
@@ -471,6 +546,8 @@ exports.deleteComment = async (req, res) => {
       ...(comment.parentComment
         ? [`comments:replies:${comment.parentComment.toString()}:`]
         : [`comments:replies:${comment._id.toString()}:`]),
+      `comments:replies:${comment._id.toString()}:`,
+      ...descendantIds.map(descendantId => `comments:replies:${descendantId.toString()}:`),
       ...getContentCachePrefixesByType(postRef.type)
     ]);
 
