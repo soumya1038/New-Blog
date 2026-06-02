@@ -614,7 +614,10 @@ exports.register = async (req, res) => {
         id: user._id,
         username: user.username,
         email: user.email,
-        role: user.role
+        role: user.role,
+        name: user.name || '',
+        isVerified: user.isVerified || false,
+        isSeller: user.isSeller || false,
       },
       rememberMe
     });
@@ -676,7 +679,10 @@ exports.login = async (req, res) => {
         id: user._id,
         username: user.username,
         profileImage: user.profileImage,
-        role: user.role
+        role: user.role,
+        name: user.name || '',
+        isVerified: user.isVerified || false,
+        isSeller: user.isSeller || false,
       },
       rememberMe
     });
@@ -885,6 +891,9 @@ exports.exchangeGoogleCode = async (req, res) => {
         username: user.username,
         profileImage: user.profileImage,
         role: user.role,
+        name: user.name || '',
+        isVerified: user.isVerified || false,
+        isSeller: user.isSeller || false,
       },
       passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
       rememberMe: true,
@@ -1211,6 +1220,9 @@ exports.exchangeFacebookCode = async (req, res) => {
         username: user.username,
         profileImage: user.profileImage,
         role: user.role,
+        name: user.name || '',
+        isVerified: user.isVerified || false,
+        isSeller: user.isSeller || false,
       },
       passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
       rememberMe: true,
@@ -1426,6 +1438,9 @@ exports.exchangeLinkedInCode = async (req, res) => {
         username: user.username,
         profileImage: user.profileImage,
         role: user.role,
+        name: user.name || '',
+        isVerified: user.isVerified || false,
+        isSeller: user.isSeller || false,
       },
       passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
       rememberMe: true,
@@ -1668,6 +1683,9 @@ exports.exchangeTwitterCode = async (req, res) => {
         username: user.username,
         profileImage: user.profileImage,
         role: user.role,
+        name: user.name || '',
+        isVerified: user.isVerified || false,
+        isSeller: user.isSeller || false,
       },
       passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
       rememberMe: true,

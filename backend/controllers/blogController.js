@@ -98,12 +98,16 @@ exports.createBlog = async (req, res) => {
       metaDescription: metaDescription || null,
       slug: generatedSlug,
       slugHistory: [],
+      linkedProduct: linkedProduct || null,
+      isPromoPost: Boolean(isPromoPost && linkedProduct),
       isDraft: isScheduled ? true : (isDraft || false),
       isScheduled: isScheduled || false,
       scheduledPublishDate: isScheduled ? scheduledPublishDate : null
     });
 
-    const populatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage isGuest role isVerified');
+    const populatedBlog = await Blog.findById(blog._id)
+      .populate('author', 'username profileImage isGuest role isVerified')
+      .populate('linkedProduct', 'title slug thumbnail price compareAtPrice type isFree averageRating reviewCount');
     await invalidateBlogPublishCache();
     triggerSearchIndexRefresh('blog:create');
 
@@ -200,6 +204,7 @@ exports.getBlogs = async (req, res) => {
 
     const query = Blog.find(filter)
       .populate('author', 'username profileImage isGuest role isVerified statuses followers')
+      .populate('linkedProduct', 'title slug thumbnail price compareAtPrice type isFree averageRating reviewCount')
       .sort({ createdAt: -1, _id: -1 });
 
     if (useCursor) {
@@ -347,7 +352,7 @@ exports.updateBlog = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls, linkedProduct, isPromoPost } = req.body;
     
     // Validate scheduled date
     if (isScheduled && scheduledPublishDate) {

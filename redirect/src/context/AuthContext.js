@@ -59,12 +59,20 @@ export const AuthProvider = ({ children }) => {
     const { data } = await api.post('/auth/login', { username, password, rememberMe });
     localStorage.setItem('token', data.token);
     localStorage.setItem('rememberMe', rememberMe ? 'true' : 'false');
-    setUser({
-      _id: data.user.id,
-      username: data.user.username,
-      profileImage: data.user.profileImage,
-      role: data.user.role
-    });
+    try {
+      const meRes = await api.get('/auth/me');
+      setUser(meRes.data.user);
+    } catch {
+      setUser({
+        _id: data.user.id,
+        username: data.user.username,
+        name: data.user.name || '',
+        profileImage: data.user.profileImage,
+        role: data.user.role,
+        isVerified: data.user.isVerified || false,
+        isSeller: data.user.isSeller || false,
+      });
+    }
     setSessionExpired(false);
     return data;
   };

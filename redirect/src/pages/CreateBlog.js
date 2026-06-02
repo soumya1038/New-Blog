@@ -21,7 +21,7 @@ import {
   recommendArticleTemplate
 } from '../utils/articleTemplates';
 import { FaArrowLeft, FaTimes } from 'react-icons/fa';
-import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish } from 'react-icons/md';
+import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish, MdStorefront } from 'react-icons/md';
 import { IoIosCheckmarkCircle, IoIosCloseCircleOutline } from 'react-icons/io';
 import { IoColorPaletteOutline } from 'react-icons/io5';
 import { TbBrandBlogger } from 'react-icons/tb';
@@ -113,6 +113,11 @@ const CreateBlog = () => {
   const [voiceLevel, setVoiceLevel] = useState(0);
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceToolbarHost, setVoiceToolbarHost] = useState(null);
+  const [linkedProduct, setLinkedProduct] = useState(null);
+  const [productSearch, setProductSearch] = useState('');
+  const [productResults, setProductResults] = useState([]);
+  const [searchingProducts, setSearchingProducts] = useState(false);
+  const [showProductSearch, setShowProductSearch] = useState(false);
   const whisperProxyWsUrl = useMemo(() => resolveWhisperProxyWsUrl(), []);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -932,6 +937,20 @@ const CreateBlog = () => {
       setAutoSaving(false);
     }
   };
+
+  const searchMyProducts = async (query) => {
+    if (!query.trim() || !user?.isSeller) return;
+    setSearchingProducts(true);
+    try {
+      const { data } = await api.get('/marketplace/seller/products?limit=20');
+      const filtered = (data.products || []).filter(p =>
+        p.title.toLowerCase().includes(query.toLowerCase()) && p.status === 'active'
+      );
+      setProductResults(filtered);
+    } catch {}
+    setSearchingProducts(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -1042,7 +1061,9 @@ const CreateBlog = () => {
             metaDescription,
             isDraft: false,
             isScheduled,
-            scheduledPublishDate
+            scheduledPublishDate,
+            linkedProduct: linkedProduct?._id || null,
+            isPromoPost: !!linkedProduct
           });
           
           // Create short in Short table
@@ -1056,7 +1077,9 @@ const CreateBlog = () => {
             metaDescription,
             isDraft: false,
             isScheduled,
-            scheduledPublishDate
+            scheduledPublishDate,
+            linkedProduct: linkedProduct?._id || null,
+            isPromoPost: !!linkedProduct
           });
           
           setHasUnsavedChanges(false);
@@ -1996,6 +2019,70 @@ const CreateBlog = () => {
               )}
             </div>
             
+            {user?.isSeller && (
+              <div className="border border-[var(--border-color)] rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
+                    <MdStorefront className="text-violet-500" size={16} />
+                    Attach a Product to this post
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setShowProductSearch(!showProductSearch); setLinkedProduct(null); }}
+                    className="text-xs text-violet-600 hover:underline"
+                  >
+                    {showProductSearch ? 'Remove' : 'Add product'}
+                  </button>
+                </div>
+
+                {showProductSearch && !linkedProduct && (
+                  <div className="space-y-2">
+                    <input
+                      value={productSearch}
+                      onChange={e => { setProductSearch(e.target.value); searchMyProducts(e.target.value); }}
+                      placeholder="Search your active products..."
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    />
+                    {searchingProducts && <p className="text-xs text-[var(--text-muted)]">Searching...</p>}
+                    {productResults.map(p => (
+                      <button
+                        key={p._id}
+                        type="button"
+                        onClick={() => { setLinkedProduct(p); setShowProductSearch(false); }}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-[var(--border-color)] hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition-colors text-left"
+                      >
+                        <img src={p.thumbnail || ''} alt="" className="w-10 h-10 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-[var(--text-primary)]">{p.title}</p>
+                          <p className="text-xs text-[var(--text-muted)]">Rs. {p.price?.toLocaleString('en-IN')}</p>
+                        </div>
+                      </button>
+                    ))}
+                    {productSearch && productResults.length === 0 && !searchingProducts && (
+                      <p className="text-xs text-[var(--text-muted)]">No active products match "{productSearch}"</p>
+                    )}
+                  </div>
+                )}
+
+                {linkedProduct && (
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
+                    <img src={linkedProduct.thumbnail || ''} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-[var(--text-primary)]">{linkedProduct.title}</p>
+                      <p className="text-xs text-violet-600 dark:text-violet-400">Will show as "Buy Now" button in the feed</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setLinkedProduct(null); setShowProductSearch(false); }}
+                      className="text-[var(--text-muted)] hover:text-red-500"
+                    >
+                      <FaTimes size={12} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">
                 <button

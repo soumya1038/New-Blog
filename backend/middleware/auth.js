@@ -130,3 +130,13 @@ exports.adminOrCoAdminAuth = async (req, res, next) => {
     res.status(401).json({ success: false, message: 'Not authorized' });
   }
 };
+
+exports.sellerAuth = (req, res, next) => {
+  exports.protect(req, res, () => {
+    if (req.user?.isSeller !== true) {
+      return res.status(403).json({ success: false, message: 'Seller access required' });
+    }
+
+    next();
+  });
+};

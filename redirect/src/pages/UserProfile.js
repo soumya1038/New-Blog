@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaCalendar, FaUsers, FaFileAlt, FaFacebook, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaEnvelope, FaUserPlus, FaUserMinus, FaShare, FaEye, FaComment, FaWhatsapp, FaHeart, FaLock, FaTimesCircle, FaExclamationTriangle, FaTimes } from 'react-icons/fa';
+import { FaCalendar, FaUsers, FaFileAlt, FaFacebook, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaEnvelope, FaUserPlus, FaUserMinus, FaShare, FaEye, FaComment, FaWhatsapp, FaHeart, FaLock, FaTimesCircle, FaExclamationTriangle, FaTimes, FaBoxOpen } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified, GoUnverified } from 'react-icons/go';
 import { UserProfileSkeleton } from '../components/SkeletonLoader';
@@ -815,6 +815,14 @@ return (
             >
               {t('Shorts')} ({shorts.length})
             </button>
+            {currentUser && profile && currentUser._id === profile._id && (
+              <Link
+                to="/my-orders"
+                className="text-xl font-bold transition text-[var(--text-muted)] hover:text-[var(--brand-primary)] flex items-center gap-1.5"
+              >
+                <FaBoxOpen size={16} /> {t('Orders')}
+              </Link>
+            )}
           </div>
           {selectedDay && (
             <button

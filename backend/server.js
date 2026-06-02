@@ -33,6 +33,11 @@ const chatbotRoutes = require('./routes/chatbot');
 const seoRoutes = require('./routes/seoRoutes');
 const searchRoutes = require('./routes/searchRoutes');
 const templatePresetRoutes = require('./routes/templatePresetRoutes');
+const sellerRoutes = require('./routes/sellerRoutes');
+const productRoutes = require('./routes/productRoutes');
+const orderRoutes = require('./routes/orderRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const couponRoutes = require('./routes/couponRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { systemMonitor, getMetrics } = require('./middleware/monitoring');
 const { startDatabaseMonitor } = require('./utils/dbMonitor');
@@ -77,6 +82,7 @@ app.use(cors({
   origin: allowedOrigins,
   credentials: true 
 }));
+app.use('/api/payments/webhook/razorpay', express.raw({ type: 'application/json' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(compression());
@@ -185,6 +191,11 @@ app.use('/api/drafts', apiLimiter, draftRoutes);
 app.use('/api/chatbot', apiLimiter, chatbotRoutes);
 app.use('/api/search', apiLimiter, searchRoutes);
 app.use('/api/template-presets', apiLimiter, templatePresetRoutes);
+app.use('/api/seller', apiLimiter, sellerRoutes);
+app.use('/api/marketplace', apiLimiter, productRoutes);
+app.use('/api/orders', apiLimiter, orderRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/coupons', apiLimiter, couponRoutes);
 
 // SPA fallback - MUST be AFTER all API routes
 if (process.env.NODE_ENV === 'production') {

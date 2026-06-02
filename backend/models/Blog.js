@@ -19,6 +19,12 @@ const blogSchema = new mongoose.Schema({
   isScheduled: { type: Boolean, default: false },
   scheduledPublishDate: { type: Date },
   views: { type: Number, default: 0 },
+  linkedProduct: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Product',
+    default: null,
+  },
+  isPromoPost: { type: Boolean, default: false },
   viewedBy: [{ 
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     ip: { type: String },

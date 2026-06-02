@@ -4,12 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { TbBrandBlogger } from "react-icons/tb";
-import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes, FaServer, FaExclamationTriangle, FaChartLine, FaBug, FaTachometerAlt, FaEnvelope } from 'react-icons/fa';
+import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes, FaServer, FaExclamationTriangle, FaChartLine, FaBug, FaTachometerAlt, FaEnvelope, FaStore } from 'react-icons/fa';
 import { GoVerified, GoUnverified } from 'react-icons/go';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { StatsCardSkeleton, TableRowSkeleton } from '../components/SkeletonLoader';
 import { BarLoader, PropagateLoader } from 'react-spinners';
+import AdminSellerApplications from '../components/AdminSellerApplications';
 
 const AdminDashboard = () => {
   const { t } = useTranslation();
@@ -500,6 +501,13 @@ const AdminDashboard = () => {
             className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base ${activeTab === 'shorts' ? 'border-b-2 border-[var(--brand-primary)] text-[var(--brand-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
           >
             {t('Shorts')}
+          </button>
+          <button
+            onClick={() => setActiveTab('seller-applications')}
+            className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base flex items-center gap-1.5 ${activeTab === 'seller-applications' ? 'border-b-2 border-[var(--brand-primary)] text-[var(--brand-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+          >
+            <FaStore size={14} />
+            {t('Sellers')}
           </button>
         </div>
 
@@ -1265,6 +1273,10 @@ const AdminDashboard = () => {
               </table>
             </div>
           </div>
+        )}
+
+        {activeTab === 'seller-applications' && (
+          <AdminSellerApplications />
         )}
 
         {/* Blogs Tab */}

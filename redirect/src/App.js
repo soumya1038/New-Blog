@@ -48,6 +48,17 @@ const TwitterAuthCallback = lazy(() => import('./pages/TwitterAuthCallback'));
 const LinkedInAuthCallback = lazy(() => import('./pages/LinkedInAuthCallback'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const ModernChatbot = lazy(() => import('./components/ModernChatbot'));
+const Marketplace = lazy(() => import('./pages/Marketplace'));
+const ProductDetail = lazy(() => import('./pages/ProductDetail'));
+const StorePage = lazy(() => import('./pages/StorePage'));
+const BecomeASeller = lazy(() => import('./pages/BecomeASeller'));
+const SellerDashboard = lazy(() => import('./pages/SellerDashboard'));
+const Checkout = lazy(() => import('./pages/Checkout'));
+const OrderSuccess = lazy(() => import('./pages/OrderSuccess'));
+const OrderDetail = lazy(() => import('./pages/OrderDetail'));
+const AddProduct = lazy(() => import('./pages/AddProduct'));
+const EditProduct = lazy(() => import('./pages/EditProduct'));
+const MyOrders = lazy(() => import('./pages/MyOrders'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center">
@@ -410,6 +421,17 @@ function AppContent() {
             <Route path="/auth/facebook/callback" element={<FacebookAuthCallback />} />
             <Route path="/auth/twitter/callback" element={<TwitterAuthCallback />} />
             <Route path="/auth/linkedin/callback" element={<LinkedInAuthCallback />} />
+            <Route path="/marketplace" element={<Marketplace />} />
+            <Route path="/marketplace/:slug" element={<ProductDetail />} />
+            <Route path="/store/:username" element={<StorePage />} />
+            <Route path="/become-seller" element={<BecomeASeller />} />
+            <Route path="/seller/dashboard" element={<SellerDashboard />} />
+            <Route path="/seller/add-product" element={<AddProduct />} />
+            <Route path="/seller/edit-product/:id" element={<EditProduct />} />
+            <Route path="/checkout" element={<Checkout />} />
+            <Route path="/my-orders" element={<MyOrders />} />
+            <Route path="/order/:id/success" element={<OrderSuccess />} />
+            <Route path="/order/:id" element={<OrderDetail />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

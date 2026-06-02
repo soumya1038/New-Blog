@@ -122,6 +122,10 @@ const userSchema = new mongoose.Schema({
   isVerified: { type: Boolean, default: false },
   verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   verifiedAt: { type: Date, default: null },
+  isSeller: { type: Boolean, default: false },
+  sellerAppliedAt: { type: Date, default: null },
+  sellerApprovedAt: { type: Date, default: null },
+  wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
   verificationToken: { type: String, default: null },
   createdAt: { type: Date, default: Date.now }
 }, { timestamps: true });

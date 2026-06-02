@@ -2,7 +2,7 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
-import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun, FaNewspaper, FaPlusCircle, FaStickyNote, FaUserCircle, FaBolt } from 'react-icons/fa';
+import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun, FaNewspaper, FaPlusCircle, FaStickyNote, FaUserCircle, FaBolt, FaShoppingCart, FaStore, FaBoxOpen } from 'react-icons/fa';
 import { PiBookOpenTextThin } from 'react-icons/pi';
 import LanguageSelector from './LanguageSelector';
 import Avatar from './Avatar';
@@ -17,10 +17,43 @@ const Navbar = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [cartCount, setCartCount] = useState(0);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const desktopDropdownRef = useRef(null);
   const tabletLgDropdownRef = useRef(null);
   const tabletMdDropdownRef = useRef(null);
+
+  const fetchCartCount = async () => {
+    if (!user || user.isGuest || user.role === 'guest') {
+      setCartCount(0);
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/marketplace/cart`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setCartCount(data.cart?.items?.length || 0);
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchCartCount();
+    } else {
+      setCartCount(0);
+    }
+
+    const handleCartUpdated = () => fetchCartCount();
+    window.addEventListener('cartUpdated', handleCartUpdated);
+    return () => window.removeEventListener('cartUpdated', handleCartUpdated);
+  }, [user]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -141,6 +174,13 @@ const Navbar = () => {
                   {t(user.role === 'coAdmin' ? 'Co-Admin' : 'Admin')}
                 </Link>
                 )}
+                <Link
+                  to="/marketplace"
+                  className="px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--brand-primary)] transition-colors flex items-center gap-1.5"
+                >
+                  <FaStore size={14} />
+                  {t('Marketplace')}
+                </Link>
                 <Link 
                   to="/news" 
                   className="px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--brand-primary)] transition-colors"
@@ -178,6 +218,27 @@ const Navbar = () => {
                     </span>
                   )}
                 </Link>
+                <Link
+                  to="/checkout"
+                  className="cart-btn relative p-3 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20 hover:border-white/40"
+                  title="Cart"
+                >
+                  <FaShoppingCart size={18} />
+                  {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center shadow-lg border-2 border-white">
+                      {cartCount > 9 ? '9+' : cartCount}
+                    </span>
+                  )}
+                </Link>
+                {user.isSeller && (
+                  <Link
+                    to="/seller/dashboard"
+                    className="px-4 py-2 rounded-xl font-semibold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/30 hover:opacity-90 transition flex items-center gap-1.5 text-sm"
+                  >
+                    <FaStore size={14} />
+                    {t('My Store')}
+                  </Link>
+                )}
                 
                 {/* User Profile Dropdown */}
                 <div className="profile-menu relative" ref={desktopDropdownRef}>
@@ -240,6 +301,38 @@ const Navbar = () => {
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
+                      {user.isSeller && (
+                        <Link
+                          to="/seller/dashboard"
+                          onClick={() => setShowDropdown(false)}
+                          className={`${dropdownDesktopItem} flex items-center gap-2 text-amber-700 dark:text-amber-300`}
+                        >
+                          <FaStore /> {t('Seller Dashboard')}
+                        </Link>
+                      )}
+                      {!user.isSeller && user.isVerified && (
+                        <Link
+                          to="/become-seller"
+                          onClick={() => setShowDropdown(false)}
+                          className={`${dropdownDesktopItem} flex items-center gap-2 text-violet-600 dark:text-violet-400`}
+                        >
+                          <FaStore /> {t('Become a Seller')}
+                        </Link>
+                      )}
+                      <Link
+                        to="/marketplace"
+                        onClick={() => setShowDropdown(false)}
+                        className={`${dropdownDesktopItem} flex items-center gap-2`}
+                      >
+                        <FaShoppingCart /> {t('Marketplace')}
+                      </Link>
+                      <Link
+                        to="/my-orders"
+                        onClick={() => setShowDropdown(false)}
+                        className={`${dropdownDesktopItem} flex items-center gap-2`}
+                      >
+                        <FaBoxOpen /> {t('My Orders')}
+                      </Link>
                       <hr className={dropdownDivider} />
                       <button
                         onClick={handleLogout}
@@ -253,6 +346,12 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                <Link to="/marketplace" className="nav-link px-4 py-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-lg">
+                  <span className="flex items-center gap-2">
+                    <FaStore size={16} />
+                    <span className="font-medium">{t('Marketplace')}</span>
+                  </span>
+                </Link>
                 <Link to="/about" className="nav-link px-4 py-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-lg">
                   <span className="flex items-center gap-2">
                     <PiBookOpenTextThin size={24} />
@@ -285,8 +384,15 @@ const Navbar = () => {
           <div className="hidden lg:flex xl:hidden items-center gap-2">
             {user ? (
               <>
+                <Link to="/marketplace" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('Marketplace')}><FaStore size={16} /></Link>
                 <Link to="/news" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105"><FaNewspaper size={16} /></Link>
                 <Link to="/create" className="px-3 py-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-sm font-medium"><FaPlusCircle size={16} /></Link>
+                {user.isSeller && (
+                  <Link to="/seller/dashboard" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-amber-700 dark:text-amber-300" title={t('Seller Dashboard')}><FaStore size={16} /></Link>
+                )}
+                {!user.isSeller && user.isVerified && (
+                  <Link to="/become-seller" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-violet-700 dark:text-violet-300" title={t('Become a Seller')}><FaStore size={16} /></Link>
+                )}
                 <button
                   onClick={toggleTheme}
                   className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20"
@@ -300,6 +406,14 @@ const Navbar = () => {
                   {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center animate-bounce shadow-lg border-2 border-white">
                       {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Link>
+                <Link to="/checkout" className="relative p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20" title={t('Cart')}>
+                  <FaShoppingCart size={18} />
+                  {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center shadow-lg border-2 border-white">
+                      {cartCount > 9 ? '9+' : cartCount}
                     </span>
                   )}
                 </Link>
@@ -347,6 +461,38 @@ const Navbar = () => {
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
+                      {user.isSeller && (
+                        <Link
+                          to="/seller/dashboard"
+                          onClick={() => setShowDropdown(false)}
+                          className={`${dropdownCompactItem} flex items-center gap-2 text-amber-700 dark:text-amber-300`}
+                        >
+                          <FaStore /> {t('Seller Dashboard')}
+                        </Link>
+                      )}
+                      {!user.isSeller && user.isVerified && (
+                        <Link
+                          to="/become-seller"
+                          onClick={() => setShowDropdown(false)}
+                          className={`${dropdownCompactItem} flex items-center gap-2 text-violet-600 dark:text-violet-400`}
+                        >
+                          <FaStore /> {t('Become a Seller')}
+                        </Link>
+                      )}
+                      <Link
+                        to="/marketplace"
+                        onClick={() => setShowDropdown(false)}
+                        className={`${dropdownCompactItem} flex items-center gap-2`}
+                      >
+                        <FaShoppingCart /> {t('Marketplace')}
+                      </Link>
+                      <Link
+                        to="/my-orders"
+                        onClick={() => setShowDropdown(false)}
+                        className={`${dropdownCompactItem} flex items-center gap-2`}
+                      >
+                        <FaBoxOpen /> {t('My Orders')}
+                      </Link>
                       <hr className={dropdownDivider} />
                       <button
                         onClick={handleLogout}
@@ -360,6 +506,9 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                <Link to="/marketplace" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('Marketplace')}>
+                  <FaStore size={18} />
+                </Link>
                 <Link to="/about" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105">
                   <PiBookOpenTextThin size={20} />
                 </Link>
@@ -381,8 +530,15 @@ const Navbar = () => {
           <div className="hidden md:flex lg:hidden items-center gap-2">
             {user ? (
               <>
+                <Link to="/marketplace" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('Marketplace')}><FaStore size={16} /></Link>
                 <Link to="/news" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105"><FaNewspaper size={16} /></Link>
                 <Link to="/create" className="px-2 py-1.5 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-xs font-medium"><FaPlusCircle size={14} /></Link>
+                {user.isSeller && (
+                  <Link to="/seller/dashboard" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-amber-700 dark:text-amber-300" title={t('Seller Dashboard')}><FaStore size={16} /></Link>
+                )}
+                {!user.isSeller && user.isVerified && (
+                  <Link to="/become-seller" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-violet-700 dark:text-violet-300" title={t('Become a Seller')}><FaStore size={16} /></Link>
+                )}
                 <button
                   onClick={toggleTheme}
                   className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20"
@@ -394,6 +550,14 @@ const Navbar = () => {
                   {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center text-[10px] shadow-lg border border-white">
                       {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Link>
+                <Link to="/checkout" className="relative p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20" title={t('Cart')}>
+                  <FaShoppingCart size={16} />
+                  {cartCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center text-[10px] shadow-lg border border-white">
+                      {cartCount > 9 ? '9+' : cartCount}
                     </span>
                   )}
                 </Link>
@@ -441,6 +605,38 @@ const Navbar = () => {
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
+                      {user.isSeller && (
+                        <Link
+                          to="/seller/dashboard"
+                          onClick={() => setShowDropdown(false)}
+                          className={`${dropdownCompactItem} flex items-center gap-2 text-amber-700 dark:text-amber-300`}
+                        >
+                          <FaStore /> {t('Seller Dashboard')}
+                        </Link>
+                      )}
+                      {!user.isSeller && user.isVerified && (
+                        <Link
+                          to="/become-seller"
+                          onClick={() => setShowDropdown(false)}
+                          className={`${dropdownCompactItem} flex items-center gap-2 text-violet-600 dark:text-violet-400`}
+                        >
+                          <FaStore /> {t('Become a Seller')}
+                        </Link>
+                      )}
+                      <Link
+                        to="/marketplace"
+                        onClick={() => setShowDropdown(false)}
+                        className={`${dropdownCompactItem} flex items-center gap-2`}
+                      >
+                        <FaShoppingCart /> {t('Marketplace')}
+                      </Link>
+                      <Link
+                        to="/my-orders"
+                        onClick={() => setShowDropdown(false)}
+                        className={`${dropdownCompactItem} flex items-center gap-2`}
+                      >
+                        <FaBoxOpen /> {t('My Orders')}
+                      </Link>
                       <hr className={dropdownDivider} />
                       <button
                         onClick={handleLogout}
@@ -454,6 +650,9 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                <Link to="/marketplace" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('Marketplace')}>
+                  <FaStore size={16} />
+                </Link>
                 <Link to="/about" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105">
                   <PiBookOpenTextThin size={18} />
                 </Link>
@@ -489,6 +688,16 @@ const Navbar = () => {
                 )}
               </Link>
             )}
+            {user && (
+              <Link to="/checkout" className="relative p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20">
+                <FaShoppingCart size={18} />
+                {cartCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center shadow-lg border-2 border-white">
+                    {cartCount > 9 ? '9+' : cartCount}
+                  </span>
+                )}
+              </Link>
+            )}
             <button
               onClick={() => setShowMobileMenu(!showMobileMenu)}
               className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300" style={{ color: isDark ? '#f2f1ea' : '#1c1c1c' }}
@@ -516,6 +725,30 @@ const Navbar = () => {
                     className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 font-bold transition-all duration-300"
                   >
                     <FaBolt className="inline mr-2" /> {t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}
+                  </Link>
+                )}
+                <Link to="/marketplace" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
+                  <FaStore className="inline mr-2" /> {t('Marketplace')}
+                </Link>
+                <Link to="/checkout" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
+                  <FaShoppingCart /> {t('Cart')}
+                  {cartCount > 0 && (
+                    <span className="ml-auto bg-violet-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                      {cartCount > 9 ? '9+' : cartCount}
+                    </span>
+                  )}
+                </Link>
+                <Link to="/my-orders" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
+                  <FaBoxOpen /> {t('My Orders')}
+                </Link>
+                {user.isSeller && (
+                  <Link to="/seller/dashboard" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 bg-amber-500/10 px-4 rounded-xl mx-2 my-1 text-amber-700 dark:text-amber-300 transition-all duration-300">
+                    <FaStore /> {t('Seller Dashboard')}
+                  </Link>
+                )}
+                {!user.isSeller && user.isVerified && (
+                  <Link to="/become-seller" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 bg-violet-500/10 px-4 rounded-xl mx-2 my-1 text-violet-700 dark:text-violet-300 transition-all duration-300">
+                    <FaStore /> {t('Become a Seller')}
                   </Link>
                 )}
                 <Link to="/news" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
@@ -551,6 +784,9 @@ const Navbar = () => {
                 <div className="py-3 px-4 flex items-center gap-3 mx-2">
                   <LanguageSelector />
                 </div>
+                <Link to="/marketplace" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300 flex items-center gap-2">
+                  <FaStore size={18} /> {t('Marketplace')}
+                </Link>
                 <Link to="/about" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300 flex items-center gap-2">
                   <PiBookOpenTextThin size={20} /> {t('About Us')}
                 </Link>

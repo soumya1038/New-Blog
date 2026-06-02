@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { FaHeart, FaRegHeart } from 'react-icons/fa';
 import { getBlogPath } from '../utils/contentRoutes';
 import Avatar from './Avatar';
+import ProductPromoCard from './ProductPromoCard';
 
 const BlogCard = ({ blog, index = 0, onLike, onTagClick }) => {
   const [isLiked, setIsLiked] = React.useState(false);
@@ -135,6 +136,11 @@ const BlogCard = ({ blog, index = 0, onLike, onTagClick }) => {
           </motion.button>
         </div>
       </Link>
+      {blog.linkedProduct && blog.linkedProduct._id && (
+        <div style={{ marginTop: '12px' }}>
+          <ProductPromoCard product={blog.linkedProduct} />
+        </div>
+      )}
     </motion.article>
   );
 };

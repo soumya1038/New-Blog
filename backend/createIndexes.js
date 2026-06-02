@@ -63,6 +63,10 @@ const createIndexes = async () => {
     await db.collection('comments').createIndex({ blog: 1, createdAt: -1 });
     await db.collection('comments').createIndex({ article: 1, createdAt: -1 });
     await db.collection('comments').createIndex({ short: 1, createdAt: -1 });
+    await db.collection('comments').createIndex({ blog: 1, parentComment: 1, createdAt: -1 });
+    await db.collection('comments').createIndex({ article: 1, parentComment: 1, createdAt: -1 });
+    await db.collection('comments').createIndex({ short: 1, parentComment: 1, createdAt: -1 });
+    await db.collection('comments').createIndex({ parentComment: 1, createdAt: 1, _id: 1 });
     await db.collection('comments').createIndex({ author: 1 });
     console.log('Comment indexes created');
 
