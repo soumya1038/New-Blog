@@ -5,7 +5,7 @@ import { AuthContext }      from '../context/AuthContext';
 import api                  from '../services/api';
 import {
   FaUpload, FaTimes, FaImage, FaFilePdf,
-  FaBoxOpen, FaLink, FaWrench, FaSave,
+  FaBoxOpen, FaCheckCircle, FaLink, FaWrench, FaSave,
 } from 'react-icons/fa';
 
 const CATEGORIES = [
@@ -16,6 +16,7 @@ const CATEGORIES = [
 const inputCls  = "w-full px-3 py-2.5 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500 transition";
 const sectionCls= "p-5 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] space-y-4";
 const BADGE_OPTIONS = ['Bestseller', 'New', 'Limited Edition', 'Top Rated', 'Staff Pick'];
+const MAX_PRODUCT_IMAGE_SIZE_BYTES = 4 * 1024 * 1024;
 
 const InputField = ({ label, required, children, hint }) => (
   <div>
@@ -47,7 +48,7 @@ const EditProduct = () => {
     seoTitle: '', seoDescription: '', status: 'draft', promoBanner: '',
     badges: [], faqs: [],
     maxDownloads: 5,
-    stock: '', sku: '', weight: '', shippingFee: '', estimatedDeliveryDays: 7,
+    stock: '', minimumOrderQuantity: 1, sku: '', weight: '', shippingFee: '', estimatedDeliveryDays: 7,
     shippingZones: ['India'],
     deliveryDays: 3, revisions: 1, includes: '', excludes: '',
     externalUrl: '', externalPlatform: 'Other',
@@ -95,6 +96,7 @@ const EditProduct = () => {
       faqs:          p.decoration?.faqs || [],
       maxDownloads:  p.digital?.maxDownloads || 5,
       stock:         p.physical?.stock?.toString() || '',
+      minimumOrderQuantity: p.physical?.minimumOrderQuantity?.toString() || '1',
       sku:           p.physical?.sku || '',
       weight:        p.physical?.weight?.toString() || '',
       shippingFee:   p.physical?.shippingFee?.toString() || '',
@@ -125,9 +127,14 @@ const EditProduct = () => {
   };
 
   const handleImageSelect = (e) => {
-    const files = Array.from(e.target.files).slice(0, 8 - images.length);
+    const selectedFiles = Array.from(e.target.files || []);
+    const validFiles = selectedFiles.filter(file => file.size <= MAX_PRODUCT_IMAGE_SIZE_BYTES);
+    const skippedCount = selectedFiles.length - validFiles.length;
+    const files = validFiles.slice(0, 8 - images.length);
     const newImgs = files.map(f => ({ url: '', file: f, preview: URL.createObjectURL(f) }));
     setImages(prev => [...prev, ...newImgs].slice(0, 8));
+    if (skippedCount > 0) setError(`${skippedCount} image(s) were larger than 4MB and skipped.`);
+    e.target.value = '';
   };
 
   const removeImage = (idx) => {
@@ -165,7 +172,7 @@ const EditProduct = () => {
 
       if (form.type === 'digital')  fd.append('digital',  JSON.stringify({ maxDownloads: parseInt(form.maxDownloads) }));
       if (form.type === 'physical') fd.append('physical', JSON.stringify({
-        stock: parseInt(form.stock), sku: form.sku,
+        stock: parseInt(form.stock), minimumOrderQuantity: parseInt(form.minimumOrderQuantity) || 1, sku: form.sku,
         weight: parseFloat(form.weight) || 0,
         shippingFee: parseFloat(form.shippingFee) || 0,
         estimatedDeliveryDays: parseInt(form.estimatedDeliveryDays),
@@ -184,10 +191,7 @@ const EditProduct = () => {
       const newImages = images.filter(img => img.file);
       newImages.forEach(img => fd.append('images', img.file));
 
-      // If no new images but existing ones, send their URLs so backend keeps them
-      if (newImages.length === 0 && images.length > 0) {
-        fd.append('existingImages', JSON.stringify(images.map(i => i.url)));
-      }
+      fd.append('existingImages', JSON.stringify(images.filter(i => !i.file && i.url).map(i => i.url)));
 
       await api.put(`/marketplace/seller/products/${id}`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -260,7 +264,7 @@ const EditProduct = () => {
         {/* ── Images ───────────────────────────────────────────────────────── */}
         <div className={sectionCls}>
           <h2 className="font-bold text-[var(--text-primary)]">Images</h2>
-          <p className="text-xs text-[var(--text-muted)]">Existing images shown. Add new ones or remove to update.</p>
+          <p className="text-xs text-[var(--text-muted)]">Existing images shown. Add new ones up to 4MB each or remove to update.</p>
           <div className="grid grid-cols-4 gap-3">
             {images.map((img, idx) => (
               <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-[var(--border-color)] group">
@@ -285,7 +289,7 @@ const EditProduct = () => {
         {form.type === 'digital' && (
           <div className={sectionCls}>
             <h2 className="font-bold text-[var(--text-primary)]">Digital File</h2>
-            {currentFile && <p className="text-xs text-green-600 dark:text-green-400">✅ {currentFile}</p>}
+            {currentFile && <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5"><FaCheckCircle size={12} /> {currentFile}</p>}
             <InputField label="Replace File" hint="Leave blank to keep existing file">
               <div onClick={() => digitalRef.current?.click()} className="border-2 border-dashed border-[var(--border-color)] rounded-xl p-5 text-center cursor-pointer hover:border-violet-400 transition-colors">
                 {newDigitalFile
@@ -306,6 +310,7 @@ const EditProduct = () => {
             <h2 className="font-bold text-[var(--text-primary)]">Physical Details</h2>
             <div className="grid grid-cols-2 gap-4">
               <InputField label="Stock" required><input type="number" min="0" value={form.stock} onChange={e => set('stock', e.target.value)} className={inputCls} /></InputField>
+              <InputField label="Minimum Order Quantity"><input type="number" min="1" value={form.minimumOrderQuantity} onChange={e => set('minimumOrderQuantity', e.target.value)} className={inputCls} /></InputField>
               <InputField label="SKU"><input value={form.sku} onChange={e => set('sku', e.target.value)} className={inputCls} /></InputField>
               <InputField label="Weight (g)"><input type="number" min="0" value={form.weight} onChange={e => set('weight', e.target.value)} className={inputCls} /></InputField>
               <InputField label="Shipping Fee (₹)"><input type="number" min="0" value={form.shippingFee} onChange={e => set('shippingFee', e.target.value)} className={inputCls} /></InputField>
@@ -341,14 +346,17 @@ const EditProduct = () => {
         {/* ── Pricing ───────────────────────────────────────────────────────── */}
         <div className={sectionCls}>
           <h2 className="font-bold text-[var(--text-primary)]">Pricing</h2>
-          <label className="flex items-center gap-2.5 cursor-pointer">
-            <input type="checkbox" checked={form.isFree} onChange={e => set('isFree', e.target.checked)} className="w-4 h-4 rounded" />
+          <label className="flex items-center gap-2.5 cursor-not-allowed opacity-75">
+            <input type="checkbox" checked={form.isFree} disabled className="w-4 h-4 rounded" />
             <span className="text-sm font-medium text-[var(--text-secondary)]">This is a free product</span>
           </label>
+          <p className="text-xs text-[var(--text-muted)]">
+            Selling price is locked during product edit. Use Seller Dashboard - Price Changes to request an admin-approved increase.
+          </p>
           {!form.isFree && (
             <div className="grid grid-cols-2 gap-4">
               <InputField label="Selling Price (₹)" required>
-                <input type="number" min="0" value={form.price} onChange={e => set('price', e.target.value)} className={inputCls} />
+                <input type="number" min="0" value={form.price} disabled className={`${inputCls} cursor-not-allowed opacity-75`} />
               </InputField>
               <InputField label="MRP / Compare-at (₹)">
                 <input type="number" min="0" value={form.compareAtPrice} onChange={e => set('compareAtPrice', e.target.value)} className={inputCls} />
@@ -361,7 +369,7 @@ const EditProduct = () => {
         <div className={sectionCls}>
           <h2 className="font-bold text-[var(--text-primary)]">Marketing & SEO</h2>
           <InputField label="Promo Banner">
-            <input value={form.promoBanner} onChange={e => set('promoBanner', e.target.value)} placeholder="🔥 Limited offer…" className={inputCls} />
+            <input value={form.promoBanner} onChange={e => set('promoBanner', e.target.value)} placeholder="Limited offer..." className={inputCls} />
           </InputField>
           <InputField label="Product Badges" hint="Help your product stand out in the marketplace listing">
             <div className="flex flex-wrap gap-2">
@@ -450,7 +458,7 @@ const EditProduct = () => {
         <div className="flex gap-3 pb-8">
           <button onClick={() => handleSave('draft')} disabled={saving}
             className="flex-1 py-3 rounded-xl border-2 border-[var(--border-color)] text-[var(--text-secondary)] font-semibold text-sm hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50">
-            {saving ? 'Saving…' : '💾 Save Draft'}
+            {saving ? 'Saving...' : <><FaSave className="inline mr-2" size={12} /> Save Draft</>}
           </button>
           <button onClick={() => handleSave('active')} disabled={saving}
             className="flex-1 py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm transition-colors disabled:opacity-50">

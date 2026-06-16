@@ -12,6 +12,7 @@ import AIBlogGenerator from '../components/AIBlogGenerator';
 import AIContentTools from '../components/AIContentTools';
 import UnauthorizedModal from '../components/UnauthorizedModal';
 import TemplatePreview from '../components/TemplatePreview';
+import ContentProductTagsEditor from '../components/ContentProductTagsEditor';
 import {
   getArticleTemplateById,
   DEFAULT_ARTICLE_TEMPLATE_ID,
@@ -20,7 +21,7 @@ import {
   normalizeCustomTemplate,
   recommendArticleTemplate
 } from '../utils/articleTemplates';
-import { FaArrowLeft, FaTimes } from 'react-icons/fa';
+import { FaArrowLeft, FaExternalLinkAlt, FaPlus, FaTimes } from 'react-icons/fa';
 import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish, MdStorefront } from 'react-icons/md';
 import { IoIosCheckmarkCircle, IoIosCloseCircleOutline } from 'react-icons/io';
 import { IoColorPaletteOutline } from 'react-icons/io5';
@@ -113,7 +114,15 @@ const CreateBlog = () => {
   const [voiceLevel, setVoiceLevel] = useState(0);
   const [voiceReady, setVoiceReady] = useState(false);
   const [voiceToolbarHost, setVoiceToolbarHost] = useState(null);
-  const [linkedProduct, setLinkedProduct] = useState(null);
+  const [linkedProducts, setLinkedProducts] = useState([]);
+  const [externalProductLinks, setExternalProductLinks] = useState([]);
+  const [externalProductDraft, setExternalProductDraft] = useState({
+    title: '',
+    url: '',
+    platform: '',
+    priceLabel: '',
+    thumbnail: '',
+  });
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState([]);
   const [searchingProducts, setSearchingProducts] = useState(false);
@@ -901,6 +910,7 @@ const CreateBlog = () => {
         videoUrls: JSON.stringify(filteredVideoUrls),
         metaDescription,
         isDraft: true,
+        ...(isShortMode ? {} : productAttachmentPayload()),
         ...(isArticleMode ? {
           templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
@@ -938,14 +948,56 @@ const CreateBlog = () => {
     }
   };
 
+  const productAttachmentPayload = () => ({
+    linkedProduct: linkedProducts[0]?._id || null,
+    linkedProducts: linkedProducts.map(product => product._id).filter(Boolean),
+    externalProductLinks: JSON.stringify(externalProductLinks),
+    isPromoPost: linkedProducts.length > 0 || externalProductLinks.length > 0,
+  });
+
+  const addLinkedProduct = (product) => {
+    setLinkedProducts(current => (
+      current.some(item => item._id === product._id) ? current : [...current, product]
+    ));
+    setProductSearch('');
+    setProductResults([]);
+    setShowProductSearch(false);
+  };
+
+  const removeLinkedProduct = (productId) => {
+    setLinkedProducts(current => current.filter(product => product._id !== productId));
+  };
+
+  const addExternalProductLink = () => {
+    const title = externalProductDraft.title.trim();
+    const url = externalProductDraft.url.trim();
+    if (!title || !url) {
+      toast.error('External product title and URL are required');
+      return;
+    }
+    setExternalProductLinks(current => [
+      ...current,
+      {
+        title,
+        url,
+        platform: externalProductDraft.platform.trim() || 'External',
+        priceLabel: externalProductDraft.priceLabel.trim(),
+        thumbnail: externalProductDraft.thumbnail.trim(),
+      },
+    ]);
+    setExternalProductDraft({ title: '', url: '', platform: '', priceLabel: '', thumbnail: '' });
+  };
+
   const searchMyProducts = async (query) => {
-    if (!query.trim() || !user?.isSeller) return;
+    if (!query.trim()) {
+      setProductResults([]);
+      return;
+    }
     setSearchingProducts(true);
     try {
-      const { data } = await api.get('/marketplace/seller/products?limit=20');
-      const filtered = (data.products || []).filter(p =>
-        p.title.toLowerCase().includes(query.toLowerCase()) && p.status === 'active'
-      );
+      const { data } = await api.get('/marketplace', { params: { search: query, limit: 20 } });
+      const selectedIds = new Set(linkedProducts.map(product => product._id));
+      const filtered = (data.products || []).filter(product => !selectedIds.has(product._id));
       setProductResults(filtered);
     } catch {}
     setSearchingProducts(false);
@@ -1029,7 +1081,8 @@ const CreateBlog = () => {
           customTemplate: customTemplateForSubmit,
           templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
           galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
-          galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+          galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds),
+          ...productAttachmentPayload()
         });
         
         // console.log('Article created:', data);
@@ -1062,8 +1115,7 @@ const CreateBlog = () => {
             isDraft: false,
             isScheduled,
             scheduledPublishDate,
-            linkedProduct: linkedProduct?._id || null,
-            isPromoPost: !!linkedProduct
+            ...productAttachmentPayload()
           });
           
           // Create short in Short table
@@ -1077,9 +1129,7 @@ const CreateBlog = () => {
             metaDescription,
             isDraft: false,
             isScheduled,
-            scheduledPublishDate,
-            linkedProduct: linkedProduct?._id || null,
-            isPromoPost: !!linkedProduct
+            scheduledPublishDate
           });
           
           setHasUnsavedChanges(false);
@@ -1098,7 +1148,8 @@ const CreateBlog = () => {
             metaDescription,
             isDraft: false,
             isScheduled,
-            scheduledPublishDate
+            scheduledPublishDate,
+            ...productAttachmentPayload()
           });
           
           setHasUnsavedChanges(false);
@@ -1176,6 +1227,7 @@ const CreateBlog = () => {
           videoUrls: JSON.stringify(filteredVideoUrls),
           metaDescription,
           isDraft: true,
+          ...(isShortMode ? {} : productAttachmentPayload()),
           ...(isArticleMode ? {
             templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
@@ -1210,6 +1262,7 @@ const CreateBlog = () => {
           videoUrls: JSON.stringify(filteredVideoUrls),
           metaDescription,
           isDraft: true,
+          ...(isShortMode ? {} : productAttachmentPayload()),
           ...(isArticleMode ? {
             templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
@@ -1257,13 +1310,13 @@ const CreateBlog = () => {
     if (hasUnsavedChanges) {
       setShowCancelModal(true);
     } else {
-      navigate('/');
+      navigate('/home');
     }
   };
 
   const confirmCancel = () => {
     setShowCancelModal(false);
-    navigate('/');
+    navigate('/home');
   };
 
   const handleTitlesGenerated = (titles) => {
@@ -1988,7 +2041,7 @@ const CreateBlog = () => {
                     onChange={(e) => setIsScheduled(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-[var(--background-secondary)] peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[var(--brand-soft)] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[var(--border-default)] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--brand-primary)]"></div>
+                  <div className="w-11 h-6 bg-[var(--surface-elevated)] dark:bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[var(--brand-soft)] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[var(--border-default)] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--brand-primary)] dark:peer-checked:bg-[#D9A56A]"></div>
                 </label>
               </div>
               
@@ -2019,28 +2072,38 @@ const CreateBlog = () => {
               )}
             </div>
             
-            {user?.isSeller && (
-              <div className="border border-[var(--border-color)] rounded-xl p-4 space-y-3">
+            {!isShortMode && (
+              <ContentProductTagsEditor
+                linkedProducts={linkedProducts}
+                setLinkedProducts={setLinkedProducts}
+                externalProductLinks={externalProductLinks}
+                setExternalProductLinks={setExternalProductLinks}
+              />
+            )}
+
+            {false && !isShortMode && (
+              <div className="border border-[var(--border-color)] rounded-xl p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <label className="flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)]">
                     <MdStorefront className="text-violet-500" size={16} />
-                    Attach a Product to this post
+                    Product Tags
                   </label>
                   <button
                     type="button"
-                    onClick={() => { setShowProductSearch(!showProductSearch); setLinkedProduct(null); }}
-                    className="text-xs text-violet-600 hover:underline"
+                    onClick={() => setShowProductSearch(value => !value)}
+                    className="inline-flex items-center gap-1.5 text-xs text-violet-600 hover:underline"
                   >
-                    {showProductSearch ? 'Remove' : 'Add product'}
+                    {showProductSearch ? <FaTimes size={10} /> : <FaPlus size={10} />}
+                    {showProductSearch ? 'Close' : 'Add product'}
                   </button>
                 </div>
 
-                {showProductSearch && !linkedProduct && (
+                {showProductSearch && (
                   <div className="space-y-2">
                     <input
                       value={productSearch}
                       onChange={e => { setProductSearch(e.target.value); searchMyProducts(e.target.value); }}
-                      placeholder="Search your active products..."
+                      placeholder="Search marketplace products..."
                       className="w-full px-3 py-2 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
                     />
                     {searchingProducts && <p className="text-xs text-[var(--text-muted)]">Searching...</p>}
@@ -2048,36 +2111,97 @@ const CreateBlog = () => {
                       <button
                         key={p._id}
                         type="button"
-                        onClick={() => { setLinkedProduct(p); setShowProductSearch(false); }}
+                        onClick={() => addLinkedProduct(p)}
                         className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-[var(--border-color)] hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition-colors text-left"
                       >
                         <img src={p.thumbnail || ''} alt="" className="w-10 h-10 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" />
-                        <div>
-                          <p className="text-sm font-medium text-[var(--text-primary)]">{p.title}</p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-[var(--text-primary)] truncate">{p.title}</p>
                           <p className="text-xs text-[var(--text-muted)]">Rs. {p.price?.toLocaleString('en-IN')}</p>
                         </div>
                       </button>
                     ))}
                     {productSearch && productResults.length === 0 && !searchingProducts && (
-                      <p className="text-xs text-[var(--text-muted)]">No active products match "{productSearch}"</p>
+                      <p className="text-xs text-[var(--text-muted)]">No products match "{productSearch}"</p>
                     )}
                   </div>
                 )}
 
-                {linkedProduct && (
-                  <div className="flex items-center gap-3 p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
-                    <img src={linkedProduct.thumbnail || ''} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-[var(--text-primary)]">{linkedProduct.title}</p>
-                      <p className="text-xs text-violet-600 dark:text-violet-400">Will show as "Buy Now" button in the feed</p>
-                    </div>
+                {linkedProducts.length > 0 && (
+                  <div className="space-y-2">
+                    {linkedProducts.map(product => (
+                      <div key={product._id} className="flex items-center gap-3 p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
+                        <img src={product.thumbnail || ''} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{product.title}</p>
+                          <p className="text-xs text-violet-600 dark:text-violet-400">Marketplace product</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeLinkedProduct(product._id)}
+                          className="text-[var(--text-muted)] hover:text-red-500"
+                        >
+                          <FaTimes size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <input
+                    value={externalProductDraft.title}
+                    onChange={e => setExternalProductDraft(draft => ({ ...draft, title: e.target.value }))}
+                    placeholder="External product title"
+                    className="px-3 py-2 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                  <input
+                    value={externalProductDraft.url}
+                    onChange={e => setExternalProductDraft(draft => ({ ...draft, url: e.target.value }))}
+                    placeholder="External or affiliate URL"
+                    className="px-3 py-2 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                  <input
+                    value={externalProductDraft.platform}
+                    onChange={e => setExternalProductDraft(draft => ({ ...draft, platform: e.target.value }))}
+                    placeholder="Platform"
+                    className="px-3 py-2 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      value={externalProductDraft.priceLabel}
+                      onChange={e => setExternalProductDraft(draft => ({ ...draft, priceLabel: e.target.value }))}
+                      placeholder="Price label"
+                      className="flex-1 px-3 py-2 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                    />
                     <button
                       type="button"
-                      onClick={() => { setLinkedProduct(null); setShowProductSearch(false); }}
-                      className="text-[var(--text-muted)] hover:text-red-500"
+                      onClick={addExternalProductLink}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700"
                     >
-                      <FaTimes size={12} />
+                      <FaExternalLinkAlt size={11} /> Add
                     </button>
+                  </div>
+                </div>
+
+                {externalProductLinks.length > 0 && (
+                  <div className="space-y-2">
+                    {externalProductLinks.map((link, index) => (
+                      <div key={`${link.url}-${index}`} className="flex items-center gap-3 p-3 rounded-xl border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20">
+                        <FaExternalLinkAlt className="text-orange-500 shrink-0" size={16} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{link.title}</p>
+                          <p className="text-xs text-[var(--text-muted)] truncate">{link.platform || 'External'} - {link.url}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setExternalProductLinks(current => current.filter((_, itemIndex) => itemIndex !== index))}
+                          className="text-[var(--text-muted)] hover:text-red-500"
+                        >
+                          <FaTimes size={12} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

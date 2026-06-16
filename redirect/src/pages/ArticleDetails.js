@@ -15,6 +15,7 @@ import EnhancedComment from '../components/EnhancedComment';
 import ArticleCard from '../components/ArticleCard';
 import ArticleTemplateFrame from '../components/ArticleTemplateFrame';
 import SEOHead from '../components/SEOHead';
+import ProductTagOverlay from '../components/ProductTagOverlay';
 import StatusViewer from '../components/StatusViewer';
 import { bumpReplyCount, removeCommentFromReplyMap, updateCommentsById, updateReplyMapById } from '../utils/commentTree';
 
@@ -121,7 +122,7 @@ const ArticleDetails = () => {
     } catch (error) {
       console.error('Error fetching article:', error);
       toast.error('Failed to load article');
-      navigate('/');
+      navigate('/home');
     } finally {
       setLoading(false);
     }
@@ -504,7 +505,8 @@ const ArticleDetails = () => {
         </div>
       </div>
 
-      <article className="max-w-5xl mx-auto px-4" style={{ paddingTop: 'var(--spacing-8)', paddingBottom: 'var(--spacing-8)' }}>
+      <article className="max-w-5xl mx-auto px-4 relative" style={{ paddingTop: 'var(--spacing-8)', paddingBottom: 'var(--spacing-8)' }}>
+        <ProductTagOverlay content={article} />
         <section className="mb-8 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
           <ArticleTemplateFrame
             article={article}

@@ -116,6 +116,1079 @@
   );
 }
 
+/* Slide payment control */
+.lekhon-slide-pay {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  height: 58px;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, var(--surface-card), var(--surface-elevated)),
+    var(--surface-card);
+  box-shadow: 0 14px 28px rgba(28, 28, 28, 0.08);
+  color: var(--text-primary);
+  cursor: grab;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.lekhon-slide-pay::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  z-index: 1;
+  border: 1px solid rgba(201, 162, 39, 0.22);
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+.lekhon-slide-pay:focus-visible {
+  box-shadow:
+    0 0 0 3px rgba(201, 162, 39, 0.24),
+    0 14px 28px rgba(28, 28, 28, 0.08);
+}
+
+.lekhon-slide-pay--sliding {
+  cursor: grabbing;
+}
+
+.lekhon-slide-pay--disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.lekhon-slide-pay__fill {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  z-index: 0;
+  width: calc(var(--slide-offset) + 48px);
+  max-width: calc(100% - 10px);
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-primary-hover) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24);
+  transition: width 180ms ease;
+}
+
+.lekhon-slide-pay__text {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 64px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+  text-shadow: none;
+}
+
+.lekhon-slide-pay__knob {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover));
+  color: #ffffff;
+  box-shadow:
+    0 10px 22px rgba(17, 24, 39, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  transform: translateX(var(--slide-offset));
+  transition: transform 180ms ease;
+}
+
+.lekhon-slide-pay--sliding .lekhon-slide-pay__fill,
+.lekhon-slide-pay--sliding .lekhon-slide-pay__knob {
+  transition: none;
+}
+
+.dark .lekhon-slide-pay {
+  border-color: rgba(217, 165, 106, 0.26);
+  background:
+    linear-gradient(135deg, var(--surface-card), var(--surface-elevated)),
+    var(--surface-card);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.38);
+}
+
+.dark .lekhon-slide-pay::after {
+  border-color: rgba(217, 165, 106, 0.22);
+}
+
+.dark .lekhon-slide-pay__fill {
+  background: linear-gradient(135deg, #d9a56a 0%, var(--brand-primary) 100%);
+}
+
+.dark .lekhon-slide-pay__knob {
+  background: linear-gradient(135deg, #d9a56a, #b98648);
+  color: #111827;
+}
+
+/* Payment confirmation loader */
+.lekhon-payment-loader {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 154px;
+  min-width: 154px;
+  height: 42px;
+}
+
+.lekhon-payment-loader__road {
+  position: relative;
+  width: 154px;
+  height: 38px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #111827;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.08),
+    0 10px 22px rgba(17, 24, 39, 0.22);
+}
+
+.lekhon-payment-loader__road::after {
+  content: "";
+  position: absolute;
+  left: 52px;
+  right: 26px;
+  top: 26px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.88), transparent);
+  animation: lekhon-payment-road-line 1.4s ease-in-out infinite;
+}
+
+.lekhon-payment-loader__parcel {
+  position: absolute;
+  left: 26px;
+  top: 13px;
+  width: 26px;
+  height: 18px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #ffe7a3 0%, #f2bd5f 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.38);
+  animation: lekhon-payment-parcel 1.4s ease-in-out infinite;
+}
+
+.lekhon-payment-loader__parcel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 7px;
+  height: 2px;
+  background: rgba(122, 84, 24, 0.28);
+}
+
+.lekhon-payment-loader__truck {
+  position: absolute;
+  left: 60px;
+  top: 8px;
+  width: 66px;
+  height: 27px;
+  animation: lekhon-payment-truck 1.4s ease-in-out infinite;
+}
+
+.lekhon-payment-loader__truck::before,
+.lekhon-payment-loader__truck::after {
+  content: "";
+  position: absolute;
+  left: -18px;
+  width: 22px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  transform-origin: right center;
+}
+
+.lekhon-payment-loader__truck::before {
+  top: 3px;
+  transform: rotate(28deg);
+}
+
+.lekhon-payment-loader__truck::after {
+  bottom: 4px;
+  transform: rotate(9deg);
+}
+
+.lekhon-payment-loader__cargo {
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: 43px;
+  height: 21px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #ffffff 0%, #eaf6ff 100%);
+  box-shadow: inset 0 -1px 0 rgba(37, 99, 235, 0.12);
+}
+
+.lekhon-payment-loader__logo {
+  position: absolute;
+  left: 13px;
+  top: -8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #ffffff;
+  border: 2px solid #ffffff;
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.24);
+}
+
+.lekhon-payment-loader__cabin {
+  position: absolute;
+  right: 0;
+  top: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 3px 9px 7px 3px;
+  background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 58%, #63a4ff 58%, #63a4ff 100%);
+}
+
+.lekhon-payment-loader__cabin::before {
+  content: "";
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 8px;
+  height: 9px;
+  border-radius: 2px 5px 2px 2px;
+  background: rgba(191, 219, 254, 0.94);
+}
+
+.lekhon-payment-loader__cabin::after {
+  content: "";
+  position: absolute;
+  right: -3px;
+  top: 3px;
+  width: 3px;
+  height: 12px;
+  border-radius: 999px;
+  background: #facc15;
+}
+
+.lekhon-payment-loader__wheel {
+  position: absolute;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  border: 2px solid #111827;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 2px #2563eb;
+}
+
+.lekhon-payment-loader__wheel--left {
+  left: 11px;
+}
+
+.lekhon-payment-loader__wheel--right {
+  right: 8px;
+}
+
+@keyframes lekhon-payment-truck {
+  0%,
+  100% {
+    transform: translateX(-3px) translateY(0);
+  }
+  50% {
+    transform: translateX(7px) translateY(-1px);
+  }
+}
+
+@keyframes lekhon-payment-parcel {
+  0%,
+  100% {
+    transform: translateX(0) translateY(0);
+  }
+  50% {
+    transform: translateX(4px) translateY(-1px);
+  }
+}
+
+@keyframes lekhon-payment-road-line {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: translateX(-8px);
+  }
+  50% {
+    opacity: 1;
+    transform: translateX(8px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lekhon-slide-pay__fill,
+  .lekhon-slide-pay__knob {
+    transition: none;
+  }
+
+  .lekhon-payment-loader__road::after,
+  .lekhon-payment-loader__parcel,
+  .lekhon-payment-loader__truck {
+    animation: none;
+  }
+}
+
+/* Order success delivery animation */
+.order-success-animation {
+  display: flex;
+  justify-content: center;
+  min-height: 132px;
+}
+
+.order-success-animation__stage {
+  position: relative;
+  width: 282px;
+  height: 132px;
+}
+
+.order-success-animation__road {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  width: 238px;
+  height: 58px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #111827;
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.1),
+    0 18px 34px rgba(17, 24, 39, 0.24);
+  transform: translateX(-50%);
+}
+
+.order-success-animation__road::before {
+  content: "";
+  position: absolute;
+  left: 58px;
+  right: 42px;
+  bottom: 11px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+  animation: order-success-road-line 1.4s ease-out forwards;
+}
+
+.order-success-animation__parcel {
+  position: absolute;
+  left: 34px;
+  top: 22px;
+  width: 31px;
+  height: 22px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #ffe9a8 0%, #f2bc5d 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.4);
+  animation: order-success-parcel 1.15s ease-out forwards;
+}
+
+.order-success-animation__parcel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 9px;
+  height: 2px;
+  background: rgba(122, 84, 24, 0.28);
+}
+
+.order-success-animation__truck {
+  position: absolute;
+  left: 104px;
+  top: 12px;
+  width: 88px;
+  height: 42px;
+  animation: order-success-truck-arrive 1.15s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+.order-success-animation__truck::before,
+.order-success-animation__truck::after {
+  content: "";
+  position: absolute;
+  left: -24px;
+  width: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  transform-origin: right center;
+}
+
+.order-success-animation__truck::before {
+  top: 7px;
+  transform: rotate(28deg);
+}
+
+.order-success-animation__truck::after {
+  bottom: 10px;
+  transform: rotate(9deg);
+}
+
+.order-success-animation__cargo {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 56px;
+  height: 28px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #ffffff 0%, #eaf6ff 100%);
+  box-shadow: inset 0 -1px 0 rgba(37, 99, 235, 0.14);
+}
+
+.order-success-animation__logo {
+  position: absolute;
+  left: 17px;
+  top: -12px;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: #ffffff;
+  border: 2px solid #ffffff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.24);
+}
+
+.order-success-animation__cabin {
+  position: absolute;
+  right: 0;
+  top: 11px;
+  width: 31px;
+  height: 29px;
+  border-radius: 4px 12px 9px 4px;
+  background: linear-gradient(90deg, #2563eb 0%, #1d4ed8 58%, #63a4ff 58%, #63a4ff 100%);
+}
+
+.order-success-animation__cabin::before {
+  content: "";
+  position: absolute;
+  right: 6px;
+  top: 5px;
+  width: 11px;
+  height: 12px;
+  border-radius: 2px 6px 2px 2px;
+  background: rgba(191, 219, 254, 0.94);
+}
+
+.order-success-animation__cabin::after {
+  content: "";
+  position: absolute;
+  right: -4px;
+  top: 5px;
+  width: 4px;
+  height: 16px;
+  border-radius: 999px;
+  background: #facc15;
+}
+
+.order-success-animation__wheel {
+  position: absolute;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  border: 2px solid #111827;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 3px #2563eb;
+}
+
+.order-success-animation__wheel--left {
+  left: 16px;
+}
+
+.order-success-animation__wheel--right {
+  right: 13px;
+}
+
+.order-success-animation__badge {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #22c55e;
+  border: 5px solid var(--bg-card);
+  box-shadow: 0 14px 30px rgba(34, 197, 94, 0.32);
+  opacity: 0;
+  transform: translateX(-50%) scale(0.72);
+  animation: order-success-badge-pop 520ms cubic-bezier(0.18, 1.4, 0.32, 1) 820ms forwards;
+}
+
+.order-success-animation__badge svg {
+  width: 27px;
+  height: 27px;
+}
+
+@keyframes order-success-truck-arrive {
+  0% {
+    transform: translateX(-112px) translateY(0);
+  }
+  72% {
+    transform: translateX(6px) translateY(-2px);
+  }
+  100% {
+    transform: translateX(0) translateY(0);
+  }
+}
+
+@keyframes order-success-parcel {
+  0%,
+  55% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(46px) scale(0.82);
+  }
+}
+
+@keyframes order-success-badge-pop {
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+@keyframes order-success-road-line {
+  0% {
+    opacity: 0.35;
+    transform: translateX(-24px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .order-success-animation__road::before,
+  .order-success-animation__parcel,
+  .order-success-animation__truck,
+  .order-success-animation__badge {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .order-success-animation__badge {
+    transform: translateX(-50%);
+  }
+}
+
+/* Checkout confirmation overlay */
+.checkout-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(250, 246, 240, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.dark .checkout-confirm-overlay {
+  background: rgba(15, 20, 15, 0.96);
+}
+
+.checkout-confirm-card {
+  width: min(100%, 360px);
+  text-align: center;
+  animation: checkout-confirm-card-in 220ms ease-out both;
+}
+
+.checkout-confirm-capsule {
+  --confirm-track: #1c212e;
+  --confirm-track-border: rgba(255, 255, 255, 0.06);
+  --confirm-track-shadow: rgba(28, 28, 28, 0.18);
+  --confirm-cargo-start: #ffffff;
+  --confirm-cargo-stop: #f3ede4;
+  --confirm-cabin: var(--brand-primary);
+  --confirm-cabin-light: var(--brand-soft);
+  --confirm-cabin-dark: #8f7218;
+  --confirm-parcel-start: #f3d486;
+  --confirm-parcel-stop: var(--brand-primary);
+  --confirm-lines: rgba(255, 255, 255, 0.78);
+  --confirm-success: #16a34a;
+  --confirm-headlight: rgba(255, 232, 143, 0.92);
+  position: relative;
+  width: 240px;
+  height: 63px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 32px;
+  background: var(--confirm-track);
+  box-shadow:
+    inset 0 1px 0 var(--confirm-track-border),
+    0 22px 48px var(--confirm-track-shadow);
+}
+
+.checkout-confirm-capsule::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  border: 1px solid var(--confirm-track-border);
+  pointer-events: none;
+}
+
+.dark .checkout-confirm-capsule {
+  --confirm-track: #11170f;
+  --confirm-track-border: rgba(217, 165, 106, 0.14);
+  --confirm-track-shadow: rgba(0, 0, 0, 0.42);
+  --confirm-cargo-start: #f2f1ea;
+  --confirm-cargo-stop: #c9c6b8;
+  --confirm-cabin: #d9a56a;
+  --confirm-cabin-light: #f0c891;
+  --confirm-cabin-dark: #8d6732;
+  --confirm-parcel-start: #f0c891;
+  --confirm-parcel-stop: #b98648;
+  --confirm-lines: rgba(242, 241, 234, 0.74);
+  --confirm-success: #79c267;
+  --confirm-headlight: rgba(217, 165, 106, 0.9);
+}
+
+.checkout-confirm-default,
+.checkout-confirm-success {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 19px;
+  z-index: 3;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 24px;
+  text-align: center;
+}
+
+.checkout-confirm-default {
+  animation: checkout-confirm-default 10s ease forwards;
+}
+
+.checkout-confirm-success {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0;
+  animation: checkout-confirm-success 10s ease forwards;
+}
+
+.checkout-confirm-success svg {
+  color: var(--confirm-success);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--confirm-success) 42%, transparent));
+}
+
+.checkout-confirm-lines {
+  position: absolute;
+  left: 100%;
+  top: 30px;
+  width: 6px;
+  height: 3px;
+  border-radius: 2px;
+  opacity: 0;
+  background: var(--confirm-lines);
+  box-shadow:
+    15px 0 0 var(--confirm-lines),
+    30px 0 0 var(--confirm-lines),
+    45px 0 0 var(--confirm-lines),
+    60px 0 0 var(--confirm-lines),
+    75px 0 0 var(--confirm-lines),
+    90px 0 0 var(--confirm-lines),
+    105px 0 0 var(--confirm-lines),
+    120px 0 0 var(--confirm-lines),
+    135px 0 0 var(--confirm-lines),
+    150px 0 0 var(--confirm-lines),
+    165px 0 0 var(--confirm-lines),
+    180px 0 0 var(--confirm-lines),
+    195px 0 0 var(--confirm-lines),
+    210px 0 0 var(--confirm-lines),
+    225px 0 0 var(--confirm-lines),
+    240px 0 0 var(--confirm-lines),
+    255px 0 0 var(--confirm-lines),
+    270px 0 0 var(--confirm-lines),
+    285px 0 0 var(--confirm-lines),
+    300px 0 0 var(--confirm-lines),
+    315px 0 0 var(--confirm-lines),
+    330px 0 0 var(--confirm-lines);
+  animation: checkout-confirm-lines 10s ease forwards;
+}
+
+.checkout-confirm-box {
+  content: "";
+  position: absolute;
+  right: 100%;
+  top: 21px;
+  width: 21px;
+  height: 21px;
+  border-radius: 2px;
+  background: linear-gradient(var(--confirm-parcel-start), var(--confirm-parcel-stop));
+  animation: checkout-confirm-box 10s ease forwards;
+}
+
+.checkout-confirm-box::before,
+.checkout-confirm-box::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 10px;
+}
+
+.checkout-confirm-box::before {
+  height: 3px;
+  margin-top: -1px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.checkout-confirm-box::after {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.checkout-confirm-truck {
+  position: absolute;
+  left: 100%;
+  top: 11px;
+  z-index: 2;
+  width: 60px;
+  height: 41px;
+  transform: translateX(24px);
+  animation: checkout-confirm-truck 10s ease forwards;
+}
+
+.checkout-confirm-truck::before,
+.checkout-confirm-truck::after {
+  --door-rotation: -90deg;
+  content: "";
+  position: absolute;
+  right: 58px;
+  display: block;
+  width: 20px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--confirm-cargo-start);
+  transform: rotate(var(--door-rotation));
+  transform-origin: 100% 50%;
+}
+
+.checkout-confirm-truck::before {
+  top: 4px;
+  animation: checkout-confirm-door-top 2.4s ease forwards 0.3s;
+}
+
+.checkout-confirm-truck::after {
+  --door-rotation: 90deg;
+  bottom: 4px;
+  animation: checkout-confirm-door-bottom 2.4s ease forwards 0.6s;
+}
+
+.checkout-confirm-truck__logo {
+  position: absolute;
+  left: 30px;
+  top: 50%;
+  z-index: 4;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  object-fit: contain;
+  opacity: 0.92;
+  mix-blend-mode: multiply;
+  transform: translate(-50%, -50%);
+  box-shadow: none;
+  filter: saturate(0.95) contrast(0.96);
+}
+
+.checkout-confirm-truck__back {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  width: 60px;
+  height: 41px;
+  border-radius: 2px;
+  background: linear-gradient(var(--confirm-cargo-start), var(--confirm-cargo-stop));
+}
+
+.checkout-confirm-truck__front {
+  position: absolute;
+  left: 60px;
+  width: 26px;
+  height: 41px;
+  overflow: hidden;
+  border-radius: 2px 9px 9px 2px;
+}
+
+.checkout-confirm-truck__front::before,
+.checkout-confirm-truck__front::after {
+  content: "";
+  position: absolute;
+  display: block;
+}
+
+.checkout-confirm-truck__front::before {
+  left: 0;
+  top: 14px;
+  width: 2px;
+  height: 13px;
+  background: linear-gradient(var(--confirm-cabin-light), var(--confirm-cabin-dark));
+}
+
+.checkout-confirm-truck__front::after {
+  right: 0;
+  width: 24px;
+  height: 41px;
+  border-radius: 2px 9px 9px 2px;
+  background: var(--confirm-cabin);
+}
+
+.checkout-confirm-truck__window {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  z-index: 1;
+  width: 22px;
+  height: 41px;
+  overflow: hidden;
+  border-radius: 2px 8px 8px 2px;
+  background: var(--confirm-cabin-light);
+  transform: perspective(4px) rotateY(3deg);
+  transform-origin: 0 50%;
+}
+
+.checkout-confirm-truck__window::before,
+.checkout-confirm-truck__window::after {
+  content: "";
+  position: absolute;
+  right: 0;
+}
+
+.checkout-confirm-truck__window::before {
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  background: var(--confirm-track);
+}
+
+.checkout-confirm-truck__window::after {
+  top: 7px;
+  width: 14px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 7px 0 rgba(255, 255, 255, 0.18);
+  transform: skewY(14deg);
+}
+
+.checkout-confirm-truck__light {
+  position: absolute;
+  left: 83px;
+  width: 3px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--confirm-headlight);
+  transform: scaleX(0.8);
+  transform-origin: 100% 50%;
+}
+
+.checkout-confirm-truck__light::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  width: 7px;
+  height: 4px;
+  margin-top: -2px;
+  opacity: 0;
+  background: linear-gradient(90deg, var(--confirm-headlight), color-mix(in srgb, var(--confirm-headlight) 70%, transparent), transparent);
+  transform: perspective(2px) rotateY(-15deg) scaleX(0.94);
+  transform-origin: 0 50%;
+  animation: checkout-confirm-light 10s ease forwards;
+}
+
+.checkout-confirm-truck__light--top {
+  top: 4px;
+}
+
+.checkout-confirm-truck__light--bottom {
+  bottom: 4px;
+}
+
+@keyframes checkout-confirm-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes checkout-confirm-truck {
+  10%,
+  30% {
+    transform: translateX(-164px);
+  }
+  40% {
+    transform: translateX(-104px);
+  }
+  60% {
+    transform: translateX(-224px);
+  }
+  75%,
+  100% {
+    transform: translateX(24px);
+  }
+}
+
+@keyframes checkout-confirm-lines {
+  0%,
+  30% {
+    opacity: 0;
+    transform: scaleY(0.7) translateX(0);
+  }
+  35%,
+  65% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0;
+  }
+  100% {
+    transform: scaleY(0.7) translateX(-400px);
+  }
+}
+
+@keyframes checkout-confirm-light {
+  0%,
+  30% {
+    opacity: 0;
+    transform: perspective(2px) rotateY(-15deg) scaleX(0.88);
+  }
+  40%,
+  100% {
+    opacity: 1;
+    transform: perspective(2px) rotateY(-15deg) scaleX(0.94);
+  }
+}
+
+@keyframes checkout-confirm-door-top {
+  30%,
+  50% {
+    transform: rotate(32deg);
+  }
+}
+
+@keyframes checkout-confirm-door-bottom {
+  30%,
+  50% {
+    transform: rotate(-32deg);
+  }
+}
+
+@keyframes checkout-confirm-box {
+  8%,
+  10% {
+    opacity: 1;
+    transform: translateX(40px);
+  }
+  25% {
+    opacity: 1;
+    transform: translateX(112px);
+  }
+  26% {
+    opacity: 0;
+    transform: translateX(112px);
+  }
+  27%,
+  100% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+}
+
+@keyframes checkout-confirm-default {
+  0%,
+  7% {
+    opacity: 1;
+  }
+  12%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes checkout-confirm-success {
+  0%,
+  69% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  70% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  76%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkout-confirm-card,
+  .checkout-confirm-default,
+  .checkout-confirm-success,
+  .checkout-confirm-lines,
+  .checkout-confirm-box,
+  .checkout-confirm-truck,
+  .checkout-confirm-truck::before,
+  .checkout-confirm-truck::after,
+  .checkout-confirm-truck__light::before {
+    animation: none;
+  }
+
+  .checkout-confirm-default,
+  .checkout-confirm-lines,
+  .checkout-confirm-box,
+  .checkout-confirm-truck {
+    opacity: 0;
+  }
+
+  .checkout-confirm-success {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* Shared threaded comments */
 .nb-comment-item {
   --comment-line: var(--border-default);

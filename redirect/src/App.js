@@ -1,5 +1,5 @@
 import React, { useEffect, useContext, useState, useMemo, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import { GroupCallProvider } from './context/GroupCallContext';
 import Navbar from './components/Navbar';
@@ -16,12 +16,14 @@ import webrtcService from './services/webrtc';
 import soundManager from './utils/soundManager';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useRouteTracker } from './hooks/useRouteTracker';
+import useBackgroundRemovalWarmup from './hooks/useBackgroundRemovalWarmup';
 import guestTracker from './services/guestTracking';
 import { getCallState, clearCallState } from './utils/callStateManager';
 import { useGroupCall } from './context/GroupCallContext';
 import { captureFrontendException } from './utils/sentry';
 
 const Home = lazy(() => import('./pages/Home'));
+const LandingPage = lazy(() => import('./pages/LandingPage'));
 const Login = lazy(() => import('./pages/Login'));
 const Register = lazy(() => import('./pages/Register'));
 const CreateBlog = lazy(() => import('./pages/CreateBlog'));
@@ -59,6 +61,7 @@ const OrderDetail = lazy(() => import('./pages/OrderDetail'));
 const AddProduct = lazy(() => import('./pages/AddProduct'));
 const EditProduct = lazy(() => import('./pages/EditProduct'));
 const MyOrders = lazy(() => import('./pages/MyOrders'));
+const SellerEarnings = lazy(() => import('./pages/SellerEarnings'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center">
@@ -66,8 +69,17 @@ const LoadingFallback = () => (
   </div>
 );
 
-const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/privacy', '/terms', '/auth/google/callback', '/auth/facebook/callback', '/auth/twitter/callback', '/auth/linkedin/callback']);
-const PUBLIC_FOOTER_ROUTES = new Set(['/', '/about', '/privacy', '/terms']);
+const PublicOnlyRoute = ({ children }) => {
+  const { user, loading } = useContext(AuthContext);
+
+  if (loading) return <LoadingFallback />;
+  if (user) return <Navigate to="/home" replace />;
+
+  return children;
+};
+
+const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/', '/privacy', '/terms', '/auth/google/callback', '/auth/facebook/callback', '/auth/twitter/callback', '/auth/linkedin/callback']);
+const PUBLIC_FOOTER_ROUTES = new Set(['/about', '/privacy', '/terms']);
 
 function AppContent() {
   const { user, sessionExpired, guestExpired, setGuestExpired } = useContext(AuthContext);
@@ -93,6 +105,7 @@ function AppContent() {
   });
   
   useRouteTracker();
+  useBackgroundRemovalWarmup();
 
   useEffect(() => {
     if (hideGlobalChrome) {
@@ -394,9 +407,10 @@ function AppContent() {
         )}
         <Suspense fallback={<LoadingFallback />}>
           <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/home" element={<Home />} />
+            <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
+            <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />
             <Route path="/create" element={<CreateBlog />} />
             <Route path="/edit/:id" element={<EditBlog />} />
             <Route path="/blog/:id" element={<BlogDetail />} />
@@ -426,6 +440,7 @@ function AppContent() {
             <Route path="/store/:username" element={<StorePage />} />
             <Route path="/become-seller" element={<BecomeASeller />} />
             <Route path="/seller/dashboard" element={<SellerDashboard />} />
+            <Route path="/seller/earnings" element={<SellerEarnings />} />
             <Route path="/seller/add-product" element={<AddProduct />} />
             <Route path="/seller/edit-product/:id" element={<EditProduct />} />
             <Route path="/checkout" element={<Checkout />} />

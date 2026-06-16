@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { FaTag, FaTimes } from 'react-icons/fa';
 import api from '../services/api';
 
-export const CouponInput = ({ cartTotal, onApply, onRemove, appliedCoupon }) => {
+export const CouponInput = ({ cartTotal, cartItems = [], onApply, onRemove, appliedCoupon }) => {
   const [code,    setCode]    = useState('');
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
@@ -18,6 +18,7 @@ export const CouponInput = ({ cartTotal, onApply, onRemove, appliedCoupon }) => 
       const { data } = await api.post('/coupons/validate', {
         code:      code.trim(),
         cartTotal,
+        cartItems,
       });
       onApply({ code: data.coupon.code, discount: data.discount, isFreeShipping: data.isFreeShipping });
       setCode('');

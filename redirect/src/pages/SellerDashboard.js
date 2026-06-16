@@ -6,13 +6,16 @@ import StarRating             from '../components/StarRating';
 import {
   FaPlus, FaStore, FaBoxOpen, FaChartLine, FaTag, FaCog,
   FaEdit, FaArchive, FaCheck, FaTruck, FaEye, FaToggleOn, FaToggleOff, FaTrash,
+  FaWallet, FaRupeeSign,
 } from 'react-icons/fa';
 import { MdStorefront } from 'react-icons/md';
 
 const TABS = [
   { id: 'overview',  label: 'Overview',  icon: FaChartLine  },
   { id: 'products',  label: 'Products',  icon: FaBoxOpen    },
+  { id: 'price-changes', label: 'Price Changes', icon: FaRupeeSign },
   { id: 'orders',    label: 'Orders',    icon: FaStore      },
+  { id: 'earnings',  label: 'Earnings',  icon: FaWallet,  link: '/seller/earnings' },
   { id: 'coupons',   label: 'Coupons',   icon: FaTag        },
   { id: 'settings',  label: 'Store',     icon: FaCog        },
 ];
@@ -32,6 +35,43 @@ const ORDER_STATUS_COLOR = {
   completed:  'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400',
 };
 
+const COUPON_STATUS_COLOR = {
+  active:    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  scheduled: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  used_up:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  expired:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  off:       'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+};
+
+const PRICE_REQUEST_STATUS_COLOR = {
+  pending:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  approved:  'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  rejected:  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  cancelled: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+  expired:   'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+};
+
+const getCouponStatus = (coupon) => {
+  if (coupon.effectiveStatus) {
+    return {
+      status: coupon.effectiveStatus,
+      label: coupon.statusLabel || coupon.effectiveStatus.replace('_', ' '),
+      className: COUPON_STATUS_COLOR[coupon.effectiveStatus] || COUPON_STATUS_COLOR.off,
+    };
+  }
+
+  const now = new Date();
+  const validFrom = new Date(coupon.validFrom);
+  const validUntil = new Date(coupon.validUntil);
+  const usedUp = coupon.usageLimit !== null && coupon.usageLimit !== undefined && coupon.usedCount >= coupon.usageLimit;
+
+  if (now > validUntil) return { status: 'expired', label: 'Expired', className: COUPON_STATUS_COLOR.expired };
+  if (usedUp) return { status: 'used_up', label: 'Used up', className: COUPON_STATUS_COLOR.used_up };
+  if (!coupon.isActive) return { status: 'off', label: 'Off', className: COUPON_STATUS_COLOR.off };
+  if (now < validFrom) return { status: 'scheduled', label: 'Scheduled', className: COUPON_STATUS_COLOR.scheduled };
+  return { status: 'active', label: 'Active', className: COUPON_STATUS_COLOR.active };
+};
+
 const SellerDashboard = () => {
   const { user }   = useContext(AuthContext);
   const navigate   = useNavigate();
@@ -40,12 +80,17 @@ const SellerDashboard = () => {
   const [products, setProducts] = useState([]);
   const [orders,   setOrders]   = useState([]);
   const [coupons,  setCoupons]  = useState([]);
+  const [priceRequests, setPriceRequests] = useState([]);
   const [settings, setSettings] = useState({});
   const [loading,  setLoading]  = useState(true);
 
   // Ship modal state
   const [shipModal, setShipModal] = useState({ open: false, orderId: null });
   const [shipForm,  setShipForm]  = useState({ trackingNumber: '', courier: '' });
+  const [restockModal, setRestockModal] = useState({ open: false, product: null, qty: '10' });
+  const [priceRequestModal, setPriceRequestModal] = useState({ open: false, product: null });
+  const [priceRequestForm, setPriceRequestForm] = useState({ requestedPrice: '', reason: '' });
+  const [priceSubmitting, setPriceSubmitting] = useState(false);
 
   // Coupon create form
   const [couponForm, setCouponForm] = useState({
@@ -61,18 +106,20 @@ const SellerDashboard = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [statsRes, productsRes, ordersRes, couponsRes, storeRes] = await Promise.allSettled([
+      const [statsRes, productsRes, ordersRes, couponsRes, storeRes, priceRequestsRes] = await Promise.allSettled([
         api.get('/seller/dashboard/stats'),
         api.get('/marketplace/seller/products?limit=50'),
         api.get('/orders/seller/orders?limit=50'),
         api.get('/coupons/seller'),
         api.get('/seller/store/settings'),
+        api.get('/price-changes/seller?limit=50'),
       ]);
       if (statsRes.status    === 'fulfilled') setStats(statsRes.value.data.stats);
       if (productsRes.status === 'fulfilled') setProducts(productsRes.value.data.products || []);
       if (ordersRes.status   === 'fulfilled') setOrders(ordersRes.value.data.orders || []);
       if (couponsRes.status  === 'fulfilled') setCoupons(couponsRes.value.data.coupons || []);
       if (storeRes.status    === 'fulfilled') setSettings(storeRes.value.data.settings || {});
+      if (priceRequestsRes.status === 'fulfilled') setPriceRequests(priceRequestsRes.value.data.requests || []);
     } catch {}
     setLoading(false);
   }, []);
@@ -86,9 +133,9 @@ const SellerDashboard = () => {
   };
 
   const archiveProduct = async (id) => {
-    if (!window.confirm('Archive this product? It will not be visible to buyers.')) return;
+    if (!window.confirm('Delete this product? Its marketplace listing and saved image references will be removed.')) return;
     await api.delete(`/marketplace/seller/products/${id}`);
-    setProducts(p => p.map(pr => pr._id === id ? { ...pr, status: 'archived' } : pr));
+    setProducts(p => p.filter(pr => pr._id !== id));
   };
 
   const markShipped = async () => {
@@ -101,6 +148,18 @@ const SellerDashboard = () => {
     } catch (e) { alert(e.response?.data?.message || 'Error'); }
   };
 
+  const restockProduct = async () => {
+    const qty = parseInt(restockModal.qty, 10);
+    if (!restockModal.product || !Number.isFinite(qty) || qty <= 0) return;
+    try {
+      await api.post('/orders/seller/restock', { productId: restockModal.product._id, addStock: qty });
+      setRestockModal({ open: false, product: null, qty: '10' });
+      load();
+    } catch (e) {
+      alert(e.response?.data?.message || 'Unable to restock product.');
+    }
+  };
+
   const createCoupon = async () => {
     try {
       const { data } = await api.post('/coupons', couponForm);
@@ -110,14 +169,67 @@ const SellerDashboard = () => {
   };
 
   const toggleCoupon = async (id) => {
-    await api.patch(`/coupons/${id}/toggle`);
-    setCoupons(c => c.map(cp => cp._id === id ? { ...cp, isActive: !cp.isActive } : cp));
+    try {
+      const { data } = await api.patch(`/coupons/${id}/toggle`);
+      setCoupons(c => c.map(cp => cp._id === id ? data.coupon : cp));
+    } catch (e) {
+      alert(e.response?.data?.message || 'Unable to update coupon status.');
+    }
   };
 
   const deleteCoupon = async (id) => {
     if (!window.confirm('Delete this coupon?')) return;
     await api.delete(`/coupons/${id}`);
     setCoupons(c => c.filter(cp => cp._id !== id));
+  };
+
+  const openPriceRequest = (product) => {
+    setPriceRequestModal({ open: true, product });
+    setPriceRequestForm({
+      requestedPrice: product?.price ? String(product.price) : '',
+      reason: '',
+    });
+  };
+
+  const submitPriceRequest = async () => {
+    const product = priceRequestModal.product;
+    const requestedPrice = Number(priceRequestForm.requestedPrice);
+    const currentPrice = Number(product?.price || 0);
+    const reason = priceRequestForm.reason.trim();
+
+    if (!product) return;
+    if (!Number.isFinite(requestedPrice) || requestedPrice <= currentPrice) {
+      return alert('Requested price must be higher than the current price.');
+    }
+    if (!reason) {
+      return alert('Please explain why this price needs to increase.');
+    }
+
+    setPriceSubmitting(true);
+    try {
+      const { data } = await api.post('/price-changes/seller', {
+        productId: product._id,
+        requestedPrice,
+        reason,
+      });
+      setPriceRequests(requests => [data.request, ...requests.filter(req => req._id !== data.request._id)]);
+      setPriceRequestModal({ open: false, product: null });
+      setPriceRequestForm({ requestedPrice: '', reason: '' });
+      setTab('price-changes');
+    } catch (e) {
+      alert(e.response?.data?.message || 'Unable to submit price-change token.');
+    }
+    setPriceSubmitting(false);
+  };
+
+  const cancelPriceRequest = async (id) => {
+    if (!window.confirm('Cancel this pending price-change token?')) return;
+    try {
+      const { data } = await api.patch(`/price-changes/seller/${id}/cancel`);
+      setPriceRequests(requests => requests.map(req => req._id === id ? data.request : req));
+    } catch (e) {
+      alert(e.response?.data?.message || 'Unable to cancel price-change token.');
+    }
   };
 
   // ── Stat card ─────────────────────────────────────────────────────────────────
@@ -177,6 +289,17 @@ const SellerDashboard = () => {
         <div className="max-w-6xl mx-auto flex gap-1 overflow-x-auto scrollbar-hide">
           {TABS.map(t => {
             const Icon = t.icon;
+            if (t.link) {
+              return (
+                <Link
+                  key={t.id}
+                  to={t.link}
+                  className="flex items-center gap-1.5 px-4 py-3 text-xs font-semibold border-b-2 border-transparent text-[var(--text-muted)] hover:text-[var(--text-secondary)] shrink-0 transition-colors"
+                >
+                  <Icon size={12} /> {t.label}
+                </Link>
+              );
+            }
             return (
               <button
                 key={t.id}
@@ -258,7 +381,7 @@ const SellerDashboard = () => {
               <table className="w-full text-sm">
                 <thead className="bg-[var(--bg-secondary)]">
                   <tr>
-                    {['Product', 'Type', 'Price', 'Sales', 'Rating', 'Status', 'Actions'].map(h => (
+                    {['Product', 'Type', 'Price', 'Stock', 'Sales', 'Rating', 'Status', 'Actions'].map(h => (
                       <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-[var(--text-muted)]">{h}</th>
                     ))}
                   </tr>
@@ -276,6 +399,9 @@ const SellerDashboard = () => {
                       <td className="px-4 py-3 font-semibold text-[var(--text-primary)]">
                         {p.isFree ? <span className="text-green-500">Free</span> : `₹${p.price?.toLocaleString('en-IN')}`}
                       </td>
+                      <td className="px-4 py-3 text-[var(--text-muted)]">
+                        {p.type === 'physical' ? (p.physical?.stock ?? 0) : '�'}
+                      </td>
                       <td className="px-4 py-3 text-[var(--text-muted)]">{p.stats?.sales || 0}</td>
                       <td className="px-4 py-3">
                         {p.reviewCount > 0
@@ -292,21 +418,31 @@ const SellerDashboard = () => {
                         <div className="flex items-center gap-2">
                           <Link to={`/marketplace/${p.slug}`} title="View" className="text-[var(--text-muted)] hover:text-violet-500"><FaEye size={13} /></Link>
                           <Link to={`/seller/edit-product/${p._id}`} title="Edit" className="text-[var(--text-muted)] hover:text-blue-500"><FaEdit size={13} /></Link>
+                          <button onClick={() => openPriceRequest(p)} title="Request price increase" className="text-[var(--text-muted)] hover:text-amber-500"><FaRupeeSign size={12} /></button>
                           {p.status === 'active'
                             ? <button onClick={() => changeProductStatus(p._id, 'paused')}  title="Pause"  className="text-[var(--text-muted)] hover:text-yellow-500"><FaToggleOn  size={14} /></button>
                             : p.status === 'paused' || p.status === 'draft'
                             ? <button onClick={() => changeProductStatus(p._id, 'active')}  title="Activate" className="text-[var(--text-muted)] hover:text-green-500"><FaToggleOff size={14} /></button>
                             : null
                           }
-                          {p.status !== 'archived' && (
-                            <button onClick={() => archiveProduct(p._id)} title="Archive" className="text-[var(--text-muted)] hover:text-red-500"><FaArchive size={12} /></button>
+                          <button onClick={() => archiveProduct(p._id)} title="Delete" className="text-[var(--text-muted)] hover:text-red-500"><FaTrash size={12} /></button>
+                          {p.type === 'physical' && (
+                            <button
+                              onClick={async () => {
+                                setRestockModal({ open: true, product: p, qty: '10' });
+                              }}
+                              title="Restock"
+                              className="text-[var(--text-muted)] hover:text-green-500 text-xs"
+                            >
+                              +Stock
+                            </button>
                           )}
                         </div>
                       </td>
                     </tr>
                   ))}
                   {products.length === 0 && (
-                    <tr><td colSpan={7} className="px-4 py-12 text-center text-[var(--text-muted)]">No products yet. <Link to="/seller/add-product" className="text-violet-600 hover:underline">Add your first product →</Link></td></tr>
+                    <tr><td colSpan={8} className="px-4 py-12 text-center text-[var(--text-muted)]">No products yet. <Link to="/seller/add-product" className="text-violet-600 hover:underline">Add your first product →</Link></td></tr>
                   )}
                 </tbody>
               </table>
@@ -315,6 +451,85 @@ const SellerDashboard = () => {
         )}
 
         {/* ══ ORDERS ════════════════════════════════════════════════════════════ */}
+        {tab === 'price-changes' && (
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 className="font-bold text-[var(--text-primary)]">Price Change Tokens</h2>
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  Request admin approval before increasing any product price.
+                </p>
+              </div>
+              <button
+                onClick={() => setTab('products')}
+                className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition-colors"
+              >
+                Choose Product
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--bg-secondary)]">
+                  <tr>
+                    {['Token', 'Product', 'Old Price', 'Requested', 'Status', 'Date', 'Action'].map(h => (
+                      <th key={h} className="text-left px-4 py-2.5 text-xs font-semibold text-[var(--text-muted)]">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-color)]">
+                  {priceRequests.map(req => {
+                    const productTitle = req.productId?.title || req.snapshot?.productTitle || 'Product';
+                    const statusClass = PRICE_REQUEST_STATUS_COLOR[req.status] || PRICE_REQUEST_STATUS_COLOR.expired;
+                    return (
+                      <tr key={req._id} className="hover:bg-[var(--bg-secondary)] transition-colors">
+                        <td className="px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">{req.requestToken}</td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2 min-w-[220px]">
+                            <img
+                              src={req.productId?.thumbnail || req.snapshot?.thumbnail || ''}
+                              alt=""
+                              className="w-9 h-9 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0"
+                            />
+                            <span className="font-medium text-[var(--text-primary)] truncate max-w-[220px]">{productTitle}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-[var(--text-muted)]">Rs. {Number(req.oldPrice || 0).toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-3 font-semibold text-[var(--text-primary)]">Rs. {Number(req.requestedPrice || 0).toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${statusClass}`}>
+                            {req.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-[var(--text-muted)] text-xs">{new Date(req.createdAt).toLocaleDateString('en-IN')}</td>
+                        <td className="px-4 py-3">
+                          {req.status === 'pending' ? (
+                            <button
+                              onClick={() => cancelPriceRequest(req._id)}
+                              className="text-xs text-red-500 hover:underline"
+                            >
+                              Cancel
+                            </button>
+                          ) : (
+                            <span className="text-xs text-[var(--text-muted)]">{req.adminNote || 'No action'}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {priceRequests.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-12 text-center text-[var(--text-muted)]">
+                        No price-change tokens yet. Open Products and choose a product to request a price increase.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {tab === 'orders' && (
           <div className="space-y-4">
             <h2 className="font-bold text-[var(--text-primary)]">Orders ({orders.length})</h2>
@@ -434,8 +649,10 @@ const SellerDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border-color)]">
-                  {coupons.map(cp => (
-                    <tr key={cp._id} className={`hover:bg-[var(--bg-secondary)] transition-colors ${!cp.isActive ? 'opacity-50' : ''}`}>
+                  {coupons.map(cp => {
+                    const couponStatus = getCouponStatus(cp);
+                    return (
+                    <tr key={cp._id} className={`hover:bg-[var(--bg-secondary)] transition-colors ${couponStatus.status !== 'active' ? 'opacity-70' : ''}`}>
                       <td className="px-4 py-3 font-mono font-bold text-violet-600 dark:text-violet-400">{cp.code}</td>
                       <td className="px-4 py-3 text-[var(--text-muted)] capitalize text-xs">{cp.discountType.replace('_', ' ')}</td>
                       <td className="px-4 py-3 font-semibold text-[var(--text-primary)]">
@@ -444,8 +661,8 @@ const SellerDashboard = () => {
                       <td className="px-4 py-3 text-[var(--text-muted)]">{cp.usedCount}{cp.usageLimit ? `/${cp.usageLimit}` : ''}</td>
                       <td className="px-4 py-3 text-[var(--text-muted)] text-xs">{new Date(cp.validUntil).toLocaleDateString('en-IN')}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${cp.isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500'}`}>
-                          {cp.isActive ? 'Active' : 'Off'}
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold capitalize ${couponStatus.className}`}>
+                          {couponStatus.label}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -459,7 +676,8 @@ const SellerDashboard = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {coupons.length === 0 && (
                     <tr><td colSpan={7} className="px-4 py-10 text-center text-[var(--text-muted)]">No coupons created yet.</td></tr>
                   )}
@@ -532,6 +750,95 @@ const SellerDashboard = () => {
               <button onClick={() => setShipModal({ open: false, orderId: null })} className="flex-1 py-2.5 rounded-xl border border-[var(--border-color)] text-[var(--text-muted)] text-sm">Cancel</button>
               <button onClick={markShipped} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition-colors">
                 <FaTruck className="inline mr-1.5" size={11} /> Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {priceRequestModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-color)] p-6 w-full max-w-md space-y-4">
+            <div>
+              <h3 className="font-bold text-[var(--text-primary)]">Request Price Increase</h3>
+              <p className="text-sm text-[var(--text-muted)] truncate">{priceRequestModal.product?.title}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-xl bg-[var(--bg-secondary)]">
+                <p className="text-xs text-[var(--text-muted)]">Current price</p>
+                <p className="font-bold text-[var(--text-primary)]">Rs. {Number(priceRequestModal.product?.price || 0).toLocaleString('en-IN')}</p>
+              </div>
+              <div>
+                <label className="block text-xs text-[var(--text-muted)] mb-1">Requested price</label>
+                <input
+                  type="number"
+                  min={Number(priceRequestModal.product?.price || 0) + 1}
+                  value={priceRequestForm.requestedPrice}
+                  onChange={e => setPriceRequestForm(s => ({ ...s, requestedPrice: e.target.value }))}
+                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-[var(--text-muted)] mb-1">Reason for admin review</label>
+              <textarea
+                rows={4}
+                maxLength={1000}
+                value={priceRequestForm.reason}
+                onChange={e => setPriceRequestForm(s => ({ ...s, reason: e.target.value }))}
+                placeholder="Explain cost changes, supplier update, margin correction, or any other reason."
+                className="w-full px-3 py-2.5 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none"
+              />
+              <p className="text-[10px] text-[var(--text-muted)] text-right">{priceRequestForm.reason.length}/1000</p>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setPriceRequestModal({ open: false, product: null })}
+                className="flex-1 py-2.5 rounded-xl border border-[var(--border-color)] text-[var(--text-muted)] text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitPriceRequest}
+                disabled={priceSubmitting}
+                className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm transition-colors disabled:opacity-60"
+              >
+                {priceSubmitting ? 'Submitting...' : 'Submit Token'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {restockModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-color)] p-6 w-full max-w-sm space-y-4">
+            <h3 className="font-bold text-[var(--text-primary)]">Restock Product</h3>
+            <p className="text-sm text-[var(--text-muted)] truncate">{restockModal.product?.title}</p>
+            <div>
+              <label className="block text-xs text-[var(--text-muted)] mb-1">Quantity to add</label>
+              <input
+                type="number"
+                min="1"
+                value={restockModal.qty}
+                onChange={e => setRestockModal(s => ({ ...s, qty: e.target.value }))}
+                className="w-full px-3 py-2.5 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setRestockModal({ open: false, product: null, qty: '10' })}
+                className="flex-1 py-2.5 rounded-xl border border-[var(--border-color)] text-[var(--text-muted)] text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={restockProduct}
+                className="flex-1 py-2.5 rounded-xl bg-green-600 hover:bg-green-700 text-white font-semibold text-sm transition-colors"
+              >
+                Add Stock
               </button>
             </div>
           </div>

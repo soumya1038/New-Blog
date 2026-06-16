@@ -126,6 +126,24 @@ const userSchema = new mongoose.Schema({
   sellerAppliedAt: { type: Date, default: null },
   sellerApprovedAt: { type: Date, default: null },
   wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
+  marketplacePreferences: {
+    recentProducts: [{
+      productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+      views: { type: Number, default: 1 },
+      viewedAt: { type: Date, default: Date.now },
+    }],
+    categorySignals: [{
+      category: { type: String, trim: true },
+      count: { type: Number, default: 1 },
+      lastSeenAt: { type: Date, default: Date.now },
+    }],
+    typeSignals: [{
+      type: { type: String, enum: ['digital', 'physical', 'service', 'external'] },
+      count: { type: Number, default: 1 },
+      lastSeenAt: { type: Date, default: Date.now },
+    }],
+    updatedAt: { type: Date, default: null },
+  },
   verificationToken: { type: String, default: null },
   createdAt: { type: Date, default: Date.now }
 }, { timestamps: true });

@@ -5,6 +5,7 @@ const {
   improveContent,
   generateTitles,
   generateTags,
+  generateProductListing,
   generateDescription,
   generateQuickChat,
   enhanceMessage,
@@ -20,6 +21,7 @@ router.post('/generate-description', protect, generateDescription);
 router.post('/improve-content', protect, improveContent);
 router.post('/generate-titles', protect, generateTitles);
 router.post('/generate-tags', protect, generateTags);
+router.post('/product-listing', protect, generateProductListing);
 router.post('/quick-chat', protect, generateQuickChat);
 router.post('/enhance-message', protect, enhanceMessage);
 router.post('/summarize', summarizeBlog);

@@ -173,7 +173,7 @@ const BecomeASeller = () => {
           <p className="text-[var(--text-muted)] text-sm">
             Your seller application is under review. We'll notify you once it's processed (usually within 24–48 hours).
           </p>
-          <button onClick={() => navigate('/')} className="px-6 py-2.5 rounded-xl bg-violet-600 text-white font-medium">
+          <button onClick={() => navigate('/home')} className="px-6 py-2.5 rounded-xl bg-violet-600 text-white font-medium">
             Back to Home
           </button>
         </div>

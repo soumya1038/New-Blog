@@ -1,52 +1,53 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FaShoppingCart, FaExternalLinkAlt, FaStar } from 'react-icons/fa';
+import { FaExternalLinkAlt, FaShoppingBag, FaShoppingCart, FaStar } from 'react-icons/fa';
 import { MdStorefront } from 'react-icons/md';
 
-// Renders inside BlogCard when blog.linkedProduct is populated
-// Props: product (populated from blog.linkedProduct)
-const ProductPromoCard = ({ product }) => {
-  if (!product) return null;
+const ProductPromoCard = ({ product, externalLink }) => {
+  const isExternalLink = !!externalLink;
+  const item = product || externalLink;
+  if (!item) return null;
 
-  const discount = product.compareAtPrice && product.compareAtPrice > product.price
-    ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
+  const discount = !isExternalLink && item.compareAtPrice && item.compareAtPrice > item.price
+    ? Math.round(((item.compareAtPrice - item.price) / item.compareAtPrice) * 100)
     : 0;
 
-  return (
-    <Link
-      to={`/marketplace/${product.slug}`}
-      onClick={e => e.stopPropagation()}
-      className="flex items-center gap-3 mt-3 p-3 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/20 hover:border-violet-400 dark:hover:border-violet-600 transition-colors group"
-    >
-      {/* Thumbnail */}
+  const content = (
+    <>
       <div className="w-14 h-14 rounded-lg overflow-hidden bg-[var(--bg-secondary)] shrink-0 border border-[var(--border-color)]">
-        {product.thumbnail
-          ? <img src={product.thumbnail} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-          : <div className="w-full h-full flex items-center justify-center text-2xl">🛍️</div>
-        }
+        {item.thumbnail ? (
+          <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-violet-500">
+            <FaShoppingBag size={20} />
+          </div>
+        )}
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1 mb-0.5">
           <MdStorefront size={11} className="text-violet-500 shrink-0" />
-          <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wide">Featured Product</span>
+          <span className="text-[10px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wide">
+            {isExternalLink ? (item.platform || 'External Link') : 'Featured Product'}
+          </span>
         </div>
-        <p className="text-sm font-semibold text-[var(--text-primary)] truncate leading-tight">{product.title}</p>
+        <p className="text-sm font-semibold text-[var(--text-primary)] truncate leading-tight">{item.title}</p>
         <div className="flex items-center gap-2 mt-0.5">
-          {product.reviewCount > 0 && (
+          {!isExternalLink && item.reviewCount > 0 && (
             <span className="flex items-center gap-0.5 text-[10px] text-amber-500">
-              <FaStar size={9} /> {product.averageRating?.toFixed(1)}
+              <FaStar size={9} /> {item.averageRating?.toFixed(1)}
             </span>
           )}
-          {product.isFree ? (
+          {isExternalLink ? (
+            item.priceLabel && <span className="text-xs font-bold text-[var(--text-primary)]">{item.priceLabel}</span>
+          ) : item.isFree ? (
             <span className="text-xs font-bold text-green-600 dark:text-green-400">Free</span>
           ) : (
             <span className="text-xs font-bold text-[var(--text-primary)]">
-              ₹{product.price?.toLocaleString('en-IN')}
+              Rs. {item.price?.toLocaleString('en-IN')}
               {discount > 0 && (
-                <span className="ml-1 text-[10px] font-semibold text-red-500 line-through font-normal">
-                  ₹{product.compareAtPrice?.toLocaleString('en-IN')}
+                <span className="ml-1 text-[10px] font-semibold text-red-500 line-through">
+                  Rs. {item.compareAtPrice?.toLocaleString('en-IN')}
                 </span>
               )}
             </span>
@@ -59,19 +60,42 @@ const ProductPromoCard = ({ product }) => {
         </div>
       </div>
 
-      {/* CTA */}
       <div className="shrink-0">
-        {product.type === 'external' ? (
+        {isExternalLink || item.type === 'external' ? (
           <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-orange-500 text-white text-xs font-semibold">
-            <FaExternalLinkAlt size={9} /> Buy
+            <FaExternalLinkAlt size={9} /> Open
           </span>
         ) : (
           <span className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-xs font-semibold group-hover:bg-violet-700 transition-colors">
             <FaShoppingCart size={9} />
-            {product.isFree ? 'Get' : 'Buy'}
+            {item.isFree ? 'Get' : 'Buy'}
           </span>
         )}
       </div>
+    </>
+  );
+
+  if (isExternalLink) {
+    return (
+      <a
+        href={item.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={e => e.stopPropagation()}
+        className="flex items-center gap-3 mt-3 p-3 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/20 hover:border-violet-400 dark:hover:border-violet-600 transition-colors group"
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link
+      to={`/marketplace/${item.slug}`}
+      onClick={e => e.stopPropagation()}
+      className="flex items-center gap-3 mt-3 p-3 rounded-xl border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/20 hover:border-violet-400 dark:hover:border-violet-600 transition-colors group"
+    >
+      {content}
     </Link>
   );
 };

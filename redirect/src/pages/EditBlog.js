@@ -10,6 +10,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import AIBlogGenerator from '../components/AIBlogGenerator';
 import AIContentTools from '../components/AIContentTools';
 import TemplatePreview from '../components/TemplatePreview';
+import ContentProductTagsEditor from '../components/ContentProductTagsEditor';
 import {
   getArticleTemplateById,
   DEFAULT_ARTICLE_TEMPLATE_ID,
@@ -67,6 +68,8 @@ const EditBlog = () => {
   const [selectedArticleTemplateId, setSelectedArticleTemplateId] = useState(DEFAULT_ARTICLE_TEMPLATE_ID);
   const [customArticleTemplate, setCustomArticleTemplate] = useState(createDefaultCustomTemplate());
   const [contentOrigin, setContentOrigin] = useState('manual');
+  const [linkedProducts, setLinkedProducts] = useState([]);
+  const [externalProductLinks, setExternalProductLinks] = useState([]);
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const autoSaveTimerRef = useRef(null);
@@ -117,6 +120,13 @@ const EditBlog = () => {
     };
   };
 
+  const productAttachmentPayload = () => ({
+    linkedProduct: linkedProducts[0]?._id || null,
+    linkedProducts: linkedProducts.map(product => product._id).filter(Boolean),
+    externalProductLinks: JSON.stringify(externalProductLinks),
+    isPromoPost: linkedProducts.length > 0 || externalProductLinks.length > 0,
+  });
+
   useEffect(() => {
     const checkTheme = () => setIsDark(document.documentElement.classList.contains('dark'));
     checkTheme();
@@ -134,10 +144,10 @@ const EditBlog = () => {
   }, [id, user, navigate]);
 
   useEffect(() => {
-    if (title || content || tags.length > 0 || coverImage || galleryItems.length > 0 || metaDescription || (isArticleMode && selectedArticleTemplateId)) {
+    if (title || content || tags.length > 0 || coverImage || galleryItems.length > 0 || metaDescription || linkedProducts.length > 0 || externalProductLinks.length > 0 || (isArticleMode && selectedArticleTemplateId)) {
       setHasUnsavedChanges(true);
     }
-  }, [title, content, tags, coverImage, galleryItems, metaDescription, isArticleMode, selectedArticleTemplateId, customArticleTemplate]);
+  }, [title, content, tags, coverImage, galleryItems, metaDescription, linkedProducts, externalProductLinks, isArticleMode, selectedArticleTemplateId, customArticleTemplate]);
 
   useEffect(() => {
     const handleBeforeUnload = (e) => {
@@ -160,7 +170,7 @@ const EditBlog = () => {
         clearInterval(autoSaveTimerRef.current);
       }
     };
-  }, [title, content, tags, isArticleMode, isShortMode, originalMode, selectedArticleTemplateId, customArticleTemplate, category, coverImage, galleryItems, metaDescription, videoUrls]);
+  }, [title, content, tags, isArticleMode, isShortMode, originalMode, selectedArticleTemplateId, customArticleTemplate, category, coverImage, galleryItems, metaDescription, videoUrls, linkedProducts, externalProductLinks]);
 
   const fetchBlog = async () => {
     try {
@@ -187,7 +197,7 @@ const EditBlog = () => {
       
       if (data.blog.author._id !== user._id) {
         toast.error('Not authorized to edit this content');
-        navigate('/');
+        navigate('/home');
         return;
       }
       setTitle(data.blog.title);
@@ -200,6 +210,14 @@ const EditBlog = () => {
       setIsDraft(data.blog.isDraft);
       setIsScheduled(data.blog.isScheduled || false);
       setVideoUrls(data.blog.videoUrls && data.blog.videoUrls.length > 0 ? data.blog.videoUrls : ['']);
+      const existingLinkedProducts = Array.isArray(data.blog.linkedProducts)
+        ? data.blog.linkedProducts.filter(product => product && typeof product === 'object')
+        : [];
+      if (!existingLinkedProducts.length && data.blog.linkedProduct && typeof data.blog.linkedProduct === 'object') {
+        existingLinkedProducts.push(data.blog.linkedProduct);
+      }
+      setLinkedProducts(existingLinkedProducts);
+      setExternalProductLinks(Array.isArray(data.blog.externalProductLinks) ? data.blog.externalProductLinks : []);
       const existingGalleryImages = Array.isArray(data.blog.galleryImages) ? data.blog.galleryImages : [];
       const existingGalleryIds = Array.isArray(data.blog.galleryImagePublicIds) ? data.blog.galleryImagePublicIds : [];
       setGalleryItems(
@@ -248,6 +266,7 @@ const EditBlog = () => {
         videoUrls: JSON.stringify(filteredVideoUrls),
         metaDescription,
         isDraft: true,
+        ...(isShortMode ? {} : productAttachmentPayload()),
         ...(isArticleMode ? {
           templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
@@ -339,6 +358,7 @@ const EditBlog = () => {
           isDraft: false,
           isScheduled,
           scheduledPublishDate,
+          ...(isShortMode ? {} : productAttachmentPayload()),
           ...(isArticleMode ? {
             templateId: templateIdForSubmit,
             customTemplate: customTemplateForSubmit,
@@ -373,6 +393,7 @@ const EditBlog = () => {
           isDraft: false,
           isScheduled,
           scheduledPublishDate,
+          ...(isShortMode ? {} : productAttachmentPayload()),
           ...(isArticleMode ? {
             templateId: templateIdForSubmit,
             customTemplate: customTemplateForSubmit,
@@ -453,6 +474,7 @@ const EditBlog = () => {
         isDraft: true,
         isScheduled,
         scheduledPublishDate,
+        ...(isShortMode ? {} : productAttachmentPayload()),
         ...(originalMode === 'article' ? {
           templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
@@ -1126,7 +1148,7 @@ const EditBlog = () => {
                     onChange={(e) => setIsScheduled(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-[var(--background-secondary)] peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[var(--brand-soft)] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[var(--border-default)] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--brand-primary)]"></div>
+                  <div className="w-11 h-6 bg-[var(--surface-elevated)] dark:bg-slate-700 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[var(--brand-soft)] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-[var(--border-default)] after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--brand-primary)] dark:peer-checked:bg-[#D9A56A]"></div>
                 </label>
               </div>
               
@@ -1156,6 +1178,15 @@ const EditBlog = () => {
                 </div>
               )}
             </div>
+
+            {!isShortMode && (
+              <ContentProductTagsEditor
+                linkedProducts={linkedProducts}
+                setLinkedProducts={setLinkedProducts}
+                externalProductLinks={externalProductLinks}
+                setExternalProductLinks={setExternalProductLinks}
+              />
+            )}
             
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 sm:gap-4">

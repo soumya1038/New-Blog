@@ -1,6 +1,6 @@
 {
   "name": "blog-frontend",
-  "version": "1.7.16",
+  "version": "1.7.17",
   "private": true,
   "dependencies": {
     "@emotion/react": "^11.14.0",

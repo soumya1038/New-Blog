@@ -404,7 +404,7 @@ const Login = () => {
   useEffect(() => {
     if (user) {
       const inFlow = isLoggingIn || sessionStorage.getItem('loginInProgress');
-      if (!inFlow) navigate('/');
+      if (!inFlow) navigate('/home');
     }
   }, [user, isLoggingIn, navigate]);
 
@@ -461,7 +461,7 @@ const Login = () => {
       sessionStorage.setItem('showLoginIntro','true');
       const redirect = sessionStorage.getItem('redirectAfterLogin');
       if (redirect) { sessionStorage.removeItem('redirectAfterLogin'); navigate(redirect); }
-      else navigate('/');
+      else navigate('/home');
     } catch (err) {
       const na = failedAttempts + 1;
       setFailedAttempts(na);

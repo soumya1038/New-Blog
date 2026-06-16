@@ -6,10 +6,27 @@ const productSchema = new mongoose.Schema({
   title:         { type: String, required: true, trim: true, maxlength: 200 },
   slug:          { type: String, unique: true, lowercase: true, trim: true },
   description:   { type: String, default: '' },
+  specifications: [{
+    key:   { type: String, trim: true },
+    value: { type: String, trim: true },
+  }],
+  warranty:      { type: String, default: '' },
+  countryOfOrigin:{ type: String, default: '' },
   category:      [{ type: String }],
   tags:          [{ type: String }],
   images:        [{ type: String }],   // Cloudinary public URLs
+  imagePublicIds:[{ type: String }],
   thumbnail:     { type: String, default: '' },
+  transparentThumbnail: { type: String, default: '' },
+  transparentThumbnailPublicId: { type: String, default: '' },
+  backgroundRemovalStatus: {
+    type: String,
+    enum: ['pending', 'processing', 'done', 'failed', 'skipped'],
+    default: 'pending',
+  },
+  backgroundRemovalError: { type: String, default: '' },
+  backgroundRemovedAt: { type: Date, default: null },
+  backgroundRemovalSourceHash: { type: String, default: '' },
   videoUrl:      { type: String, default: '' },
   status:        { type: String, enum: ['draft', 'active', 'paused', 'archived'], default: 'draft' },
 
@@ -31,6 +48,7 @@ const productSchema = new mongoose.Schema({
   // ── Physical ──────────────────────────────────────────────────────────────
   physical: {
     stock:               { type: Number, default: 0 },
+    minimumOrderQuantity:{ type: Number, default: 1 },
     sku:                 { type: String, default: '' },
     weight:              { type: Number, default: 0 }, // grams
     dimensions:          { l: Number, w: Number, h: Number },

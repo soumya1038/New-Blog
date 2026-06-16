@@ -38,6 +38,9 @@ const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const couponRoutes = require('./routes/couponRoutes');
+const earningsRoutes = require('./routes/earningsRoutes');
+const priceChangeRoutes = require('./routes/priceChangeRoutes');
+const systemRoutes = require('./routes/systemRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { systemMonitor, getMetrics } = require('./middleware/monitoring');
 const { startDatabaseMonitor } = require('./utils/dbMonitor');
@@ -104,6 +107,11 @@ app.use(mongoSanitize());
 const toPositiveInt = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const toNonNegativeInt = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 };
 
 const authLimiter = rateLimit({
@@ -191,11 +199,14 @@ app.use('/api/drafts', apiLimiter, draftRoutes);
 app.use('/api/chatbot', apiLimiter, chatbotRoutes);
 app.use('/api/search', apiLimiter, searchRoutes);
 app.use('/api/template-presets', apiLimiter, templatePresetRoutes);
+app.use('/api/system', apiLimiter, systemRoutes);
 app.use('/api/seller', apiLimiter, sellerRoutes);
+app.use('/api/seller', apiLimiter, earningsRoutes);
 app.use('/api/marketplace', apiLimiter, productRoutes);
 app.use('/api/orders', apiLimiter, orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/coupons', apiLimiter, couponRoutes);
+app.use('/api/price-changes', apiLimiter, priceChangeRoutes);
 
 // SPA fallback - MUST be AFTER all API routes
 if (process.env.NODE_ENV === 'production') {
@@ -230,7 +241,16 @@ chatSocket(io, onlineUsers);
 app.set('io', io);
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI)
+const mongoConnectionOptions = {
+  maxPoolSize: toPositiveInt(process.env.MONGODB_MAX_POOL_SIZE, 80),
+  minPoolSize: toNonNegativeInt(process.env.MONGODB_MIN_POOL_SIZE, 0),
+  maxIdleTimeMS: toPositiveInt(process.env.MONGODB_MAX_IDLE_TIME_MS, 60 * 1000),
+  waitQueueTimeoutMS: toPositiveInt(process.env.MONGODB_WAIT_QUEUE_TIMEOUT_MS, 10 * 1000),
+  serverSelectionTimeoutMS: toPositiveInt(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS, 10 * 1000),
+  socketTimeoutMS: toPositiveInt(process.env.MONGODB_SOCKET_TIMEOUT_MS, 45 * 1000)
+};
+
+mongoose.connect(process.env.MONGODB_URI, mongoConnectionOptions)
   .then(async () => {
     console.log('✅ MongoDB connected');
     
@@ -245,6 +265,9 @@ mongoose.connect(process.env.MONGODB_URI)
     } catch (queueError) {
       console.warn('[queue] Failed to initialize background queues:', queueError?.message || queueError);
     }
+
+    const { scheduleJob } = require('./jobs/autoCompleteOrders');
+    scheduleJob();
 
     server.listen(process.env.PORT, '0.0.0.0', () => {
       console.log(`✅ Server running on port ${process.env.PORT}`);

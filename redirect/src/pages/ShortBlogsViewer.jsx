@@ -851,7 +851,7 @@ const ShortBlogsViewer = () => {
           setCurrentIndex(newBlogs.length - 1);
         }
       } else {
-        navigate('/');
+        navigate('/home');
       }
     } catch (error) {
       console.error('Error deleting blog:', error);
@@ -946,7 +946,7 @@ const ShortBlogsViewer = () => {
         }}
       >
         <button
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/home')}
           className="fixed top-2 left-2 z-50 p-2 md:p-3 bg-black/40 hover:bg-black/60 rounded-full transition backdrop-blur-sm"
         >
           <FiX className="w-5 h-5 md:w-6 md:h-6 text-white" />

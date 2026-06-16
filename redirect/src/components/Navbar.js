@@ -2,11 +2,11 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
-import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun, FaNewspaper, FaPlusCircle, FaStickyNote, FaUserCircle, FaBolt, FaShoppingCart, FaStore, FaBoxOpen } from 'react-icons/fa';
-import { PiBookOpenTextThin } from 'react-icons/pi';
+import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun, FaStickyNote, FaUserCircle, FaBolt, FaShoppingCart, FaStore, FaBoxOpen, FaNewspaper, FaPlusCircle } from 'react-icons/fa';
 import LanguageSelector from './LanguageSelector';
 import Avatar from './Avatar';
 import AnimatedLogo from './AnimatedLogo';
+import CartDrawer from './CartDrawer';
 import { useTheme } from '../context/ThemeContext';
 
 const Navbar = () => {
@@ -18,6 +18,7 @@ const Navbar = () => {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [cartCount, setCartCount] = useState(0);
+  const [cartOpen, setCartOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const desktopDropdownRef = useRef(null);
   const tabletLgDropdownRef = useRef(null);
@@ -117,6 +118,12 @@ const Navbar = () => {
     setShowDropdown(false);
   };
 
+  const openCart = () => {
+    setShowDropdown(false);
+    setShowMobileMenu(false);
+    setCartOpen(true);
+  };
+
   const confirmLogout = () => {
     logout();
     navigate('/login');
@@ -150,7 +157,7 @@ const Navbar = () => {
         }}>
           <div className="container mx-auto px-4 py-3 relative z-10">
         <div className="flex justify-between items-center">
-          <Link to="/" className="flex items-center gap-3 group">
+          <Link to={user ? '/home' : '/'} className="flex items-center gap-3 group">
             <img 
               src="/image/lekhon_url.png" 
               alt="Lekhon Logo" 
@@ -166,14 +173,6 @@ const Navbar = () => {
           <div className="hidden xl:flex items-center gap-3">
             {user ? (
               <>
-                {(user.role === 'admin' || user.role === 'coAdmin') && (
-                  <Link 
-                  to="/admin" 
-                  className="px-4 py-2 rounded-xl font-semibold uppercase tracking-[0.05em] border border-[var(--border-default)] bg-[var(--surface-elevated)] text-[var(--brand-primary)] transition hover:scale-105 hover:opacity-90"
-                >
-                  {t(user.role === 'coAdmin' ? 'Co-Admin' : 'Admin')}
-                </Link>
-                )}
                 <Link
                   to="/marketplace"
                   className="px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--brand-primary)] transition-colors flex items-center gap-1.5"
@@ -181,23 +180,26 @@ const Navbar = () => {
                   <FaStore size={14} />
                   {t('Marketplace')}
                 </Link>
-                <Link 
-                  to="/news" 
-                  className="px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--brand-primary)] transition-colors"
+                <Link
+                  to="/news"
+                  className="px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--brand-primary)] transition-colors flex items-center gap-1.5"
                 >
+                  <FaNewspaper size={14} />
                   {t('News')}
                 </Link>
-                <Link 
-                  to="/create" 
-                  className="px-5 py-2 rounded-xl text-white font-bold uppercase tracking-[0.05em] transition hover:scale-105 hover:opacity-90 shadow-lg"
+                <Link
+                  to="/create"
+                  className="px-5 py-2 rounded-xl text-white font-bold uppercase tracking-[0.05em] transition hover:scale-105 hover:opacity-90 shadow-lg flex items-center gap-1.5"
                   style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))' }}
                 >
+                  <FaPlusCircle size={14} />
                   {t('Create Post')}
                 </Link>
-                <Link 
-                  to="/drafts" 
-                  className="px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--brand-primary)] transition-colors"
+                <Link
+                  to="/drafts"
+                  className="px-4 py-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--brand-primary)] transition-colors flex items-center gap-1.5"
                 >
+                  <FaStickyNote size={14} />
                   {t('My Drafts')}
                 </Link>
                 <button
@@ -215,18 +217,6 @@ const Navbar = () => {
                   {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-bold rounded-full h-6 w-6 flex items-center justify-center animate-bounce shadow-lg border-2 border-white">
                       {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </Link>
-                <Link
-                  to="/checkout"
-                  className="cart-btn relative p-3 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20 hover:border-white/40"
-                  title="Cart"
-                >
-                  <FaShoppingCart size={18} />
-                  {cartCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center shadow-lg border-2 border-white">
-                      {cartCount > 9 ? '9+' : cartCount}
                     </span>
                   )}
                 </Link>
@@ -285,47 +275,24 @@ const Navbar = () => {
                         </span>
                       </Link>
                       <Link
-                        to="/drafts"
-                        onClick={() => setShowDropdown(false)}
-                        className={dropdownDesktopItem}
-                      >
-                        <span className="flex items-center gap-2">
-                          <FaStickyNote />
-                          {t('My Drafts')}
-                        </span>
-                      </Link>
-                      <Link
                         to="/chat"
                         onClick={() => setShowDropdown(false)}
                         className={`${dropdownDesktopItem} flex items-center gap-2`}
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      {user.isSeller && (
-                        <Link
-                          to="/seller/dashboard"
-                          onClick={() => setShowDropdown(false)}
-                          className={`${dropdownDesktopItem} flex items-center gap-2 text-amber-700 dark:text-amber-300`}
-                        >
-                          <FaStore /> {t('Seller Dashboard')}
-                        </Link>
-                      )}
-                      {!user.isSeller && user.isVerified && (
-                        <Link
-                          to="/become-seller"
-                          onClick={() => setShowDropdown(false)}
-                          className={`${dropdownDesktopItem} flex items-center gap-2 text-violet-600 dark:text-violet-400`}
-                        >
-                          <FaStore /> {t('Become a Seller')}
-                        </Link>
-                      )}
-                      <Link
-                        to="/marketplace"
-                        onClick={() => setShowDropdown(false)}
-                        className={`${dropdownDesktopItem} flex items-center gap-2`}
+                      <button
+                        type="button"
+                        onClick={openCart}
+                        className={`${dropdownDesktopItem} w-[calc(100%-1rem)] text-left flex items-center gap-2`}
                       >
-                        <FaShoppingCart /> {t('Marketplace')}
-                      </Link>
+                        <FaShoppingCart /> {t('Cart')}
+                        {cartCount > 0 && (
+                          <span className="ml-auto bg-violet-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                            {cartCount > 9 ? '9+' : cartCount}
+                          </span>
+                        )}
+                      </button>
                       <Link
                         to="/my-orders"
                         onClick={() => setShowDropdown(false)}
@@ -350,12 +317,6 @@ const Navbar = () => {
                   <span className="flex items-center gap-2">
                     <FaStore size={16} />
                     <span className="font-medium">{t('Marketplace')}</span>
-                  </span>
-                </Link>
-                <Link to="/about" className="nav-link px-4 py-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:shadow-lg">
-                  <span className="flex items-center gap-2">
-                    <PiBookOpenTextThin size={24} />
-                    <span className="font-medium">{t('About Us')}</span>
                   </span>
                 </Link>
                 <button
@@ -385,13 +346,11 @@ const Navbar = () => {
             {user ? (
               <>
                 <Link to="/marketplace" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('Marketplace')}><FaStore size={16} /></Link>
-                <Link to="/news" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105"><FaNewspaper size={16} /></Link>
-                <Link to="/create" className="px-3 py-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-sm font-medium"><FaPlusCircle size={16} /></Link>
+                <Link to="/news" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('News')}><FaNewspaper size={16} /></Link>
+                <Link to="/create" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-[var(--brand-primary)]" title={t('Create Post')}><FaPlusCircle size={16} /></Link>
+                <Link to="/drafts" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('My Drafts')}><FaStickyNote size={16} /></Link>
                 {user.isSeller && (
-                  <Link to="/seller/dashboard" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-amber-700 dark:text-amber-300" title={t('Seller Dashboard')}><FaStore size={16} /></Link>
-                )}
-                {!user.isSeller && user.isVerified && (
-                  <Link to="/become-seller" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-violet-700 dark:text-violet-300" title={t('Become a Seller')}><FaStore size={16} /></Link>
+                  <Link to="/seller/dashboard" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-amber-700 dark:text-amber-300" title={t('My Store')}><FaStore size={16} /></Link>
                 )}
                 <button
                   onClick={toggleTheme}
@@ -406,14 +365,6 @@ const Navbar = () => {
                   {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center animate-bounce shadow-lg border-2 border-white">
                       {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </Link>
-                <Link to="/checkout" className="relative p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20" title={t('Cart')}>
-                  <FaShoppingCart size={18} />
-                  {cartCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center shadow-lg border-2 border-white">
-                      {cartCount > 9 ? '9+' : cartCount}
                     </span>
                   )}
                 </Link>
@@ -448,44 +399,24 @@ const Navbar = () => {
                         {t('My Profile')}
                       </Link>
                       <Link
-                        to="/drafts"
-                        onClick={() => setShowDropdown(false)}
-                        className={dropdownCompactItem}
-                      >
-                        {t('My Drafts')}
-                      </Link>
-                      <Link
                         to="/chat"
                         onClick={() => setShowDropdown(false)}
                         className={`${dropdownCompactItem} flex items-center gap-2`}
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      {user.isSeller && (
-                        <Link
-                          to="/seller/dashboard"
-                          onClick={() => setShowDropdown(false)}
-                          className={`${dropdownCompactItem} flex items-center gap-2 text-amber-700 dark:text-amber-300`}
-                        >
-                          <FaStore /> {t('Seller Dashboard')}
-                        </Link>
-                      )}
-                      {!user.isSeller && user.isVerified && (
-                        <Link
-                          to="/become-seller"
-                          onClick={() => setShowDropdown(false)}
-                          className={`${dropdownCompactItem} flex items-center gap-2 text-violet-600 dark:text-violet-400`}
-                        >
-                          <FaStore /> {t('Become a Seller')}
-                        </Link>
-                      )}
-                      <Link
-                        to="/marketplace"
-                        onClick={() => setShowDropdown(false)}
-                        className={`${dropdownCompactItem} flex items-center gap-2`}
+                      <button
+                        type="button"
+                        onClick={openCart}
+                        className={`${dropdownCompactItem} w-[calc(100%-1rem)] text-left flex items-center gap-2`}
                       >
-                        <FaShoppingCart /> {t('Marketplace')}
-                      </Link>
+                        <FaShoppingCart /> {t('Cart')}
+                        {cartCount > 0 && (
+                          <span className="ml-auto bg-violet-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                            {cartCount > 9 ? '9+' : cartCount}
+                          </span>
+                        )}
+                      </button>
                       <Link
                         to="/my-orders"
                         onClick={() => setShowDropdown(false)}
@@ -509,9 +440,6 @@ const Navbar = () => {
                 <Link to="/marketplace" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('Marketplace')}>
                   <FaStore size={18} />
                 </Link>
-                <Link to="/about" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105">
-                  <PiBookOpenTextThin size={20} />
-                </Link>
                 <button
                   onClick={toggleTheme}
                   className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20"
@@ -531,13 +459,11 @@ const Navbar = () => {
             {user ? (
               <>
                 <Link to="/marketplace" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('Marketplace')}><FaStore size={16} /></Link>
-                <Link to="/news" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105"><FaNewspaper size={16} /></Link>
-                <Link to="/create" className="px-2 py-1.5 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-xs font-medium"><FaPlusCircle size={14} /></Link>
+                <Link to="/news" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('News')}><FaNewspaper size={16} /></Link>
+                <Link to="/create" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-[var(--brand-primary)]" title={t('Create Post')}><FaPlusCircle size={16} /></Link>
+                <Link to="/drafts" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('My Drafts')}><FaStickyNote size={16} /></Link>
                 {user.isSeller && (
-                  <Link to="/seller/dashboard" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-amber-700 dark:text-amber-300" title={t('Seller Dashboard')}><FaStore size={16} /></Link>
-                )}
-                {!user.isSeller && user.isVerified && (
-                  <Link to="/become-seller" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-violet-700 dark:text-violet-300" title={t('Become a Seller')}><FaStore size={16} /></Link>
+                  <Link to="/seller/dashboard" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 text-amber-700 dark:text-amber-300" title={t('My Store')}><FaStore size={16} /></Link>
                 )}
                 <button
                   onClick={toggleTheme}
@@ -550,14 +476,6 @@ const Navbar = () => {
                   {unreadCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center text-[10px] shadow-lg border border-white">
                       {unreadCount > 9 ? '9+' : unreadCount}
-                    </span>
-                  )}
-                </Link>
-                <Link to="/checkout" className="relative p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20" title={t('Cart')}>
-                  <FaShoppingCart size={16} />
-                  {cartCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xs font-bold rounded-full h-4 w-4 flex items-center justify-center text-[10px] shadow-lg border border-white">
-                      {cartCount > 9 ? '9+' : cartCount}
                     </span>
                   )}
                 </Link>
@@ -592,44 +510,24 @@ const Navbar = () => {
                         {t('My Profile')}
                       </Link>
                       <Link
-                        to="/drafts"
-                        onClick={() => setShowDropdown(false)}
-                        className={dropdownCompactItem}
-                      >
-                        {t('My Drafts')}
-                      </Link>
-                      <Link
                         to="/chat"
                         onClick={() => setShowDropdown(false)}
                         className={`${dropdownCompactItem} flex items-center gap-2`}
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      {user.isSeller && (
-                        <Link
-                          to="/seller/dashboard"
-                          onClick={() => setShowDropdown(false)}
-                          className={`${dropdownCompactItem} flex items-center gap-2 text-amber-700 dark:text-amber-300`}
-                        >
-                          <FaStore /> {t('Seller Dashboard')}
-                        </Link>
-                      )}
-                      {!user.isSeller && user.isVerified && (
-                        <Link
-                          to="/become-seller"
-                          onClick={() => setShowDropdown(false)}
-                          className={`${dropdownCompactItem} flex items-center gap-2 text-violet-600 dark:text-violet-400`}
-                        >
-                          <FaStore /> {t('Become a Seller')}
-                        </Link>
-                      )}
-                      <Link
-                        to="/marketplace"
-                        onClick={() => setShowDropdown(false)}
-                        className={`${dropdownCompactItem} flex items-center gap-2`}
+                      <button
+                        type="button"
+                        onClick={openCart}
+                        className={`${dropdownCompactItem} w-[calc(100%-1rem)] text-left flex items-center gap-2`}
                       >
-                        <FaShoppingCart /> {t('Marketplace')}
-                      </Link>
+                        <FaShoppingCart /> {t('Cart')}
+                        {cartCount > 0 && (
+                          <span className="ml-auto bg-violet-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
+                            {cartCount > 9 ? '9+' : cartCount}
+                          </span>
+                        )}
+                      </button>
                       <Link
                         to="/my-orders"
                         onClick={() => setShowDropdown(false)}
@@ -652,9 +550,6 @@ const Navbar = () => {
               <>
                 <Link to="/marketplace" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105" title={t('Marketplace')}>
                   <FaStore size={16} />
-                </Link>
-                <Link to="/about" className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105">
-                  <PiBookOpenTextThin size={18} />
                 </Link>
                 <button
                   onClick={toggleTheme}
@@ -684,16 +579,6 @@ const Navbar = () => {
                 {unreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-gradient-to-r from-red-500 to-pink-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center animate-bounce shadow-lg border-2 border-white">
                     {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </Link>
-            )}
-            {user && (
-              <Link to="/checkout" className="relative p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20">
-                <FaShoppingCart size={18} />
-                {cartCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-gradient-to-r from-violet-500 to-purple-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center shadow-lg border-2 border-white">
-                    {cartCount > 9 ? '9+' : cartCount}
                   </span>
                 )}
               </Link>
@@ -730,36 +615,31 @@ const Navbar = () => {
                 <Link to="/marketplace" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
                   <FaStore className="inline mr-2" /> {t('Marketplace')}
                 </Link>
-                <Link to="/checkout" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
+                <Link to="/news" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
+                  <FaNewspaper /> {t('News')}
+                </Link>
+                <Link to="/create" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
+                  <FaPlusCircle /> {t('Create Post')}
+                </Link>
+                <Link to="/drafts" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
+                  <FaStickyNote /> {t('My Drafts')}
+                </Link>
+                <button type="button" onClick={openCart} className="w-[calc(100%-1rem)] flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300 text-left">
                   <FaShoppingCart /> {t('Cart')}
                   {cartCount > 0 && (
                     <span className="ml-auto bg-violet-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
                       {cartCount > 9 ? '9+' : cartCount}
                     </span>
                   )}
-                </Link>
+                </button>
                 <Link to="/my-orders" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
                   <FaBoxOpen /> {t('My Orders')}
                 </Link>
                 {user.isSeller && (
                   <Link to="/seller/dashboard" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 bg-amber-500/10 px-4 rounded-xl mx-2 my-1 text-amber-700 dark:text-amber-300 transition-all duration-300">
-                    <FaStore /> {t('Seller Dashboard')}
+                    <FaStore /> {t('My Store')}
                   </Link>
                 )}
-                {!user.isSeller && user.isVerified && (
-                  <Link to="/become-seller" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 bg-violet-500/10 px-4 rounded-xl mx-2 my-1 text-violet-700 dark:text-violet-300 transition-all duration-300">
-                    <FaStore /> {t('Become a Seller')}
-                  </Link>
-                )}
-                <Link to="/news" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
-                  <FaNewspaper className="inline mr-2" /> {t('News')}
-                </Link>
-                <Link to="/create" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
-                  <FaPlusCircle className="inline mr-2" /> {t('Create Post')}
-                </Link>
-                <Link to="/drafts" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
-                  <FaStickyNote className="inline mr-2" /> {t('My Drafts')}
-                </Link>
                 <Link to="/profile" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
                   <FaUserCircle className="inline mr-2" /> {t('My Profile')}
                 </Link>
@@ -787,9 +667,6 @@ const Navbar = () => {
                 <Link to="/marketplace" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300 flex items-center gap-2">
                   <FaStore size={18} /> {t('Marketplace')}
                 </Link>
-                <Link to="/about" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300 flex items-center gap-2">
-                  <PiBookOpenTextThin size={20} /> {t('About Us')}
-                </Link>
                 <Link to="/login" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
                   {t('Login')}
                 </Link>
@@ -803,6 +680,8 @@ const Navbar = () => {
         </div>
       </div>
       </nav>
+
+      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
 
       {showLogoutModal && (
         <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-[9999] p-4">

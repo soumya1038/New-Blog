@@ -2,6 +2,7 @@ const Blog = require('../models/Blog');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCursorFilter, extractNextCursor } = require('../utils/cursorPagination');
 const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
@@ -32,10 +33,60 @@ const triggerSearchIndexRefresh = (reason) => {
   });
 };
 
+const parseArrayField = (value) => {
+  if (Array.isArray(value)) return value;
+  if (value === undefined || value === null || value === '') return [];
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (error) {
+      return value.split(',').map(item => item.trim()).filter(Boolean);
+    }
+  }
+  return [value];
+};
+
+const normalizeProductLinks = (body) => {
+  const ids = [];
+  const addId = (value) => {
+    const id = typeof value === 'object' && value !== null ? (value._id || value.id) : value;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return;
+    const normalized = id.toString();
+    if (!ids.includes(normalized)) ids.push(normalized);
+  };
+
+  addId(body.linkedProduct);
+  parseArrayField(body.linkedProducts).forEach(addId);
+
+  const externalProductLinks = parseArrayField(body.externalProductLinks)
+    .filter(link => link && typeof link === 'object')
+    .map(link => ({
+      title: String(link.title || '').trim(),
+      url: String(link.url || '').trim(),
+      platform: String(link.platform || 'External').trim() || 'External',
+      thumbnail: String(link.thumbnail || '').trim(),
+      thumbnailPublicId: String(link.thumbnailPublicId || '').trim(),
+      originalThumbnail: String(link.originalThumbnail || '').trim(),
+      originalThumbnailPublicId: String(link.originalThumbnailPublicId || '').trim(),
+      backgroundRemovalStatus: String(link.backgroundRemovalStatus || '').trim(),
+      priceLabel: String(link.priceLabel || '').trim(),
+    }))
+    .filter(link => link.title && link.url);
+
+  return {
+    linkedProduct: ids[0] || null,
+    linkedProducts: ids,
+    externalProductLinks,
+    isPromoPost: ids.length > 0 || externalProductLinks.length > 0,
+  };
+};
+
 // Create blog
 exports.createBlog = async (req, res) => {
   try {
     const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls } = req.body;
+    const productLinks = normalizeProductLinks(req.body);
 
     console.log('=== BACKEND CREATE BLOG ===');
     console.log('isDraft:', isDraft);
@@ -98,8 +149,10 @@ exports.createBlog = async (req, res) => {
       metaDescription: metaDescription || null,
       slug: generatedSlug,
       slugHistory: [],
-      linkedProduct: linkedProduct || null,
-      isPromoPost: Boolean(isPromoPost && linkedProduct),
+      linkedProduct: productLinks.linkedProduct,
+      linkedProducts: productLinks.linkedProducts,
+      externalProductLinks: productLinks.externalProductLinks,
+      isPromoPost: productLinks.isPromoPost,
       isDraft: isScheduled ? true : (isDraft || false),
       isScheduled: isScheduled || false,
       scheduledPublishDate: isScheduled ? scheduledPublishDate : null
@@ -107,7 +160,8 @@ exports.createBlog = async (req, res) => {
 
     const populatedBlog = await Blog.findById(blog._id)
       .populate('author', 'username profileImage isGuest role isVerified')
-      .populate('linkedProduct', 'title slug thumbnail price compareAtPrice type isFree averageRating reviewCount');
+      .populate('linkedProduct', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
+      .populate('linkedProducts', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount');
     await invalidateBlogPublishCache();
     triggerSearchIndexRefresh('blog:create');
 
@@ -204,7 +258,8 @@ exports.getBlogs = async (req, res) => {
 
     const query = Blog.find(filter)
       .populate('author', 'username profileImage isGuest role isVerified statuses followers')
-      .populate('linkedProduct', 'title slug thumbnail price compareAtPrice type isFree averageRating reviewCount')
+      .populate('linkedProduct', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
+      .populate('linkedProducts', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
       .sort({ createdAt: -1, _id: -1 });
 
     if (useCursor) {
@@ -284,7 +339,9 @@ exports.getBlog = async (req, res) => {
     const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id, {
       populate: [
         { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses followers' },
-        { path: 'likes', select: 'username profileImage' }
+        { path: 'likes', select: 'username profileImage' },
+        { path: 'linkedProduct', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount' },
+        { path: 'linkedProducts', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount' }
       ]
     });
 
@@ -352,7 +409,10 @@ exports.updateBlog = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls, linkedProduct, isPromoPost } = req.body;
+    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls } = req.body;
+    const hasProductLinkInput = ['linkedProduct', 'linkedProducts', 'externalProductLinks', 'isPromoPost']
+      .some(key => Object.prototype.hasOwnProperty.call(req.body, key));
+    const productLinks = hasProductLinkInput ? normalizeProductLinks(req.body) : null;
     
     // Validate scheduled date
     if (isScheduled && scheduledPublishDate) {
@@ -398,6 +458,12 @@ exports.updateBlog = async (req, res) => {
     blog.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : blog.cloudinaryPublicId;
     blog.videoUrls = videoUrlsArray;
     blog.metaDescription = metaDescription !== undefined ? metaDescription : blog.metaDescription;
+    if (productLinks) {
+      blog.linkedProduct = productLinks.linkedProduct;
+      blog.linkedProducts = productLinks.linkedProducts;
+      blog.externalProductLinks = productLinks.externalProductLinks;
+      blog.isPromoPost = productLinks.isPromoPost;
+    }
 
     const shouldRefreshSlug = slug !== undefined || Boolean(title) || !blog.slug;
     if (shouldRefreshSlug) {
@@ -435,7 +501,10 @@ exports.updateBlog = async (req, res) => {
       });
     }
 
-    const updatedBlog = await Blog.findById(blog._id).populate('author', 'username profileImage isGuest role isVerified');
+    const updatedBlog = await Blog.findById(blog._id)
+      .populate('author', 'username profileImage isGuest role isVerified')
+      .populate('linkedProduct', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
+      .populate('linkedProducts', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount');
 
     res.json({ success: true, blog: updatedBlog });
   } catch (error) {

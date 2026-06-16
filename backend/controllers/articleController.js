@@ -2,6 +2,7 @@ const Article = require('../models/Article');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const { generateUniqueSlug, applySlugWithHistory, resolveDocumentByIdOrSlug } = require('../utils/slugUtils');
 const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCursorFilter, extractNextCursor } = require('../utils/cursorPagination');
 const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
@@ -61,6 +62,41 @@ const normalizeStringArray = (value) =>
     .map((item) => String(item || '').trim())
     .filter(Boolean);
 
+const normalizeProductLinks = (body) => {
+  const ids = [];
+  const addId = (value) => {
+    const id = typeof value === 'object' && value !== null ? (value._id || value.id) : value;
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) return;
+    const normalized = id.toString();
+    if (!ids.includes(normalized)) ids.push(normalized);
+  };
+
+  addId(body.linkedProduct);
+  parseJsonArrayField(body.linkedProducts).forEach(addId);
+
+  const externalProductLinks = parseJsonArrayField(body.externalProductLinks)
+    .filter(link => link && typeof link === 'object')
+    .map(link => ({
+      title: String(link.title || '').trim(),
+      url: String(link.url || '').trim(),
+      platform: String(link.platform || 'External').trim() || 'External',
+      thumbnail: String(link.thumbnail || '').trim(),
+      thumbnailPublicId: String(link.thumbnailPublicId || '').trim(),
+      originalThumbnail: String(link.originalThumbnail || '').trim(),
+      originalThumbnailPublicId: String(link.originalThumbnailPublicId || '').trim(),
+      backgroundRemovalStatus: String(link.backgroundRemovalStatus || '').trim(),
+      priceLabel: String(link.priceLabel || '').trim(),
+    }))
+    .filter(link => link.title && link.url);
+
+  return {
+    linkedProduct: ids[0] || null,
+    linkedProducts: ids,
+    externalProductLinks,
+    isPromoPost: ids.length > 0 || externalProductLinks.length > 0,
+  };
+};
+
 const normalizeTemplateThemeMode = (value, fallback = 'auto') =>
   ['auto', 'light', 'dark'].includes(String(value || '').trim()) ? String(value).trim() : fallback;
 
@@ -114,6 +150,7 @@ exports.createArticle = async (req, res) => {
       customTemplate,
       templateThemeMode
     } = req.body;
+    const productLinks = normalizeProductLinks(req.body);
 
     if (!title || !content) {
       return res.status(400).json({ success: false, message: 'Title and content required' });
@@ -180,12 +217,19 @@ exports.createArticle = async (req, res) => {
       metaDescription: metaDescription || null,
       slug: generatedSlug,
       slugHistory: [],
+      linkedProduct: productLinks.linkedProduct,
+      linkedProducts: productLinks.linkedProducts,
+      externalProductLinks: productLinks.externalProductLinks,
+      isPromoPost: productLinks.isPromoPost,
       isDraft: isScheduled ? true : (isDraft || false),
       isScheduled: isScheduled || false,
       scheduledPublishDate: isScheduled ? scheduledPublishDate : null
     });
 
-    const populatedArticle = await Article.findById(article._id).populate('author', 'username profileImage isGuest role isVerified');
+    const populatedArticle = await Article.findById(article._id)
+      .populate('author', 'username profileImage isGuest role isVerified')
+      .populate('linkedProduct', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
+      .populate('linkedProducts', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount');
     await invalidateArticlePublishCache();
     triggerSearchIndexRefresh('article:create');
 
@@ -278,6 +322,8 @@ exports.getArticles = async (req, res) => {
 
     const query = Article.find(filter)
       .populate('author', 'username profileImage isGuest role isVerified statuses followers')
+      .populate('linkedProduct', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
+      .populate('linkedProducts', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
       .sort({ createdAt: -1, _id: -1 });
 
     if (useCursor) {
@@ -355,7 +401,9 @@ exports.getArticle = async (req, res) => {
     const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id, {
       populate: [
         { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses followers' },
-        { path: 'likes', select: 'username profileImage' }
+        { path: 'likes', select: 'username profileImage' },
+        { path: 'linkedProduct', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount' },
+        { path: 'linkedProducts', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount' }
       ]
     });
 
@@ -440,7 +488,10 @@ exports.updateArticle = async (req, res) => {
       customTemplate,
       templateThemeMode
     } = req.body;
-    
+    const hasProductLinkInput = ['linkedProduct', 'linkedProducts', 'externalProductLinks', 'isPromoPost']
+      .some(key => Object.prototype.hasOwnProperty.call(req.body, key));
+    const productLinks = hasProductLinkInput ? normalizeProductLinks(req.body) : null;
+     
     if (isScheduled && scheduledPublishDate) {
       const scheduleDate = new Date(scheduledPublishDate);
       if (scheduleDate <= new Date()) {
@@ -508,6 +559,12 @@ exports.updateArticle = async (req, res) => {
     article.customTemplate = customTemplateResult.value;
     article.templateThemeMode = templateThemeModeValue;
     article.metaDescription = metaDescription !== undefined ? metaDescription : article.metaDescription;
+    if (productLinks) {
+      article.linkedProduct = productLinks.linkedProduct;
+      article.linkedProducts = productLinks.linkedProducts;
+      article.externalProductLinks = productLinks.externalProductLinks;
+      article.isPromoPost = productLinks.isPromoPost;
+    }
 
     const shouldRefreshSlug = slug !== undefined || Boolean(title) || !article.slug;
     if (shouldRefreshSlug) {
@@ -545,7 +602,10 @@ exports.updateArticle = async (req, res) => {
       });
     }
 
-    const updatedArticle = await Article.findById(article._id).populate('author', 'username profileImage isGuest role isVerified');
+    const updatedArticle = await Article.findById(article._id)
+      .populate('author', 'username profileImage isGuest role isVerified')
+      .populate('linkedProduct', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
+      .populate('linkedProducts', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount');
 
     res.json({ success: true, article: updatedArticle });
   } catch (error) {

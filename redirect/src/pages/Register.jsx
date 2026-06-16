@@ -522,7 +522,7 @@ const Register = () => {
   useEffect(() => {
     if (user) {
       const inFlow = isRegistering || sessionStorage.getItem('registerInProgress');
-      if (!inFlow) navigate('/');
+      if (!inFlow) navigate('/home');
     }
   }, [user, isRegistering, navigate]);
 

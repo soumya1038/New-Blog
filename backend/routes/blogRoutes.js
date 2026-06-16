@@ -1,6 +1,7 @@
 const express = require('express');
 const multer = require('multer');
 const cloudinary = require('../utils/cloudinary');
+const { removeImageUrlToCloudinary } = require('../services/backgroundRemovalService');
 const {
   createBlog,
   getBlogs,
@@ -29,6 +30,27 @@ const upload = multer({
     }
   }
 });
+const productImageUpload = multer({
+  storage,
+  limits: { fileSize: 3 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  }
+});
+
+const singleProductImageUpload = (req, res, next) => {
+  productImageUpload.single('image')(req, res, (error) => {
+    if (!error) return next();
+    const message = error.code === 'LIMIT_FILE_SIZE'
+      ? 'Product image must be 3MB or smaller.'
+      : error.message;
+    return res.status(400).json({ success: false, message });
+  });
+};
 
 // Image upload route
 router.post('/upload-image', protect, upload.single('image'), async (req, res) => {
@@ -50,6 +72,53 @@ router.post('/upload-image', protect, upload.single('image'), async (req, res) =
     });
 
     res.json({ success: true, url: result.secure_url, public_id: result.public_id });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/upload-product-image', protect, singleProductImageUpload, async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No image provided' });
+    }
+
+    const original = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { folder: 'lekhon/content-products/originals' },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      uploadStream.end(req.file.buffer);
+    });
+
+    try {
+      const processed = await removeImageUrlToCloudinary(original.secure_url, {
+        folder: 'lekhon/content-products/transparent',
+        publicIdPrefix: 'content-product',
+      });
+
+      return res.json({
+        success: true,
+        url: processed.url,
+        public_id: processed.publicId,
+        original_url: original.secure_url,
+        original_public_id: original.public_id,
+        backgroundRemovalStatus: 'done',
+      });
+    } catch (backgroundError) {
+      return res.json({
+        success: true,
+        url: original.secure_url,
+        public_id: original.public_id,
+        original_url: original.secure_url,
+        original_public_id: original.public_id,
+        backgroundRemovalStatus: 'failed',
+        backgroundRemovalError: String(backgroundError?.message || backgroundError).slice(0, 200),
+      });
+    }
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -465,7 +465,7 @@ const UserProfile = () => {
           <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-2">{t('User Does Not Exist')}</h2>
           <p className="text-[var(--text-secondary)] mb-6">{t('This user does not exist or has been removed.')}</p>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/home')}
             className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
           >
             {t('Go to Home')}
@@ -502,7 +502,7 @@ const UserProfile = () => {
           <h2 className="text-2xl font-bold text-[var(--text-primary)] mb-2">{t('Something Went Wrong')}</h2>
           <p className="text-[var(--text-secondary)] mb-6">{t('Unable to load user profile.')}</p>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/home')}
             className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
           >
             {t('Go to Home')}

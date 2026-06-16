@@ -1,4 +1,284 @@
+const axios = require('axios');
 const groq = require('../utils/openai');
+
+const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const DEFAULT_GEMINI_PRODUCT_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+
+const cleanJsonFence = (value = '') =>
+  String(value)
+    .trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/i, '')
+    .trim();
+
+const parseAiJson = (value, fallback = {}) => {
+  const cleaned = cleanJsonFence(value);
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        return JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+      } catch {
+        return fallback;
+      }
+    }
+    return fallback;
+  }
+};
+
+const decodeLooseJsonString = (value = '') =>
+  String(value)
+    .replace(/\\n/g, '\n')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
+    .trim();
+
+const extractLooseTextField = (value = '', fieldName = '') => {
+  const cleaned = cleanJsonFence(value);
+  const quoted = new RegExp(`["']${fieldName}["']\\s*:\\s*["']([\\s\\S]*?)["']\\s*(?:[,}])`, 'i');
+  const quotedMatch = cleaned.match(quoted);
+  if (quotedMatch?.[1]) return decodeLooseJsonString(quotedMatch[1]);
+
+  const bare = new RegExp(`${fieldName}\\s*:\\s*([\\s\\S]*?)(?:\\n\\s*[,}]|\\n\\s*["']?[a-zA-Z]+["']?\\s*:|$)`, 'i');
+  const bareMatch = cleaned.match(bare);
+  if (bareMatch?.[1]) {
+    return decodeLooseJsonString(bareMatch[1].replace(/^["']|["']$/g, ''));
+  }
+
+  return '';
+};
+
+const firstTextValue = (...values) =>
+  values.map(value => (typeof value === 'string' ? value.trim() : '')).find(Boolean) || '';
+
+const normalizeStringArray = (value = [], limit = 12) => {
+  const list = Array.isArray(value) ? value : String(value).split(',');
+  return list
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, limit);
+};
+
+const geminiResponseText = (payload = {}) =>
+  (payload.candidates?.[0]?.content?.parts || [])
+    .map(part => part?.text || '')
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+
+const extractGroundingSources = (groundingMetadata = {}) => {
+  const chunks = groundingMetadata.groundingChunks || [];
+  return chunks
+    .map(chunk => chunk?.web)
+    .filter(source => source?.uri || source?.title)
+    .map(source => ({
+      title: source.title || '',
+      uri: source.uri || ''
+    }))
+    .slice(0, 6);
+};
+
+const getGeminiProductModels = () => {
+  const configuredModel = process.env.GEMINI_PRODUCT_MODEL || process.env.GEMINI_MODEL || '';
+  return [...new Set([configuredModel, ...DEFAULT_GEMINI_PRODUCT_MODELS].filter(Boolean))];
+};
+
+const geminiGenerationConfig = (target, model) => {
+  const config = {
+    temperature: target === 'description' ? 0.35 : 0.25,
+    maxOutputTokens: target === 'description' ? 1800 : 1000
+  };
+
+  if (/gemini-2\.5/i.test(model)) {
+    config.thinkingConfig = {
+      thinkingBudget: 0
+    };
+  }
+
+  return config;
+};
+
+const productContextText = (product = {}) => {
+  const specifications = Array.isArray(product.specifications)
+    ? product.specifications
+      .filter(item => item?.key || item?.value)
+      .map(item => `${item.key || 'Property'}: ${item.value || ''}`)
+      .join('\n')
+    : '';
+
+  return [
+    `Type: ${product.type || 'not selected'}`,
+    `Title: ${product.title || ''}`,
+    `Description: ${product.description || ''}`,
+    `Categories: ${(product.category || []).join(', ')}`,
+    `Tags: ${product.tags || ''}`,
+    `Warranty: ${product.warranty || ''}`,
+    `Country of Origin: ${product.countryOfOrigin || ''}`,
+    specifications ? `Specifications:\n${specifications}` : '',
+  ].filter(Boolean).join('\n');
+};
+
+const buildProductListingPrompt = ({ target, instruction, context }) => `
+You are a senior e-commerce listing assistant for Lekhon Marketplace.
+Use Google Search only to understand public product context, common use-cases, and buyer-friendly wording when seller input is limited.
+
+Rules:
+- Seller-provided product context is the source of truth.
+- Do not invent exact dimensions, certifications, safety claims, stock, shipping promises, warranty terms, brand ownership, or compatibility.
+- If web results are uncertain or generic, write cautiously and make the copy seller-editable.
+- Return one valid JSON object only. No markdown, no comments, no citations in the JSON values.
+
+Task target: ${target}
+${instruction}
+
+Product context:
+${context}
+`.trim();
+
+const buildCompactProductListingPrompt = ({ target, instruction, context }) => `
+Return one valid JSON object only. No markdown.
+Target: ${target}
+${instruction}
+
+Use this product context first. If it is limited, use cautious public product context from Google Search. Do not invent exact facts that are not in the seller context.
+
+Product context:
+${context}
+`.trim();
+
+const requestGeminiProductListing = async ({ target, instruction, context, compact = false }) => {
+  if (!process.env.GEMINI_API_KEY) return null;
+
+  const prompt = compact
+    ? buildCompactProductListingPrompt({ target, instruction, context })
+    : buildProductListingPrompt({ target, instruction, context });
+  let lastError;
+
+  for (const model of getGeminiProductModels()) {
+    try {
+      const { data } = await axios.post(
+        `${GEMINI_API_BASE_URL}/${encodeURIComponent(model)}:generateContent`,
+        {
+          contents: [
+            {
+              parts: [{ text: prompt }]
+            }
+          ],
+          tools: [
+            {
+              google_search: {}
+            }
+          ],
+          generationConfig: geminiGenerationConfig(target, model)
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': process.env.GEMINI_API_KEY
+          },
+          timeout: 45000
+        }
+      );
+
+      const candidate = data.candidates?.[0] || {};
+      const raw = geminiResponseText(data);
+      return {
+        raw,
+        provider: 'gemini',
+        model,
+        webSearchQueries: candidate.groundingMetadata?.webSearchQueries || [],
+        sources: extractGroundingSources(candidate.groundingMetadata)
+      };
+    } catch (error) {
+      lastError = error;
+      console.warn('[Product AI] Gemini model failed:', model, error.response?.data?.error?.message || error.message);
+    }
+  }
+
+  throw lastError;
+};
+
+const requestGroqProductListing = async ({ target, instruction, context }) => {
+  const completion = await groq.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [
+      {
+        role: 'system',
+        content: `You help small sellers create accurate e-commerce product listings. Return valid JSON only. Use the seller's inputs first. Do not claim live web research or invent hard facts.`
+      },
+      {
+        role: 'user',
+        content: `${instruction}
+
+Product context:
+${context}`
+      }
+    ],
+    temperature: 0.45,
+    max_tokens: target === 'description' ? 700 : 450
+  });
+
+  return {
+    raw: completion.choices[0].message.content,
+    provider: 'groq'
+  };
+};
+
+const normalizeProductAiData = (target, raw) => {
+  const data = parseAiJson(raw, {});
+  const plainRaw = cleanJsonFence(raw);
+  const isJsonish = plainRaw.trim().startsWith('{');
+
+  if (target === 'description') {
+    data.description = firstTextValue(
+      data.description,
+      data.Description,
+      data.content,
+      data.productDescription,
+      extractLooseTextField(raw, 'description'),
+      extractLooseTextField(raw, 'content'),
+      !isJsonish ? plainRaw : ''
+    );
+  }
+  if (target === 'warranty') {
+    data.warranty = firstTextValue(
+      data.warranty,
+      data.Warranty,
+      extractLooseTextField(raw, 'warranty'),
+      !isJsonish ? plainRaw : ''
+    );
+  }
+  if (data.tags) data.tags = normalizeStringArray(data.tags, 12);
+  if (data.badges) data.badges = normalizeStringArray(data.badges, 3);
+  if (data.specifications) {
+    data.specifications = (Array.isArray(data.specifications) ? data.specifications : [])
+      .map(item => ({
+        key: String(item?.key || '').trim(),
+        value: String(item?.value || '').trim()
+      }))
+      .filter(item => item.key || item.value)
+      .slice(0, 12);
+  }
+  if (data.seoDescription) {
+    data.seoDescription = String(data.seoDescription).slice(0, 160);
+  }
+
+  return data;
+};
+
+const hasProductAiData = (target, data = {}) => {
+  if (target === 'description') return Boolean(String(data.description || '').trim());
+  if (target === 'specifications') return Array.isArray(data.specifications) && data.specifications.length > 0;
+  if (target === 'warranty') return Boolean(String(data.warranty || '').trim());
+  if (target === 'tags') return Array.isArray(data.tags) && data.tags.length > 0;
+  if (target === 'marketing') {
+    return Boolean(data.promoBanner || data.seoTitle || data.seoDescription || data.badges?.length);
+  }
+  return false;
+};
 
 // Generate blog content from title and tags
 exports.generateBlog = async (req, res) => {
@@ -226,6 +506,87 @@ exports.generateBio = async (req, res) => {
   } catch (error) {
     console.error('AI Error:', error);
     const errorMessage = error.response?.data?.error?.message || error.message || 'Bio generation failed';
+    res.status(500).json({ success: false, message: errorMessage });
+  }
+};
+
+exports.generateProductListing = async (req, res) => {
+  try {
+    const { target, product = {} } = req.body;
+    if (!target) {
+      return res.status(400).json({ success: false, message: 'Target is required.' });
+    }
+
+    if (!product.title?.trim()) {
+      return res.status(400).json({ success: false, message: 'Product title is required before using AI.' });
+    }
+
+    const context = productContextText(product).slice(0, 2500);
+    const targetInstructions = {
+      description: `Return JSON: {"description":"..."}.
+Write a professional marketplace description in 2-4 short paragraphs. Make it clear, trustworthy, buyer-focused, and specific. If product input is limited, use public context and common use-cases cautiously. Do not invent warranty, certifications, or shipping promises.`,
+      specifications: `Return JSON: {"specifications":[{"key":"Material","value":"..."},{"key":"Use Case","value":"..."}]}.
+Create a clean key-value specification table with 5-10 useful rows. Prefer seller-provided facts. If a fact is uncertain, use practical generic rows like Use Case, Compatibility, Package Includes, Care Instructions instead of pretending.`,
+      warranty: `Return JSON: {"warranty":"..."}.
+Draft a concise warranty/return note based only on provided information. If no warranty is provided, write a cautious seller-editable placeholder that does not overpromise.`,
+      tags: `Return JSON: {"tags":["tag one","tag two"]}.
+Generate 8-12 concise search tags for a marketplace listing. Mix broad and specific phrases. Avoid irrelevant hype.`,
+      marketing: `Return JSON: {"promoBanner":"...","badges":["New"],"seoTitle":"...","seoDescription":"..."}.
+Create a short promo banner, 1-3 suitable badges from this list only: Bestseller, New, Limited Edition, Top Rated, Staff Pick, and SEO title/description. SEO description must be under 160 characters.`
+    };
+
+    const instruction = targetInstructions[target];
+    if (!instruction) {
+      return res.status(400).json({ success: false, message: 'Unsupported product AI target.' });
+    }
+
+    let aiResult;
+    let data;
+    try {
+      aiResult = await requestGeminiProductListing({ target, instruction, context });
+    } catch (geminiError) {
+      console.warn('[Product AI] Gemini generation failed; falling back to Groq:', geminiError.response?.data?.error?.message || geminiError.message);
+    }
+
+    if (aiResult?.raw) {
+      data = normalizeProductAiData(target, aiResult.raw);
+    }
+
+    if (aiResult?.provider === 'gemini' && !hasProductAiData(target, data)) {
+      try {
+        const retryResult = await requestGeminiProductListing({ target, instruction, context, compact: true });
+        const retryData = normalizeProductAiData(target, retryResult?.raw || '');
+        if (hasProductAiData(target, retryData)) {
+          aiResult = retryResult;
+          data = retryData;
+        }
+      } catch (geminiRetryError) {
+        console.warn('[Product AI] Gemini retry failed; falling back to Groq:', geminiRetryError.response?.data?.error?.message || geminiRetryError.message);
+      }
+    }
+
+    if (!aiResult?.raw) {
+      aiResult = await requestGroqProductListing({ target, instruction, context });
+      data = normalizeProductAiData(target, aiResult.raw);
+    }
+
+    if (!hasProductAiData(target, data) && aiResult.provider !== 'groq') {
+      aiResult = await requestGroqProductListing({ target, instruction, context });
+      data = normalizeProductAiData(target, aiResult.raw);
+    }
+
+    res.json({
+      success: true,
+      target,
+      provider: aiResult.provider,
+      model: aiResult.model || '',
+      webSearchQueries: aiResult.webSearchQueries || [],
+      sources: aiResult.sources || [],
+      ...data
+    });
+  } catch (error) {
+    console.error('Product AI Error:', error);
+    const errorMessage = error.response?.data?.error?.message || error.message || 'Product AI generation failed';
     res.status(500).json({ success: false, message: errorMessage });
   }
 };

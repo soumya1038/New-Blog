@@ -24,11 +24,16 @@ const { ensureSearchIndexes } = require('../utils/searchIndexBootstrap');
 const EMAIL_QUEUE_NAME = 'email-jobs';
 const EMAIL_DLQ_NAME = 'email-jobs-dead-letter';
 const INDEXING_QUEUE_NAME = 'indexing-jobs';
+const MARKETPLACE_QUEUE_NAME = 'marketplace-jobs';
+const MARKETPLACE_DLQ_NAME = 'marketplace-jobs-dead-letter';
 
 const EMAIL_JOB_ATTEMPTS = parsePositiveInt(process.env.QUEUE_JOB_ATTEMPTS, 3);
 const EMAIL_JOB_BACKOFF_MS = parsePositiveInt(process.env.QUEUE_JOB_BACKOFF_MS, 5000);
 const EMAIL_QUEUE_CONCURRENCY = parsePositiveInt(process.env.QUEUE_CONCURRENCY_EMAIL, 4);
 const INDEXING_QUEUE_CONCURRENCY = parsePositiveInt(process.env.QUEUE_CONCURRENCY_INDEXING, 1);
+const MARKETPLACE_JOB_ATTEMPTS = parsePositiveInt(process.env.QUEUE_MARKETPLACE_JOB_ATTEMPTS, 5);
+const MARKETPLACE_JOB_BACKOFF_MS = parsePositiveInt(process.env.QUEUE_MARKETPLACE_JOB_BACKOFF_MS, 10000);
+const MARKETPLACE_QUEUE_CONCURRENCY = parsePositiveInt(process.env.QUEUE_CONCURRENCY_MARKETPLACE, 2);
 const FALLBACK_JOB_DEDUPE_TTL_MS = parsePositiveInt(process.env.QUEUE_FALLBACK_JOB_DEDUPE_TTL_MS, 10 * 60 * 1000);
 
 let initialized = false;
@@ -39,8 +44,11 @@ let connection = null;
 let emailQueue = null;
 let emailDeadLetterQueue = null;
 let indexingQueue = null;
+let marketplaceQueue = null;
+let marketplaceDeadLetterQueue = null;
 let emailWorker = null;
 let indexingWorker = null;
+let marketplaceWorker = null;
 const fallbackJobDedupeMap = new Map();
 
 const isQueueFeatureEnabled = () => process.env.QUEUE_ENABLED !== 'false';
@@ -58,6 +66,22 @@ const createDefaultJobOptions = () => ({
   removeOnFail: {
     age: 60 * 60 * 24 * 3, // 3 days
     count: 5000
+  }
+});
+
+const createMarketplaceJobOptions = () => ({
+  attempts: MARKETPLACE_JOB_ATTEMPTS,
+  backoff: {
+    type: 'exponential',
+    delay: MARKETPLACE_JOB_BACKOFF_MS
+  },
+  removeOnComplete: {
+    age: 60 * 60 * 24 * 7,
+    count: 10000
+  },
+  removeOnFail: {
+    age: 60 * 60 * 24 * 14,
+    count: 10000
   }
 });
 
@@ -203,6 +227,21 @@ const handleIndexingJob = async (jobName) => {
   throw new Error(`Unsupported indexing job type: ${jobName}`);
 };
 
+const handleMarketplaceJob = async (jobName, payload = {}) => {
+  switch (jobName) {
+    case 'fulfill-order': {
+      const { fulfillOrderById } = require('../services/marketplaceFulfillmentService');
+      return fulfillOrderById(payload.orderId);
+    }
+    case 'prepare-shipments': {
+      const { prepareShipmentsForOrder } = require('../services/shipmentWorkflowService');
+      return prepareShipmentsForOrder(payload.orderId);
+    }
+    default:
+      throw new Error(`Unsupported marketplace job type: ${jobName}`);
+  }
+};
+
 const runFallbackEmailJob = (jobName, payload, options = {}) => {
   if (shouldSkipFallbackJob(options.jobId)) {
     return false;
@@ -228,6 +267,21 @@ const runFallbackIndexingJob = () => {
   });
 };
 
+const runFallbackMarketplaceJob = (jobName, payload, options = {}) => {
+  if (shouldSkipFallbackJob(options.jobId)) {
+    return false;
+  }
+
+  setImmediate(async () => {
+    try {
+      await handleMarketplaceJob(jobName, payload);
+    } catch (error) {
+      console.error(`[queue:fallback] Marketplace job failed (${jobName}):`, error?.message || error);
+    }
+  });
+  return true;
+};
+
 const startBackgroundWorkers = async () => {
   if (!queueEnabled || workersStarted) return;
 
@@ -250,6 +304,17 @@ const startBackgroundWorkers = async () => {
     {
       connection,
       concurrency: INDEXING_QUEUE_CONCURRENCY
+    }
+  );
+
+  marketplaceWorker = new Worker(
+    MARKETPLACE_QUEUE_NAME,
+    async (job) => {
+      await handleMarketplaceJob(job.name, job.data);
+    },
+    {
+      connection,
+      concurrency: MARKETPLACE_QUEUE_CONCURRENCY
     }
   );
 
@@ -285,6 +350,36 @@ const startBackgroundWorkers = async () => {
 
   indexingWorker.on('failed', (job, error) => {
     console.error(`[queue] Indexing job failed: ${job?.name} (${job?.id})`, error?.message || error);
+  });
+
+  marketplaceWorker.on('completed', (job) => {
+    console.log(`[queue] Marketplace job completed: ${job.name} (${job.id})`);
+  });
+
+  marketplaceWorker.on('failed', async (job, error) => {
+    console.error(`[queue] Marketplace job failed: ${job?.name} (${job?.id})`, error?.message || error);
+    const attempts = job?.opts?.attempts || MARKETPLACE_JOB_ATTEMPTS;
+    if (job && job.attemptsMade >= attempts && marketplaceDeadLetterQueue) {
+      try {
+        await marketplaceDeadLetterQueue.add(
+          'marketplace-failed',
+          {
+            sourceJobId: job.id,
+            sourceJobName: job.name,
+            data: job.data,
+            failedReason: error?.message || String(error || 'Unknown error'),
+            failedAt: new Date().toISOString(),
+            attemptsMade: job.attemptsMade
+          },
+          {
+            removeOnComplete: true,
+            removeOnFail: true
+          }
+        );
+      } catch (dlqError) {
+        console.error('[queue] Failed to enqueue dead-letter marketplace job:', dlqError?.message || dlqError);
+      }
+    }
   });
 
   workersStarted = true;
@@ -335,6 +430,17 @@ const initializeBackgroundQueues = async ({ startWorkers = process.env.QUEUE_STA
           age: 60 * 60 * 24 * 3,
           count: 1000
         }
+      }
+    });
+    marketplaceQueue = new Queue(MARKETPLACE_QUEUE_NAME, {
+      connection,
+      defaultJobOptions: createMarketplaceJobOptions()
+    });
+    marketplaceDeadLetterQueue = new Queue(MARKETPLACE_DLQ_NAME, {
+      connection,
+      defaultJobOptions: {
+        removeOnComplete: true,
+        removeOnFail: true
       }
     });
     queueEnabled = true;
@@ -400,14 +506,38 @@ const enqueueSearchIndexRefresh = async (reason = 'content-update') => {
   }
 };
 
+const enqueueMarketplaceJob = async (jobName, payload = {}, options = {}) => {
+  if (!initialized) {
+    await initializeBackgroundQueues();
+  }
+
+  if (!queueEnabled || !marketplaceQueue) {
+    const queued = runFallbackMarketplaceJob(jobName, payload, options);
+    return { mode: 'fallback', queued, deduped: !queued };
+  }
+
+  const job = await marketplaceQueue.add(jobName, payload, {
+    jobId: options.jobId,
+    attempts: options.attempts || MARKETPLACE_JOB_ATTEMPTS,
+    backoff: options.backoff || { type: 'exponential', delay: MARKETPLACE_JOB_BACKOFF_MS },
+    removeOnComplete: options.removeOnComplete || { age: 60 * 60 * 24 * 7, count: 10000 },
+    removeOnFail: options.removeOnFail || { age: 60 * 60 * 24 * 14, count: 10000 }
+  });
+
+  return { mode: 'bullmq', queued: true, jobId: job.id };
+};
+
 const shutdownBackgroundQueues = async () => {
   try {
     await Promise.all([
       emailWorker?.close(),
       indexingWorker?.close(),
+      marketplaceWorker?.close(),
       emailQueue?.close(),
       emailDeadLetterQueue?.close(),
-      indexingQueue?.close()
+      indexingQueue?.close(),
+      marketplaceQueue?.close(),
+      marketplaceDeadLetterQueue?.close()
     ]);
     workersStarted = false;
     queueEnabled = false;
@@ -425,5 +555,6 @@ module.exports = {
   startBackgroundWorkers,
   enqueueEmailJob,
   enqueueSearchIndexRefresh,
+  enqueueMarketplaceJob,
   shutdownBackgroundQueues
 };

@@ -14,7 +14,7 @@ const TYPE_LABELS = {
   external: { label: 'External Link', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300' },
 };
 
-const ProductCard = ({ product, onAddToCart, className = '' }) => {
+const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) => {
   const { user }           = useContext(AuthContext);
   const [wishlisted, setWishlisted] = useState(false);
   const [cartLoading, setCartLoading] = useState(false);
@@ -53,6 +53,9 @@ const ProductCard = ({ product, onAddToCart, className = '' }) => {
   return (
     <Link
       to={`/marketplace/${product.slug}`}
+      onClick={(event) => {
+        if (!event.defaultPrevented) onProductView && onProductView(product);
+      }}
       className={`group relative flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden ${className}`}
     >
       {/* ── Thumbnail ─────────────────────────────────────────────────────── */}

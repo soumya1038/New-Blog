@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { FaHeart, FaRegHeart } from 'react-icons/fa';
 import { getBlogPath } from '../utils/contentRoutes';
 import Avatar from './Avatar';
-import ProductPromoCard from './ProductPromoCard';
+import ProductTagOverlay from './ProductTagOverlay';
 
 const BlogCard = ({ blog, index = 0, onLike, onTagClick }) => {
   const [isLiked, setIsLiked] = React.useState(false);
@@ -34,6 +34,8 @@ const BlogCard = ({ blog, index = 0, onLike, onTagClick }) => {
         boxShadow: 'var(--blog-shadow)',
       }}
     >
+      <div className="relative">
+      <ProductTagOverlay content={blog} />
       <Link to={getBlogPath(blog)} style={{ textDecoration: 'none' }}>
         {blog.coverImage && (
           <div style={{ width: '100%', height: '200px', overflow: 'hidden', marginBottom: '18px', borderRadius: '12px' }}>
@@ -136,11 +138,7 @@ const BlogCard = ({ blog, index = 0, onLike, onTagClick }) => {
           </motion.button>
         </div>
       </Link>
-      {blog.linkedProduct && blog.linkedProduct._id && (
-        <div style={{ marginTop: '12px' }}>
-          <ProductPromoCard product={blog.linkedProduct} />
-        </div>
-      )}
+      </div>
     </motion.article>
   );
 };

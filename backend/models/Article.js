@@ -24,6 +24,27 @@ const articleSchema = new mongoose.Schema({
   isScheduled: { type: Boolean, default: false },
   scheduledPublishDate: { type: Date },
   views: { type: Number, default: 0 },
+  linkedProduct: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Product',
+    default: null,
+  },
+  linkedProducts: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Product',
+  }],
+  externalProductLinks: [{
+    title: { type: String, trim: true },
+    url: { type: String, trim: true },
+    platform: { type: String, trim: true, default: 'External' },
+    thumbnail: { type: String, trim: true, default: '' },
+    thumbnailPublicId: { type: String, trim: true, default: '' },
+    originalThumbnail: { type: String, trim: true, default: '' },
+    originalThumbnailPublicId: { type: String, trim: true, default: '' },
+    backgroundRemovalStatus: { type: String, trim: true, default: '' },
+    priceLabel: { type: String, trim: true, default: '' },
+  }],
+  isPromoPost: { type: Boolean, default: false },
   viewedBy: [{ 
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     ip: { type: String },

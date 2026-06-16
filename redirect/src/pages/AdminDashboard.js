@@ -4,13 +4,374 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { TbBrandBlogger } from "react-icons/tb";
-import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes, FaServer, FaExclamationTriangle, FaChartLine, FaBug, FaTachometerAlt, FaEnvelope, FaStore } from 'react-icons/fa';
+import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes, FaServer, FaExclamationTriangle, FaChartLine, FaBug, FaTachometerAlt, FaEnvelope, FaStore, FaMoneyBillWave, FaRupeeSign } from 'react-icons/fa';
 import { GoVerified, GoUnverified } from 'react-icons/go';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { StatsCardSkeleton, TableRowSkeleton } from '../components/SkeletonLoader';
 import { BarLoader, PropagateLoader } from 'react-spinners';
 import AdminSellerApplications from '../components/AdminSellerApplications';
+
+const AdminPayoutsPanel = () => {
+  const [payouts, setPayouts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState('queued');
+  const [markingId, setMarkingId] = useState(null);
+  const [markPaidModal, setMarkPaidModal] = useState({ open: false, payoutId: null, reference: 'manual' });
+
+  const loadPayouts = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get(`/seller/admin/payouts?status=${status}&limit=50`);
+      setPayouts(data.payouts || []);
+    } catch {
+      setPayouts([]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadPayouts();
+  }, [status]);
+
+  const markPaid = async () => {
+    const id = markPaidModal.payoutId;
+    const reference = markPaidModal.reference.trim();
+    if (!reference) return;
+    setMarkingId(id);
+    try {
+      await api.patch(`/seller/admin/payouts/${id}/mark-paid`, { reference });
+      setMarkPaidModal({ open: false, payoutId: null, reference: 'manual' });
+      await loadPayouts();
+    } catch (e) {
+      alert(e.response?.data?.message || 'Unable to mark payout as paid.');
+    }
+    setMarkingId(null);
+  };
+
+  return (
+    <div className="bg-[var(--surface-card)] border border-[var(--border-default)] rounded-xl shadow-lg overflow-hidden">
+      <div className="p-4 border-b border-[var(--border-default)] flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <FaMoneyBillWave className="text-green-500" />
+            Payouts
+          </h2>
+          <p className="text-xs text-[var(--text-muted)] mt-1">Review queued and processed seller payouts.</p>
+        </div>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] text-[var(--text-primary)] text-sm"
+        >
+          <option value="queued">Queued</option>
+          <option value="processing">Processing</option>
+          <option value="processed">Processed</option>
+          <option value="failed">Failed</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <div className="py-12 flex justify-center">
+          <BarLoader color="var(--brand-primary)" />
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[var(--text-primary)]">
+            <thead className="bg-[var(--surface-elevated)]">
+              <tr>
+                {['Seller', 'Amount', 'Method', 'Status', 'Created', 'Action'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-muted)] uppercase">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {payouts.map(payout => (
+                <tr key={payout._id} className="border-t border-[var(--border-default)]">
+                  <td className="px-4 py-3">
+                    <div className="font-semibold">{payout.sellerId?.name || payout.sellerId?.username || 'Seller'}</div>
+                    <div className="text-xs text-[var(--text-muted)]">@{payout.sellerId?.username || 'unknown'}</div>
+                  </td>
+                  <td className="px-4 py-3 font-semibold">Rs. {Number(payout.amount || 0).toLocaleString('en-IN')}</td>
+                  <td className="px-4 py-3 capitalize">{payout.method}</td>
+                  <td className="px-4 py-3">
+                    <span className="px-2 py-1 rounded-full bg-[var(--surface-elevated)] text-xs font-semibold capitalize">{payout.status}</span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-[var(--text-muted)]">{new Date(payout.createdAt).toLocaleDateString('en-IN')}</td>
+                  <td className="px-4 py-3">
+                    {['queued', 'processing'].includes(payout.status) ? (
+                      <button
+                        onClick={() => setMarkPaidModal({ open: true, payoutId: payout._id, reference: 'manual' })}
+                        disabled={markingId === payout._id}
+                        className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-semibold disabled:opacity-60"
+                      >
+                        {markingId === payout._id ? 'Saving...' : 'Mark as Paid'}
+                      </button>
+                    ) : (
+                      <span className="text-xs text-[var(--text-muted)]">No action</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {payouts.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-[var(--text-muted)]">No payouts found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {markPaidModal.open && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-[var(--surface-card)] border border-[var(--border-default)] rounded-xl shadow-xl p-5 w-full max-w-sm">
+            <h3 className="font-bold text-[var(--text-primary)] mb-2">Mark payout as paid</h3>
+            <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Payment reference</label>
+            <input
+              value={markPaidModal.reference}
+              onChange={(e) => setMarkPaidModal(prev => ({ ...prev, reference: e.target.value }))}
+              className="w-full px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              autoFocus
+            />
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setMarkPaidModal({ open: false, payoutId: null, reference: 'manual' })}
+                className="flex-1 px-4 py-2 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={markPaid}
+                disabled={markingId === markPaidModal.payoutId || !markPaidModal.reference.trim()}
+                className="flex-1 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-semibold disabled:opacity-60"
+              >
+                {markingId === markPaidModal.payoutId ? 'Saving...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const PRICE_REQUEST_STATUS_STYLE = {
+  pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  approved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  cancelled: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300',
+  expired: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+};
+
+const AdminPriceChangesPanel = () => {
+  const { user } = useContext(AuthContext);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState('pending');
+  const [reviewingId, setReviewingId] = useState(null);
+  const [rejectModal, setRejectModal] = useState({ open: false, requestId: null, note: '' });
+  const isAdmin = user?.role === 'admin';
+
+  const loadRequests = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get(`/price-changes/admin?status=${status}&limit=100`);
+      setRequests(data.requests || []);
+    } catch {
+      setRequests([]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadRequests();
+  }, [status]);
+
+  const approveRequest = async (id) => {
+    setReviewingId(id);
+    try {
+      const { data } = await api.patch(`/price-changes/admin/${id}/approve`, {});
+      setRequests(reqs => reqs.map(req => req._id === id ? data.request : req));
+    } catch (e) {
+      alert(e.response?.data?.message || 'Unable to approve price change.');
+    }
+    setReviewingId(null);
+  };
+
+  const rejectRequest = async () => {
+    const id = rejectModal.requestId;
+    setReviewingId(id);
+    try {
+      const { data } = await api.patch(`/price-changes/admin/${id}/reject`, {
+        adminNote: rejectModal.note.trim(),
+      });
+      setRequests(reqs => reqs.map(req => req._id === id ? data.request : req));
+      setRejectModal({ open: false, requestId: null, note: '' });
+    } catch (e) {
+      alert(e.response?.data?.message || 'Unable to reject price change.');
+    }
+    setReviewingId(null);
+  };
+
+  return (
+    <div className="bg-[var(--surface-card)] border border-[var(--border-default)] rounded-xl shadow-lg overflow-hidden">
+      <div className="p-4 border-b border-[var(--border-default)] flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <FaRupeeSign className="text-amber-500" />
+            Price Change Tokens
+          </h2>
+          <p className="text-xs text-[var(--text-muted)] mt-1">Review seller requests before a product price can increase.</p>
+        </div>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] text-[var(--text-primary)] text-sm"
+        >
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="expired">Expired</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+
+      {loading ? (
+        <div className="py-12 flex justify-center">
+          <BarLoader color="var(--brand-primary)" />
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-[var(--text-primary)]">
+            <thead className="bg-[var(--surface-elevated)]">
+              <tr>
+                {['Token', 'Product', 'Seller', 'Old', 'Requested', 'Reason', 'Status', 'Action'].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-[var(--text-muted)] uppercase">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {requests.map(request => {
+                const productTitle = request.productId?.title || request.snapshot?.productTitle || 'Product';
+                const productSlug = request.productId?.slug || request.snapshot?.productSlug || '';
+                const statusClass = PRICE_REQUEST_STATUS_STYLE[request.status] || PRICE_REQUEST_STATUS_STYLE.expired;
+                const increase = Number(request.requestedPrice || 0) - Number(request.oldPrice || 0);
+                return (
+                  <tr key={request._id} className="border-t border-[var(--border-default)] align-top">
+                    <td className="px-4 py-3 font-mono text-xs">{request.requestToken}</td>
+                    <td className="px-4 py-3">
+                      {productSlug ? (
+                        <Link
+                          to={`/marketplace/${productSlug}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-2 min-w-[220px] text-[var(--text-primary)] hover:text-[var(--brand-primary)] transition-colors"
+                        >
+                          <img
+                            src={request.productId?.thumbnail || request.snapshot?.thumbnail || ''}
+                            alt=""
+                            className="w-9 h-9 rounded-lg object-cover bg-[var(--surface-elevated)] shrink-0"
+                          />
+                          <span className="font-semibold truncate max-w-[220px]">{productTitle}</span>
+                        </Link>
+                      ) : (
+                        <div className="flex items-center gap-2 min-w-[220px]">
+                          <img
+                            src={request.productId?.thumbnail || request.snapshot?.thumbnail || ''}
+                            alt=""
+                            className="w-9 h-9 rounded-lg object-cover bg-[var(--surface-elevated)] shrink-0"
+                          />
+                          <span className="font-semibold truncate max-w-[220px]">{productTitle}</span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold">{request.sellerId?.name || request.sellerId?.username || 'Seller'}</div>
+                      <div className="text-xs text-[var(--text-muted)]">@{request.sellerId?.username || 'unknown'}</div>
+                    </td>
+                    <td className="px-4 py-3">Rs. {Number(request.oldPrice || 0).toLocaleString('en-IN')}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold">Rs. {Number(request.requestedPrice || 0).toLocaleString('en-IN')}</div>
+                      <div className="text-xs text-[var(--text-muted)]">+Rs. {increase.toLocaleString('en-IN')}</div>
+                    </td>
+                    <td className="px-4 py-3 max-w-[260px] text-sm text-[var(--text-secondary)]">{request.reason}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${statusClass}`}>{request.status}</span>
+                      {request.adminNote && <div className="mt-1 text-xs text-[var(--text-muted)]">{request.adminNote}</div>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {request.status === 'pending' && isAdmin ? (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => approveRequest(request._id)}
+                            disabled={reviewingId === request._id}
+                            className="px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-semibold disabled:opacity-60"
+                          >
+                            {reviewingId === request._id ? 'Saving...' : 'Approve'}
+                          </button>
+                          <button
+                            onClick={() => setRejectModal({ open: true, requestId: request._id, note: '' })}
+                            disabled={reviewingId === request._id}
+                            className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold disabled:opacity-60"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      ) : request.status === 'pending' ? (
+                        <span className="text-xs text-[var(--text-muted)]">Read only</span>
+                      ) : (
+                        <span className="text-xs text-[var(--text-muted)]">Reviewed</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {requests.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-[var(--text-muted)]">No price-change tokens found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {rejectModal.open && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-[var(--surface-card)] border border-[var(--border-default)] rounded-xl shadow-xl p-5 w-full max-w-sm">
+            <h3 className="font-bold text-[var(--text-primary)] mb-2">Reject price change</h3>
+            <label className="block text-xs font-semibold text-[var(--text-muted)] mb-1">Admin note</label>
+            <textarea
+              value={rejectModal.note}
+              onChange={(e) => setRejectModal(prev => ({ ...prev, note: e.target.value }))}
+              rows={4}
+              maxLength={1000}
+              className="w-full px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] text-[var(--text-primary)] text-sm focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+              autoFocus
+            />
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={() => setRejectModal({ open: false, requestId: null, note: '' })}
+                className="flex-1 px-4 py-2 rounded-lg border border-[var(--border-default)] text-[var(--text-secondary)] text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={rejectRequest}
+                disabled={reviewingId === rejectModal.requestId}
+                className="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold disabled:opacity-60"
+              >
+                {reviewingId === rejectModal.requestId ? 'Saving...' : 'Reject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const AdminDashboard = () => {
   const { t } = useTranslation();
@@ -36,6 +397,7 @@ const AdminDashboard = () => {
   const [modalConfig, setModalConfig] = useState({});
   const [suspendDays, setSuspendDays] = useState('');
   const [suspendUnit, setSuspendUnit] = useState('days');
+  const [modalText, setModalText] = useState('');
   const [modalError, setModalError] = useState('');
   const [loadingStats, setLoadingStats] = useState(false);
   const [suspendLoading, setSuspendLoading] = useState(false);
@@ -55,7 +417,7 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (authLoading) return;
     if (!user || (user.role !== 'admin' && user.role !== 'coAdmin')) {
-      navigate('/');
+      navigate('/home');
       return;
     }
     fetchData();
@@ -97,6 +459,7 @@ const AdminDashboard = () => {
     setModalConfig(config);
     setModalError('');
     setSuspendDays(config.needsInput ? '1' : '');
+    setModalText(config.defaultText || '');
     setShowModal(true);
   };
 
@@ -106,6 +469,7 @@ const AdminDashboard = () => {
     setModalError('');
     setSuspendDays('1');
     setSuspendUnit('days');
+    setModalText('');
     setSuspendLoading(false);
   };
 
@@ -140,18 +504,24 @@ const AdminDashboard = () => {
     });
   };
 
-  const handleSendWarningEmail = async (userId, username) => {
-    const reasonInput = window.prompt(
-      `Enter warning reason for ${username}:`,
-      'Policy warning issued by moderation team'
-    );
+  const handleSendWarningEmail = (userId, username) => {
+    openModal({
+      type: 'warning-email',
+      title: 'Send Account Warning Email',
+      message: `Enter warning reason for ${username}:`,
+      confirmText: 'Send',
+      userId,
+      username,
+      defaultText: 'Policy warning issued by moderation team',
+    });
+  };
 
-    if (reasonInput === null) return;
-
-    const reason = reasonInput.trim() || 'Policy warning issued by moderation team';
-
+  const confirmWarningEmail = async () => {
+    const { userId, username } = modalConfig;
+    const reason = modalText.trim() || 'Policy warning issued by moderation team';
     try {
       await api.post(`/admin/users/${userId}/warn-email`, { reason });
+      closeModal();
       openModal({
         type: 'success',
         title: t('Success!'),
@@ -166,21 +536,23 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleSendPreDeletionEmail = async (userId, username) => {
-    const daysInput = window.prompt(
-      `Enter days remaining for pre-deletion warning email for ${username}:`,
-      '7'
-    );
+  const handleSendPreDeletionEmail = (userId, username) => {
+    openModal({
+      type: 'pre-delete-email',
+      title: 'Send Pre-Deletion Warning Email',
+      message: `Enter days remaining for pre-deletion warning email for ${username}:`,
+      confirmText: 'Send',
+      needsInput: true,
+      userId,
+      username,
+    });
+  };
 
-    if (daysInput === null) return;
-
-    const parsedDays = Number(daysInput);
+  const confirmPreDeletionEmail = async () => {
+    const { userId, username } = modalConfig;
+    const parsedDays = Number(suspendDays);
     if (!Number.isFinite(parsedDays) || parsedDays <= 0) {
-      openModal({
-        type: 'delete-user',
-        title: 'Error',
-        message: 'Please enter a valid positive number of days.',
-      });
+      setModalError('Please enter a valid positive number of days.');
       return;
     }
 
@@ -192,6 +564,7 @@ const AdminDashboard = () => {
         daysRemaining,
         deletionDate,
       });
+      closeModal();
       openModal({
         type: 'success',
         title: t('Success!'),
@@ -508,6 +881,20 @@ const AdminDashboard = () => {
           >
             <FaStore size={14} />
             {t('Sellers')}
+          </button>
+          <button
+            onClick={() => setActiveTab('payouts')}
+            className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base flex items-center gap-1.5 ${activeTab === 'payouts' ? 'border-b-2 border-[var(--brand-primary)] text-[var(--brand-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+          >
+            <FaMoneyBillWave size={14} />
+            {t('Payouts')}
+          </button>
+          <button
+            onClick={() => setActiveTab('price-changes')}
+            className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base flex items-center gap-1.5 ${activeTab === 'price-changes' ? 'border-b-2 border-[var(--brand-primary)] text-[var(--brand-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+          >
+            <FaRupeeSign size={14} />
+            {t('Price Changes')}
           </button>
         </div>
 
@@ -1279,6 +1666,14 @@ const AdminDashboard = () => {
           <AdminSellerApplications />
         )}
 
+        {activeTab === 'payouts' && (
+          <AdminPayoutsPanel />
+        )}
+
+        {activeTab === 'price-changes' && (
+          <AdminPriceChangesPanel />
+        )}
+
         {/* Blogs Tab */}
         {activeTab === 'blogs' && (
           <div className="bg-[var(--surface-card)] border border-[var(--border-default)] rounded-xl shadow-lg overflow-hidden">
@@ -1460,21 +1855,32 @@ const AdminDashboard = () => {
                       type="number"
                       value={suspendDays}
                       onChange={(e) => setSuspendDays(e.target.value)}
-                      placeholder="Enter duration"
+                      placeholder={modalConfig.type === 'pre-delete-email' ? 'Enter days remaining' : 'Enter duration'}
                       className="flex-1 px-4 py-2 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
                       min="1"
                     />
-                    <select
-                      value={suspendUnit}
-                      onChange={(e) => setSuspendUnit(e.target.value)}
-                      className="px-4 py-2 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-[var(--surface-card)] text-[var(--text-primary)]"
-                    >
-                      <option value="hours">{t('Hours')}</option>
-                      <option value="days">{t('Days')}</option>
-                      <option value="months">{t('Months')}</option>
-                    </select>
+                    {modalConfig.type !== 'pre-delete-email' && (
+                      <select
+                        value={suspendUnit}
+                        onChange={(e) => setSuspendUnit(e.target.value)}
+                        className="px-4 py-2 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-[var(--surface-card)] text-[var(--text-primary)]"
+                      >
+                        <option value="hours">{t('Hours')}</option>
+                        <option value="days">{t('Days')}</option>
+                        <option value="months">{t('Months')}</option>
+                      </select>
+                    )}
                   </div>
                 </div>
+              )}
+              {modalConfig.type === 'warning-email' && (
+                <textarea
+                  value={modalText}
+                  onChange={(e) => setModalText(e.target.value)}
+                  rows={3}
+                  className="w-full px-4 py-2 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] resize-none mb-4"
+                  placeholder="Warning reason"
+                />
               )}
               
               <div className="flex gap-3">
@@ -1488,7 +1894,15 @@ const AdminDashboard = () => {
                 ) : (
                   <>
                     <button
-                      onClick={modalConfig.type === 'suspend-user' ? handleModalConfirm : modalConfig.onConfirm}
+                      onClick={
+                        modalConfig.type === 'suspend-user'
+                          ? handleModalConfirm
+                          : modalConfig.type === 'warning-email'
+                          ? confirmWarningEmail
+                          : modalConfig.type === 'pre-delete-email'
+                          ? confirmPreDeletionEmail
+                          : modalConfig.onConfirm
+                      }
                       className={`flex-1 px-6 py-2 rounded-lg hover:opacity-90 font-semibold text-white ${
                         modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'delete-article' || modalConfig.type === 'delete-short' || modalConfig.type === 'remove-coadmin' ? 'bg-red-600' :
                         modalConfig.type === 'make-admin' ? 'bg-purple-600' :

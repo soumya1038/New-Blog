@@ -63,17 +63,71 @@ const orderSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // ── Auto order number ──────────────────────────────────────────────────────────
+const getMaxOrderSequence = async (year, session) => {
+  const query = mongoose.model('Order').aggregate([
+    { $match: { orderNumber: { $regex: `^LEK-${year}-\\d+$` } } },
+    {
+      $project: {
+        seq: {
+          $toInt: {
+            $arrayElemAt: [{ $split: ['$orderNumber', '-'] }, 2],
+          },
+        },
+      },
+    },
+    { $sort: { seq: -1 } },
+    { $limit: 1 },
+  ]);
+  if (session) query.session(session);
+  const [latest] = await query;
+
+  return latest?.seq || 0;
+};
+
+const getNextOrderNumber = async (doc) => {
+  const year = new Date().getFullYear();
+  const session = typeof doc.$session === 'function' ? doc.$session() : null;
+  const counterId = `orderNumber:${year}`;
+  const counters = mongoose.connection.collection('counters');
+  const maxExistingSeq = await getMaxOrderSequence(year, session);
+  const now = new Date();
+
+  await counters.updateOne(
+    { _id: counterId },
+    {
+      $max: { seq: maxExistingSeq },
+      $set: { updatedAt: now },
+      $setOnInsert: { type: 'orderNumber', year, createdAt: now },
+    },
+    { upsert: true, ...(session ? { session } : {}) }
+  );
+
+  const result = await counters.findOneAndUpdate(
+    { _id: counterId },
+    { $inc: { seq: 1 }, $set: { updatedAt: now } },
+    { returnDocument: 'after', ...(session ? { session } : {}) }
+  );
+  const counter = result.value || result;
+  return `LEK-${year}-${String(counter.seq).padStart(4, '0')}`;
+};
+
 orderSchema.pre('save', async function (next) {
-  if (!this.orderNumber) {
-    const year  = new Date().getFullYear();
-    const count = await mongoose.model('Order').countDocuments();
-    this.orderNumber = `LEK-${year}-${String(count + 1).padStart(4, '0')}`;
+  try {
+    if (!this.orderNumber) {
+      this.orderNumber = await getNextOrderNumber(this);
+    }
+    next();
+  } catch (error) {
+    next(error);
   }
-  next();
 });
 
 orderSchema.index({ buyerId: 1, createdAt: -1 });
 orderSchema.index({ 'items.sellerId': 1, createdAt: -1 });
+orderSchema.index({ buyerId: 1, status: 1, createdAt: -1 });
+orderSchema.index({ 'items.sellerId': 1, status: 1, createdAt: -1 });
+orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ 'payment.razorpayOrderId': 1 });
+orderSchema.index({ 'shipping.trackingNumber': 1 }, { sparse: true });
 
 module.exports = mongoose.model('Order', orderSchema);

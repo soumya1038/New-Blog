@@ -2,8 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate }    from 'react-router-dom';
 import { AuthContext }          from '../context/AuthContext';
 import api                      from '../services/api';
-import { FaBoxOpen, FaDownload, FaChevronRight, FaSearch } from 'react-icons/fa';
-import { MdStorefront }         from 'react-icons/md';
+import { FaBoxOpen, FaDownload, FaImage, FaRedo, FaSearch, FaStar, FaTag, FaTrash, FaTruck, FaUndoAlt } from 'react-icons/fa';
 
 const STATUS_CONFIG = {
   pending_payment: { label: 'Pending Payment', color: 'bg-gray-100   text-gray-600   dark:bg-gray-800      dark:text-gray-400'   },
@@ -11,7 +10,7 @@ const STATUS_CONFIG = {
   processing:      { label: 'Processing',       color: 'bg-blue-100   text-blue-700   dark:bg-blue-900/30   dark:text-blue-400'   },
   shipped:         { label: 'Shipped',          color: 'bg-teal-100   text-teal-700   dark:bg-teal-900/30   dark:text-teal-400'   },
   delivered:       { label: 'Delivered',        color: 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400'  },
-  completed:       { label: 'Completed',        color: 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400'  },
+  completed:       { label: 'Delivered',        color: 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400'  },
   failed:          { label: 'Failed',           color: 'bg-red-100    text-red-700    dark:bg-red-900/30    dark:text-red-400'    },
   refunded:        { label: 'Refunded',         color: 'bg-gray-100   text-gray-500   dark:bg-gray-800      dark:text-gray-400'   },
 };
@@ -19,7 +18,7 @@ const STATUS_CONFIG = {
 const TABS = [
   { key: 'all',       label: 'All Orders'  },
   { key: 'paid',      label: 'Active'      },
-  { key: 'completed', label: 'Completed'   },
+  { key: 'completed', label: 'Delivered'   },
   { key: 'failed',    label: 'Failed'      },
 ];
 
@@ -31,6 +30,7 @@ const MyOrders = () => {
   const [tab,      setTab]      = useState('all');
   const [search,   setSearch]   = useState('');
   const [dlState,  setDlState]  = useState({});
+  const [orderAction, setOrderAction] = useState('');
 
   useEffect(() => {
     if (!user) { navigate('/login'); return; }
@@ -60,6 +60,38 @@ const MyOrders = () => {
       alert(err.response?.data?.message || 'Download failed. Please try again.');
       setDlState(s => ({ ...s, [key]: null }));
     }
+  };
+
+  const deleteOrder = async (order) => {
+    if (!window.confirm('Delete this failed order?')) return;
+    setOrderAction(order._id);
+    try {
+      await api.delete(`/orders/${order._id}`);
+      setOrders(list => list.filter(o => o._id !== order._id));
+      window.dispatchEvent(new Event('cartUpdated'));
+    } catch (err) {
+      alert(err.response?.data?.message || 'Could not delete this order.');
+    }
+    setOrderAction('');
+  };
+
+  const retryPayment = async (order) => {
+    setOrderAction(order._id);
+    try {
+      await api.delete(`/orders/${order._id}`);
+      await api.delete('/marketplace/cart');
+      await Promise.all((order.items || []).map(item => {
+        const productId = item.productId?._id || item.productId;
+        if (!productId || item.type === 'external') return null;
+        return api.post('/marketplace/cart/add', { productId, qty: item.qty || 1 });
+      }).filter(Boolean));
+      setOrders(list => list.filter(o => o._id !== order._id));
+      window.dispatchEvent(new Event('cartUpdated'));
+      navigate('/checkout');
+    } catch (err) {
+      alert(err.response?.data?.message || 'Could not retry this payment.');
+    }
+    setOrderAction('');
   };
 
   if (loading) return (
@@ -126,6 +158,8 @@ const MyOrders = () => {
               const statusCfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.paid;
               const hasDigital = order.items?.some(i => i.type === 'digital');
               const canDownload = hasDigital && ['paid', 'delivered', 'completed'].includes(order.status);
+              const isDelivered = ['delivered', 'completed'].includes(order.status);
+              const needsPaymentAction = ['failed', 'pending_payment'].includes(order.status);
 
               return (
                 <div key={order._id} className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] overflow-hidden hover:border-violet-300 dark:hover:border-violet-700 transition-colors">
@@ -140,7 +174,7 @@ const MyOrders = () => {
                     </div>
                     <div className="flex items-center gap-3 text-xs text-[var(--text-muted)]">
                       <span>{new Date(order.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                      <span className="font-bold text-[var(--text-primary)]">₹{order.total?.toLocaleString('en-IN')}</span>
+                      <span className="font-bold text-[var(--text-primary)]">Rs. {order.total?.toLocaleString('en-IN')}</span>
                     </div>
                   </div>
 
@@ -156,16 +190,18 @@ const MyOrders = () => {
                       return (
                         <div key={idx} className="flex items-center gap-3 px-4 py-3">
                           {/* Thumbnail */}
-                          <div className="w-12 h-12 rounded-xl overflow-hidden bg-[var(--bg-secondary)] shrink-0 border border-[var(--border-color)]">
+                          <Link to={`/order/${order._id}`} className="w-12 h-12 rounded-xl overflow-hidden bg-[var(--bg-secondary)] shrink-0 border border-[var(--border-color)]">
                             {item.thumbnail
                               ? <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover" />
-                              : <div className="w-full h-full flex items-center justify-center text-xl">🛍️</div>
+                              : <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]"><FaImage size={18} /></div>
                             }
-                          </div>
+                          </Link>
 
                           {/* Info */}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-[var(--text-primary)] truncate">{item.title}</p>
+                            <Link to={`/order/${order._id}`} className="block text-sm font-medium text-[var(--text-primary)] hover:text-violet-600 truncate">
+                              {item.title}
+                            </Link>
                             <div className="flex items-center gap-2 mt-0.5">
                               <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium
                                 ${item.type === 'digital'  ? 'bg-blue-100   text-blue-700   dark:bg-blue-900/30   dark:text-blue-400'   : ''}
@@ -192,7 +228,7 @@ const MyOrders = () => {
                             >
                               <FaDownload size={10} />
                               {dlState[dlKey] === 'loading'
-                                ? 'Getting link…'
+                                ? 'Getting link...'
                                 : dlOver
                                 ? `Limit reached`
                                 : `Download${dl?.count ? ` (${dl.count}/${maxDl})` : ''}`
@@ -206,25 +242,62 @@ const MyOrders = () => {
 
                   {/* Footer */}
                   <div className="px-4 py-3 border-t border-[var(--border-color)] flex items-center justify-between gap-2 flex-wrap">
-                    {/* Shipping info */}
                     {order.shipping?.trackingNumber && (
-                      <p className="text-xs text-[var(--text-muted)]">
-                        📦 {order.shipping.courier} · <span className="font-mono">{order.shipping.trackingNumber}</span>
+                      <p className="text-xs text-[var(--text-muted)] flex items-center gap-1.5">
+                        <FaTruck size={12} /> {order.shipping.courier} - <span className="font-mono">{order.shipping.trackingNumber}</span>
                       </p>
                     )}
                     {order.couponCode && (
-                      <p className="text-xs text-green-600 dark:text-green-400">
-                        🎟 {order.couponCode} — -₹{order.couponDiscount?.toLocaleString('en-IN')}
+                      <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5">
+                        <FaTag size={12} /> {order.couponCode} - Rs. {order.couponDiscount?.toLocaleString('en-IN')}
                       </p>
                     )}
 
-                    {/* View order link */}
-                    <Link
-                      to={`/order/${order._id}`}
-                      className="ml-auto flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700 font-medium"
-                    >
-                      View Details <FaChevronRight size={10} />
-                    </Link>
+                    <div className="ml-auto flex items-center gap-2">
+                      {needsPaymentAction ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => retryPayment(order)}
+                            disabled={orderAction === order._id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 disabled:opacity-60 text-white text-xs font-medium"
+                          >
+                            <FaRedo size={10} /> {orderAction === order._id ? 'Retrying...' : 'Retry Payment'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteOrder(order)}
+                            disabled={orderAction === order._id}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-red-200 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60 font-medium"
+                          >
+                            <FaTrash size={10} /> Delete
+                          </button>
+                        </>
+                      ) : isDelivered ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => alert('Return request support is not connected yet. Please contact support for this order.')}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--border-color)] text-xs text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] font-medium"
+                          >
+                            <FaUndoAlt size={10} /> Return
+                          </button>
+                          <Link
+                            to={`/order/${order._id}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium"
+                          >
+                            <FaStar size={10} /> Review
+                          </Link>
+                        </>
+                      ) : (
+                        <Link
+                          to={`/order/${order._id}`}
+                          className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-700 font-medium"
+                        >
+                          Order Details
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

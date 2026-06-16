@@ -22,6 +22,7 @@ import ScrollToTop from '../components/ScrollToTop';
 import EnhancedComment from '../components/EnhancedComment';
 import StatusViewer from '../components/StatusViewer';
 import SEOHead from '../components/SEOHead';
+import ProductTagOverlay from '../components/ProductTagOverlay';
 import { bumpReplyCount, removeCommentFromReplyMap, updateCommentsById, updateReplyMapById } from '../utils/commentTree';
 
 const BlogDetail = () => {
@@ -366,7 +367,7 @@ const BlogDetail = () => {
     setDeleting(true);
     try {
       await api.delete(`/blogs/${contentId}`);
-      navigate('/');
+      navigate('/home');
     } catch (error) {
       console.error('Error deleting blog:', error);
       alert('Failed to delete blog');
@@ -536,7 +537,7 @@ const BlogDetail = () => {
               {t('The blog you are looking for does not exist or has been removed.')}
             </p>
             <button
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/home')}
               className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
             >
               {t('Go to Home')}
@@ -735,10 +736,15 @@ const BlogDetail = () => {
               </div>
             )}
 
+            <div className="relative">
+              <ProductTagOverlay content={blog} />
+
             <AudioControls text={blog.content} content={blog.content} blogId={blog._id} />
 
             <div className="blog-content">
               <ReactMarkdown>{blog.content}</ReactMarkdown>
+            </div>
+
             </div>
 
             {blog.videoUrls && blog.videoUrls.length > 0 && (

@@ -174,6 +174,26 @@ const AdminSellerApplications = () => {
                   </div>
                 )}
 
+                {app.status === 'approved' && (
+                  <div className="flex gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm(`Revoke seller badge from @${app.userId?.username}? This will pause all their products.`)) return;
+                        try {
+                          await api.patch(`/orders/admin/seller-revoke/${app.userId?._id}`);
+                          setApplications(prev => prev.map(a => a._id === app._id ? { ...a, status: 'rejected' } : a));
+                          alert('Seller badge revoked. All products paused.');
+                        } catch (e) {
+                          alert(e.response?.data?.message || 'Error revoking seller.');
+                        }
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors"
+                    >
+                      Revoke Badge
+                    </button>
+                  </div>
+                )}
+
                 {/* Review note for reviewed apps */}
                 {app.status !== 'pending' && app.reviewNote && (
                   <span className="text-xs text-[var(--text-muted)] italic max-w-[180px] truncate">{app.reviewNote}</span>

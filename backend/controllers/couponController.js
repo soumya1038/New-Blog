@@ -1,4 +1,11 @@
 const Coupon = require('../models/Coupon');
+const Product = require('../models/Product');
+const {
+  calculateCouponApplication,
+  normalizeCouponCode,
+  serializeCouponWithStatus,
+  getCouponEffectiveStatus,
+} = require('../utils/couponRules');
 
 // POST /api/coupons  (seller creates)
 exports.createCoupon = async (req, res) => {
@@ -9,7 +16,7 @@ exports.createCoupon = async (req, res) => {
       isStackable, validFrom, validUntil, scope,
     } = req.body;
 
-    const upper = code?.toUpperCase().trim();
+    const upper = normalizeCouponCode(code);
     if (!upper) return res.status(400).json({ success: false, message: 'Coupon code is required.' });
 
     const existing = await Coupon.findOne({ code: upper });
@@ -18,21 +25,21 @@ exports.createCoupon = async (req, res) => {
     const coupon = await Coupon.create({
       code:               upper,
       createdBy:          req.user._id,
-      scope:              scope          || 'seller',
+      scope:              scope || 'seller',
       discountType,
       discountValue:      parseFloat(discountValue),
       maxDiscountCap:     maxDiscountCap ? parseFloat(maxDiscountCap) : null,
-      minOrderValue:      minOrderValue  ? parseFloat(minOrderValue)  : 0,
-      usageLimit:         usageLimit     ? parseInt(usageLimit)       : null,
-      perUserLimit:       perUserLimit   ? parseInt(perUserLimit)     : 1,
+      minOrderValue:      minOrderValue ? parseFloat(minOrderValue) : 0,
+      usageLimit:         usageLimit ? parseInt(usageLimit, 10) : null,
+      perUserLimit:       perUserLimit ? parseInt(perUserLimit, 10) : 1,
       applicableProducts: applicableProducts || [],
-      applicableTypes:    applicableTypes    || [],
+      applicableTypes:    applicableTypes || [],
       isStackable:        !!isStackable,
-      validFrom:          validFrom    ? new Date(validFrom)   : new Date(),
+      validFrom:          validFrom ? new Date(validFrom) : new Date(),
       validUntil:         new Date(validUntil),
     });
 
-    res.status(201).json({ success: true, coupon });
+    res.status(201).json({ success: true, coupon: serializeCouponWithStatus(coupon) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -44,48 +51,36 @@ exports.validateCoupon = async (req, res) => {
     const { code, cartTotal, cartItems } = req.body;
     const userId = req.user._id;
 
-    const coupon = await Coupon.findOne({ code: code?.toUpperCase().trim(), isActive: true });
+    const coupon = await Coupon.findOne({ code: normalizeCouponCode(code) });
     if (!coupon) return res.status(404).json({ success: false, message: 'Coupon not found.' });
 
-    const now = new Date();
-    if (now < coupon.validFrom)  return res.status(400).json({ success: false, message: 'This coupon is not active yet.' });
-    if (now > coupon.validUntil) return res.status(400).json({ success: false, message: 'This coupon has expired.' });
+    const productIds = Array.isArray(cartItems)
+      ? cartItems.map(item => item.productId || item._id).filter(Boolean)
+      : [];
+    const products = productIds.length
+      ? await Product.find({ _id: { $in: productIds }, status: 'active' })
+      : [];
 
-    if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
-      return res.status(400).json({ success: false, message: 'This coupon has reached its usage limit.' });
+    const application = calculateCouponApplication({
+      coupon,
+      userId,
+      cartTotal,
+      cartItems: Array.isArray(cartItems) ? cartItems : [],
+      products,
+    });
+
+    if (!application.valid) {
+      const effectiveStatus = getCouponEffectiveStatus(coupon);
+      if (coupon.isActive && ['expired', 'used_up'].includes(effectiveStatus.status)) {
+        await Coupon.updateOne({ _id: coupon._id }, { $set: { isActive: false } });
+      }
+      return res.status(400).json({ success: false, message: application.message || 'Invalid coupon.' });
     }
-
-    const userUses = coupon.usedBy.filter(u => u.userId.toString() === userId.toString()).length;
-    if (userUses >= coupon.perUserLimit) {
-      return res.status(400).json({ success: false, message: 'You have already used this coupon the maximum number of times.' });
-    }
-
-    if (parseFloat(cartTotal) < coupon.minOrderValue) {
-      return res.status(400).json({
-        success: false,
-        message: `Minimum order value of ₹${coupon.minOrderValue} required for this coupon.`,
-      });
-    }
-
-    // Calculate discount amount
-    let discount      = 0;
-    let isFreeShipping = false;
-
-    if (coupon.discountType === 'percentage') {
-      discount = (parseFloat(cartTotal) * coupon.discountValue) / 100;
-      if (coupon.maxDiscountCap) discount = Math.min(discount, coupon.maxDiscountCap);
-    } else if (coupon.discountType === 'flat') {
-      discount = Math.min(coupon.discountValue, parseFloat(cartTotal));
-    } else if (coupon.discountType === 'free_shipping') {
-      isFreeShipping = true;
-    }
-
-    discount = Math.round(discount * 100) / 100;
 
     res.json({
       success: true,
-      discount,
-      isFreeShipping,
+      discount: application.discount,
+      isFreeShipping: application.isFreeShipping,
       coupon: {
         code:          coupon.code,
         discountType:  coupon.discountType,
@@ -101,7 +96,7 @@ exports.validateCoupon = async (req, res) => {
 exports.getSellerCoupons = async (req, res) => {
   try {
     const coupons = await Coupon.find({ createdBy: req.user._id }).sort({ createdAt: -1 });
-    res.json({ success: true, coupons });
+    res.json({ success: true, coupons: coupons.map(coupon => serializeCouponWithStatus(coupon)) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -112,9 +107,17 @@ exports.toggleCoupon = async (req, res) => {
   try {
     const coupon = await Coupon.findOne({ _id: req.params.id, createdBy: req.user._id });
     if (!coupon) return res.status(404).json({ success: false, message: 'Coupon not found.' });
+
+    if (!coupon.isActive) {
+      const effectiveStatus = getCouponEffectiveStatus({ ...coupon.toObject(), isActive: true });
+      if (!effectiveStatus.canActivate || ['expired', 'used_up'].includes(effectiveStatus.status)) {
+        return res.status(400).json({ success: false, message: effectiveStatus.message });
+      }
+    }
+
     coupon.isActive = !coupon.isActive;
     await coupon.save();
-    res.json({ success: true, coupon });
+    res.json({ success: true, coupon: serializeCouponWithStatus(coupon) });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
