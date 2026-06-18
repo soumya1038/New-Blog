@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import { Link, useNavigate }  from 'react-router-dom';
 import { AuthContext }        from '../context/AuthContext';
 import api                    from '../services/api';
@@ -6,7 +6,7 @@ import StarRating             from '../components/StarRating';
 import {
   FaPlus, FaStore, FaBoxOpen, FaChartLine, FaTag, FaCog,
   FaEdit, FaArchive, FaCheck, FaTruck, FaEye, FaToggleOn, FaToggleOff, FaTrash,
-  FaWallet, FaRupeeSign,
+  FaWallet, FaRupeeSign, FaSearch, FaTimes,
 } from 'react-icons/fa';
 import { MdStorefront } from 'react-icons/md';
 
@@ -90,6 +90,8 @@ const SellerDashboard = () => {
   const [restockModal, setRestockModal] = useState({ open: false, product: null, qty: '10' });
   const [priceRequestModal, setPriceRequestModal] = useState({ open: false, product: null });
   const [priceRequestForm, setPriceRequestForm] = useState({ requestedPrice: '', reason: '' });
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [productPickerQuery, setProductPickerQuery] = useState('');
   const [priceSubmitting, setPriceSubmitting] = useState(false);
 
   // Coupon create form
@@ -125,6 +127,22 @@ const SellerDashboard = () => {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const getProductImage = (product) => product?.thumbnail || product?.images?.[0] || '';
+
+  const filteredPickerProducts = useMemo(() => {
+    const query = productPickerQuery.trim().toLowerCase();
+    if (!query) return products;
+
+    return products.filter(product => [
+      product.title,
+      product.type,
+      product.slug,
+      product.status,
+      ...(product.category || []),
+      ...(product.tags || []),
+    ].some(value => String(value || '').toLowerCase().includes(query)));
+  }, [products, productPickerQuery]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const changeProductStatus = async (id, status) => {
@@ -184,6 +202,7 @@ const SellerDashboard = () => {
   };
 
   const openPriceRequest = (product) => {
+    setProductPickerOpen(false);
     setPriceRequestModal({ open: true, product });
     setPriceRequestForm({
       requestedPrice: product?.price ? String(product.price) : '',
@@ -391,7 +410,7 @@ const SellerDashboard = () => {
                     <tr key={p._id} className="hover:bg-[var(--bg-secondary)] transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <img src={p.thumbnail || ''} alt="" className="w-9 h-9 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" />
+                          <img src={getProductImage(p)} alt="" className="w-9 h-9 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" />
                           <p className="text-[var(--text-primary)] font-medium truncate max-w-[160px]">{p.title}</p>
                         </div>
                       </td>
@@ -461,7 +480,10 @@ const SellerDashboard = () => {
                 </p>
               </div>
               <button
-                onClick={() => setTab('products')}
+                onClick={() => {
+                  setProductPickerQuery('');
+                  setProductPickerOpen(true);
+                }}
                 className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition-colors"
               >
                 Choose Product
@@ -520,7 +542,7 @@ const SellerDashboard = () => {
                   {priceRequests.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-4 py-12 text-center text-[var(--text-muted)]">
-                        No price-change tokens yet. Open Products and choose a product to request a price increase.
+                        No price-change tokens yet. Choose a product to request a price increase.
                       </td>
                     </tr>
                   )}
@@ -751,6 +773,94 @@ const SellerDashboard = () => {
               <button onClick={markShipped} className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition-colors">
                 <FaTruck className="inline mr-1.5" size={11} /> Confirm
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {productPickerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+          <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-color)] w-full max-w-xl overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-5 py-4">
+              <div>
+                <h3 className="font-bold text-[var(--text-primary)]">Choose Product</h3>
+                <p className="text-xs text-[var(--text-muted)]">{products.length} products available</p>
+              </div>
+              <button
+                onClick={() => setProductPickerOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-color)] text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"
+                aria-label="Close product picker"
+              >
+                <FaTimes size={12} />
+              </button>
+            </div>
+
+            <div className="border-b border-[var(--border-color)] p-4">
+              <div className="flex items-center gap-2 rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] px-3">
+                <FaSearch size={12} className="text-[var(--text-muted)]" />
+                <input
+                  value={productPickerQuery}
+                  onChange={e => setProductPickerQuery(e.target.value)}
+                  placeholder="Search products..."
+                  className="w-full bg-transparent py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="max-h-[55vh] overflow-y-auto p-2">
+              {filteredPickerProducts.map(product => {
+                const hasPendingRequest = priceRequests.some(req => {
+                  const requestProductId = req.productId?._id || req.productId;
+                  return String(requestProductId) === String(product._id) && req.status === 'pending';
+                });
+
+                return (
+                  <button
+                    key={product._id}
+                    type="button"
+                    onClick={() => !hasPendingRequest && openPriceRequest(product)}
+                    disabled={hasPendingRequest}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[var(--bg-secondary)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <img
+                      src={getProductImage(product)}
+                      alt=""
+                      className="h-12 w-12 shrink-0 rounded-xl bg-[var(--bg-secondary)] object-cover"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-[var(--text-primary)]">{product.title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-muted)]">
+                        <span className="capitalize">{product.type}</span>
+                        <span>Rs. {Number(product.price || 0).toLocaleString('en-IN')}</span>
+                        <span className="capitalize">{product.status}</span>
+                      </div>
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                      hasPendingRequest
+                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                        : 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+                    }`}>
+                      {hasPendingRequest ? 'Pending' : 'Select'}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {products.length === 0 && (
+                <div className="px-4 py-10 text-center">
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">No products yet</p>
+                  <Link to="/seller/add-product" className="mt-2 inline-flex text-sm font-semibold text-violet-600 hover:underline">
+                    Add your first product
+                  </Link>
+                </div>
+              )}
+
+              {products.length > 0 && filteredPickerProducts.length === 0 && (
+                <div className="px-4 py-10 text-center text-sm text-[var(--text-muted)]">
+                  No products match "{productPickerQuery}"
+                </div>
+              )}
             </div>
           </div>
         </div>

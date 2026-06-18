@@ -5,7 +5,8 @@ import api                 from '../services/api';
 import ProductCard         from '../components/ProductCard';
 import CartDrawer          from '../components/CartDrawer';
 import MarketplaceState    from '../components/MarketplaceState';
-import { FaBoxOpen, FaCheck, FaChevronDown, FaChevronRight, FaClock, FaExternalLinkAlt, FaFilePdf, FaFilter, FaSearch, FaShoppingBag, FaShoppingCart, FaSpinner, FaTag, FaTimes, FaWrench } from 'react-icons/fa';
+import { getGuestCartCount } from '../utils/guestCart';
+import { FaBell, FaBoxOpen, FaCheck, FaChevronDown, FaChevronRight, FaClock, FaExternalLinkAlt, FaFilePdf, FaFilter, FaMapMarkerAlt, FaSearch, FaShoppingBag, FaShoppingCart, FaSpinner, FaStore, FaTag, FaTimes, FaTrash, FaUserCircle, FaWrench } from 'react-icons/fa';
 import { BarLoader } from 'react-spinners';
 
 const TYPES = [
@@ -32,6 +33,19 @@ const PERSONALIZATION_LIMITS = {
   searches: 12,
   products: 20,
 };
+const MARKETPLACE_NOTIFICATION_TYPES = new Set([
+  'seller_approved',
+  'seller_rejected',
+  'seller_application_submitted',
+  'seller_application_withdrawn',
+  'new_order',
+  'order_shipped',
+  'order_delivered',
+  'new_review',
+  'refund_requested',
+  'payout_processed',
+]);
+const MARKETPLACE_NOTIFICATION_KEYWORDS = ['seller', 'order', 'payout', 'refund', 'review', 'product'];
 
 const emptyPersonalization = {
   version: 1,
@@ -155,12 +169,19 @@ const getMarketplaceErrorType = (error) => {
   return 'server-error';
 };
 
+const isMarketplaceNotification = (notification = {}) => {
+  if (MARKETPLACE_NOTIFICATION_TYPES.has(notification.type)) return true;
+  const text = `${notification.type || ''} ${notification.message || ''}`.toLowerCase();
+  return MARKETPLACE_NOTIFICATION_KEYWORDS.some(keyword => text.includes(keyword));
+};
+
 const Marketplace = () => {
   const { user } = useContext(AuthContext);
   const [searchParams, setSearchParams] = useSearchParams();
   const suggestionsRequestRef = useRef(0);
   const searchBoxRef = useRef(null);
   const sortBoxRef = useRef(null);
+  const marketProfileRef = useRef(null);
   const typeRailRef = useRef(null);
   const typeRailDragRef = useRef({
     isDown: false,
@@ -178,6 +199,23 @@ const Marketplace = () => {
   const [cartCount,   setCartCount]   = useState(0);
   const [filterOpen,  setFilterOpen]  = useState(false);
   const [sortOpen,    setSortOpen]    = useState(false);
+  const [marketProfileOpen, setMarketProfileOpen] = useState(false);
+  const [marketNotifications, setMarketNotifications] = useState([]);
+  const [marketNotificationsLoading, setMarketNotificationsLoading] = useState(false);
+  const [marketNotificationsError, setMarketNotificationsError] = useState('');
+  const [addressManagerOpen, setAddressManagerOpen] = useState(false);
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [editingAddressId, setEditingAddressId] = useState('');
+  const [addressDraft, setAddressDraft] = useState({
+    name: '',
+    phone: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    pin: '',
+    country: 'India',
+  });
   const [searchInput, setSearchInput] = useState(searchParams.get('q') || '');
   const [suggestions, setSuggestions] = useState([]);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
@@ -193,6 +231,8 @@ const Marketplace = () => {
     sort:     'createdAt',
     isFree:   false,
   });
+
+  const addressStorageKey = user?._id ? `lekhon_checkout_addresses_${user._id}` : '';
 
   const visibleSuggestions = useMemo(() => {
     if (searchInput.trim()) return suggestions;
@@ -277,10 +317,53 @@ const Marketplace = () => {
       if (sortBoxRef.current && !sortBoxRef.current.contains(event.target)) {
         setSortOpen(false);
       }
+      if (marketProfileRef.current && !marketProfileRef.current.contains(event.target)) {
+        setMarketProfileOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleDocumentMouseDown);
     return () => document.removeEventListener('mousedown', handleDocumentMouseDown);
   }, []);
+
+  useEffect(() => {
+    if (!addressStorageKey) {
+      setSavedAddresses([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(localStorage.getItem(addressStorageKey) || '[]');
+      setSavedAddresses(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setSavedAddresses([]);
+    }
+  }, [addressStorageKey]);
+
+  useEffect(() => {
+    if (!user || !marketProfileOpen) return undefined;
+
+    let active = true;
+    setMarketNotificationsLoading(true);
+    setMarketNotificationsError('');
+
+    api.get('/social/notifications')
+      .then(({ data }) => {
+        if (!active) return;
+        const next = (data.notifications || [])
+          .filter(isMarketplaceNotification)
+          .slice(0, 5);
+        setMarketNotifications(next);
+      })
+      .catch(() => {
+        if (active) setMarketNotificationsError('Unable to load marketplace notifications right now.');
+      })
+      .finally(() => {
+        if (active) setMarketNotificationsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user, marketProfileOpen]);
 
   useEffect(() => {
     const query = searchInput.trim();
@@ -327,10 +410,18 @@ const Marketplace = () => {
 
   // Cart count badge
   useEffect(() => {
-    if (!user) return;
-    api.get('/marketplace/cart')
-      .then(({ data }) => setCartCount(data.cart?.items?.length || 0))
-      .catch(() => {});
+    const refreshCartCount = () => {
+      if (!user) {
+        setCartCount(getGuestCartCount());
+        return;
+      }
+      api.get('/marketplace/cart')
+        .then(({ data }) => setCartCount(data.cart?.items?.reduce((sum, item) => sum + (parseInt(item.qty, 10) || 0), 0) || 0))
+        .catch(() => {});
+    };
+    refreshCartCount();
+    window.addEventListener('cartUpdated', refreshCartCount);
+    return () => window.removeEventListener('cartUpdated', refreshCartCount);
   }, [user, cartOpen]);
 
   useEffect(() => {
@@ -345,6 +436,72 @@ const Marketplace = () => {
   }, [user, updatePersonalization]);
 
   const handleAddToCart = () => setCartCount(c => c + 1);
+
+  const blankAddress = () => ({
+    name: user?.name || user?.fullName || '',
+    phone: user?.phone || '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    pin: '',
+    country: 'India',
+  });
+
+  const persistAddresses = (addresses) => {
+    setSavedAddresses(addresses);
+    if (addressStorageKey) {
+      localStorage.setItem(addressStorageKey, JSON.stringify(addresses));
+    }
+  };
+
+  const startAddressAdd = () => {
+    setEditingAddressId('');
+    setAddressDraft(blankAddress());
+    setAddressManagerOpen(true);
+  };
+
+  const startAddressEdit = (address) => {
+    setEditingAddressId(address.id);
+    setAddressDraft({
+      name: address.name || '',
+      phone: address.phone || '',
+      addressLine1: address.addressLine1 || '',
+      addressLine2: address.addressLine2 || '',
+      city: address.city || '',
+      state: address.state || '',
+      pin: address.pin || '',
+      country: address.country || 'India',
+    });
+    setAddressManagerOpen(true);
+  };
+
+  const saveAddressDraft = () => {
+    const required = ['name', 'phone', 'addressLine1', 'city', 'state', 'pin', 'country'];
+    const complete = required.every(key => String(addressDraft[key] || '').trim());
+    if (!complete) return;
+
+    const normalized = {
+      id: editingAddressId || Date.now().toString(),
+      label: `${addressDraft.name || 'Saved address'} - ${addressDraft.city || addressDraft.pin}`,
+      ...addressDraft,
+    };
+    const next = editingAddressId
+      ? savedAddresses.map(address => address.id === editingAddressId ? normalized : address)
+      : [normalized, ...savedAddresses].slice(0, 5);
+
+    persistAddresses(next);
+    setEditingAddressId('');
+    setAddressDraft(blankAddress());
+  };
+
+  const deleteAddress = (id) => {
+    persistAddresses(savedAddresses.filter(address => address.id !== id));
+    if (editingAddressId === id) {
+      setEditingAddressId('');
+      setAddressDraft(blankAddress());
+    }
+  };
 
   const commitSearch = useCallback((value) => {
     const query = String(value || '').trim();
@@ -462,6 +619,8 @@ const Marketplace = () => {
   const emptyStateType = marketplaceError?.type || (filters.search && !filters.type ? 'search' : filters.type || 'overall');
   const hasMarketplaceState = !loading && (Boolean(marketplaceError) || products.length === 0);
   const showPersonalizedSections = !hasMarketplaceState && !filters.search;
+  const addressDraftComplete = ['name', 'phone', 'addressLine1', 'city', 'state', 'pin', 'country']
+    .every(key => String(addressDraft[key] || '').trim());
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
@@ -472,20 +631,8 @@ const Marketplace = () => {
             <FaShoppingBag className="text-violet-500" /> Marketplace
           </h1>
 
-          {user && (
-            <Link
-              to="/my-orders"
-              title="My Orders"
-              aria-label="My Orders"
-              className="order-2 inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-[var(--border-color)] px-2.5 text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors sm:px-3 md:order-2 whitespace-nowrap"
-            >
-              <FaBoxOpen size={13} />
-              <span className="hidden lg:inline">My Orders</span>
-            </Link>
-          )}
-
           {/* Search */}
-          <div ref={searchBoxRef} className="order-5 relative w-full md:order-3 md:min-w-[220px] md:flex-1">
+          <div ref={searchBoxRef} className="order-6 relative w-full md:order-3 md:min-w-[220px] md:flex-1">
             <FaSearch size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
             <input
               type="text"
@@ -631,20 +778,245 @@ const Marketplace = () => {
           </button>
 
           {/* Cart */}
+          <button
+            type="button"
+            onClick={() => setCartOpen(true)}
+            aria-label="Open cart"
+            className="order-4 relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-colors md:order-6"
+          >
+            <FaShoppingCart size={15} className="shrink-0" />
+            {cartCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center">
+                {cartCount > 9 ? '9+' : cartCount}
+              </span>
+            )}
+          </button>
+
           {user && (
-            <button
-              type="button"
-              onClick={() => setCartOpen(true)}
-              aria-label="Open cart"
-              className="order-4 relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-colors md:order-6"
-            >
-              <FaShoppingCart size={15} className="shrink-0" />
-              {cartCount > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-violet-600 text-white text-[10px] font-bold flex items-center justify-center">
-                  {cartCount > 9 ? '9+' : cartCount}
-                </span>
+            <div ref={marketProfileRef} className="order-5 relative md:order-7">
+              <button
+                type="button"
+                onClick={() => setMarketProfileOpen(open => !open)}
+                aria-label="Open marketplace profile"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border-color)] text-[var(--text-muted)] transition-colors hover:bg-[var(--bg-secondary)]"
+              >
+                <FaUserCircle size={16} className="shrink-0" />
+              </button>
+
+              {marketProfileOpen && (
+                <div className="absolute right-0 top-[calc(100%+8px)] z-[100] w-[min(92vw,360px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)] shadow-2xl shadow-black/15 ring-1 ring-black/5 dark:shadow-black/60 dark:ring-white/10">
+                  <div className="border-b border-[var(--border-color)] bg-[var(--bg-card)] px-4 py-3">
+                    <p className="text-sm font-bold text-[var(--text-primary)]">Marketplace Profile</p>
+                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                      {user.isSeller ? 'Seller tools and buyer activity' : user.isVerified ? 'Buyer tools and seller application' : 'Buyer tools'}
+                    </p>
+                  </div>
+
+                  <div className="max-h-[70vh] overflow-y-auto p-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCartOpen(true);
+                        setMarketProfileOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)]"
+                    >
+                      <FaShoppingCart className="text-violet-500" />
+                      <span className="font-medium">Cart</span>
+                      {cartCount > 0 && (
+                        <span className="ml-auto rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                          {cartCount > 9 ? '9+' : cartCount}
+                        </span>
+                      )}
+                    </button>
+
+                    <Link
+                      to="/my-orders"
+                      onClick={() => setMarketProfileOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)]"
+                    >
+                      <FaBoxOpen className="text-violet-500" />
+                      <span className="font-medium">My Orders</span>
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={() => setAddressManagerOpen(open => !open)}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)]"
+                    >
+                      <FaMapMarkerAlt className="text-violet-500" />
+                      <span className="font-medium">Delivery Addresses</span>
+                      <FaChevronDown size={11} className={`ml-auto text-[var(--text-muted)] transition-transform ${addressManagerOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {addressManagerOpen && (
+                      <div className="mx-2 my-2 rounded-2xl bg-[var(--bg-card)] p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-bold text-[var(--text-primary)]">Saved addresses</p>
+                          <button
+                            type="button"
+                            onClick={startAddressAdd}
+                            className="rounded-full bg-violet-600 px-3 py-1 text-[11px] font-semibold text-white"
+                          >
+                            Add
+                          </button>
+                        </div>
+
+                        {savedAddresses.length > 0 ? (
+                          <div className="mt-2 space-y-2">
+                            {savedAddresses.map(address => (
+                              <div key={address.id} className="rounded-xl bg-[var(--bg-secondary)] p-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-xs font-semibold text-[var(--text-primary)]">{address.label || address.name}</p>
+                                    <p className="mt-0.5 line-clamp-2 text-[11px] text-[var(--text-muted)]">
+                                      {address.addressLine1}, {address.city} - {address.pin}
+                                    </p>
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    <button type="button" onClick={() => startAddressEdit(address)} className="rounded-lg px-2 py-1 text-[11px] font-semibold text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-900/30">Edit</button>
+                                    <button type="button" onClick={() => deleteAddress(address.id)} className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" aria-label="Delete address">
+                                      <FaTrash size={10} />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-xs text-[var(--text-muted)]">No saved delivery addresses yet.</p>
+                        )}
+
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          {[
+                            ['name', 'Name'],
+                            ['phone', 'Phone'],
+                            ['addressLine1', 'Address line 1'],
+                            ['addressLine2', 'Address line 2'],
+                            ['city', 'City'],
+                            ['state', 'State'],
+                            ['pin', 'PIN'],
+                            ['country', 'Country'],
+                          ].map(([key, label]) => (
+                            <input
+                              key={key}
+                              value={addressDraft[key]}
+                              onChange={event => setAddressDraft(prev => ({ ...prev, [key]: event.target.value }))}
+                              placeholder={label}
+                              className={`min-w-0 rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-xs text-[var(--text-primary)] outline-none focus:border-violet-400 ${key.includes('addressLine') ? 'col-span-2' : ''}`}
+                            />
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={saveAddressDraft}
+                          disabled={!addressDraftComplete}
+                          className="mt-2 w-full rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {editingAddressId ? 'Save address changes' : 'Save address'}
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="my-2 border-t border-[var(--border-color)]" />
+
+                    {user.isSeller ? (
+                      <>
+                        <Link
+                          to="/seller/dashboard"
+                          onClick={() => setMarketProfileOpen(false)}
+                          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)]"
+                        >
+                          <FaStore className="text-amber-500" />
+                          <span className="font-medium">My Store</span>
+                        </Link>
+                        <Link
+                          to="/seller/earnings"
+                          onClick={() => setMarketProfileOpen(false)}
+                          className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)]"
+                        >
+                          <FaShoppingBag className="text-amber-500" />
+                          <span className="font-medium">Seller earnings</span>
+                        </Link>
+                      </>
+                    ) : user.isVerified ? (
+                      <Link
+                        to="/become-seller"
+                        onClick={() => setMarketProfileOpen(false)}
+                        className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)]"
+                      >
+                        <FaStore className="text-amber-500" />
+                        <span className="font-medium">Become a Seller</span>
+                      </Link>
+                    ) : (
+                      <div className="mx-3 my-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+                        Get verified by an admin to apply as a seller.
+                      </div>
+                    )}
+
+                    <div className="mx-2 my-2 rounded-2xl bg-[var(--bg-card)] p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <FaBell className="text-violet-500" />
+                          <p className="text-xs font-bold text-[var(--text-primary)]">Marketplace notifications</p>
+                        </div>
+                        <Link
+                          to="/notifications"
+                          onClick={() => setMarketProfileOpen(false)}
+                          className="text-[11px] font-semibold text-violet-600 hover:text-violet-700 dark:text-violet-300 dark:hover:text-violet-200"
+                        >
+                          View all
+                        </Link>
+                      </div>
+
+                      <div className="mt-2 space-y-2">
+                        {marketNotificationsLoading ? (
+                          <div className="flex items-center gap-2 rounded-xl bg-[var(--bg-secondary)] px-3 py-2 text-xs text-[var(--text-muted)]">
+                            <FaSpinner className="animate-spin" />
+                            Loading notifications
+                          </div>
+                        ) : marketNotificationsError ? (
+                          <p className="rounded-xl bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-300">
+                            {marketNotificationsError}
+                          </p>
+                        ) : marketNotifications.length > 0 ? (
+                          marketNotifications.map(notification => (
+                            <Link
+                              key={notification._id}
+                              to="/notifications"
+                              onClick={() => setMarketProfileOpen(false)}
+                              className="flex gap-2 rounded-xl bg-[var(--bg-secondary)] px-3 py-2 text-left transition-colors hover:bg-violet-50 dark:hover:bg-violet-900/20"
+                            >
+                              <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${notification.isRead ? 'bg-[var(--border-color)]' : 'bg-violet-500'}`} />
+                              <span className="min-w-0">
+                                <span className="line-clamp-2 text-xs font-medium text-[var(--text-primary)]">
+                                  {notification.message}
+                                </span>
+                                <span className="mt-0.5 block text-[10px] text-[var(--text-muted)]">
+                                  {new Date(notification.createdAt).toLocaleString()}
+                                </span>
+                              </span>
+                            </Link>
+                          ))
+                        ) : (
+                          <p className="rounded-xl bg-[var(--bg-secondary)] px-3 py-2 text-xs text-[var(--text-muted)]">
+                            No marketplace notifications yet.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <Link
+                      to="/profile"
+                      onClick={() => setMarketProfileOpen(false)}
+                      className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)]"
+                    >
+                      <FaUserCircle className="text-violet-500" />
+                      <span className="font-medium">Account profile</span>
+                    </Link>
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
           )}
         </div>
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
-import { FaHeart, FaComment, FaUserPlus, FaArrowLeft } from 'react-icons/fa';
+import { FaHeart, FaComment, FaUserPlus, FaArrowLeft, FaStore } from 'react-icons/fa';
 import { FiMessageCircle } from 'react-icons/fi';
 import soundManager from '../utils/soundManager';
 
@@ -78,6 +78,11 @@ const Notifications = () => {
       case 'comment': return <FaComment className="text-blue-500" />;
       case 'follow': return <FaUserPlus className="text-green-500" />;
       case 'message': return <FiMessageCircle className="text-purple-500" />;
+      case 'seller_application_submitted':
+      case 'seller_application_withdrawn':
+      case 'seller_approved':
+      case 'seller_rejected':
+        return <FaStore className="text-amber-500" />;
       default: return null;
     }
   };
@@ -172,15 +177,21 @@ const Notifications = () => {
                   />
                   <div className="flex-1 min-w-0 pr-4">
                     <p className="text-sm text-[var(--text-primary)]">
-                      <span className="font-semibold">{notification.sender?.username}</span>
-                      {' '}{(() => {
-                        const msg = notification.message.replace(`${notification.sender?.username} `, '');
-                        if (msg.includes('liked your post')) return t('liked your post') + msg.substring(msg.indexOf('"'));
-                        if (msg.includes('commented on your post')) return t('commented on your post') + msg.substring(msg.indexOf('"'));
-                        if (msg.includes('started following you')) return t('started following you');
-                        if (msg.includes('sent you a message')) return t('sent you a message') + (msg.includes(': ') ? msg.substring(msg.indexOf(':')) : '');
-                        return msg;
-                      })()}
+                      {notification.type?.startsWith('seller_') ? (
+                        notification.message
+                      ) : (
+                        <>
+                          <span className="font-semibold">{notification.sender?.username}</span>
+                          {' '}{(() => {
+                            const msg = notification.message.replace(`${notification.sender?.username} `, '');
+                            if (msg.includes('liked your post')) return t('liked your post') + msg.substring(msg.indexOf('"'));
+                            if (msg.includes('commented on your post')) return t('commented on your post') + msg.substring(msg.indexOf('"'));
+                            if (msg.includes('started following you')) return t('started following you');
+                            if (msg.includes('sent you a message')) return t('sent you a message') + (msg.includes(': ') ? msg.substring(msg.indexOf(':')) : '');
+                            return msg;
+                          })()}
+                        </>
+                      )}
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{new Date(notification.createdAt).toLocaleString()}</p>
                   </div>

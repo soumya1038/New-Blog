@@ -2,11 +2,10 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
-import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun, FaStickyNote, FaUserCircle, FaBolt, FaShoppingCart, FaStore, FaBoxOpen, FaNewspaper, FaPlusCircle } from 'react-icons/fa';
+import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun, FaStickyNote, FaUserCircle, FaBolt, FaStore, FaNewspaper, FaPlusCircle } from 'react-icons/fa';
 import LanguageSelector from './LanguageSelector';
 import Avatar from './Avatar';
 import AnimatedLogo from './AnimatedLogo';
-import CartDrawer from './CartDrawer';
 import { useTheme } from '../context/ThemeContext';
 
 const Navbar = () => {
@@ -17,44 +16,10 @@ const Navbar = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [cartCount, setCartCount] = useState(0);
-  const [cartOpen, setCartOpen] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const desktopDropdownRef = useRef(null);
   const tabletLgDropdownRef = useRef(null);
   const tabletMdDropdownRef = useRef(null);
-
-  const fetchCartCount = async () => {
-    if (!user || user.isGuest || user.role === 'guest') {
-      setCartCount(0);
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/marketplace/cart`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setCartCount(data.cart?.items?.length || 0);
-      }
-    } catch {}
-  };
-
-  useEffect(() => {
-    if (user) {
-      fetchCartCount();
-    } else {
-      setCartCount(0);
-    }
-
-    const handleCartUpdated = () => fetchCartCount();
-    window.addEventListener('cartUpdated', handleCartUpdated);
-    return () => window.removeEventListener('cartUpdated', handleCartUpdated);
-  }, [user]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -116,12 +81,6 @@ const Navbar = () => {
   const handleLogout = () => {
     setShowLogoutModal(true);
     setShowDropdown(false);
-  };
-
-  const openCart = () => {
-    setShowDropdown(false);
-    setShowMobileMenu(false);
-    setCartOpen(true);
   };
 
   const confirmLogout = () => {
@@ -281,25 +240,6 @@ const Navbar = () => {
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      <button
-                        type="button"
-                        onClick={openCart}
-                        className={`${dropdownDesktopItem} w-[calc(100%-1rem)] text-left flex items-center gap-2`}
-                      >
-                        <FaShoppingCart /> {t('Cart')}
-                        {cartCount > 0 && (
-                          <span className="ml-auto bg-violet-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                            {cartCount > 9 ? '9+' : cartCount}
-                          </span>
-                        )}
-                      </button>
-                      <Link
-                        to="/my-orders"
-                        onClick={() => setShowDropdown(false)}
-                        className={`${dropdownDesktopItem} flex items-center gap-2`}
-                      >
-                        <FaBoxOpen /> {t('My Orders')}
-                      </Link>
                       <hr className={dropdownDivider} />
                       <button
                         onClick={handleLogout}
@@ -405,25 +345,6 @@ const Navbar = () => {
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      <button
-                        type="button"
-                        onClick={openCart}
-                        className={`${dropdownCompactItem} w-[calc(100%-1rem)] text-left flex items-center gap-2`}
-                      >
-                        <FaShoppingCart /> {t('Cart')}
-                        {cartCount > 0 && (
-                          <span className="ml-auto bg-violet-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                            {cartCount > 9 ? '9+' : cartCount}
-                          </span>
-                        )}
-                      </button>
-                      <Link
-                        to="/my-orders"
-                        onClick={() => setShowDropdown(false)}
-                        className={`${dropdownCompactItem} flex items-center gap-2`}
-                      >
-                        <FaBoxOpen /> {t('My Orders')}
-                      </Link>
                       <hr className={dropdownDivider} />
                       <button
                         onClick={handleLogout}
@@ -516,25 +437,6 @@ const Navbar = () => {
                       >
                         <FaComments /> {t('Chat')}
                       </Link>
-                      <button
-                        type="button"
-                        onClick={openCart}
-                        className={`${dropdownCompactItem} w-[calc(100%-1rem)] text-left flex items-center gap-2`}
-                      >
-                        <FaShoppingCart /> {t('Cart')}
-                        {cartCount > 0 && (
-                          <span className="ml-auto bg-violet-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                            {cartCount > 9 ? '9+' : cartCount}
-                          </span>
-                        )}
-                      </button>
-                      <Link
-                        to="/my-orders"
-                        onClick={() => setShowDropdown(false)}
-                        className={`${dropdownCompactItem} flex items-center gap-2`}
-                      >
-                        <FaBoxOpen /> {t('My Orders')}
-                      </Link>
                       <hr className={dropdownDivider} />
                       <button
                         onClick={handleLogout}
@@ -624,17 +526,6 @@ const Navbar = () => {
                 <Link to="/drafts" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
                   <FaStickyNote /> {t('My Drafts')}
                 </Link>
-                <button type="button" onClick={openCart} className="w-[calc(100%-1rem)] flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300 text-left">
-                  <FaShoppingCart /> {t('Cart')}
-                  {cartCount > 0 && (
-                    <span className="ml-auto bg-violet-600 text-white text-xs font-bold px-1.5 py-0.5 rounded-full">
-                      {cartCount > 9 ? '9+' : cartCount}
-                    </span>
-                  )}
-                </button>
-                <Link to="/my-orders" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
-                  <FaBoxOpen /> {t('My Orders')}
-                </Link>
                 {user.isSeller && (
                   <Link to="/seller/dashboard" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 bg-amber-500/10 px-4 rounded-xl mx-2 my-1 text-amber-700 dark:text-amber-300 transition-all duration-300">
                     <FaStore /> {t('My Store')}
@@ -680,8 +571,6 @@ const Navbar = () => {
         </div>
       </div>
       </nav>
-
-      <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
 
       {showLogoutModal && (
         <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-[9999] p-4">

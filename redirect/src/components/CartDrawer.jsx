@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Link }           from 'react-router-dom';
+import React, { useState, useEffect, useRef, useContext } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { FaTimes, FaTrash, FaShoppingBag } from 'react-icons/fa';
 import { HiMinus, HiPlus } from 'react-icons/hi';
 import api                from '../services/api';
+import { AuthContext } from '../context/AuthContext';
+import { getGuestCart, removeGuestCartItem, updateGuestCartItem } from '../utils/guestCart';
 
 const FREE_SHIPPING_THRESHOLD = 1000;
 const CART_QTY_SYNC_DELAY_MS = 2000;
@@ -13,19 +15,26 @@ const getCartProductId = (item) => {
 };
 
 const CartDrawer = ({ open, onClose }) => {
+  const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [cart,    setCart]    = useState({ items: [], couponCode: '' });
   const [loading, setLoading] = useState(false);
   const [syncingQty, setSyncingQty] = useState({});
+  const [loginPromptOpen, setLoginPromptOpen] = useState(false);
   const qtyTimersRef = useRef({});
 
   const fetchCart = async () => {
+    if (!user) {
+      setCart(getGuestCart());
+      return;
+    }
     try {
       const { data } = await api.get('/marketplace/cart');
       setCart(data.cart || { items: [], couponCode: '' });
     } catch {}
   };
 
-  useEffect(() => { if (open) fetchCart(); }, [open]);
+  useEffect(() => { if (open) fetchCart(); }, [open, user]);
 
   useEffect(() => () => {
     Object.values(qtyTimersRef.current).forEach(clearTimeout);
@@ -34,9 +43,13 @@ const CartDrawer = ({ open, onClose }) => {
   const syncQty = async (productId, qty) => {
     setSyncingQty(current => ({ ...current, [productId]: true }));
     try {
-      await api.patch('/marketplace/cart/update', { productId, qty });
-      await fetchCart();
-      window.dispatchEvent(new Event('cartUpdated'));
+      if (user) {
+        await api.patch('/marketplace/cart/update', { productId, qty });
+        await fetchCart();
+        window.dispatchEvent(new Event('cartUpdated'));
+      } else {
+        setCart(updateGuestCartItem(productId, qty));
+      }
     } catch {
       await fetchCart();
     } finally {
@@ -63,11 +76,24 @@ const CartDrawer = ({ open, onClose }) => {
     clearTimeout(qtyTimersRef.current[productId]);
     setLoading(true);
     try {
-      await api.delete(`/marketplace/cart/${productId}`);
-      await fetchCart();
-      window.dispatchEvent(new Event('cartUpdated'));
+      if (user) {
+        await api.delete(`/marketplace/cart/${productId}`);
+        await fetchCart();
+        window.dispatchEvent(new Event('cartUpdated'));
+      } else {
+        setCart(removeGuestCartItem(productId));
+      }
     } catch {}
     setLoading(false);
+  };
+
+  const proceedToCheckout = () => {
+    if (!user) {
+      setLoginPromptOpen(true);
+      return;
+    }
+    onClose();
+    navigate('/checkout');
   };
 
   const subtotal = cart.items.reduce((sum, item) => {
@@ -201,16 +227,47 @@ const CartDrawer = ({ open, onClose }) => {
                   : 'Eligible for free shipping.'}
               </p>
             )}
-            <Link
-              to="/checkout"
-              onClick={onClose}
+            <button
+              type="button"
+              onClick={proceedToCheckout}
               className="w-full block text-center py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold transition-colors"
             >
               Proceed to Checkout
-            </Link>
+            </button>
           </div>
         )}
       </div>
+      {loginPromptOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-5 text-center shadow-2xl">
+            <FaShoppingBag size={34} className="mx-auto text-violet-500" />
+            <h3 className="mt-3 text-lg font-bold text-[var(--text-primary)]">Login to proceed further</h3>
+            <p className="mt-2 text-sm text-[var(--text-muted)]">
+              Your cart is saved on this device. Log in to place the order securely.
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setLoginPromptOpen(false)}
+                className="flex-1 rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]"
+              >
+                Continue shopping
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginPromptOpen(false);
+                  onClose();
+                  navigate('/login');
+                }}
+                className="flex-1 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+              >
+                Login
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

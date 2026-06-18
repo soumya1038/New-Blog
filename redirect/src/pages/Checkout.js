@@ -58,6 +58,7 @@ const Checkout = () => {
   const [selectedAddressId, setSelectedAddressId] = useState('');
   const [showAddressForm, setShowAddressForm] = useState(false);
   const [confirmingOrder, setConfirmingOrder] = useState(null);
+  const [loginPromptOpen, setLoginPromptOpen] = useState(false);
   const qtyTimersRef = useRef({});
   const confirmationTimerRef = useRef(null);
 
@@ -65,7 +66,11 @@ const Checkout = () => {
   const addressStorageKey = user?._id ? `lekhon_checkout_addresses_${user._id}` : '';
 
   useEffect(() => {
-    if (!user) return navigate('/login');
+    if (!user) {
+      setLoginPromptOpen(true);
+      setLoading(false);
+      return;
+    }
     fetchCart()
       .finally(() => setLoading(false));
   }, [user, navigate]);
@@ -251,6 +256,34 @@ const Checkout = () => {
       navigate(orderId ? `/order/${orderId}/success` : '/my-orders', { state: { orderNumber } });
     }, ORDER_CONFIRM_ANIMATION_MS);
   };
+
+  if (!user && loginPromptOpen) return (
+    <div className="min-h-screen flex items-center justify-center bg-[var(--bg-primary)] px-4">
+      <div className="w-full max-w-sm rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-6 text-center shadow-2xl">
+        <FaShoppingBag size={42} className="mx-auto text-violet-500" />
+        <h1 className="mt-4 text-xl font-bold text-[var(--text-primary)]">Login to proceed further</h1>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">
+          Your cart is saved on this device. Log in to complete checkout securely.
+        </p>
+        <div className="mt-6 flex gap-2">
+          <button
+            type="button"
+            onClick={() => navigate('/marketplace')}
+            className="flex-1 rounded-xl border border-[var(--border-color)] px-4 py-2 text-sm font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]"
+          >
+            Back to cart
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/login')}
+            className="flex-1 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700"
+          >
+            Login
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-[var(--text-muted)]">Loading...</div>;
   if (!cart.items.length) return (

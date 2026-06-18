@@ -4,6 +4,7 @@ const { protect, sellerAuth, adminAuth, adminOrCoAdminAuth } = require('../middl
 const {
   applyAsSeller,
   getMyApplication,
+  withdrawMyApplication,
   getStoreSettings,
   updateStoreSettings,
   getStoreByUsername,
@@ -17,6 +18,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 
 router.post('/apply', protect, applyAsSeller);
 router.get('/application/status', protect, getMyApplication);
+router.patch('/application/withdraw', protect, withdrawMyApplication);
 
 router.get('/store/settings', sellerAuth, getStoreSettings);
 router.put('/store/settings', upload.single('banner'), sellerAuth, updateStoreSettings);

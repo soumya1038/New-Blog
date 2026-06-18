@@ -6,6 +6,7 @@ import { AuthContext }  from '../context/AuthContext';
 import StarRating       from './StarRating';
 import SellerBadge      from './SellerBadge';
 import api              from '../services/api';
+import { addGuestCartItem } from '../utils/guestCart';
 
 const TYPE_LABELS = {
   digital:  { label: 'Digital',       color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
@@ -34,11 +35,15 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
 
   const handleAddToCart = async (e) => {
     e.preventDefault();
-    if (!user || product.type === 'external') return;
+    if (product.type === 'external') return;
     setCartLoading(true);
     try {
-      await api.post('/marketplace/cart/add', { productId: product._id, qty: 1 });
-      window.dispatchEvent(new Event('cartUpdated'));
+      if (user) {
+        await api.post('/marketplace/cart/add', { productId: product._id, qty: 1 });
+        window.dispatchEvent(new Event('cartUpdated'));
+      } else {
+        addGuestCartItem(product, 1);
+      }
       onAddToCart && onAddToCart(product);
     } catch {}
     setCartLoading(false);
@@ -156,7 +161,7 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
             >
               <FaExternalLinkAlt size={10} /> Buy
             </button>
-          ) : user ? (
+          ) : (
             <button
               onClick={handleAddToCart}
               disabled={cartLoading}
@@ -165,7 +170,7 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
               <FaShoppingCart size={10} />
               {cartLoading ? '...' : 'Cart'}
             </button>
-          ) : null}
+          )}
         </div>
       </div>
     </Link>

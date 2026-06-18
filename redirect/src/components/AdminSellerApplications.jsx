@@ -5,14 +5,30 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
-import { FaCheck, FaTimes, FaUser, FaStore, FaClock, FaFilter } from 'react-icons/fa';
+import { FaCheck, FaTimes, FaUser, FaStore, FaClock, FaHistory, FaShieldAlt } from 'react-icons/fa';
 import { MdVerified } from 'react-icons/md';
 
 const STATUS_STYLES = {
   pending:  'bg-amber-100  text-amber-700  dark:bg-amber-900/30  dark:text-amber-400',
   approved: 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400',
   rejected: 'bg-red-100    text-red-700    dark:bg-red-900/30    dark:text-red-400',
+  withdrawn: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
 };
+
+const CHECK_STYLES = {
+  verified: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  format_valid: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  pending_setup: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  pending_provider: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  manual_review: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+  failed: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  not_started: 'bg-[var(--surface-elevated)] text-[var(--text-muted)]',
+};
+
+const formatCheckStatus = (status = 'not_started') => status
+  .split('_')
+  .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+  .join(' ');
 
 const AdminSellerApplications = () => {
   const { t } = useTranslation();
@@ -40,8 +56,8 @@ const AdminSellerApplications = () => {
   const approve = async (id) => {
     setActionLoading(id + '_approve');
     try {
-      await api.put(`/seller/admin/seller-applications/${id}/approve`, { reviewNote: '' });
-      setApplications(prev => prev.map(a => a._id === id ? { ...a, status: 'approved' } : a));
+      const { data } = await api.put(`/seller/admin/seller-applications/${id}/approve`, { reviewNote: '' });
+      setApplications(prev => prev.map(a => a._id === id ? { ...a, ...(data.application || {}), status: 'approved' } : a));
     } catch (e) {
       alert(e.response?.data?.message || 'Error approving application');
     }
@@ -51,8 +67,8 @@ const AdminSellerApplications = () => {
   const reject = async (id) => {
     setActionLoading(id + '_reject');
     try {
-      await api.put(`/seller/admin/seller-applications/${id}/reject`, { reviewNote: rejectNote });
-      setApplications(prev => prev.map(a => a._id === id ? { ...a, status: 'rejected' } : a));
+      const { data } = await api.put(`/seller/admin/seller-applications/${id}/reject`, { reviewNote: rejectNote });
+      setApplications(prev => prev.map(a => a._id === id ? { ...a, ...(data.application || {}), status: 'rejected' } : a));
       setRejectModal(null);
       setRejectNote('');
     } catch (e) {
@@ -79,7 +95,7 @@ const AdminSellerApplications = () => {
 
         {/* Filter */}
         <div className="flex gap-1.5">
-          {['pending', 'approved', 'rejected', 'all'].map(s => (
+          {['pending', 'approved', 'rejected', 'withdrawn', 'all'].map(s => (
             <button
               key={s}
               onClick={() => setFilter(s)}
@@ -134,6 +150,9 @@ const AdminSellerApplications = () => {
                     {app.businessName && <span className="text-xs text-[var(--text-muted)]">({app.businessName})</span>}
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${STATUS_STYLES[app.status]}`}>
                       {app.status}
+                    </span>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[var(--surface-elevated)] text-[var(--text-secondary)]">
+                      <FaHistory size={9} /> Attempt #{app.attemptNumber || 1}
                     </span>
                   </div>
                   <div className="flex items-center gap-3 mt-0.5 text-xs text-[var(--text-muted)] flex-wrap">
@@ -204,11 +223,15 @@ const AdminSellerApplications = () => {
               {expanded === app._id && (
                 <div className="px-5 pb-5 pt-0 border-t border-[var(--border-color)] grid grid-cols-2 sm:grid-cols-3 gap-4 bg-[var(--surface-elevated)]">
                   {[
+                    { label: 'Attempt',      value: `#${app.attemptNumber || 1}` },
+                    { label: 'Verification', value: app.verificationProvider === 'razorpay' ? 'Razorpay-assisted' : 'Manual input' },
+                    { label: 'Razorpay status', value: app.razorpayVerification?.status ? formatCheckStatus(app.razorpayVerification.status) : '-' },
                     { label: 'Phone',        value: app.phone },
+                    { label: 'PAN',          value: app.maskedPan || 'Provided securely' },
                     { label: 'Country',      value: `${app.city}, ${app.state}, ${app.country}` },
-                    { label: 'Payout',       value: app.payoutMethod?.type === 'upi' ? `UPI: ${app.payoutMethod.upiId}` : `Bank — IFSC: ${app.payoutMethod?.ifsc}` },
+                    { label: 'Payout',       value: app.payoutMethod?.type === 'upi' ? `UPI: ${app.payoutMethod.upiId}` : `Bank - ${app.payoutMethod?.bankAccountMasked || 'masked'} / IFSC: ${app.payoutMethod?.ifsc}` },
                     { label: 'Agreed',       value: app.agreedAt ? new Date(app.agreedAt).toLocaleString('en-IN') : '—' },
-                    { label: 'Applied',      value: new Date(app.createdAt).toLocaleString('en-IN') },
+                    { label: 'Applied',      value: app.lastSubmittedAt ? new Date(app.lastSubmittedAt).toLocaleString('en-IN') : new Date(app.createdAt).toLocaleString('en-IN') },
                     { label: 'Reviewed by',  value: app.reviewedBy?.username || '—' },
                   ].map(field => (
                     <div key={field.label}>
@@ -220,6 +243,56 @@ const AdminSellerApplications = () => {
                     <div className="col-span-full">
                       <p className="text-[10px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-1">Store Bio</p>
                       <p className="text-sm text-[var(--text-secondary)]">{app.bio}</p>
+                    </div>
+                  )}
+                  <div className="col-span-full">
+                    <p className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                      <FaShieldAlt /> Verification checks
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        ['Phone', app.verification?.phone],
+                        ['PAN', app.verification?.pan],
+                        ['UPI', app.verification?.upi],
+                        ['Bank', app.verification?.bank],
+                        ['DigiLocker', app.verification?.digilocker],
+                      ].map(([label, check]) => {
+                        const status = check?.status || 'not_started';
+                        return (
+                          <span
+                            key={label}
+                            title={check?.note || ''}
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${CHECK_STYLES[status] || CHECK_STYLES.not_started}`}
+                          >
+                            {label}: {formatCheckStatus(status)}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {app.attemptHistory?.length > 0 && (
+                    <div className="col-span-full">
+                      <p className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                        <FaHistory /> Previous attempts
+                      </p>
+                      <div className="space-y-2">
+                        {app.attemptHistory.slice().reverse().map(attempt => (
+                          <div key={`${app._id}-${attempt.attemptNumber}`} className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] p-3">
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className="font-bold text-[var(--text-primary)]">Attempt #{attempt.attemptNumber}</span>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_STYLES[attempt.status] || STATUS_STYLES.rejected}`}>
+                                {attempt.status}
+                              </span>
+                              <span className="text-[var(--text-muted)]">
+                                Submitted {attempt.submittedAt ? new Date(attempt.submittedAt).toLocaleDateString('en-IN') : '-'}
+                              </span>
+                            </div>
+                            {attempt.reviewNote && (
+                              <p className="mt-1 text-xs text-[var(--text-secondary)]">Reason: {attempt.reviewNote}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

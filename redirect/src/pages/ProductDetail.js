@@ -5,6 +5,7 @@ import api from '../services/api';
 import StarRating from '../components/StarRating';
 import SellerBadge from '../components/SellerBadge';
 import CartDrawer from '../components/CartDrawer';
+import { addGuestCartItem } from '../utils/guestCart';
 import { MdVerified } from 'react-icons/md';
 import {
   FaArrowRight,
@@ -30,18 +31,23 @@ import {
   FaShieldAlt,
   FaShoppingBag,
   FaShoppingCart,
+  FaExpand,
   FaSpinner,
   FaStore,
   FaTag,
+  FaTimes,
   FaTruck,
   FaUserCircle,
   FaWhatsapp,
+  FaSearchMinus,
+  FaSearchPlus,
 } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
 import { BarLoader } from 'react-spinners';
 
 const PINCODE_REGEX = /^[1-9][0-9]{5}$/;
 const DELIVERY_PINCODE_KEY = 'lekhon-delivery-pincode';
+const VIEWER_ZOOM_CENTER = { x: 50, y: 50 };
 
 const formatPrice = (value = 0) => `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
 
@@ -100,6 +106,10 @@ const ProductDetail = () => {
   const [cartOpen, setCartOpen] = useState(false);
   const [activeFaq, setActiveFaq] = useState(null);
   const [activeImg, setActiveImg] = useState(0);
+  const [imageZoom, setImageZoom] = useState({ active: false, x: 50, y: 50, lensX: 0, lensY: 0 });
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [imageViewerZoomed, setImageViewerZoomed] = useState(false);
+  const [imageViewerZoomFocus, setImageViewerZoomFocus] = useState(VIEWER_ZOOM_CENTER);
   const [cartAdding, setCartAdding] = useState(false);
   const [wishlisted, setWishlisted] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -110,6 +120,7 @@ const ProductDetail = () => {
   const [deliveryEstimate, setDeliveryEstimate] = useState(null);
   const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
+  const mainImageRef = useRef(null);
   const infoTabRailRef = useRef(null);
   const infoTabDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false });
 
@@ -119,6 +130,10 @@ const ProductDetail = () => {
     setActiveFaq(null);
     setActiveInfoTab('description');
     setActiveReviewRating(null);
+    setImageZoom({ active: false, x: 50, y: 50, lensX: 0, lensY: 0 });
+    setImageViewerOpen(false);
+    setImageViewerZoomed(false);
+    setImageViewerZoomFocus(VIEWER_ZOOM_CENTER);
     setDeliveryOpen(false);
     setDeliveryEstimate(null);
     setDeliveryError('');
@@ -166,6 +181,44 @@ const ProductDetail = () => {
     [product?.category, product?.tags]
   );
 
+  const productImages = useMemo(() => {
+    const gallery = Array.isArray(product?.images) ? product.images.filter(Boolean) : [];
+    if (gallery.length) return gallery;
+    return product?.thumbnail ? [product.thumbnail] : [];
+  }, [product?.images, product?.thumbnail]);
+
+  const activeImage = productImages[activeImg] || productImages[0] || '';
+
+  useEffect(() => {
+    if (activeImg <= productImages.length - 1) return;
+    setActiveImg(0);
+  }, [activeImg, productImages.length]);
+
+  useEffect(() => {
+    if (!imageViewerOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setImageViewerOpen(false);
+        setImageViewerZoomFocus(VIEWER_ZOOM_CENTER);
+      }
+      if (event.key === '+' || event.key === '=') setImageViewerZoomed(true);
+      if (event.key === '-') {
+        setImageViewerZoomed(false);
+        setImageViewerZoomFocus(VIEWER_ZOOM_CENTER);
+      }
+    };
+
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [imageViewerOpen]);
+
   if (loading) return <div className="min-h-screen"><BarLoader width="100%" color="#7c3aed" /></div>;
   if (!product) return null;
 
@@ -186,12 +239,71 @@ const ProductDetail = () => {
     ? formatPrice(shownDeliveryEstimate.shippingFee)
     : 'Free';
 
+  const updateImageZoom = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100));
+    const y = Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100));
+    const lensSize = 132;
+    const lensX = Math.min(rect.width - lensSize, Math.max(0, event.clientX - rect.left - lensSize / 2));
+    const lensY = Math.min(rect.height - lensSize, Math.max(0, event.clientY - rect.top - lensSize / 2));
+
+    setImageZoom({ active: true, x, y, lensX, lensY });
+  };
+
+  const getViewerZoomFocus = (event) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return VIEWER_ZOOM_CENTER;
+
+    return {
+      x: Math.min(100, Math.max(0, ((event.clientX - rect.left) / rect.width) * 100)),
+      y: Math.min(100, Math.max(0, ((event.clientY - rect.top) / rect.height) * 100)),
+    };
+  };
+
+  const updateViewerZoomFocus = (event) => {
+    if (!imageViewerZoomed) return;
+    setImageViewerZoomFocus(getViewerZoomFocus(event));
+  };
+
+  const toggleImageViewerZoom = (event) => {
+    if (imageViewerZoomed) {
+      setImageViewerZoomed(false);
+      setImageViewerZoomFocus(VIEWER_ZOOM_CENTER);
+      return;
+    }
+
+    setImageViewerZoomFocus(getViewerZoomFocus(event));
+    setImageViewerZoomed(true);
+  };
+
+  const toggleImageViewerZoomFromControl = () => {
+    if (imageViewerZoomed) setImageViewerZoomFocus(VIEWER_ZOOM_CENTER);
+    setImageViewerZoomed(zoomed => !zoomed);
+  };
+
+  const openImageViewer = (index = activeImg) => {
+    setActiveImg(index);
+    setImageZoom({ active: false, x: 50, y: 50, lensX: 0, lensY: 0 });
+    setImageViewerZoomed(false);
+    setImageViewerZoomFocus(VIEWER_ZOOM_CENTER);
+    setImageViewerOpen(true);
+  };
+
+  const selectViewerImage = (index) => {
+    setActiveImg(index);
+    setImageViewerZoomed(false);
+    setImageViewerZoomFocus(VIEWER_ZOOM_CENTER);
+  };
+
   const addToCart = async () => {
-    if (!user) return navigate('/login');
     setCartAdding(true);
     try {
-      await api.post('/marketplace/cart/add', { productId: product._id, qty: 1 });
-      window.dispatchEvent(new Event('cartUpdated'));
+      if (user) {
+        await api.post('/marketplace/cart/add', { productId: product._id, qty: 1 });
+        window.dispatchEvent(new Event('cartUpdated'));
+      } else {
+        addGuestCartItem(product, 1);
+      }
       setCartOpen(true);
     } catch {}
     setCartAdding(false);
@@ -543,22 +655,65 @@ const ProductDetail = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 lg:gap-8 mb-8 sm:mb-10">
           <div className="space-y-3">
-            <div className="aspect-[4/3] sm:aspect-square rounded-2xl overflow-hidden bg-[var(--bg-secondary)] border border-[var(--border-color)]">
-              {product.images?.[activeImg] ? (
-                <img src={product.images[activeImg]} alt={product.title} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full grid place-items-center text-[var(--text-muted)]">
-                  <FaShoppingBag size={56} />
+            <div className="relative lg:overflow-visible">
+              <button
+                ref={mainImageRef}
+                type="button"
+                onMouseMove={activeImage ? updateImageZoom : undefined}
+                onMouseEnter={activeImage ? updateImageZoom : undefined}
+                onMouseLeave={() => setImageZoom(z => ({ ...z, active: false }))}
+                onClick={() => activeImage && openImageViewer(activeImg)}
+                className="group relative block aspect-[4/3] w-full overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-left sm:aspect-square"
+                aria-label="Open product image fullscreen"
+              >
+                {activeImage ? (
+                  <>
+                    <img src={activeImage} alt={product.title} className="h-full w-full object-cover" />
+                    <span className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full border border-white/30 bg-black/45 text-white opacity-90 shadow-lg transition-transform group-hover:scale-105">
+                      <FaExpand size={14} />
+                    </span>
+                    <span className="absolute inset-x-0 bottom-0 hidden bg-gradient-to-t from-black/60 to-transparent px-4 py-3 text-center text-xs font-semibold text-white sm:block">
+                      Click to see full view
+                    </span>
+                    {imageZoom.active && (
+                      <span
+                        className="pointer-events-none absolute hidden h-[132px] w-[132px] rounded-xl border border-white/70 bg-violet-500/15 shadow-[0_0_0_9999px_rgba(0,0,0,0.05)] lg:block"
+                        style={{ left: imageZoom.lensX, top: imageZoom.lensY }}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <div className="grid h-full w-full place-items-center text-[var(--text-muted)]">
+                    <FaShoppingBag size={56} />
+                  </div>
+                )}
+              </button>
+
+              {activeImage && imageZoom.active && (
+                <div className="pointer-events-none absolute left-[calc(100%+1rem)] top-0 z-40 hidden h-full w-[min(48vw,640px)] overflow-hidden rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] shadow-2xl lg:block">
+                  <div
+                    className="h-full w-full bg-no-repeat"
+                    style={{
+                      backgroundImage: `url(${activeImage})`,
+                      backgroundSize: '230%',
+                      backgroundPosition: `${imageZoom.x}% ${imageZoom.y}%`,
+                    }}
+                  />
                 </div>
               )}
             </div>
-            {product.images?.length > 1 && (
+            {productImages.length > 1 && (
               <div className="flex gap-2 overflow-x-auto pb-1">
-                {product.images.map((img, index) => (
+                {productImages.map((img, index) => (
                   <button
                     key={img}
-                    onClick={() => setActiveImg(index)}
+                    type="button"
+                    onClick={() => {
+                      setActiveImg(index);
+                      setImageZoom(z => ({ ...z, active: false }));
+                    }}
                     className={`shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-colors ${activeImg === index ? 'border-violet-500' : 'border-[var(--border-color)]'}`}
+                    aria-label={`View product image ${index + 1}`}
                   >
                     <img src={img} alt="" className="w-full h-full object-cover" />
                   </button>
@@ -740,7 +895,7 @@ const ProductDetail = () => {
                   {cartAdding ? 'Adding...' : 'Add to Cart'}
                 </button>
                 <button
-                  onClick={() => { addToCart(); navigate('/checkout'); }}
+                  onClick={async () => { await addToCart(); navigate('/checkout'); }}
                   className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm transition-colors"
                 >
                   <FaBolt size={12} />
@@ -864,6 +1019,74 @@ const ProductDetail = () => {
           </div>
         )}
       </div>
+
+      {imageViewerOpen && activeImage && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-3 sm:p-5 lg:p-6">
+          <div className="relative flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/15 bg-white text-slate-950 shadow-2xl dark:bg-[#0f1711] dark:text-white lg:h-[68vh] lg:w-[88vw] lg:max-w-[1600px] lg:flex-row">
+            <button
+              type="button"
+              onClick={() => setImageViewerOpen(false)}
+              className="absolute right-4 top-4 z-20 grid h-10 w-10 place-items-center rounded-full border border-black/10 bg-white/90 text-slate-900 shadow-lg transition-colors hover:bg-white dark:border-white/15 dark:bg-black/70 dark:text-white dark:hover:bg-black"
+              aria-label="Close image viewer"
+            >
+              <FaTimes size={16} />
+            </button>
+
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-white p-3 sm:p-6 dark:bg-[#0b110d]">
+              <button
+                type="button"
+                onClick={toggleImageViewerZoom}
+                onMouseMove={updateViewerZoomFocus}
+                onMouseEnter={updateViewerZoomFocus}
+                className={`flex h-full min-h-[320px] w-full items-center justify-center overflow-auto ${imageViewerZoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+                aria-label="Toggle image zoom"
+              >
+                <img
+                  src={activeImage}
+                  alt={product.title}
+                  className={`max-h-full max-w-full object-contain transition-transform ${imageViewerZoomed ? 'scale-[1.85] duration-75 ease-out lg:scale-[3]' : 'scale-100 duration-200'}`}
+                  style={{ transformOrigin: `${imageViewerZoomFocus.x}% ${imageViewerZoomFocus.y}%` }}
+                />
+              </button>
+            </div>
+
+            <aside className="shrink-0 border-t border-black/10 bg-white p-4 dark:border-white/10 dark:bg-[#101a12] lg:w-80 lg:border-l lg:border-t-0">
+              <div className="flex items-start gap-3 pr-12 lg:pr-0">
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-bold leading-snug text-slate-950 dark:text-white">{product.title}</p>
+                  <p className="mt-2 text-sm text-slate-500 dark:text-white/60">
+                    Number of Images: {productImages.length}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={toggleImageViewerZoomFromControl}
+                  className="hidden h-10 w-10 shrink-0 place-items-center rounded-full border border-slate-200 text-slate-700 transition-colors hover:border-violet-300 hover:text-violet-600 dark:border-white/10 dark:text-white/75 dark:hover:border-violet-400 dark:hover:text-violet-300 lg:grid"
+                  aria-label="Toggle image zoom"
+                >
+                  {imageViewerZoomed ? <FaSearchMinus size={13} /> : <FaSearchPlus size={13} />}
+                </button>
+              </div>
+
+              <div className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:grid lg:max-h-[calc(100vh-16rem)] lg:grid-cols-3 lg:overflow-y-auto lg:overflow-x-hidden lg:pb-0">
+                {productImages.map((img, index) => (
+                  <button
+                    key={`${img}-${index}`}
+                    type="button"
+                    onClick={() => selectViewerImage(index)}
+                    className={`h-16 w-16 shrink-0 overflow-hidden rounded-lg border-2 bg-slate-100 transition-colors dark:bg-white/5 lg:h-20 lg:w-full ${
+                      activeImg === index ? 'border-violet-500' : 'border-slate-200 dark:border-white/15'
+                    }`}
+                    aria-label={`Open product image ${index + 1}`}
+                  >
+                    <img src={img} alt="" className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </aside>
+          </div>
+        </div>
+      )}
 
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
     </div>
