@@ -20,45 +20,7 @@ import EmailNotificationSettings from '../components/EmailNotificationSettings';
 import Achievements from '../components/Achievements';
 import QRCodeModal from '../components/QRCodeModal';
 import StatusViewer from '../components/StatusViewer';
-
-const getTwitterRedirectUri = () => {
-  const configured = String(process.env.REACT_APP_TWITTER_REDIRECT_URI || '').trim();
-  if (configured) {
-    try {
-      const parsed = new URL(configured);
-      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
-    } catch (error) {
-      console.warn('Invalid REACT_APP_TWITTER_REDIRECT_URI, falling back to current origin.');
-    }
-  }
-  return `${window.location.origin}/auth/twitter/callback`;
-};
-
-const getFacebookRedirectUri = () => {
-  const configured = String(process.env.REACT_APP_FACEBOOK_REDIRECT_URI || '').trim();
-  if (configured) {
-    try {
-      const parsed = new URL(configured);
-      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
-    } catch (error) {
-      console.warn('Invalid REACT_APP_FACEBOOK_REDIRECT_URI, falling back to current origin.');
-    }
-  }
-  return `${window.location.origin}/auth/facebook/callback`;
-};
-
-const getLinkedInRedirectUri = () => {
-  const configured = String(process.env.REACT_APP_LINKEDIN_REDIRECT_URI || '').trim();
-  if (configured) {
-    try {
-      const parsed = new URL(configured);
-      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
-    } catch (error) {
-      console.warn('Invalid REACT_APP_LINKEDIN_REDIRECT_URI, falling back to current origin.');
-    }
-  }
-  return `${window.location.origin}/auth/linkedin/callback`;
-};
+import { getOAuthRedirectUri } from '../utils/oauthRedirects';
 
 const STORY_STYLE_PRESETS = [
   {
@@ -1308,13 +1270,7 @@ const ProfileNew = () => {
     if (!provider) return;
     setSocialConnectLoading(provider);
     try {
-      const redirectUri = provider === 'twitter'
-        ? getTwitterRedirectUri()
-        : provider === 'facebook'
-          ? getFacebookRedirectUri()
-          : provider === 'linkedin'
-            ? getLinkedInRedirectUri()
-          : `${window.location.origin}/auth/${provider}/callback`;
+      const redirectUri = getOAuthRedirectUri(provider);
       const { data } = await api.get(`/auth/${provider}/connect/start`, {
         params: { redirect_uri: redirectUri }
       });

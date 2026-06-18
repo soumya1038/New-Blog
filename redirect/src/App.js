@@ -1,5 +1,6 @@
 import React, { useEffect, useContext, useState, useMemo, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { App as CapacitorApp } from '@capacitor/app';
 import { AuthProvider, AuthContext } from './context/AuthContext';
 import { GroupCallProvider } from './context/GroupCallContext';
 import Navbar from './components/Navbar';
@@ -21,6 +22,7 @@ import guestTracker from './services/guestTracking';
 import { getCallState, clearCallState } from './utils/callStateManager';
 import { useGroupCall } from './context/GroupCallContext';
 import { captureFrontendException } from './utils/sentry';
+import { isNativeApp } from './utils/nativeApp';
 
 const Home = lazy(() => import('./pages/Home'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -90,18 +92,18 @@ function AppContent() {
     const path = (location.pathname || '/').replace(/\/+$/, '');
     return path || '/';
   }, [location.pathname]);
+  const runningNativeApp = useMemo(() => isNativeApp(), []);
   const hideGlobalChrome = ROUTES_WITHOUT_GLOBAL_CHROME.has(normalizedPath);
   const showPublicFooter = PUBLIC_FOOTER_ROUTES.has(normalizedPath);
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   const [globalCallState, setGlobalCallState] = useState(null);
   const [showIntro, setShowIntro] = useState(() => {
-    const hasSeenIntro = sessionStorage.getItem('hasSeenIntro');
     const showLoginIntro = sessionStorage.getItem('showLoginIntro');
     if (ROUTES_WITHOUT_GLOBAL_CHROME.has((location.pathname || '/').replace(/\/+$/, '') || '/')) {
       return false;
     }
-    return !hasSeenIntro || showLoginIntro === 'true';
+    return showLoginIntro === 'true';
   });
   
   useRouteTracker();
@@ -118,6 +120,33 @@ function AppContent() {
       setShowIntro(true);
     }
   }, [hideGlobalChrome, location.pathname]);
+
+  useEffect(() => {
+    if (!runningNativeApp) return undefined;
+
+    let backButtonListener;
+    const setupBackButton = async () => {
+      backButtonListener = await CapacitorApp.addListener('backButton', ({ canGoBack } = {}) => {
+        const currentPath = (window.location.pathname || '/').replace(/\/+$/, '') || '/';
+        const isAtAppRoot = currentPath === '/' || currentPath === '/home';
+
+        if (!isAtAppRoot && (canGoBack || window.history.length > 1)) {
+          navigate(-1);
+          return;
+        }
+
+        if (typeof CapacitorApp.minimizeApp === 'function') {
+          CapacitorApp.minimizeApp();
+        }
+      });
+    };
+
+    setupBackButton();
+
+    return () => {
+      backButtonListener?.remove?.();
+    };
+  }, [navigate, runningNativeApp]);
 
   useEffect(() => {
     const savedState = getCallState('one-to-one');
@@ -407,7 +436,7 @@ function AppContent() {
         )}
         <Suspense fallback={<LoadingFallback />}>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
+            <Route path="/" element={runningNativeApp ? <Navigate to="/home" replace /> : <LandingPage />} />
             <Route path="/home" element={<Home />} />
             <Route path="/login" element={<PublicOnlyRoute><Login /></PublicOnlyRoute>} />
             <Route path="/register" element={<PublicOnlyRoute><Register /></PublicOnlyRoute>} />

@@ -3,19 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
-
-const getFacebookRedirectUri = () => {
-  const configured = String(process.env.REACT_APP_FACEBOOK_REDIRECT_URI || '').trim();
-  if (configured) {
-    try {
-      const parsed = new URL(configured);
-      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
-    } catch (error) {
-      console.warn('Invalid REACT_APP_FACEBOOK_REDIRECT_URI, falling back to current origin.');
-    }
-  }
-  return `${window.location.origin}/auth/facebook/callback`;
-};
+import { getOAuthRedirectUri } from '../utils/oauthRedirects';
 
 const FacebookAuthCallback = () => {
   const navigate = useNavigate();
@@ -52,7 +40,7 @@ const FacebookAuthCallback = () => {
           throw new Error('Missing authorization code from Facebook redirect.');
         }
 
-        const redirectUri = getFacebookRedirectUri();
+        const redirectUri = getOAuthRedirectUri('facebook');
         if (isConnectFlow) {
           const connectResponse = await api.post('/auth/facebook/connect/exchange', {
             code,
@@ -100,7 +88,7 @@ const FacebookAuthCallback = () => {
           return;
         }
 
-        window.location.href = '/';
+        window.location.href = '/home';
       } catch (err) {
         if (guardKey) {
           sessionStorage.removeItem(guardKey);

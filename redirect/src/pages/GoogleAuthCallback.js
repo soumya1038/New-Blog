@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
+import { getOAuthRedirectUri } from '../utils/oauthRedirects';
 
 const GoogleAuthCallback = () => {
   const navigate = useNavigate();
@@ -39,7 +40,7 @@ const GoogleAuthCallback = () => {
           throw new Error('Missing authorization code from Google redirect.');
         }
 
-        const redirectUri = `${window.location.origin}/auth/google/callback`;
+        const redirectUri = getOAuthRedirectUri('google');
         if (isConnectFlow) {
           const connectResponse = await api.post('/auth/google/connect/exchange', {
             code,
@@ -87,7 +88,7 @@ const GoogleAuthCallback = () => {
           return;
         }
 
-        window.location.href = '/';
+        window.location.href = '/home';
       } catch (err) {
         if (guardKey) {
           sessionStorage.removeItem(guardKey);

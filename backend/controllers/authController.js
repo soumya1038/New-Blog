@@ -101,6 +101,7 @@ const getAllowedGoogleRedirectUris = () => {
 
   const defaults = [
     'https://lekhon-development.netlify.app/auth/google/callback',
+    'https://localhost/auth/google/callback',
     'http://localhost:3000/auth/google/callback',
     'http://localhost:3001/auth/google/callback',
   ];
@@ -122,6 +123,7 @@ const getAllowedFacebookRedirectUris = () => {
 
   const defaults = [
     'https://lekhon-development.netlify.app/auth/facebook/callback',
+    'https://localhost/auth/facebook/callback',
     'http://localhost:3000/auth/facebook/callback',
     'http://localhost:3001/auth/facebook/callback',
   ];
@@ -143,6 +145,7 @@ const getAllowedTwitterRedirectUris = () => {
 
   const defaults = [
     'https://lekhon-development.netlify.app/auth/twitter/callback',
+    'https://localhost/auth/twitter/callback',
     'http://localhost:3000/auth/twitter/callback',
     'http://localhost:3001/auth/twitter/callback',
   ];
@@ -164,6 +167,7 @@ const getAllowedLinkedInRedirectUris = () => {
 
   const defaults = [
     'https://lekhon-development.netlify.app/auth/linkedin/callback',
+    'https://localhost/auth/linkedin/callback',
     'http://localhost:3000/auth/linkedin/callback',
     'http://localhost:3001/auth/linkedin/callback',
   ];

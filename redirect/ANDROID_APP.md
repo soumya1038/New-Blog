@@ -44,6 +44,19 @@ https://localhost
 
 The backend CORS allowlist must include that origin. `backend/server.js` has been updated locally, but the deployed backend must be redeployed/restarted before the installed Android app can load remote content from Render.
 
+## OAuth Redirect Requirement
+
+For the current Capacitor build, social sign-in starts and finishes with the native app origin:
+
+```text
+https://localhost/auth/google/callback
+https://localhost/auth/facebook/callback
+https://localhost/auth/twitter/callback
+https://localhost/auth/linkedin/callback
+```
+
+The deployed backend must allow these redirect URLs, and each provider dashboard must list its matching callback URL. For store-ready OAuth, the better long-term path is opening the provider in the system browser and returning through Android App Links / iOS Universal Links.
+
 ## Verified Locally
 
 - React production build passes.

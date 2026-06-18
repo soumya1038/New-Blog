@@ -8,48 +8,9 @@ import axios from 'axios';
 import { TbBrandAmongUs } from 'react-icons/tb';
 import GuestUsernameModal from '../components/GuestUsernameModal';
 import GuestInfoModal from '../components/GuestInfoModal';
+import { getOAuthRedirectUri } from '../utils/oauthRedirects';
 
 const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
-
-// ── OAuth URI helpers (from Register.js) ─────────────────────────────────────
-const getTwitterRedirectUri = () => {
-  const configured = String(process.env.REACT_APP_TWITTER_REDIRECT_URI || '').trim();
-  if (configured) {
-    try {
-      const parsed = new URL(configured);
-      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
-    } catch {
-      console.warn('Invalid REACT_APP_TWITTER_REDIRECT_URI, falling back to current origin.');
-    }
-  }
-  return `${window.location.origin}/auth/twitter/callback`;
-};
-
-const getFacebookRedirectUri = () => {
-  const configured = String(process.env.REACT_APP_FACEBOOK_REDIRECT_URI || '').trim();
-  if (configured) {
-    try {
-      const parsed = new URL(configured);
-      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
-    } catch {
-      console.warn('Invalid REACT_APP_FACEBOOK_REDIRECT_URI, falling back to current origin.');
-    }
-  }
-  return `${window.location.origin}/auth/facebook/callback`;
-};
-
-const getLinkedInRedirectUri = () => {
-  const configured = String(process.env.REACT_APP_LINKEDIN_REDIRECT_URI || '').trim();
-  if (configured) {
-    try {
-      const parsed = new URL(configured);
-      return `${parsed.origin}${parsed.pathname}`.replace(/\/$/, '');
-    } catch {
-      console.warn('Invalid REACT_APP_LINKEDIN_REDIRECT_URI, falling back to current origin.');
-    }
-  }
-  return `${window.location.origin}/auth/linkedin/callback`;
-};
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
 const LIGHT = {
@@ -698,25 +659,25 @@ const Register = () => {
 
   // Social OAuth handlers
   const handleGoogleLoginRedirect = () => {
-    const redirectUri = `${window.location.origin}/auth/google/callback`;
+    const redirectUri = getOAuthRedirectUri('google');
     sessionStorage.removeItem('socialConnectIntent');
     window.location.href = `${API}/api/auth/google/start?redirect_uri=${encodeURIComponent(redirectUri)}`;
   };
 
   const handleFacebookLoginRedirect = () => {
-    const redirectUri = getFacebookRedirectUri();
+    const redirectUri = getOAuthRedirectUri('facebook');
     sessionStorage.removeItem('socialConnectIntent');
     window.location.href = `${API}/api/auth/facebook/start?redirect_uri=${encodeURIComponent(redirectUri)}`;
   };
 
   const handleTwitterLoginRedirect = () => {
-    const redirectUri = getTwitterRedirectUri();
+    const redirectUri = getOAuthRedirectUri('twitter');
     sessionStorage.removeItem('socialConnectIntent');
     window.location.href = `${API}/api/auth/twitter/start?redirect_uri=${encodeURIComponent(redirectUri)}&r=${Date.now()}`;
   };
 
   const handleLinkedInLoginRedirect = () => {
-    const redirectUri = getLinkedInRedirectUri();
+    const redirectUri = getOAuthRedirectUri('linkedin');
     sessionStorage.removeItem('socialConnectIntent');
     window.location.href = `${API}/api/auth/linkedin/start?redirect_uri=${encodeURIComponent(redirectUri)}&r=${Date.now()}`;
   };
