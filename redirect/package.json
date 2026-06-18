@@ -3,6 +3,9 @@
   "version": "1.7.17",
   "private": true,
   "dependencies": {
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/cli": "^8.4.0",
+    "@capacitor/core": "^8.4.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@livekit/components-react": "^2.9.19",
@@ -42,6 +45,9 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "node --max_old_space_size=4096 ./node_modules/react-scripts/bin/react-scripts.js build",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:run": "npm run android:sync && npx cap run android",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "dev": "nodemon server.js",

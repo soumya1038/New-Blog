@@ -1,5 +1,5 @@
 services:
-  # Backend API + Frontend (Single Service)
+  # Backend API + Redirect frontend (Single Service)
   - type: web
     name: blog-backend
     env: node
@@ -7,7 +7,7 @@ services:
     plan: free
     buildCommand: |
       cd backend && npm install
-      cd ../frontend && npm install --legacy-peer-deps && npm run build
+      cd ../redirect && npm install --legacy-peer-deps && npm run build
       mv build ../backend/
     startCommand: cd backend && npm start
     envVars:

@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:5000/api/messages';
+const API_URL = process.env.REACT_APP_API_URL
+  ? `${process.env.REACT_APP_API_URL.replace(/\/$/, '')}/api/messages`
+  : 'http://localhost:5000/api/messages';
 
 const getAuthHeader = () => {
   const token = localStorage.getItem('token');
