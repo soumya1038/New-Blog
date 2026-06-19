@@ -8,7 +8,7 @@ import axios from 'axios';
 import { TbBrandAmongUs } from 'react-icons/tb';
 import GuestUsernameModal from '../components/GuestUsernameModal';
 import GuestInfoModal from '../components/GuestInfoModal';
-import { getOAuthRedirectUri } from '../utils/oauthRedirects';
+import { requestSocialAuthUrl } from '../utils/socialAuth';
 
 const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
 
@@ -222,22 +222,28 @@ const SOCIAL_ICONS = [
   {label:'LinkedIn',icon:{vb:'0 0 24 24',paths:['M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z']}},
 ];
 
-function SocialBtn({ label, icon, C, onClick }) {
+function SocialBtn({ label, icon, C, onClick, disabled = false, loading = false }) {
   const [hov,setHov]=useState(false);
+  const active = hov && !disabled && !loading;
   return (
-    <button aria-label={label} title={label} onClick={onClick}
+    <button type="button" aria-label={label} aria-busy={loading || undefined} title={label} onClick={onClick} disabled={disabled || loading}
       onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{width:46,height:46,borderRadius:11,
-        border:`1px solid ${hov?C.brand:C.inputBorder}`,
-        background:hov?C.brandDimBg:C.inputBg,
-        cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',
-        transition:'all 0.22s',transform:hov?'translateY(-2px)':'none',
-        boxShadow:hov?`0 4px 12px ${C.brandGlow}`:'none'}}>
-      <svg width="19" height="19" viewBox={icon.vb} fill="none">
-        {icon.paths.map((p,i)=>(
-          <path key={i} d={p} fill={hov?C.brand:C.muted} style={{transition:'fill 0.22s'}}/>
-        ))}
-      </svg>
+        border:`1px solid ${active?C.brand:C.inputBorder}`,
+        background:active?C.brandDimBg:C.inputBg,
+        cursor:disabled||loading?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',
+        opacity:disabled&&!loading?0.58:1,
+        transition:'all 0.22s',transform:active?'translateY(-2px)':'none',
+        boxShadow:active?`0 4px 12px ${C.brandGlow}`:'none'}}>
+      {loading ? (
+        <div style={{width:18,height:18,border:`2px solid ${C.inputBorder}`,borderTopColor:C.brand,borderRadius:'50%',animation:'spin 0.7s linear infinite'}}/>
+      ) : (
+        <svg width="19" height="19" viewBox={icon.vb} fill="none">
+          {icon.paths.map((p,i)=>(
+            <path key={i} d={p} fill={active?C.brand:C.muted} style={{transition:'fill 0.22s'}}/>
+          ))}
+        </svg>
+      )}
     </button>
   );
 }
@@ -467,6 +473,7 @@ const Register = () => {
   const [error, setError]             = useState('');
   const [focused, setFocused]         = useState(null);
   const [isRegistering, setIsRegistering] = useState(false);
+  const [socialAuthLoading, setSocialAuthLoading] = useState('');
 
   // CAPTCHA
   const [captchaVerified, setCaptchaVerified] = useState(false);
@@ -658,28 +665,34 @@ const Register = () => {
   };
 
   // Social OAuth handlers
-  const handleGoogleLoginRedirect = () => {
-    const redirectUri = getOAuthRedirectUri('google');
+  const handleSocialLoginRedirect = async (provider) => {
+    if (socialAuthLoading) return;
+    setError('');
+    setSocialAuthLoading(provider);
     sessionStorage.removeItem('socialConnectIntent');
-    window.location.href = `${API}/api/auth/google/start?redirect_uri=${encodeURIComponent(redirectUri)}`;
+    try {
+      const authUrl = await requestSocialAuthUrl(provider);
+      window.location.assign(authUrl);
+    } catch (err) {
+      setSocialAuthLoading('');
+      setError(t(err?.message || 'Social sign-in is temporarily unavailable. Please try again.'));
+    }
+  };
+
+  const handleGoogleLoginRedirect = () => {
+    handleSocialLoginRedirect('google');
   };
 
   const handleFacebookLoginRedirect = () => {
-    const redirectUri = getOAuthRedirectUri('facebook');
-    sessionStorage.removeItem('socialConnectIntent');
-    window.location.href = `${API}/api/auth/facebook/start?redirect_uri=${encodeURIComponent(redirectUri)}`;
+    handleSocialLoginRedirect('facebook');
   };
 
   const handleTwitterLoginRedirect = () => {
-    const redirectUri = getOAuthRedirectUri('twitter');
-    sessionStorage.removeItem('socialConnectIntent');
-    window.location.href = `${API}/api/auth/twitter/start?redirect_uri=${encodeURIComponent(redirectUri)}&r=${Date.now()}`;
+    handleSocialLoginRedirect('twitter');
   };
 
   const handleLinkedInLoginRedirect = () => {
-    const redirectUri = getOAuthRedirectUri('linkedin');
-    sessionStorage.removeItem('socialConnectIntent');
-    window.location.href = `${API}/api/auth/linkedin/start?redirect_uri=${encodeURIComponent(redirectUri)}&r=${Date.now()}`;
+    handleSocialLoginRedirect('linkedin');
   };
 
   const handleGuestContinue = (u) => { setGuestUsername(u); setShowGuestModal(false); setShowGuestInfoModal(true); };
@@ -1083,13 +1096,13 @@ const Register = () => {
                   </div>
                   <div style={{display:'flex',gap:10,justifyContent:'center',marginBottom:14}}>
                     {/* Google — real OAuth */}
-                    <SocialBtn label="Google"     icon={SOCIAL_ICONS[0].icon} C={C} onClick={handleGoogleLoginRedirect}/>
+                    <SocialBtn label="Google"     icon={SOCIAL_ICONS[0].icon} C={C} onClick={handleGoogleLoginRedirect} disabled={!!socialAuthLoading} loading={socialAuthLoading==='google'}/>
                     {/* Facebook — real OAuth */}
-                    <SocialBtn label="Facebook"   icon={SOCIAL_ICONS[1].icon} C={C} onClick={handleFacebookLoginRedirect}/>
+                    <SocialBtn label="Facebook"   icon={SOCIAL_ICONS[1].icon} C={C} onClick={handleFacebookLoginRedirect} disabled={!!socialAuthLoading} loading={socialAuthLoading==='facebook'}/>
                     {/* Twitter — real OAuth */}
-                    <SocialBtn label="Twitter / X" icon={SOCIAL_ICONS[2].icon} C={C} onClick={handleTwitterLoginRedirect}/>
+                    <SocialBtn label="Twitter / X" icon={SOCIAL_ICONS[2].icon} C={C} onClick={handleTwitterLoginRedirect} disabled={!!socialAuthLoading} loading={socialAuthLoading==='twitter'}/>
                     {/* LinkedIn real OAuth */}
-                    <SocialBtn label="LinkedIn"   icon={SOCIAL_ICONS[3].icon} C={C} onClick={handleLinkedInLoginRedirect}/>
+                    <SocialBtn label="LinkedIn"   icon={SOCIAL_ICONS[3].icon} C={C} onClick={handleLinkedInLoginRedirect} disabled={!!socialAuthLoading} loading={socialAuthLoading==='linkedin'}/>
                   </div>
                   <button onClick={()=>setShowGuestModal(true)}
                     style={{width:'100%',padding:'13px',borderRadius:13,

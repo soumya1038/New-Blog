@@ -116,12 +116,30 @@ const toNonNegativeInt = (value, fallback) => {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 };
 
+const authRateLimitWindowMs = toPositiveInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
+const authRateLimitMax = toPositiveInt(process.env.AUTH_RATE_LIMIT_MAX, 12);
+
+const getRetryAfterSeconds = (req, fallbackMs) => {
+  const resetTime = req.rateLimit?.resetTime;
+  const resetMs = resetTime instanceof Date ? resetTime.getTime() : Number(resetTime);
+  const resetSeconds = Number.isFinite(resetMs) ? Math.ceil((resetMs - Date.now()) / 1000) : 0;
+  return Math.max(1, resetSeconds || Math.ceil(fallbackMs / 1000));
+};
+
 const authLimiter = rateLimit({
-  windowMs: toPositiveInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
-  max: toPositiveInt(process.env.AUTH_RATE_LIMIT_MAX, 12),
+  windowMs: authRateLimitWindowMs,
+  max: authRateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, message: 'Too many authentication attempts. Please try again later.' }
+  handler: (req, res) => {
+    const retryAfterSeconds = getRetryAfterSeconds(req, authRateLimitWindowMs);
+    res.set('Retry-After', String(retryAfterSeconds));
+    return res.status(429).json({
+      success: false,
+      message: 'Too many authentication attempts. Please try again later.',
+      retryAfterSeconds
+    });
+  }
 });
 
 const apiLimiter = rateLimit({

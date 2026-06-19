@@ -32,6 +32,19 @@ const normalizeAbsoluteUrl = (value = '') => {
   }
 };
 
+const wantsOAuthStartJson = (req) => {
+  const requestedFormat = String(req.query?.format || '').trim().toLowerCase();
+  const acceptHeader = String(req.get?.('accept') || '').toLowerCase();
+  return requestedFormat === 'json' || acceptHeader.includes('application/json');
+};
+
+const sendOAuthStartResponse = (req, res, authUrl) => {
+  if (wantsOAuthStartJson(req)) {
+    return res.json({ success: true, authUrl });
+  }
+  return res.redirect(authUrl);
+};
+
 const getGoogleClientId = () =>
   (process.env.GOOGLE_CLIENT_ID || process.env.google_client_id || '').trim();
 
@@ -728,7 +741,7 @@ exports.startGoogleAuth = async (req, res) => {
       state,
     });
 
-    return res.redirect(`${GOOGLE_AUTH_BASE_URL}?${params.toString()}`);
+    return sendOAuthStartResponse(req, res, `${GOOGLE_AUTH_BASE_URL}?${params.toString()}`);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -1057,7 +1070,7 @@ exports.startFacebookAuth = async (req, res) => {
       state,
     });
 
-    return res.redirect(`${FACEBOOK_AUTH_BASE_URL}?${params.toString()}`);
+    return sendOAuthStartResponse(req, res, `${FACEBOOK_AUTH_BASE_URL}?${params.toString()}`);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -1276,7 +1289,7 @@ exports.startLinkedInAuth = async (req, res) => {
       state,
     });
 
-    return res.redirect(`${LINKEDIN_AUTH_BASE_URL}?${params.toString()}`);
+    return sendOAuthStartResponse(req, res, `${LINKEDIN_AUTH_BASE_URL}?${params.toString()}`);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -1506,7 +1519,7 @@ exports.startTwitterAuth = async (req, res) => {
       code_challenge_method: 'S256',
     });
 
-    return res.redirect(`${TWITTER_AUTH_BASE_URL}?${params.toString()}`);
+    return sendOAuthStartResponse(req, res, `${TWITTER_AUTH_BASE_URL}?${params.toString()}`);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
