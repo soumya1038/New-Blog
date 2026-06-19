@@ -101,6 +101,11 @@ const createSocialAuthError = (provider, response) => {
   return error;
 };
 
+const createSocialAuthUnavailableError = (provider) => {
+  const label = PROVIDER_LABELS[provider] || 'Social';
+  return new Error(`${label} sign-in could not start. Please check your connection and try again.`);
+};
+
 export const requestSocialAuthUrl = async (provider) => {
   const retrySeconds = getStoredRetrySeconds();
   if (retrySeconds > 0) {
@@ -114,10 +119,18 @@ export const requestSocialAuthUrl = async (provider) => {
     r: String(Date.now()),
   });
 
-  const response = await axios.get(`${API}/api/auth/${provider}/start?${params.toString()}`, {
-    headers: { Accept: 'application/json' },
-    validateStatus: () => true,
-  });
+  let response;
+  try {
+    response = await axios.get(`${API}/api/auth/${provider}/start?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+      validateStatus: () => true,
+    });
+  } catch (error) {
+    if (error?.response) {
+      throw createSocialAuthError(provider, error.response);
+    }
+    throw createSocialAuthUnavailableError(provider);
+  }
 
   const authUrl = response?.data?.authUrl;
   if (response.status >= 200 && response.status < 300 && authUrl) {
