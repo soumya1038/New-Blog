@@ -116,7 +116,7 @@ const Navbar = () => {
         }}>
           <div className="container mx-auto px-4 py-3 relative z-10">
         <div className="flex justify-between items-center">
-          <Link to={user ? '/home' : '/'} className="flex items-center gap-3 group">
+          <Link to="/home" className="flex items-center gap-3 group">
             <img 
               src="/image/lekhon_url.png" 
               alt="Lekhon Logo" 

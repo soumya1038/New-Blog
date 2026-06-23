@@ -19,15 +19,15 @@ const TermsOfService = () => {
           style={{ background: 'var(--surface-elevated)', borderColor: 'var(--border-default)' }}
         >
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+            <Link to="/home" className="flex items-center gap-3">
               <img src="/image/lekhon_url.png" alt="Lekhon Logo" className="h-12 w-12 rounded-lg object-cover" />
               <div>
                 <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)]">Lekhon</p>
                 <h1 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)]">Terms of Service</h1>
               </div>
-            </div>
+            </Link>
             <Link
-              to="/"
+              to="/home"
               className="rounded-lg px-3 py-2 text-sm font-semibold border"
               style={{ color: 'var(--brand-primary)', borderColor: 'var(--border-default)' }}
             >

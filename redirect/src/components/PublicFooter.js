@@ -44,7 +44,7 @@ const PublicFooter = () => {
     >
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <Link to="/" className="flex items-center gap-3 text-[var(--text-primary)] no-underline">
+          <Link to="/home" className="flex items-center gap-3 text-[var(--text-primary)] no-underline">
             <img
               src={LOGO_URL}
               alt="Lekhon"
