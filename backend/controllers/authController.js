@@ -32,6 +32,9 @@ const normalizeAbsoluteUrl = (value = '') => {
   }
 };
 
+const isNativeAppOAuthRequest = (req) =>
+  ['1', 'true', 'yes'].includes(String(req.query.native_app || '').trim().toLowerCase());
+
 const wantsOAuthStartJson = (req) => {
   const requestedFormat = String(req.query?.format || '').trim().toLowerCase();
   const acceptHeader = String(req.get?.('accept') || '').toLowerCase();
@@ -218,9 +221,10 @@ const isLinkedInRedirectUriAllowed = (redirectUri) => {
   return getAllowedLinkedInRedirectUris().includes(normalized);
 };
 
-const createGoogleState = (redirectUri) => {
+const createGoogleState = (redirectUri, payload = {}) => {
   return jwt.sign(
     {
+      ...payload,
       redirectUri: normalizeAbsoluteUrl(redirectUri),
       nonce: crypto.randomBytes(8).toString('hex'),
     },
@@ -729,7 +733,9 @@ exports.startGoogleAuth = async (req, res) => {
       });
     }
 
-    const state = createGoogleState(redirectUri);
+    const state = createGoogleState(redirectUri, {
+      returnToNativeApp: isNativeAppOAuthRequest(req),
+    });
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
@@ -1060,6 +1066,7 @@ exports.startFacebookAuth = async (req, res) => {
       provider: 'facebook',
       mode: 'login',
       redirectUri,
+      returnToNativeApp: isNativeAppOAuthRequest(req),
     });
 
     const params = new URLSearchParams({
@@ -1279,6 +1286,7 @@ exports.startLinkedInAuth = async (req, res) => {
       provider: 'linkedin',
       mode: 'login',
       redirectUri,
+      returnToNativeApp: isNativeAppOAuthRequest(req),
     });
 
     const params = new URLSearchParams({
@@ -1507,6 +1515,7 @@ exports.startTwitterAuth = async (req, res) => {
       mode: 'login',
       redirectUri,
       codeVerifier,
+      returnToNativeApp: isNativeAppOAuthRequest(req),
     });
 
     const params = new URLSearchParams({
@@ -1742,6 +1751,7 @@ exports.startGoogleConnectAuth = async (req, res) => {
       mode: 'connect',
       userId: req.user?._id,
       redirectUri,
+      returnToNativeApp: isNativeAppOAuthRequest(req),
     });
 
     const params = new URLSearchParams({
@@ -1902,6 +1912,7 @@ exports.startFacebookConnectAuth = async (req, res) => {
       mode: 'connect',
       userId: req.user?._id,
       redirectUri,
+      returnToNativeApp: isNativeAppOAuthRequest(req),
     });
 
     const params = new URLSearchParams({
@@ -2052,6 +2063,7 @@ exports.startLinkedInConnectAuth = async (req, res) => {
       mode: 'connect',
       userId: req.user?._id,
       redirectUri,
+      returnToNativeApp: isNativeAppOAuthRequest(req),
     });
 
     const params = new URLSearchParams({
@@ -2213,6 +2225,7 @@ exports.startTwitterConnectAuth = async (req, res) => {
       userId: req.user?._id,
       redirectUri,
       codeVerifier,
+      returnToNativeApp: isNativeAppOAuthRequest(req),
     });
 
     const params = new URLSearchParams({

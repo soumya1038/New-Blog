@@ -4,6 +4,7 @@ import axios from 'axios';
 import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 import { getOAuthRedirectUri } from '../utils/oauthRedirects';
+import { redirectOAuthCallbackToNativeApp } from '../utils/nativeOAuthBridge';
 
 const LinkedInAuthCallback = () => {
   const navigate = useNavigate();
@@ -19,6 +20,9 @@ const LinkedInAuthCallback = () => {
       let guardKey = '';
       try {
         const params = new URLSearchParams(window.location.search);
+        if (redirectOAuthCallbackToNativeApp('linkedin', params)) {
+          return;
+        }
         const oauthError = params.get('error');
         const oauthErrorDescription = params.get('error_description');
         const code = params.get('code');

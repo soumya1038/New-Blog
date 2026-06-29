@@ -120,6 +120,7 @@ const ChatNew = () => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [voiceSending, setVoiceSending] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [filePreview, setFilePreview] = useState(null);
@@ -1105,10 +1106,18 @@ const ChatNew = () => {
   const handleSendVoiceMessage = async (audioBlob, duration) => {
     if (!selectedChat) return;
 
+    if (!audioBlob || audioBlob.size === 0) {
+      showAlertModal('Error', 'No audio was captured. Please record again.');
+      return;
+    }
+
+    if (voiceSending) return;
+
     try {
+      setVoiceSending(true);
       const formData = new FormData();
       formData.append('voice', audioBlob, 'voice-message.webm');
-      formData.append('receiverId', selectedChat._id);
+      formData.append(selectedChat.isGroup ? 'groupId' : 'receiverId', selectedChat._id);
       formData.append('duration', duration);
 
       const { data } = await api.post('/voice', formData, {
@@ -1127,8 +1136,9 @@ const ChatNew = () => {
       loadConversations();
     } catch (error) {
       console.error('Failed to send voice message:', error);
-      showAlertModal('Error', 'Failed to send voice message');
-      setShowVoiceRecorder(false);
+      showAlertModal('Error', error.response?.data?.message || 'Failed to send voice message. Please retry.');
+    } finally {
+      setVoiceSending(false);
     }
   };
 
@@ -3882,6 +3892,7 @@ const ChatNew = () => {
               <VoiceRecorder
                 onSend={handleSendVoiceMessage}
                 onCancel={() => setShowVoiceRecorder(false)}
+                isSending={voiceSending}
               />
             )}
 

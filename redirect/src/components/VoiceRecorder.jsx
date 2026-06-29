@@ -1,18 +1,24 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FiMic, FiX, FiSend } from 'react-icons/fi';
+import { FiX, FiSend } from 'react-icons/fi';
 import soundManager from '../utils/soundManager';
 
-const VoiceRecorder = ({ onSend, onCancel }) => {
+const VoiceRecorder = ({ onSend, onCancel, isSending = false }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [duration, setDuration] = useState(0);
   const [audioBlob, setAudioBlob] = useState(null);
+  const [sendReady, setSendReady] = useState(false);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
+  const sendReadyTimerRef = useRef(null);
 
   useEffect(() => {
     startRecording();
     return () => {
+      if (sendReadyTimerRef.current) {
+        clearTimeout(sendReadyTimerRef.current);
+        sendReadyTimerRef.current = null;
+      }
       if (timerRef.current) {
         clearInterval(timerRef.current);
         timerRef.current = null;
@@ -45,6 +51,14 @@ const VoiceRecorder = ({ onSend, onCancel }) => {
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
+        setSendReady(false);
+        if (sendReadyTimerRef.current) {
+          clearTimeout(sendReadyTimerRef.current);
+        }
+        sendReadyTimerRef.current = setTimeout(() => {
+          setSendReady(true);
+          sendReadyTimerRef.current = null;
+        }, 450);
         stream.getTracks().forEach(track => track.stop());
       };
 
@@ -78,7 +92,7 @@ const VoiceRecorder = ({ onSend, onCancel }) => {
   };
 
   const handleSend = () => {
-    if (audioBlob) {
+    if (audioBlob && sendReady && !isSending) {
       onSend(audioBlob, duration);
     }
   };
@@ -110,6 +124,7 @@ const VoiceRecorder = ({ onSend, onCancel }) => {
     <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800">
       <button
         onClick={handleCancel}
+        disabled={isSending}
         className="p-1.5 sm:p-2 hover:bg-red-100 rounded-full transition-colors flex-shrink-0"
         title="Cancel"
       >
@@ -147,10 +162,15 @@ const VoiceRecorder = ({ onSend, onCancel }) => {
       ) : (
         <button
           onClick={handleSend}
-          className="p-1.5 sm:p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors flex-shrink-0"
-          title="Send"
+          disabled={!audioBlob || !sendReady || isSending}
+          className="p-1.5 sm:p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors flex-shrink-0 disabled:opacity-60 disabled:cursor-not-allowed"
+          title={isSending ? 'Sending voice message' : (sendReady ? 'Send voice message' : 'Preparing voice message')}
         >
-          <FiSend className="w-5 h-5 sm:w-6 sm:h-6" />
+          {isSending ? (
+            <span className="block w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 border-white/70 border-t-transparent animate-spin" />
+          ) : (
+            <FiSend className="w-5 h-5 sm:w-6 sm:h-6" />
+          )}
         </button>
       )}
     </div>

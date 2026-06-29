@@ -21,6 +21,7 @@ import Achievements from '../components/Achievements';
 import QRCodeModal from '../components/QRCodeModal';
 import StatusViewer from '../components/StatusViewer';
 import { getOAuthRedirectUri } from '../utils/oauthRedirects';
+import { isNativeApp } from '../utils/nativeApp';
 
 const STORY_STYLE_PRESETS = [
   {
@@ -1272,7 +1273,10 @@ const ProfileNew = () => {
     try {
       const redirectUri = getOAuthRedirectUri(provider);
       const { data } = await api.get(`/auth/${provider}/connect/start`, {
-        params: { redirect_uri: redirectUri }
+        params: {
+          redirect_uri: redirectUri,
+          ...(isNativeApp() ? { native_app: '1' } : {}),
+        }
       });
 
       const authUrl = data?.authUrl;

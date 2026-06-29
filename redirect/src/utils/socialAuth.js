@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getOAuthRedirectUri } from './oauthRedirects';
+import { isNativeApp } from './nativeApp';
 
 const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
 const RETRY_UNTIL_KEY = 'lekhon:social-auth-retry-until';
@@ -118,6 +119,9 @@ export const requestSocialAuthUrl = async (provider) => {
     format: 'json',
     r: String(Date.now()),
   });
+  if (isNativeApp()) {
+    params.set('native_app', '1');
+  }
 
   let response;
   try {

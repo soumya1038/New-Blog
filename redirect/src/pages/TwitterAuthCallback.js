@@ -4,6 +4,7 @@ import axios from 'axios';
 import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 import { getOAuthRedirectUri } from '../utils/oauthRedirects';
+import { redirectOAuthCallbackToNativeApp } from '../utils/nativeOAuthBridge';
 
 const extractTwitterErrorDetail = (payload = {}) => {
   if (!payload || typeof payload !== 'object') return '';
@@ -42,6 +43,9 @@ const TwitterAuthCallback = () => {
       let guardKey = '';
       try {
         const params = new URLSearchParams(window.location.search);
+        if (redirectOAuthCallbackToNativeApp('twitter', params)) {
+          return;
+        }
         const oauthError = params.get('error');
         const oauthErrorDescription = params.get('error_description');
         const code = params.get('code');

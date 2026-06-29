@@ -71,6 +71,44 @@ const LoadingFallback = () => (
   </div>
 );
 
+const TRUSTED_OAUTH_LINK_HOSTS = new Set([
+  'lekhon-development.netlify.app',
+  'localhost',
+  '127.0.0.1'
+]);
+const OAUTH_CALLBACK_PATH_PATTERN = /^\/auth\/(google|facebook|twitter|linkedin)\/callback$/;
+
+const normalizeOAuthCallbackPath = (path = '') => {
+  const normalized = `/${String(path || '').replace(/^\/+/, '')}`.replace(/\/+$/, '');
+  return OAUTH_CALLBACK_PATH_PATTERN.test(normalized) ? normalized : '';
+};
+
+const getNativeOAuthCallbackRoute = (rawUrl = '') => {
+  if (!rawUrl) return '';
+
+  try {
+    const parsed = new URL(rawUrl);
+    let callbackPath = parsed.pathname || '';
+
+    if (parsed.protocol === 'com.lekhon.app:') {
+      const hostSegment = parsed.hostname || parsed.host || '';
+      callbackPath = hostSegment ? `/${hostSegment}${parsed.pathname || ''}` : callbackPath;
+    } else if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+      if (!TRUSTED_OAUTH_LINK_HOSTS.has(parsed.hostname) && parsed.hostname !== currentHost) {
+        return '';
+      }
+    } else {
+      return '';
+    }
+
+    const routePath = normalizeOAuthCallbackPath(callbackPath);
+    return routePath ? `${routePath}${parsed.search}${parsed.hash}` : '';
+  } catch {
+    return '';
+  }
+};
+
 const PublicOnlyRoute = ({ children }) => {
   const { user, loading } = useContext(AuthContext);
 
@@ -145,6 +183,48 @@ function AppContent() {
 
     return () => {
       backButtonListener?.remove?.();
+    };
+  }, [navigate, runningNativeApp]);
+
+  useEffect(() => {
+    if (!runningNativeApp) return undefined;
+
+    let cancelled = false;
+    let appUrlOpenListener;
+
+    const openOAuthCallback = (url) => {
+      const route = getNativeOAuthCallbackRoute(url);
+      if (route) {
+        navigate(route, { replace: true });
+      }
+    };
+
+    const setupUrlOpenListener = async () => {
+      if (typeof CapacitorApp.getLaunchUrl === 'function') {
+        const launchUrl = await CapacitorApp.getLaunchUrl();
+        if (!cancelled) {
+          openOAuthCallback(launchUrl?.url);
+        }
+      }
+
+      if (cancelled) return;
+
+      appUrlOpenListener = await CapacitorApp.addListener('appUrlOpen', ({ url } = {}) => {
+        openOAuthCallback(url);
+      });
+
+      if (cancelled) {
+        appUrlOpenListener?.remove?.();
+      }
+    };
+
+    setupUrlOpenListener().catch((error) => {
+      console.error('Failed to setup native OAuth callback listener:', error);
+    });
+
+    return () => {
+      cancelled = true;
+      appUrlOpenListener?.remove?.();
     };
   }, [navigate, runningNativeApp]);
 

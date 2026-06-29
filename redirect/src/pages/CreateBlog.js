@@ -601,18 +601,6 @@ const CreateBlog = () => {
     voiceSessionIdRef.current = sessionId;
 
     try {
-      const ready = await warmWhisperFlow(60000);
-      setVoiceReady(ready);
-
-      if (!ready) {
-        throw new Error('service_sleeping');
-      }
-
-      if (voiceSessionIdRef.current !== sessionId || voiceFlowStateRef.current !== VOICE_FLOW_STATE.PREPARING) {
-        voiceTransitionLockRef.current = false;
-        return;
-      }
-
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (voiceCancelledRef.current || voiceSessionIdRef.current !== sessionId) {
         stream.getTracks().forEach((track) => track.stop());
@@ -622,6 +610,19 @@ const CreateBlog = () => {
 
       mediaStreamRef.current = stream;
       startVoiceLevelMonitor(stream);
+
+      const ready = await warmWhisperFlow(60000);
+      setVoiceReady(ready);
+
+      if (!ready) {
+        throw new Error('service_sleeping');
+      }
+
+      if (voiceSessionIdRef.current !== sessionId || voiceFlowStateRef.current !== VOICE_FLOW_STATE.PREPARING) {
+        cleanupVoiceFlow();
+        return;
+      }
+
       await connectWhisperSocket(sessionId);
 
       if (voiceSessionIdRef.current !== sessionId || voiceFlowStateRef.current !== VOICE_FLOW_STATE.PREPARING) {
@@ -1549,7 +1550,7 @@ const CreateBlog = () => {
             title={
               !whisperProxyWsUrl
                 ? 'Voice proxy is unavailable. Check REACT_APP_API_URL or REACT_APP_WHISPER_PROXY_WS_URL.'
-                : (voiceReady ? 'Start voice dictation' : 'Preparing voice engine...')
+                : (voiceReady ? 'Start voice dictation' : 'Start voice dictation. The voice engine may wake up first.')
             }
           >
             <CiMicrophoneOn className="h-4 w-4" />

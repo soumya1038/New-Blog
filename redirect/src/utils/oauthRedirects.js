@@ -1,6 +1,6 @@
 import { isNativeApp } from './nativeApp';
 
-const NATIVE_APP_ORIGIN = 'https://localhost';
+const DEFAULT_NATIVE_APP_ORIGIN = 'https://lekhon-development.netlify.app';
 
 const REDIRECT_ENV_KEYS = {
   google: 'REACT_APP_GOOGLE_REDIRECT_URI',
@@ -41,6 +41,11 @@ const isDesktopLocalRedirect = (value = '') => {
 
 const readEnvValue = (key) => String(process.env[key] || '').trim();
 
+const getNativeAppOrigin = () => {
+  const configured = normalizeRedirectUri(readEnvValue('REACT_APP_NATIVE_REDIRECT_ORIGIN'));
+  return configured || DEFAULT_NATIVE_APP_ORIGIN;
+};
+
 export const getOAuthRedirectUri = (provider) => {
   const normalizedProvider = String(provider || '').trim().toLowerCase();
   if (!REDIRECT_ENV_KEYS[normalizedProvider]) {
@@ -54,7 +59,7 @@ export const getOAuthRedirectUri = (provider) => {
     const configured = normalizeRedirectUri(readEnvValue(REDIRECT_ENV_KEYS[normalizedProvider]));
     if (configured && !isDesktopLocalRedirect(configured)) return configured;
 
-    return `${NATIVE_APP_ORIGIN}/auth/${normalizedProvider}/callback`;
+    return `${getNativeAppOrigin()}/auth/${normalizedProvider}/callback`;
   }
 
   const configured = normalizeRedirectUri(readEnvValue(REDIRECT_ENV_KEYS[normalizedProvider]));
