@@ -4,7 +4,9 @@ const multer = require('multer');
 const mongoose = require('mongoose');
 const path = require('path');
 const { Readable } = require('stream');
+const { toFile } = require('groq-sdk');
 const cloudinary = require('../utils/cloudinary');
+const groq = require('../utils/openai');
 const { protect } = require('../middleware/auth');
 const Message = require('../models/Message');
 const User = require('../models/User');
@@ -25,6 +27,44 @@ const upload = multer({
     cb(new Error('Only audio files are allowed'));
   }
 });
+const whisperUpload = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /webm|ogg|mp3|mpeg|mp4|m4a|wav|aac/;
+    const extname = allowedTypes.test(path.extname(file.originalname || '').toLowerCase());
+    const mimetype = /^audio\//.test(file.mimetype || '') || allowedTypes.test(file.mimetype || '');
+
+    if (mimetype || extname) {
+      return cb(null, true);
+    }
+    cb(new Error('Only audio files are allowed'));
+  }
+});
+
+const getWhisperModelStatus = () => ({
+  provider: 'groq',
+  loaded: Boolean(process.env.GROQ_API_KEY),
+  mode: 'upload',
+  model: process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3-turbo'
+});
+
+const handleWhisperUpload = (req, res, next) => {
+  whisperUpload.single('files')(req, res, (error) => {
+    if (!error) return next();
+
+    const status = error.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    return res.status(status).json({
+      ok: false,
+      error: {
+        code: error.code === 'LIMIT_FILE_SIZE' ? 'audio_too_large' : 'invalid_audio',
+        message: error.code === 'LIMIT_FILE_SIZE'
+          ? 'Voice dictation audio must be less than 25MB'
+          : error.message || 'Invalid dictation audio upload'
+      }
+    });
+  });
+};
 
 const parseVoiceDuration = (duration) => {
   const parsed = Number.parseInt(duration, 10);
@@ -110,6 +150,73 @@ const handleMulterUpload = (req, res, next) => {
     });
   });
 };
+
+router.get('/whisper/health', protect, (req, res) => {
+  res.json({
+    ok: true,
+    model: getWhisperModelStatus()
+  });
+});
+
+router.post('/whisper/wake', protect, (req, res) => {
+  res.json({
+    ok: true,
+    model: getWhisperModelStatus()
+  });
+});
+
+router.post('/whisper/transcribe', protect, handleWhisperUpload, async (req, res) => {
+  try {
+    if (!process.env.GROQ_API_KEY) {
+      return res.status(503).json({
+        ok: false,
+        error: {
+          code: 'voice_proxy_failed',
+          message: 'Voice transcription is not configured'
+        }
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        ok: false,
+        error: {
+          code: 'empty_audio',
+          message: 'No audio file uploaded'
+        }
+      });
+    }
+
+    const filename = req.file.originalname || 'dictation.webm';
+    const file = await toFile(req.file.buffer, filename, {
+      type: req.file.mimetype || 'audio/webm'
+    });
+    const transcription = await groq.audio.transcriptions.create({
+      file,
+      model: process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3-turbo',
+      language: req.body.language || undefined,
+      temperature: 0,
+      response_format: 'json'
+    });
+    const text = (transcription?.text || '').trim();
+
+    return res.json({
+      ok: true,
+      result: { text },
+      data: { text },
+      model: getWhisperModelStatus()
+    });
+  } catch (error) {
+    console.error('Voice dictation transcription error:', error);
+    return res.status(502).json({
+      ok: false,
+      error: {
+        code: 'transcription_failed',
+        message: 'Voice transcription failed'
+      }
+    });
+  }
+});
 
 router.post('/', protect, handleMulterUpload, async (req, res) => {
   let cloudinaryResult = null;

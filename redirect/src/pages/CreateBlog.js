@@ -575,11 +575,6 @@ const CreateBlog = () => {
   const startVoiceRecording = async () => {
     if (voiceTransitionLockRef.current || voiceFlowStateRef.current !== VOICE_FLOW_STATE.IDLE) return;
 
-    if (!whisperProxyWsUrl) {
-      toast.error('Voice dictation is not configured. Check backend API URL or REACT_APP_WHISPER_PROXY_WS_URL.');
-      return;
-    }
-
     if (previewMode) {
       toast.error('Switch to write mode before using voice dictation.');
       return;
@@ -610,20 +605,6 @@ const CreateBlog = () => {
 
       mediaStreamRef.current = stream;
       startVoiceLevelMonitor(stream);
-
-      const ready = await warmWhisperFlow(60000);
-      setVoiceReady(ready);
-
-      if (!ready) {
-        throw new Error('service_sleeping');
-      }
-
-      if (voiceSessionIdRef.current !== sessionId || voiceFlowStateRef.current !== VOICE_FLOW_STATE.PREPARING) {
-        cleanupVoiceFlow();
-        return;
-      }
-
-      await connectWhisperSocket(sessionId);
 
       if (voiceSessionIdRef.current !== sessionId || voiceFlowStateRef.current !== VOICE_FLOW_STATE.PREPARING) {
         cleanupVoiceFlow();
@@ -659,7 +640,22 @@ const CreateBlog = () => {
 
       recorder.start(250);
       setVoiceFlowState(VOICE_FLOW_STATE.RECORDING);
+      setVoiceReady(true);
       soundManager.play('startVoiceRecording');
+
+      if (whisperProxyWsUrl) {
+        warmWhisperFlow(8000)
+          .then((ready) => {
+            setVoiceReady(ready);
+            if (!ready || voiceSessionIdRef.current !== sessionId || voiceFlowStateRef.current !== VOICE_FLOW_STATE.RECORDING) {
+              return null;
+            }
+            return connectWhisperSocket(sessionId);
+          })
+          .catch((error) => {
+            console.error('Voice streaming setup failed; upload transcription will be used.', error);
+          });
+      }
     } catch (error) {
       toast.error(getVoiceErrorMessage(error));
       cleanupVoiceFlow();
@@ -1545,13 +1541,8 @@ const CreateBlog = () => {
           <button
             type="button"
             onClick={startVoiceRecording}
-            disabled={!whisperProxyWsUrl}
             className="voice-tool-btn voice-tool-btn-mic"
-            title={
-              !whisperProxyWsUrl
-                ? 'Voice proxy is unavailable. Check REACT_APP_API_URL or REACT_APP_WHISPER_PROXY_WS_URL.'
-                : (voiceReady ? 'Start voice dictation' : 'Start voice dictation. The voice engine may wake up first.')
-            }
+            title={voiceReady ? 'Start voice dictation' : 'Start voice dictation'}
           >
             <CiMicrophoneOn className="h-4 w-4" />
           </button>
