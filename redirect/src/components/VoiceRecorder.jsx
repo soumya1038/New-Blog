@@ -121,7 +121,10 @@ const VoiceRecorder = ({ onSend, onCancel, isSending = false }) => {
   };
 
   return (
-    <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800">
+    <div
+      className="shrink-0 flex items-center gap-2 sm:gap-3 px-2 pt-2 sm:px-3 sm:pt-3 bg-red-50 dark:bg-red-900/20 border-t border-red-200 dark:border-red-800"
+      style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
+    >
       <button
         onClick={handleCancel}
         disabled={isSending}

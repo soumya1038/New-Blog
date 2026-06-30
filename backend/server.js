@@ -118,6 +118,7 @@ const toNonNegativeInt = (value, fallback) => {
 
 const authRateLimitWindowMs = toPositiveInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
 const authRateLimitMax = toPositiveInt(process.env.AUTH_RATE_LIMIT_MAX, 12);
+const apiRateLimitWindowMs = toPositiveInt(process.env.API_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000);
 
 const getRetryAfterSeconds = (req, fallbackMs) => {
   const resetTime = req.rateLimit?.resetTime;
@@ -126,27 +127,46 @@ const getRetryAfterSeconds = (req, fallbackMs) => {
   return Math.max(1, resetSeconds || Math.ceil(fallbackMs / 1000));
 };
 
+const createRateLimitHandler = (message, fallbackMs) => (req, res) => {
+  const retryAfterSeconds = getRetryAfterSeconds(req, fallbackMs);
+  res.set('Retry-After', String(retryAfterSeconds));
+  return res.status(429).json({
+    success: false,
+    message,
+    retryAfterSeconds
+  });
+};
+
 const authLimiter = rateLimit({
   windowMs: authRateLimitWindowMs,
   max: authRateLimitMax,
   standardHeaders: true,
   legacyHeaders: false,
-  handler: (req, res) => {
-    const retryAfterSeconds = getRetryAfterSeconds(req, authRateLimitWindowMs);
-    res.set('Retry-After', String(retryAfterSeconds));
-    return res.status(429).json({
-      success: false,
-      message: 'Too many authentication attempts. Please try again later.',
-      retryAfterSeconds
-    });
-  }
+  handler: createRateLimitHandler('Too many authentication attempts. Please try again later.', authRateLimitWindowMs)
 });
 
 const apiLimiter = rateLimit({
-  windowMs: toPositiveInt(process.env.API_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+  windowMs: apiRateLimitWindowMs,
   max: toPositiveInt(process.env.API_RATE_LIMIT_MAX, 180),
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  handler: createRateLimitHandler('Too many requests. Please wait a moment and try again.', apiRateLimitWindowMs)
+});
+
+const realtimeLimiter = rateLimit({
+  windowMs: apiRateLimitWindowMs,
+  max: toPositiveInt(process.env.REALTIME_API_RATE_LIMIT_MAX, 1200),
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: createRateLimitHandler('Chat is receiving too many requests. Please wait a moment and try again.', apiRateLimitWindowMs)
+});
+
+const voiceUploadLimiter = rateLimit({
+  windowMs: apiRateLimitWindowMs,
+  max: toPositiveInt(process.env.VOICE_UPLOAD_RATE_LIMIT_MAX, 60),
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: createRateLimitHandler('Too many voice messages. Please wait a moment and try again.', apiRateLimitWindowMs)
 });
 
 app.use(systemMonitor);
@@ -209,12 +229,12 @@ app.use('/api/external', apiLimiter, apiRoutes);
 app.use('/api/ai', apiLimiter, aiRoutes);
 app.use('/api/admin', apiLimiter, adminRoutes);
 app.use('/api/guest', apiLimiter, guestRoutes);
-app.use('/api/messages', apiLimiter, messageRoutes);
-app.use('/api/voice', apiLimiter, voiceRoutes);
+app.use('/api/messages', realtimeLimiter, messageRoutes);
+app.use('/api/voice', voiceUploadLimiter, voiceRoutes);
 app.use('/api/files', apiLimiter, fileRoutes);
-app.use('/api/groups', apiLimiter, groupRoutes);
-app.use('/api/calls', apiLimiter, callRoutes);
-app.use('/api/livekit', apiLimiter, livekitRoutes);
+app.use('/api/groups', realtimeLimiter, groupRoutes);
+app.use('/api/calls', realtimeLimiter, callRoutes);
+app.use('/api/livekit', realtimeLimiter, livekitRoutes);
 app.use('/api/drafts', apiLimiter, draftRoutes);
 app.use('/api/chatbot', apiLimiter, chatbotRoutes);
 app.use('/api/search', apiLimiter, searchRoutes);

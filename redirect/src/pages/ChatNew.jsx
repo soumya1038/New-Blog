@@ -37,10 +37,13 @@ import BlogImageEditor from '../components/BlogImageEditor';
 import { ClipLoader } from 'react-spinners';
 import { compressImage } from '../utils/imageCompression';
 
+const CHAT_CONVERSATION_REFRESH_MS = 15000;
+const GROUP_CALL_REFRESH_MS = 15000;
+
 const ChatNew = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useContext(AuthContext);
+  const { user, loading: authLoading } = useContext(AuthContext);
   const { 
     currentCall: groupCallState,
     invitation,
@@ -221,7 +224,7 @@ const ChatNew = () => {
 
 
   useEffect(() => {
-    if (!user) return;
+    if (authLoading || !user?._id) return;
 
     socket.current = socketService.connect(user._id);
     webrtcService.setSocket(socket.current);
@@ -606,7 +609,7 @@ const ChatNew = () => {
       // console.log('Leaving /chat');
       socketService.updateRoute(null);
     };
-  }, [user]);
+  }, [authLoading, user]);
 
   useEffect(() => {
     // console.log('📞 ChatNew: location.state changed:', location.state);
@@ -749,11 +752,16 @@ const ChatNew = () => {
 
   // Refresh active calls for all groups periodically
   useEffect(() => {
-    const interval = setInterval(() => {
+    if (!groups.length) return undefined;
+
+    const refreshActiveCalls = () => {
+      if (document.visibilityState === 'hidden') return;
       groups.forEach(group => {
         fetchActiveCall(group._id);
       });
-    }, 3000);
+    };
+
+    const interval = setInterval(refreshActiveCalls, GROUP_CALL_REFRESH_MS);
     return () => clearInterval(interval);
   }, [groups, fetchActiveCall]);
 
@@ -783,8 +791,9 @@ const ChatNew = () => {
   // Auto-refresh conversations list only (not messages)
   useEffect(() => {
     const interval = setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
       loadConversations();
-    }, 5000);
+    }, CHAT_CONVERSATION_REFRESH_MS);
     return () => clearInterval(interval);
   }, []);
 
@@ -1120,9 +1129,7 @@ const ChatNew = () => {
       formData.append(selectedChat.isGroup ? 'groupId' : 'receiverId', selectedChat._id);
       formData.append('duration', duration);
 
-      const { data } = await api.post('/voice', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      const { data } = await api.post('/voice', formData);
 
       setMessages(prev => [...prev, data.message]);
       setShowVoiceRecorder(false);
@@ -1135,8 +1142,13 @@ const ChatNew = () => {
 
       loadConversations();
     } catch (error) {
-      console.error('Failed to send voice message:', error);
-      showAlertModal('Error', error.response?.data?.message || 'Failed to send voice message. Please retry.');
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to send voice message. Please retry.';
+      console.error('Failed to send voice message:', {
+        message: error.message,
+        status: error.response?.status,
+        response: error.response?.data
+      });
+      showAlertModal('Error', errorMessage);
     } finally {
       setVoiceSending(false);
     }
@@ -2106,12 +2118,32 @@ const ChatNew = () => {
 
 
 
-  if (loading) {
+  if (authLoading || (user && loading)) {
     return <ChatSkeleton />;
   }
 
+  if (!user) {
+    return (
+      <div className="flex h-[calc(100dvh-5rem)] min-h-0 items-center justify-center bg-[var(--background-primary)] px-4">
+        <div className="max-w-sm text-center">
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">{t('Sign in to use messages')}</h2>
+          <p className="mt-2 text-sm text-[var(--text-secondary)]">
+            {t('Please log in again to open your conversations and voice messages.')}
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/login', { replace: true })}
+            className="mt-5 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700"
+          >
+            {t('Log in')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex h-screen bg-[var(--background-primary)] overflow-hidden">
+    <div className="flex h-[calc(100dvh-5rem)] min-h-0 bg-[var(--background-primary)] overflow-hidden">
       {/* Status Modal */}
       {showStatusModal && selectedUserStatuses.length > 0 && (
         <div className="fixed inset-0 bg-black z-[70] flex items-center justify-center">
@@ -3267,7 +3299,7 @@ const ChatNew = () => {
             <div
               ref={messagesContainerRef}
               onScroll={handleScroll}
-              className="overflow-y-auto overflow-x-hidden p-4 pb-0 max-w-full relative md:min-h-0"
+              className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 pb-3 max-w-full relative"
               style={{
                 backgroundImage: `url(${process.env.PUBLIC_URL}/image/chat_light_background.png)`,
                 backgroundSize: 'cover',
@@ -3898,8 +3930,11 @@ const ChatNew = () => {
 
             {/* Message Input - Fixed to bottom */}
             {!showVoiceRecorder && !filePreview && !showImageEditor && (
-              <div className="sticky bottom-0 p-2 sm:p-4 border-t border-[var(--border-default)] bg-[var(--surface-card)] relative z-50">
-                <div className="p-2 sm:p-4 border-t border-[var(--border-default)] bg-[var(--surface-card)] z-50">
+              <div
+                className="shrink-0 px-2 pt-2 sm:p-4 border-t border-[var(--border-default)] bg-[var(--surface-card)] relative z-50"
+                style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
+              >
+                <div className="space-y-1.5">
                   {/* Quick Chat & Enhance Text Links */}
                   <div className="flex gap-3 mb-0.5">
                     <button

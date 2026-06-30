@@ -11,6 +11,17 @@ const api = axios.create({
 
 // Add token to requests
 api.interceptors.request.use(config => {
+  const isFormData = typeof FormData !== 'undefined' && config.data instanceof FormData;
+  if (isFormData && config.headers) {
+    if (typeof config.headers.delete === 'function') {
+      config.headers.delete('Content-Type');
+      config.headers.delete('content-type');
+    } else {
+      delete config.headers['Content-Type'];
+      delete config.headers['content-type'];
+    }
+  }
+
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

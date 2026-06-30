@@ -38,21 +38,26 @@ export const AuthProvider = ({ children }) => {
     const token = localStorage.getItem('token');
     const rememberMe = localStorage.getItem('rememberMe');
     
-    if (token && rememberMe === 'true') {
-      try {
-        const { data } = await api.get('/auth/me');
-        setUser(data.user);
-        setSessionExpired(false);
-      } catch (error) {
+    if (!token) {
+      if (!rememberMe) {
         localStorage.removeItem('token');
-        localStorage.removeItem('rememberMe');
-        setUser(null);
       }
-    } else if (!rememberMe) {
-      localStorage.removeItem('token');
       setUser(null);
+      setLoading(false);
+      return;
     }
-    setLoading(false);
+
+    try {
+      const { data } = await api.get('/auth/me');
+      setUser(data.user);
+      setSessionExpired(false);
+    } catch (error) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('rememberMe');
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const login = async (username, password, rememberMe) => {
