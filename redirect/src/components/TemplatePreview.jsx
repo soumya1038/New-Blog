@@ -226,6 +226,7 @@ const TemplatePreview = ({
       linkedProduct: article?.linkedProduct || null,
       linkedProducts: article?.linkedProducts || [],
       externalProductLinks: article?.externalProductLinks || [],
+      productTagPlacements: article?.productTagPlacements || [],
       isTemplatePreview: true,
       createdAt: article?.createdAt || new Date().toISOString()
     }),

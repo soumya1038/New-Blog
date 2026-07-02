@@ -15,6 +15,7 @@ import {
   FaFeatherAlt,
   FaGift,
   FaHeart,
+  FaExternalLinkAlt,
   FaLink,
   FaLinkedin,
   FaRegBookmark,
@@ -24,6 +25,7 @@ import {
   FaRegFolderOpen,
   FaRegShareSquare,
   FaRegUser,
+  FaShoppingBag,
   FaTimes,
   FaTrash,
   FaWhatsapp,
@@ -115,6 +117,202 @@ const splitArticleContent = (content = '') => {
   };
 };
 
+const clampPercent = (value, fallback = 50) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(100, parsed));
+};
+
+const getMarketplaceProductKey = (product) =>
+  `product:${product?._id || product?.id || product?.slug || product?.title || ''}`;
+
+const getExternalProductKey = (link, index) =>
+  `external:${link?.url || link?.title || index}`;
+
+const formatProductPrice = (product) => {
+  if (product?.isFree) return 'Free';
+  if (product?.price === undefined || product?.price === null) return 'Marketplace product';
+  const currency = product.currency || 'INR';
+  return `${currency} ${Number(product.price).toLocaleString('en-IN')}`;
+};
+
+const normalizeArticleImages = (article, fallbackImage) => {
+  const seen = new Set();
+  return [article?.coverImage || article?.image || article?.featuredImage || fallbackImage, ...(Array.isArray(article?.galleryImages) ? article.galleryImages : [])]
+    .map((url) => String(url || '').trim())
+    .filter(Boolean)
+    .filter((url) => {
+      if (seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    });
+};
+
+const normalizeArticleProductTags = (article) => {
+  const productMap = new Map();
+  const addProduct = (product) => {
+    if (!product || typeof product !== 'object') return;
+    const key = getMarketplaceProductKey(product);
+    if (!key || key === 'product:' || productMap.has(key)) return;
+    productMap.set(key, {
+      key,
+      source: 'marketplace',
+      title: product.title || 'Marketplace product',
+      image: product.transparentThumbnail || product.thumbnail || '/image/lekhon_url.png',
+      meta: formatProductPrice(product),
+      href: `/marketplace/${product.slug || product._id || product.id}`,
+      external: false,
+    });
+  };
+
+  (Array.isArray(article?.linkedProducts) ? article.linkedProducts : []).forEach(addProduct);
+  addProduct(article?.linkedProduct);
+
+  const externalTags = (Array.isArray(article?.externalProductLinks) ? article.externalProductLinks : [])
+    .filter(link => link && typeof link === 'object' && link.url)
+    .map((link, index) => ({
+      key: getExternalProductKey(link, index),
+      source: 'external',
+      title: link.title || 'External product',
+      image: link.thumbnail || '/image/lekhon_url.png',
+      meta: link.priceLabel || link.platform || 'External',
+      href: link.url,
+      external: true,
+    }));
+
+  return [...productMap.values(), ...externalTags];
+};
+
+const FALLBACK_PRODUCT_DOT_POSITIONS = [
+  { x: 72, y: 38 },
+  { x: 28, y: 58 },
+  { x: 52, y: 46 },
+  { x: 82, y: 66 },
+  { x: 18, y: 32 },
+  { x: 62, y: 74 },
+];
+
+const ArticleGalleryDock = ({
+  title,
+  category,
+  images,
+  activeIndex,
+  setActiveIndex,
+  productTags,
+  placements,
+}) => {
+  const [openProductKey, setOpenProductKey] = useState('');
+  const activeImage = images[activeIndex] || images[0];
+  const hasGallery = images.length > 1;
+
+  useEffect(() => {
+    setOpenProductKey('');
+  }, [activeIndex]);
+
+  const normalizedPlacements = Array.isArray(placements) ? placements : [];
+  const activeProductDots = productTags
+    .map((tag, index) => {
+      const explicitPlacement = normalizedPlacements.find(
+        placement => placement.productKey === tag.key
+      );
+
+      if (explicitPlacement && Number(explicitPlacement.imageIndex || 0) !== activeIndex) {
+        return null;
+      }
+
+      const fallback = FALLBACK_PRODUCT_DOT_POSITIONS[index % FALLBACK_PRODUCT_DOT_POSITIONS.length];
+      return {
+        ...tag,
+        x: clampPercent(explicitPlacement?.x, fallback.x),
+        y: clampPercent(explicitPlacement?.y, fallback.y),
+        isFallback: !explicitPlacement,
+      };
+    })
+    .filter(Boolean);
+
+  if (!activeImage) return null;
+
+  return (
+    <figure className="article-editorial-gallery">
+      <div className="article-gallery-stage">
+        <img src={activeImage} alt={title} />
+        {hasGallery && (
+          <span className="article-gallery-counter" aria-label={`Image ${activeIndex + 1} of ${images.length}`}>
+            {activeIndex + 1} / {images.length}
+          </span>
+        )}
+
+        {activeProductDots.length > 0 && (
+          <div className="article-product-tag-layer" aria-label="Tagged products">
+            {activeProductDots.map((tag) => {
+              const isOpen = openProductKey === tag.key;
+              const popoverLeft = Math.max(18, Math.min(82, tag.x));
+              const popoverTop = Math.max(16, Math.min(88, tag.y));
+              return (
+                <React.Fragment key={tag.key}>
+                  <button
+                    type="button"
+                    className={`article-product-dot ${isOpen ? 'is-active' : ''}`}
+                    style={{ left: `${tag.x}%`, top: `${tag.y}%` }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setOpenProductKey(isOpen ? '' : tag.key);
+                    }}
+                    aria-label={`View tagged product ${tag.title}`}
+                    aria-expanded={isOpen}
+                  >
+                    {tag.source === 'external' ? <FaExternalLinkAlt /> : <FaShoppingBag />}
+                  </button>
+                  {isOpen && (
+                    <div
+                      className="article-product-tag-popover"
+                      style={{ left: `${popoverLeft}%`, top: `${popoverTop}%` }}
+                    >
+                      <img src={tag.image || '/image/lekhon_url.png'} alt="" />
+                      <span className="article-product-tag-copy">
+                        <strong>{tag.title}</strong>
+                        <small>{tag.meta}</small>
+                      </span>
+                      {tag.external ? (
+                        <a href={tag.href} target="_blank" rel="noopener noreferrer">
+                          View <FaExternalLinkAlt />
+                        </a>
+                      ) : (
+                        <Link to={tag.href}>View</Link>
+                      )}
+                    </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <figcaption className="article-gallery-caption">
+        <span>{category} visual gallery</span>
+        <small>{hasGallery ? 'Select a thumbnail to change the active image.' : 'Cover image'}</small>
+      </figcaption>
+
+      {hasGallery && (
+        <div className="article-gallery-thumb-dock" aria-label="Article image gallery">
+          {images.map((image, index) => (
+            <button
+              key={`${image}-${index}`}
+              type="button"
+              className={activeIndex === index ? 'is-active' : ''}
+              onClick={() => setActiveIndex(index)}
+              aria-label={`Show article image ${index + 1}`}
+            >
+              <img src={image} alt="" />
+            </button>
+          ))}
+        </div>
+      )}
+    </figure>
+  );
+};
+
 const ArticleDetails = () => {
   const { t } = useTranslation();
   const { id } = useParams();
@@ -141,6 +339,7 @@ const ArticleDetails = () => {
   const [showAuthorStatusViewer, setShowAuthorStatusViewer] = useState(false);
   const [twoFactorPrompt, setTwoFactorPrompt] = useState(null);
   const [sensitiveAuthPrompt, setSensitiveAuthPrompt] = useState(false);
+  const [activeGalleryIndex, setActiveGalleryIndex] = useState(0);
   const contentId = article?._id || id;
 
   useEffect(() => {
@@ -160,6 +359,10 @@ const ArticleDetails = () => {
         .then(({ data }) => setMoreByAuthor(data.articles.filter(a => a._id !== article._id).slice(0, 3)));
     }
   }, [article]);
+
+  useEffect(() => {
+    setActiveGalleryIndex(0);
+  }, [article?._id]);
 
   useEffect(() => {
     // console.log('ArticleDetails mounted, id:', id);
@@ -625,12 +828,26 @@ const ArticleDetails = () => {
   const articleReadMinutes = article?.readingTime || article?.readTime || estimateReadTime(article?.content);
   const articleDescription = article?.metaDescription || article?.excerpt || article?.summary || '';
   const articleCoverImage = article?.coverImage || article?.image || article?.featuredImage || '/image/lekhon_url.png';
-  const authorFollowerCount = article?.author?.followersCount || article?.author?.followers?.length || 0;
+  const articleGalleryImages = useMemo(
+    () => normalizeArticleImages(article, articleCoverImage),
+    [article, articleCoverImage]
+  );
+  const articleProductTags = useMemo(
+    () => normalizeArticleProductTags(article),
+    [article]
+  );
+  const authorFollowerCount = article?.author?.followerCount ?? article?.author?.followersCount ?? article?.author?.followers?.length ?? 0;
   const authorArticleCount = article?.author?.articleCount || article?.author?.articlesCount || (moreByAuthor.length + 1);
   const { lead: articleLead, rest: articleRest } = useMemo(
     () => splitArticleContent(article?.content || ''),
     [article?.content]
   );
+
+  useEffect(() => {
+    if (activeGalleryIndex >= articleGalleryImages.length) {
+      setActiveGalleryIndex(0);
+    }
+  }, [activeGalleryIndex, articleGalleryImages.length]);
 
   if (loading) {
     return (
@@ -756,9 +973,15 @@ const ArticleDetails = () => {
               </div>
             </aside>
 
-            <figure className="article-editorial-hero">
-              <img src={articleCoverImage} alt={article.title} />
-            </figure>
+            <ArticleGalleryDock
+              title={article.title}
+              category={articleCategory}
+              images={articleGalleryImages}
+              activeIndex={activeGalleryIndex}
+              setActiveIndex={setActiveGalleryIndex}
+              productTags={articleProductTags}
+              placements={article?.productTagPlacements || []}
+            />
           </div>
 
           <div className="article-editorial-reader-grid">

@@ -10,6 +10,13 @@ const articleSchema = new mongoose.Schema({
   cloudinaryPublicId: { type: String },
   galleryImages: [{ type: String }],
   galleryImagePublicIds: [{ type: String }],
+  productTagPlacements: [{
+    productKey: { type: String, trim: true },
+    source: { type: String, enum: ['marketplace', 'external'], default: 'marketplace' },
+    imageIndex: { type: Number, min: 0, default: 0 },
+    x: { type: Number, min: 0, max: 100, default: 50 },
+    y: { type: Number, min: 0, max: 100, default: 50 },
+  }],
   videoUrls: [{ type: String }],
   templateId: { type: String, default: 'city-gazette' },
   customTemplate: { type: mongoose.Schema.Types.Mixed, default: null },

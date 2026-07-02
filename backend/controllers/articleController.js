@@ -62,6 +62,35 @@ const normalizeStringArray = (value) =>
     .map((item) => String(item || '').trim())
     .filter(Boolean);
 
+const clampPercent = (value, fallback = 50) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(100, parsed));
+};
+
+const normalizeProductTagPlacements = (value) => {
+  const seen = new Set();
+  return parseJsonArrayField(value)
+    .filter(placement => placement && typeof placement === 'object')
+    .map((placement) => {
+      const productKey = String(placement.productKey || '').trim().slice(0, 180);
+      const source = placement.source === 'external' ? 'external' : 'marketplace';
+      const imageIndex = Math.max(0, Math.min(12, Math.floor(Number(placement.imageIndex) || 0)));
+      const key = `${productKey}:${source}:${imageIndex}`;
+      if (!productKey || seen.has(key)) return null;
+      seen.add(key);
+      return {
+        productKey,
+        source,
+        imageIndex,
+        x: clampPercent(placement.x),
+        y: clampPercent(placement.y),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 40);
+};
+
 const normalizeProductLinks = (body) => {
   const ids = [];
   const addId = (value) => {
@@ -141,6 +170,7 @@ exports.createArticle = async (req, res) => {
       cloudinaryPublicId,
       galleryImages,
       galleryImagePublicIds,
+      productTagPlacements,
       metaDescription,
       slug,
       isScheduled,
@@ -167,6 +197,7 @@ exports.createArticle = async (req, res) => {
     const videoUrlsArray = normalizeStringArray(videoUrls);
     const galleryImagesArray = normalizeStringArray(galleryImages);
     const galleryImagePublicIdsArray = normalizeStringArray(galleryImagePublicIds);
+    const productTagPlacementsArray = normalizeProductTagPlacements(productTagPlacements);
     const templateIdValue = String(templateId || 'city-gazette').trim().slice(0, 64) || 'city-gazette';
     const customTemplateResult = normalizeTemplatePayload(customTemplate);
     if (customTemplateResult.error) {
@@ -210,6 +241,7 @@ exports.createArticle = async (req, res) => {
       cloudinaryPublicId: cloudinaryPublicId || null,
       galleryImages: galleryImagesArray,
       galleryImagePublicIds: galleryImagePublicIdsArray,
+      productTagPlacements: productTagPlacementsArray,
       videoUrls: videoUrlsArray,
       templateId: templateIdValue,
       customTemplate: customTemplateResult.value,
@@ -432,6 +464,11 @@ exports.getArticle = async (req, res) => {
       });
       articleObj.author.hasActiveStatus = visibleStatuses.length > 0;
       articleObj.author.statuses = visibleStatuses;
+    }
+    if (articleObj.author) {
+      articleObj.author.followerCount = Array.isArray(articleObj.author.followers)
+        ? articleObj.author.followers.length
+        : Number(articleObj.author.followerCount || articleObj.author.followersCount || 0);
       delete articleObj.author.followers;
     }
 
@@ -479,6 +516,7 @@ exports.updateArticle = async (req, res) => {
       cloudinaryPublicId,
       galleryImages,
       galleryImagePublicIds,
+      productTagPlacements,
       metaDescription,
       slug,
       isScheduled,
@@ -506,6 +544,10 @@ exports.updateArticle = async (req, res) => {
       galleryImagePublicIds !== undefined
         ? normalizeStringArray(galleryImagePublicIds)
         : article.galleryImagePublicIds;
+    const productTagPlacementsArray =
+      productTagPlacements !== undefined
+        ? normalizeProductTagPlacements(productTagPlacements)
+        : article.productTagPlacements;
     const templateIdValue =
       templateId !== undefined
         ? (String(templateId || '').trim().slice(0, 64) || 'city-gazette')
@@ -554,6 +596,7 @@ exports.updateArticle = async (req, res) => {
     article.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : article.cloudinaryPublicId;
     article.galleryImages = galleryImagesArray;
     article.galleryImagePublicIds = galleryImagePublicIdsArray;
+    article.productTagPlacements = productTagPlacementsArray;
     article.videoUrls = videoUrlsArray;
     article.templateId = templateIdValue;
     article.customTemplate = customTemplateResult.value;

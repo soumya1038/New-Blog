@@ -13,6 +13,7 @@ import AIContentTools from '../components/AIContentTools';
 import UnauthorizedModal from '../components/UnauthorizedModal';
 import TemplatePreview from '../components/TemplatePreview';
 import ContentProductTagsEditor from '../components/ContentProductTagsEditor';
+import ProductTagPlacementEditor from '../components/ProductTagPlacementEditor';
 import {
   getArticleTemplateById,
   CUSTOM_ARTICLE_TEMPLATE_ID,
@@ -116,6 +117,7 @@ const CreateBlog = () => {
   const [voiceToolbarHost, setVoiceToolbarHost] = useState(null);
   const [linkedProducts, setLinkedProducts] = useState([]);
   const [externalProductLinks, setExternalProductLinks] = useState([]);
+  const [productTagPlacements, setProductTagPlacements] = useState([]);
   const [externalProductDraft, setExternalProductDraft] = useState({
     title: '',
     url: '',
@@ -887,7 +889,7 @@ const CreateBlog = () => {
         clearInterval(autoSaveTimerRef.current);
       }
     };
-  }, [title, content, tags, isArticleMode, isShortMode, selectedArticleTemplateId, customArticleTemplate, category, coverImage, galleryItems, metaDescription, videoUrls, user]);
+  }, [title, content, tags, isArticleMode, isShortMode, selectedArticleTemplateId, customArticleTemplate, category, coverImage, galleryItems, metaDescription, videoUrls, linkedProducts, externalProductLinks, productTagPlacements, user]);
 
   const autoSaveDraft = async () => {
     if (!title.trim() || !content.trim() || !user) return;
@@ -907,7 +909,10 @@ const CreateBlog = () => {
         videoUrls: JSON.stringify(filteredVideoUrls),
         metaDescription,
         isDraft: true,
-        ...(isShortMode ? {} : productAttachmentPayload()),
+        ...(isShortMode ? {} : productAttachmentPayload({
+          includePlacements: isArticleMode,
+          imageSources: [coverImage, ...persistedGallery.galleryImages],
+        })),
         ...(isArticleMode ? {
           templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
@@ -945,11 +950,36 @@ const CreateBlog = () => {
     }
   };
 
-  const productAttachmentPayload = () => ({
+  const normalizeProductTagPlacementsForSubmit = (imageSources = []) => {
+    const validProductKeys = new Set([
+      ...linkedProducts
+        .map(product => `product:${product?._id || product?.id || product?.slug || product?.title || ''}`)
+        .filter(key => key !== 'product:'),
+      ...externalProductLinks
+        .map((link, index) => `external:${link?.url || link?.title || index}`)
+        .filter(key => key !== 'external:'),
+    ]);
+    const maxImageIndex = Math.max(0, imageSources.filter(Boolean).length - 1);
+
+    return (productTagPlacements || [])
+      .filter(placement => validProductKeys.has(placement.productKey))
+      .map(placement => ({
+        productKey: placement.productKey,
+        source: placement.source === 'external' ? 'external' : 'marketplace',
+        imageIndex: Math.max(0, Math.min(maxImageIndex, Math.floor(Number(placement.imageIndex) || 0))),
+        x: Math.max(0, Math.min(100, Number(placement.x) || 50)),
+        y: Math.max(0, Math.min(100, Number(placement.y) || 50)),
+      }));
+  };
+
+  const productAttachmentPayload = ({ includePlacements = false, imageSources = [] } = {}) => ({
     linkedProduct: linkedProducts[0]?._id || null,
     linkedProducts: linkedProducts.map(product => product._id).filter(Boolean),
     externalProductLinks: JSON.stringify(externalProductLinks),
     isPromoPost: linkedProducts.length > 0 || externalProductLinks.length > 0,
+    ...(includePlacements ? {
+      productTagPlacements: JSON.stringify(normalizeProductTagPlacementsForSubmit(imageSources)),
+    } : {}),
   });
 
   const addLinkedProduct = (product) => {
@@ -1079,7 +1109,10 @@ const CreateBlog = () => {
           templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
           galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
           galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds),
-          ...productAttachmentPayload()
+          ...productAttachmentPayload({
+            includePlacements: true,
+            imageSources: [uploadedImageUrl, ...galleryUploadPayload.galleryImages],
+          })
         });
         
         // console.log('Article created:', data);
@@ -1224,7 +1257,10 @@ const CreateBlog = () => {
           videoUrls: JSON.stringify(filteredVideoUrls),
           metaDescription,
           isDraft: true,
-          ...(isShortMode ? {} : productAttachmentPayload()),
+          ...(isShortMode ? {} : productAttachmentPayload({
+            includePlacements: isArticleMode,
+            imageSources: [uploadedImageUrl || coverImage, ...galleryUploadPayload.galleryImages],
+          })),
           ...(isArticleMode ? {
             templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
@@ -1259,7 +1295,10 @@ const CreateBlog = () => {
           videoUrls: JSON.stringify(filteredVideoUrls),
           metaDescription,
           isDraft: true,
-          ...(isShortMode ? {} : productAttachmentPayload()),
+          ...(isShortMode ? {} : productAttachmentPayload({
+            includePlacements: isArticleMode,
+            imageSources: [uploadedImageUrl, ...galleryUploadPayload.galleryImages],
+          })),
           ...(isArticleMode ? {
             templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
@@ -2010,12 +2049,24 @@ const CreateBlog = () => {
             </div>
             
             {!isShortMode && (
-              <ContentProductTagsEditor
-                linkedProducts={linkedProducts}
-                setLinkedProducts={setLinkedProducts}
-                externalProductLinks={externalProductLinks}
-                setExternalProductLinks={setExternalProductLinks}
-              />
+              <>
+                <ContentProductTagsEditor
+                  linkedProducts={linkedProducts}
+                  setLinkedProducts={setLinkedProducts}
+                  externalProductLinks={externalProductLinks}
+                  setExternalProductLinks={setExternalProductLinks}
+                />
+                {isArticleMode && (
+                  <ProductTagPlacementEditor
+                    coverImage={coverImage}
+                    galleryImages={galleryItems.map(item => item.url)}
+                    linkedProducts={linkedProducts}
+                    externalProductLinks={externalProductLinks}
+                    placements={productTagPlacements}
+                    setPlacements={setProductTagPlacements}
+                  />
+                )}
+              </>
             )}
 
             {false && !isShortMode && (
@@ -2260,6 +2311,7 @@ const CreateBlog = () => {
             linkedProduct: linkedProducts[0] || null,
             linkedProducts,
             externalProductLinks,
+            productTagPlacements,
             templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
             createdAt: new Date().toISOString()
           }}
