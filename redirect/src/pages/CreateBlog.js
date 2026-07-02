@@ -15,11 +15,9 @@ import TemplatePreview from '../components/TemplatePreview';
 import ContentProductTagsEditor from '../components/ContentProductTagsEditor';
 import {
   getArticleTemplateById,
-  DEFAULT_ARTICLE_TEMPLATE_ID,
   CUSTOM_ARTICLE_TEMPLATE_ID,
   createDefaultCustomTemplate,
-  normalizeCustomTemplate,
-  recommendArticleTemplate
+  normalizeCustomTemplate
 } from '../utils/articleTemplates';
 import { FaArrowLeft, FaExternalLinkAlt, FaPlus, FaTimes } from 'react-icons/fa';
 import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish, MdStorefront } from 'react-icons/md';
@@ -41,6 +39,8 @@ const VOICE_FLOW_STATE = {
   RECORDING: 'recording',
   TRANSCRIBING: 'transcribing'
 };
+
+const ENABLE_CREATE_VOICE_TYPING = false;
 
 const WHISPER_PROXY_ROUTES = {
   health: '/voice/whisper/health',
@@ -105,9 +105,9 @@ const CreateBlog = () => {
   const [isDark, setIsDark] = useState(false);
   const [showUnauthorizedModal, setShowUnauthorizedModal] = useState(false);
   const [showTemplatePreview, setShowTemplatePreview] = useState(false);
-  const [selectedArticleTemplateId, setSelectedArticleTemplateId] = useState(DEFAULT_ARTICLE_TEMPLATE_ID);
+  const [selectedArticleTemplateId, setSelectedArticleTemplateId] = useState(CUSTOM_ARTICLE_TEMPLATE_ID);
   const [customArticleTemplate, setCustomArticleTemplate] = useState(createDefaultCustomTemplate());
-  const [contentOrigin, setContentOrigin] = useState('manual');
+  const [, setContentOrigin] = useState('manual');
   const [voiceFlowState, setVoiceFlowState] = useState(VOICE_FLOW_STATE.IDLE);
   const [voiceRetryAttempt, setVoiceRetryAttempt] = useState(0);
   const [voiceRetryMaxAttempts, setVoiceRetryMaxAttempts] = useState(0);
@@ -748,7 +748,7 @@ const CreateBlog = () => {
       setVoiceToolbarHost(null);
     };
 
-    if (previewMode || isShortMode) {
+    if (!ENABLE_CREATE_VOICE_TYPING || previewMode || isShortMode) {
       clearVoiceToolbarHost();
       return () => {};
     }
@@ -797,7 +797,7 @@ const CreateBlog = () => {
   useEffect(() => {
     let active = true;
 
-    if (!whisperProxyWsUrl) {
+    if (!ENABLE_CREATE_VOICE_TYPING || !whisperProxyWsUrl) {
       setVoiceReady(false);
       return () => {};
     }
@@ -1432,70 +1432,23 @@ const CreateBlog = () => {
     });
   };
 
-  const templateSuggestionInput = useMemo(
-    () => ({
-      title,
-      content,
-      tags,
-      category,
-      coverImage,
-      metaDescription,
-      videoUrls: videoUrls.filter((url) => url.trim()),
-      galleryImages: galleryItems.map((item) => item.url).filter(Boolean),
-      author: user,
-      createdAt: new Date().toISOString(),
-      contentOrigin
-    }),
-    [
-      title,
-      content,
-      tags,
-      category,
-      coverImage,
-      metaDescription,
-      videoUrls,
-      galleryItems,
-      user,
-      contentOrigin
-    ]
-  );
-
-  const templateRecommendation = useMemo(
-    () => (isArticleMode ? recommendArticleTemplate(templateSuggestionInput) : null),
-    [isArticleMode, templateSuggestionInput]
-  );
-
   const resolveArticleTemplateForSubmission = () => {
     if (!isArticleMode) {
       return {
         templateId: selectedArticleTemplateId,
         usedRecommendation: false,
-        recommendation: templateRecommendation
-      };
-    }
-
-    if (!templateRecommendation || !templateRecommendation.templateId) {
-      return {
-        templateId: selectedArticleTemplateId || DEFAULT_ARTICLE_TEMPLATE_ID,
-        usedRecommendation: false,
         recommendation: null
       };
     }
 
-    const selectedTemplate = selectedArticleTemplateId || DEFAULT_ARTICLE_TEMPLATE_ID;
-    const shouldAutoApply = selectedTemplate === DEFAULT_ARTICLE_TEMPLATE_ID;
-
     return {
-      templateId: shouldAutoApply ? templateRecommendation.templateId : selectedTemplate,
-      usedRecommendation: shouldAutoApply && templateRecommendation.templateId !== selectedTemplate,
-      recommendation: templateRecommendation
+      templateId: CUSTOM_ARTICLE_TEMPLATE_ID,
+      usedRecommendation: false,
+      recommendation: null
     };
   };
 
   const handleOpenTemplatePreview = () => {
-    if (templateRecommendation?.templateName) {
-      toast.success(`Suggested template: ${templateRecommendation.templateName}`);
-    }
     setShowTemplatePreview(true);
   };
 
@@ -1512,7 +1465,7 @@ const CreateBlog = () => {
   }), [t, isDark]);
 
   const renderVoiceToolbarControls = () => {
-    if (!voiceToolbarHost || isShortMode || previewMode) {
+    if (!ENABLE_CREATE_VOICE_TYPING || !voiceToolbarHost || isShortMode || previewMode) {
       return null;
     }
 
@@ -1924,14 +1877,6 @@ const CreateBlog = () => {
                       Layout selected:
                       <span className="font-semibold">{getArticleTemplateById(selectedArticleTemplateId).name}</span>
                     </p>
-                    {templateRecommendation?.templateName && (
-                      <p className="flex items-center gap-2 text-[11px] sm:text-xs">
-                        <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
-                        Suggested:
-                        <span className="font-semibold text-emerald-400">{templateRecommendation.templateName}</span>
-                        <span className="text-[var(--text-muted)]">({templateRecommendation.reason})</span>
-                      </p>
-                    )}
                   </div>
                   <p className="rounded-lg border px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ borderColor: 'var(--border-default)', background: 'var(--tag-bg)', color: 'var(--tag-text)' }}>Theme sync: Navbar mode</p>
                 </div>
@@ -2312,13 +2257,14 @@ const CreateBlog = () => {
             category,
             videoUrls: videoUrls.filter(url => url.trim()),
             galleryImages: galleryItems.map((item) => item.url),
+            linkedProduct: linkedProducts[0] || null,
+            linkedProducts,
+            externalProductLinks,
             templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
             createdAt: new Date().toISOString()
           }}
           selectedTemplateId={selectedArticleTemplateId}
           customTemplate={customArticleTemplate}
-          suggestedTemplateId={templateRecommendation?.templateId}
-          suggestedReason={templateRecommendation?.reason}
           onApplyTemplate={(templateId, appliedCustomTemplate) => {
             setSelectedArticleTemplateId(templateId);
             if (templateId === CUSTOM_ARTICLE_TEMPLATE_ID) {

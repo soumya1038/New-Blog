@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { FaSearch, FaTimes } from 'react-icons/fa';
@@ -19,6 +19,15 @@ import { useDebounce } from '../hooks/useDebounce';
 import { apiCache } from '../utils/apiCache';
 
 const STORY_SEEN_STORAGE_PREFIX = 'lekhon_story_seen_v1';
+const CONTENT_FILTERS = ['all', 'articles', 'blogs', 'shorts'];
+
+const normalizeContentFilter = (filter) =>
+  CONTENT_FILTERS.includes(filter) ? filter : 'all';
+
+const getRequestedContentFilter = (location) => {
+  const searchFilter = new URLSearchParams(location.search || '').get('content');
+  return normalizeContentFilter(location.state?.contentFilter || searchFilter);
+};
 
 const normalizeActiveStatuses = (statuses = []) =>
   Array.isArray(statuses)
@@ -37,11 +46,12 @@ const Home = () => {
   const { t } = useTranslation();
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
+  const location = useLocation();
   const [blogs, setBlogs] = useState([]);
   const [articles, setArticles] = useState([]);
   const [shortBlogs, setShortBlogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [contentFilter, setContentFilter] = useState('all');
+  const [contentFilter, setContentFilter] = useState(() => getRequestedContentFilter(location));
   const [showShortBlogs, setShowShortBlogs] = useState(true);
   const [clickTimer, setClickTimer] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -80,6 +90,11 @@ const Home = () => {
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    const requestedFilter = getRequestedContentFilter(location);
+    setContentFilter((current) => (current === requestedFilter ? current : requestedFilter));
+  }, [location.state?.contentFilter, location.search]);
 
   useEffect(() => {
     const handleResize = () => setIsCompactViewport(window.innerWidth < 640);

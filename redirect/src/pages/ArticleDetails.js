@@ -1,10 +1,33 @@
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import ReactMarkdown from 'react-markdown';
 import api from '../services/api';
 import socketService from '../services/socket';
 import { AuthContext } from '../context/AuthContext';
-import { FaHeart, FaComment, FaArrowLeft, FaShare, FaEdit, FaTrash, FaTimes, FaFacebook, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink } from 'react-icons/fa';
+import {
+  FaArrowLeft,
+  FaComment,
+  FaEdit,
+  FaEllipsisH,
+  FaEnvelope,
+  FaFacebook,
+  FaFeatherAlt,
+  FaGift,
+  FaHeart,
+  FaLink,
+  FaLinkedin,
+  FaRegBookmark,
+  FaRegCalendarAlt,
+  FaRegClock,
+  FaRegCommentDots,
+  FaRegFolderOpen,
+  FaRegShareSquare,
+  FaRegUser,
+  FaTimes,
+  FaTrash,
+  FaWhatsapp,
+} from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
 import { BiMenuAltRight } from 'react-icons/bi';
 import { GoVerified } from 'react-icons/go';
@@ -13,11 +36,84 @@ import toast, { Toaster } from 'react-hot-toast';
 import Avatar from '../components/Avatar';
 import EnhancedComment from '../components/EnhancedComment';
 import ArticleCard from '../components/ArticleCard';
-import ArticleTemplateFrame from '../components/ArticleTemplateFrame';
 import SEOHead from '../components/SEOHead';
-import ProductTagOverlay from '../components/ProductTagOverlay';
 import StatusViewer from '../components/StatusViewer';
 import { bumpReplyCount, removeCommentFromReplyMap, updateCommentsById, updateReplyMapById } from '../utils/commentTree';
+import TwoFactorVerificationModal from '../components/TwoFactorVerificationModal';
+import SensitiveActionAuthModal from '../components/SensitiveActionAuthModal';
+import {
+  buildSensitiveActionHeaders,
+  getTwoFactorRequirement,
+  requestAuthenticatedTwoFactorChallenge,
+  verifyAuthenticatedTwoFactorChallenge,
+} from '../utils/twoFactorFlow';
+
+const formatArticleDate = (value) => {
+  if (!value) return 'Draft';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'Draft';
+
+  return parsed.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+const estimateReadTime = (content = '') => {
+  const wordCount = String(content).trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(wordCount / 220));
+};
+
+const compactCount = (value = 0) => {
+  const count = Number(value || 0);
+  return new Intl.NumberFormat('en-US', {
+    notation: count >= 1000 ? 'compact' : 'standard',
+    maximumFractionDigits: 1,
+  }).format(count);
+};
+
+const stripInlineMarkdown = (value = '') =>
+  String(value)
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_`~>#-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const splitArticleContent = (content = '') => {
+  const sections = String(content)
+    .replace(/\r\n/g, '\n')
+    .split(/\n{2,}/)
+    .map(section => section.trim())
+    .filter(Boolean);
+
+  if (sections.length === 0) {
+    return { lead: '', rest: '' };
+  }
+
+  const firstSectionLines = sections[0].split('\n').map(line => line.trim()).filter(Boolean);
+  const firstLine = firstSectionLines[0] || '';
+  const firstLineIsHeading = /^#{1,6}\s+/.test(firstLine) || /^introduction$/i.test(firstLine);
+  let leadSource = sections[0];
+  let restSections = sections.slice(1);
+
+  if (firstLineIsHeading && firstSectionLines.length > 1) {
+    leadSource = firstSectionLines.slice(1).join('\n');
+  } else if (firstLineIsHeading && sections[1]) {
+    leadSource = sections[1];
+    restSections = sections.slice(2);
+  }
+
+  const lead = stripInlineMarkdown(leadSource || '');
+  const rest = restSections.join('\n\n');
+
+  return {
+    lead,
+    rest,
+  };
+};
 
 const ArticleDetails = () => {
   const { t } = useTranslation();
@@ -43,6 +139,8 @@ const ArticleDetails = () => {
   const [moreByAuthor, setMoreByAuthor] = useState([]);
   const [progress, setProgress] = useState(0);
   const [showAuthorStatusViewer, setShowAuthorStatusViewer] = useState(false);
+  const [twoFactorPrompt, setTwoFactorPrompt] = useState(null);
+  const [sensitiveAuthPrompt, setSensitiveAuthPrompt] = useState(false);
   const contentId = article?._id || id;
 
   useEffect(() => {
@@ -184,6 +282,31 @@ const ArticleDetails = () => {
 
   const handleShare = () => {
     setShowShareModal(true);
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success('Link copied to clipboard!');
+    } catch (error) {
+      const textArea = document.createElement('textarea');
+      textArea.value = shareUrl;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        toast.success('Link copied to clipboard!');
+      } catch (err) {
+        toast.error('Failed to copy link');
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
+  const handleBackToArticles = () => {
+    navigate('/home?content=articles', { state: { contentFilter: 'articles' } });
   };
 
   const shareUrl = window.location.href;
@@ -412,16 +535,82 @@ const ArticleDetails = () => {
     }
   ];
 
+  const performDelete = async ({ sensitiveActionToken, twoFactorToken } = {}) => {
+    await api.delete(`/articles/${contentId}`, {
+      headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
+      data: {
+        ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+        ...(twoFactorToken ? { twoFactorToken } : {}),
+      },
+    });
+    toast.success('Article deleted successfully!');
+    setTimeout(() => navigate(-1), 1000);
+  };
+
   const handleDelete = async () => {
+    if (!['admin', 'coAdmin'].includes(user?.role)) {
+      setShowDeleteModal(false);
+      setSensitiveAuthPrompt(true);
+      return;
+    }
+
     setDeleting(true);
     try {
-      await api.delete(`/articles/${contentId}`);
-      toast.success('Article deleted successfully!');
-      setTimeout(() => navigate(-1), 1000);
+      await performDelete();
     } catch (error) {
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        setTwoFactorPrompt({
+          ...requirement,
+          onVerified: performDelete,
+        });
+        setShowDeleteModal(false);
+        setDeleting(false);
+        return;
+      }
       toast.error('Failed to delete article');
       setDeleting(false);
     }
+  };
+
+  const handleTwoFactorVerified = async (token) => {
+    const prompt = twoFactorPrompt;
+    setTwoFactorPrompt(null);
+    if (!prompt?.onVerified) return;
+    setDeleting(true);
+    try {
+      await prompt.onVerified(token);
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete article');
+      setDeleting(false);
+    }
+  };
+
+  const handleSensitiveAuthVerified = async (result) => {
+    setSensitiveAuthPrompt(false);
+    const sensitiveActionToken = result.sensitiveActionToken;
+    if (result.requiresTwoFactor) {
+      setTwoFactorPrompt({
+        action: result.action || 'delete_article',
+        actionLabel: result.actionLabel || 'delete this article',
+        twoFactor: result.twoFactor,
+        onVerified: async (twoFactorToken) => performDelete({ sensitiveActionToken, twoFactorToken }),
+      });
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await performDelete({ sensitiveActionToken });
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to delete article');
+      setDeleting(false);
+    }
+  };
+
+  const handleDeleteForgotPassword = () => {
+    setSensitiveAuthPrompt(false);
+    navigate('/profile?forgotPassword=1');
   };
 
   const canonicalPath = typeof window !== 'undefined' ? window.location.pathname : `/article/${id}`;
@@ -430,6 +619,18 @@ const ArticleDetails = () => {
   const seoContent = article?.content || '';
   const seoImage = article?.coverImage || '/image/lekhon_url.png';
   const seoNoIndex = !loading && !article;
+  const authorName = article?.author?.fullName || article?.author?.username || 'Editorial Desk';
+  const articleCategory = article?.category || 'General';
+  const articlePublishedDate = formatArticleDate(article?.publishedAt || article?.createdAt);
+  const articleReadMinutes = article?.readingTime || article?.readTime || estimateReadTime(article?.content);
+  const articleDescription = article?.metaDescription || article?.excerpt || article?.summary || '';
+  const articleCoverImage = article?.coverImage || article?.image || article?.featuredImage || '/image/lekhon_url.png';
+  const authorFollowerCount = article?.author?.followersCount || article?.author?.followers?.length || 0;
+  const authorArticleCount = article?.author?.articleCount || article?.author?.articlesCount || (moreByAuthor.length + 1);
+  const { lead: articleLead, rest: articleRest } = useMemo(
+    () => splitArticleContent(article?.content || ''),
+    [article?.content]
+  );
 
   if (loading) {
     return (
@@ -473,48 +674,174 @@ const ArticleDetails = () => {
         image={seoImage}
         type="article"
       />
-      <div style={{ minHeight: '100vh', background: 'var(--art-page-bg)' }}>
+      <div className="article-detail-page-custom" style={{ minHeight: '100vh' }}>
         {/* Reading Progress Bar */}
         <div className="reading-progress"
-          style={{ width:`${progress}%`, background:'linear-gradient(90deg, var(--art-accent), var(--art-accent-light))' }} />
+          style={{ width:`${progress}%`, background:'linear-gradient(90deg, var(--article-accent), var(--article-accent-soft))' }} />
         <Toaster />
         
-        <div style={{ background: 'var(--surface-container)', borderBottom: '1px solid var(--outline-variant)' }}>
-        <div className="max-w-4xl mx-auto px-4" style={{ padding: 'var(--spacing-4)' }}>
+        <div className="article-detail-backbar-custom">
+        <div className="article-detail-backinner-custom">
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <button
-              onClick={() => navigate(-1)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 'var(--spacing-2)',
-                background: 'var(--surface-container-high)',
-                border: '1px solid var(--outline-variant)',
-                borderRadius: '999px',
-                color: 'var(--on-surface)',
-                fontFamily: 'var(--font-sans)',
-                fontSize: 'var(--label-md)',
-                cursor: 'pointer',
-                padding: 'var(--spacing-2) var(--spacing-4)',
-                fontWeight: 600
-              }}
+              onClick={handleBackToArticles}
+              className="article-detail-backbutton-custom"
+              aria-label={t('Back to all articles')}
             >
-              <FaArrowLeft /> {t('Back')}
+              <FaArrowLeft /> {t('Back to all articles')}
             </button>
           </div>
         </div>
       </div>
 
-      <article className="max-w-5xl mx-auto px-4 relative" style={{ paddingTop: 'var(--spacing-8)', paddingBottom: 'var(--spacing-8)' }}>
-        <ProductTagOverlay content={article} />
-        <section className="mb-8 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-900">
-          <ArticleTemplateFrame
-            article={article}
-            templateId={article.templateId}
-            customTemplate={article.customTemplate}
-          />
+      <article className="article-detail-shell-custom relative">
+        <section className="article-editorial-layout" aria-label={article.title}>
+          <div className="article-editorial-top">
+            <header className="article-editorial-head">
+              <div className="article-editorial-logo-mark" aria-hidden="true">
+                <img className="article-editorial-logo-dark" src="/image/article_logo_dark.png" alt="" />
+                <img className="article-editorial-logo-light" src="/image/article_logo_light.png" alt="" />
+              </div>
+              <p className="article-editorial-kicker">
+                Custom Layout <span>|</span> {articleCategory}
+              </p>
+              <h1 className="article-editorial-title">{article.title}</h1>
+              {articleDescription && (
+                <p className="article-editorial-deck">{articleDescription}</p>
+              )}
+              <div className="article-editorial-meta-strip" aria-label="Article summary">
+                <span><FaFeatherAlt /> {article?.customTemplate?.name || article?.templateName || 'My Signature Layout 102'}</span>
+                <span>By {authorName}</span>
+                <span>{articlePublishedDate}</span>
+                <span>{articleReadMinutes} min read</span>
+              </div>
+            </header>
+
+            <aside className="article-editorial-meta-panel" aria-label="Article information">
+              <dl className="article-editorial-meta-list">
+                <div>
+                  <dt><FaRegUser /> Author</dt>
+                  <dd>{authorName}</dd>
+                </div>
+                <div>
+                  <dt><FaRegCalendarAlt /> Published</dt>
+                  <dd>{articlePublishedDate}</dd>
+                </div>
+                <div>
+                  <dt><FaRegClock /> Read Time</dt>
+                  <dd>{articleReadMinutes} min</dd>
+                </div>
+                <div>
+                  <dt><FaRegFolderOpen /> Category</dt>
+                  <dd><span className="article-editorial-category-pill">{articleCategory}</span></dd>
+                </div>
+              </dl>
+              <div className="article-editorial-actions" aria-label="Article actions">
+                <button type="button" aria-label={t('Save')}>
+                  <FaRegBookmark />
+                  <span>{t('Save')}</span>
+                </button>
+                <button type="button" aria-label={t('Gift')}>
+                  <FaGift />
+                  <span>{t('Gift')}</span>
+                </button>
+                <button type="button" onClick={handleCopyLink} aria-label={t('Copy link')}>
+                  <FaLink />
+                  <span>{t('Copy link')}</span>
+                </button>
+                <button type="button" onClick={handleShare} aria-label={t('More')}>
+                  <FaEllipsisH />
+                  <span>{t('More')}</span>
+                </button>
+              </div>
+            </aside>
+
+            <figure className="article-editorial-hero">
+              <img src={articleCoverImage} alt={article.title} />
+            </figure>
+          </div>
+
+          <div className="article-editorial-reader-grid">
+            <aside className="article-editorial-engagement-rail" aria-label="Article engagement">
+              <button
+                type="button"
+                onClick={handleLike}
+                className={liked ? 'is-active' : ''}
+                aria-label={liked ? t('Unlike article') : t('Like article')}
+              >
+                <FaHeart />
+                <span>{compactCount(article.likeCount || article.likes?.length || 0)}</span>
+              </button>
+              <button type="button" aria-label={t('Comments')}>
+                <FaRegCommentDots />
+                <span>{compactCount(article.commentCount || comments.length)}</span>
+              </button>
+              <button type="button" aria-label={t('Save')}>
+                <FaRegBookmark />
+              </button>
+              <button type="button" onClick={handleShare} aria-label={t('Share')}>
+                <FaRegShareSquare />
+              </button>
+            </aside>
+
+            <section className="article-editorial-body">
+              {articleLead && <p className="article-editorial-lead">{articleLead}</p>}
+              {articleRest && <ReactMarkdown>{articleRest}</ReactMarkdown>}
+            </section>
+
+            <aside className="article-editorial-author-panel" aria-label={t('About the Author')}>
+              <div className="article-editorial-author-row">
+                {article.author?.hasActiveStatus && article.author?.statuses?.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthorStatusViewer(true)}
+                    className="article-editorial-author-avatar"
+                    title={t('View author status')}
+                  >
+                    <Avatar user={article.author} size="lg" showStatusRing />
+                  </button>
+                ) : (
+                  <Link to={`/user/${article.author?._id || ''}`} className="article-editorial-author-avatar">
+                    <Avatar user={article.author} size="lg" showStatusRing />
+                  </Link>
+                )}
+                <div>
+                  <Link to={`/user/${article.author?._id || ''}`} className="article-editorial-author-name">
+                    <span>{authorName}</span>
+                    {article.author?.isGuest ? (
+                      <TbBrandAmongUs className="article-editorial-author-guest" size={15} />
+                    ) : article.author?.isVerified && (
+                      <GoVerified className="article-editorial-author-verified" size={15} />
+                    )}
+                  </Link>
+                  <p>{article.author?.roleLabel || article.author?.occupation || 'Writer & Researcher'}</p>
+                </div>
+              </div>
+              <div className="article-editorial-author-stats">
+                <span>{compactCount(authorFollowerCount)} followers</span>
+                <span>{compactCount(authorArticleCount)} articles</span>
+              </div>
+              {article.author?.bio && (
+                <p className="article-editorial-author-bio">{article.author.bio}</p>
+              )}
+              <Link to={`/user/${article.author?._id || ''}`} className="article-editorial-profile-link">
+                {t('View full profile')} <span aria-hidden="true">-></span>
+              </Link>
+              {user?._id === article.author?._id && (
+                <div className="article-editorial-owner-tools">
+                  <button type="button" onClick={() => navigate(`/edit/${contentId}`)}>
+                    <FaEdit /> {t('Edit')}
+                  </button>
+                  <button type="button" onClick={() => setShowDeleteModal(true)}>
+                    <FaTrash /> {t('Delete')}
+                  </button>
+                </div>
+              )}
+            </aside>
+          </div>
         </section>
 
+        <div className="article-detail-afterword-custom">
         {moreByAuthor.length > 0 && (
           <section style={{ marginTop: 'var(--spacing-16)', marginBottom: 'var(--spacing-12)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-3)', marginBottom: 'var(--spacing-6)' }}>
@@ -537,105 +864,6 @@ const ArticleDetails = () => {
             </div>
           </section>
         )}
-        {/* Engagement Bar */}
-        <div className="flex items-center justify-between mb-8 pb-8 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-6">
-            <button
-              onClick={handleLike}
-              className={`flex items-center gap-2 transition ${
-                liked ? 'text-red-600' : 'text-gray-600 dark:text-gray-400 hover:text-red-600'
-              }`}
-            >
-              <FaHeart className={liked ? 'fill-current' : ''} size={20} />
-              <span className="font-semibold">{article.likeCount || 0}</span>
-            </button>
-            <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-              <FaComment size={20} />
-              <span className="font-semibold">{article.commentCount || 0}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {user?._id === article.author._id && (
-              <>
-                <button
-                  onClick={() => navigate(`/edit/${contentId}`)}
-                  className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition"
-                >
-                  <FaEdit size={18} />
-                  <span className="font-semibold">{t('Edit')}</span>
-                </button>
-                <button
-                  onClick={() => setShowDeleteModal(true)}
-                  className="flex items-center gap-2 text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300 transition"
-                >
-                  <FaTrash size={18} />
-                  <span className="font-semibold">{t('Delete')}</span>
-                </button>
-              </>
-            )}
-            <button
-              onClick={handleShare}
-              className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-blue-600 transition"
-            >
-              <FaShare size={18} />
-              <span className="font-semibold">{t('Share')}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Author Section */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 mb-8 border border-gray-200 dark:border-gray-700">
-          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-4">
-            {t('About the Author')}
-          </h3>
-          <div className="flex items-start gap-4">
-            {article.author?.hasActiveStatus && article.author?.statuses?.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => setShowAuthorStatusViewer(true)}
-                className="cursor-pointer hover:opacity-90 transition"
-                title={t('View author status')}
-              >
-                <Avatar user={article.author} size="lg" showStatusRing />
-              </button>
-            ) : (
-              <Link to={`/user/${article.author._id}`}>
-                <Avatar user={article.author} size="lg" showStatusRing />
-              </Link>
-            )}
-            <div className="flex-1">
-              <Link 
-                to={`/user/${article.author._id}`}
-                className="flex items-center gap-2 mb-2 hover:text-blue-600 dark:hover:text-blue-400 transition"
-              >
-                <h4 className="text-lg font-bold text-[var(--text-primary)]">
-                  <span
-                    className={article.author?.hasActiveStatus ? 'status-name-shimmer' : ''}
-                    data-text={article.author?.username || ''}
-                  >
-                    {article.author.username}
-                  </span>
-                </h4>
-                <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-xs px-2 py-0.5 rounded font-semibold">
-                  Author
-                </span>
-                {article.author.isGuest ? (
-                  <TbBrandAmongUs className="text-purple-500" size={16} />
-                ) : article.author.isVerified && (
-                  <div className="bg-blue-600 rounded-full p-0.5">
-                    <GoVerified className="text-white" size={12} />
-                  </div>
-                )}
-              </Link>
-              {article.author.bio && (
-                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
-                  {article.author.bio}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-
         {showAuthorStatusViewer && article.author?.statuses?.length > 0 && (
           <StatusViewer
             statuses={article.author.statuses}
@@ -645,29 +873,26 @@ const ArticleDetails = () => {
           />
         )}
 
-        {/* Comments */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{t('Comments')} ({comments.length})</h2>
-            <div className="relative">
+        <section className="article-comments-panel" aria-label={t('Comments')}>
+          <div className="article-comments-header">
+            <h2 className="article-comments-title">{t('Comments')} <span>({comments.length})</span></h2>
+            <div className="article-comments-sort">
               <button
                 onClick={() => setShowSortMenu(!showSortMenu)}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition text-sm font-medium"
+                className="article-comments-sort-button"
               >
                 <BiMenuAltRight className="w-4 h-4" />
                 {sortBy === 'newest' ? t('Newest First') : t('Most Engaging')}
               </button>
               {showSortMenu && (
-                <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                <div className="article-comments-sort-menu">
                   <button
                     onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
                   >
                     {t('Most Engaging')}
                   </button>
                   <button
                     onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg"
                   >
                     {t('Newest First')}
                   </button>
@@ -689,29 +914,29 @@ const ArticleDetails = () => {
               } catch (error) {
                 toast.error('Failed to add comment');
               }
-            }} className="mb-6">
-              <div className="flex gap-3">
+            }} className="article-comments-form">
+              <div className="article-comments-compose">
                 <Avatar user={user} size="sm" />
-                <div className="flex-1">
+                <div className="article-comments-editor">
                   <textarea
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 resize-none"
+                    className="article-comments-textarea"
                     rows="3"
                     placeholder={t('Write a comment...')}
                   />
                   {newComment.trim() && (
-                    <div className="flex gap-2 mt-3">
+                    <div className="article-comments-form-actions">
                       <button
                         type="button"
                         onClick={() => setNewComment('')}
-                        className="px-4 py-2 text-sm bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                        className="article-comments-soft-button"
                       >
                         {t('Cancel')}
                       </button>
                       <button
                         type="submit"
-                        className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                        className="article-comments-primary-button"
                       >
                         {t('Add Comment')}
                       </button>
@@ -722,11 +947,11 @@ const ArticleDetails = () => {
             </form>
           )}
 
-          <div className="space-y-6">
+          <div className="article-comments-list">
             {sortedComments.length === 0 ? (
-              <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                <FaComment className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p className="text-lg">{t('No comments yet. Be the first to comment!')}</p>
+              <div className="article-comments-empty">
+                <FaComment />
+                <p>{t('No comments yet. Be the first to comment!')}</p>
               </div>
             ) : (
               sortedComments.map((comment) => (
@@ -759,6 +984,7 @@ const ArticleDetails = () => {
               ))
             )}
           </div>
+        </section>
         </div>
       </article>
 
@@ -813,6 +1039,28 @@ const ArticleDetails = () => {
           </div>
         </div>
         )}
+
+      <TwoFactorVerificationModal
+        open={Boolean(twoFactorPrompt)}
+        action={twoFactorPrompt?.action}
+        actionLabel={twoFactorPrompt?.actionLabel}
+        twoFactor={twoFactorPrompt?.twoFactor}
+        requestChallenge={requestAuthenticatedTwoFactorChallenge}
+        verifyChallenge={verifyAuthenticatedTwoFactorChallenge}
+        onVerified={handleTwoFactorVerified}
+        onClose={() => setTwoFactorPrompt(null)}
+      />
+
+      <SensitiveActionAuthModal
+        open={sensitiveAuthPrompt}
+        action="delete_article"
+        actionLabel="delete this article"
+        title={t('Verify before deleting')}
+        description={t('Confirm your password before this article is permanently deleted.')}
+        onVerified={handleSensitiveAuthVerified}
+        onForgotPassword={handleDeleteForgotPassword}
+        onClose={() => setSensitiveAuthPrompt(false)}
+      />
       </div>
     </>
   );

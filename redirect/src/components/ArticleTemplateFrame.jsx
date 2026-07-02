@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  CUSTOM_ARTICLE_TEMPLATE_ID,
   DEFAULT_ARTICLE_TEMPLATE_ID,
   generateArticleTemplateHTML,
   normalizeCustomTemplate
@@ -29,13 +30,20 @@ const ArticleTemplateFrame = ({
     typeof window !== 'undefined' ? resolveViewportStudioDevice(window.innerWidth) : 'desktop'
   );
 
+  const requestedTemplateId = templateId || article?.templateId || DEFAULT_ARTICLE_TEMPLATE_ID;
+  const resolvedTemplateId =
+    requestedTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID
+      ? requestedTemplateId
+      : DEFAULT_ARTICLE_TEMPLATE_ID;
+  const isCustomTemplate = resolvedTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID;
+
   const clampFrameHeight = useCallback((height) => {
     if (!Number.isFinite(height) || height <= 0) return;
     setFrameHeight((prev) => {
-      const next = Math.min(Math.max(Math.ceil(height) + 4, 240), 36000);
+      const next = Math.min(Math.max(Math.ceil(height) + (isCustomTemplate ? 0 : 4), 240), 36000);
       return Math.abs(prev - next) > 1 ? next : prev;
     });
-  }, []);
+  }, [isCustomTemplate]);
 
   const resolvedTemplateThemeMode = autoThemeMode;
   const resolvedRuntimeCustomTemplate = useMemo(() => {
@@ -44,17 +52,16 @@ const ArticleTemplateFrame = ({
     if (!sourceTemplate) return null;
     return normalizeCustomTemplate(sourceTemplate);
   }, [article, customTemplate]);
-
   const htmlContent = useMemo(
     () =>
       generateArticleTemplateHTML(
         article,
-        templateId || article?.templateId || DEFAULT_ARTICLE_TEMPLATE_ID,
+        resolvedTemplateId,
         resolvedRuntimeCustomTemplate,
         resolvedTemplateThemeMode,
         { runtimeStudioDevice: viewportStudioDevice }
       ),
-    [article, templateId, resolvedRuntimeCustomTemplate, resolvedTemplateThemeMode, viewportStudioDevice]
+    [article, resolvedTemplateId, resolvedRuntimeCustomTemplate, resolvedTemplateThemeMode, viewportStudioDevice]
   );
 
   const syncHeight = useCallback(() => {
@@ -66,7 +73,9 @@ const ArticleTemplateFrame = ({
       if (!doc) return;
 
       const rootNode = doc.querySelector('.template-root');
-      const rootHeight = rootNode ? Math.ceil(rootNode.getBoundingClientRect().height + 56) : 0;
+      const rootHeight = rootNode
+        ? Math.ceil(rootNode.getBoundingClientRect().height + (isCustomTemplate ? 0 : 56))
+        : 0;
       const scrollHeight = Math.max(
         doc.body?.scrollHeight || 0,
         doc.body?.offsetHeight || 0,
@@ -81,7 +90,7 @@ const ArticleTemplateFrame = ({
     } catch (error) {
       // Ignore cross-document read failures.
     }
-  }, [clampFrameHeight]);
+  }, [clampFrameHeight, isCustomTemplate]);
 
   const refreshViewportStudioDevice = useCallback(() => {
     const viewportWidth = typeof window !== 'undefined' ? Number(window.innerWidth || 0) : 0;

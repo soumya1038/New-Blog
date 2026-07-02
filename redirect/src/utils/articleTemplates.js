@@ -1,6 +1,6 @@
 
-const DEFAULT_TEMPLATE_ID = 'city-gazette';
 const CUSTOM_TEMPLATE_ID = 'custom-studio';
+const DEFAULT_TEMPLATE_ID = CUSTOM_TEMPLATE_ID;
 
 const TEMPLATE_THEME_OPTIONS = [
   { id: 'auto', label: 'Auto (Navbar)' },
@@ -78,6 +78,7 @@ const CUSTOM_STUDIO_BLOCK_TYPES = [
   { id: 'gallery', label: 'Gallery Strip' },
   { id: 'collage', label: 'Collage Board' },
   { id: 'content', label: 'Main Content' },
+  { id: 'product-tags', label: 'Product Tag Anchor' },
   { id: 'highlights', label: 'Highlights' },
   { id: 'tags', label: 'Tags' },
   { id: 'video', label: 'Video Panel' },
@@ -389,7 +390,7 @@ const resolveCustomStudioShapeClipPath = (
 
 const TEMPLATE_PRESETS = [
   {
-    id: DEFAULT_TEMPLATE_ID,
+    id: 'metropolitan-ledger',
     name: 'Metropolitan Ledger',
     description: 'City front-page composition with a strong side rail.',
     layout: 'newspaper',
@@ -1125,26 +1126,7 @@ const TEMPLATE_PRESETS = [
   }
 ];
 
-const CURATED_TEMPLATE_IDS = [
-  'city-gazette',
-  'daily-chronicle',
-  'vintage-press',
-  'business-pulse',
-  'marble-times',
-  'minimal-brief',
-  'science-ledger',
-  'copper-review',
-  'heritage-broadsheet',
-  'modern-feature',
-  'canvas-weekend',
-  'editorial-zine',
-  'urban-notes',
-  'paperlight-journal',
-  'travel-atlas',
-  'photo-chronicle',
-  'noir-bulletin',
-  CUSTOM_TEMPLATE_ID
-];
+const CURATED_TEMPLATE_IDS = [CUSTOM_TEMPLATE_ID];
 
 const CURATED_TEMPLATE_ID_SET = new Set(CURATED_TEMPLATE_IDS);
 
@@ -1631,6 +1613,80 @@ const estimateReadingMinutes = (content) => {
   return Math.max(1, Math.ceil(words / 220));
 };
 
+const parseProductArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    return [];
+  }
+};
+
+const normalizeProductTagsForTemplate = (article = {}) => {
+  const productRefs = parseProductArray(article.linkedProducts);
+  const normalizedProducts = [];
+  const unresolvedProductIds = [];
+  const seenProducts = new Set();
+
+  const addProductRef = (product) => {
+    if (!product) return;
+
+    if (typeof product === 'object') {
+      const key = product._id || product.id || product.slug || product.title;
+      if (!key || seenProducts.has(String(key))) return;
+      seenProducts.add(String(key));
+      normalizedProducts.push(product);
+      return;
+    }
+
+    const id = String(product).trim();
+    if (id && !unresolvedProductIds.includes(id)) unresolvedProductIds.push(id);
+  };
+
+  productRefs.forEach(addProductRef);
+  addProductRef(article.linkedProduct);
+
+  const resolvedIds = new Set(
+    normalizedProducts
+      .map((product) => String(product?._id || product?.id || '').trim())
+      .filter(Boolean)
+  );
+  const unresolvedCount = unresolvedProductIds.filter((id) => !resolvedIds.has(id)).length;
+  const externalLinks = parseProductArray(article.externalProductLinks)
+    .filter((link) => link && typeof link === 'object' && String(link.url || '').trim());
+
+  return {
+    products: normalizedProducts,
+    externalLinks,
+    unresolvedCount,
+    total: normalizedProducts.length + externalLinks.length + unresolvedCount
+  };
+};
+
+const productPriceLabel = (product) => {
+  if (!product || typeof product !== 'object') return '';
+  if (product.isFree) return 'Free';
+  if (product.price === undefined || product.price === null || product.price === '') return '';
+  const numericPrice = Number(product.price);
+  const displayPrice = Number.isFinite(numericPrice)
+    ? numericPrice.toLocaleString('en-IN')
+    : String(product.price);
+  return `${product.currency || 'INR'} ${displayPrice}`;
+};
+
+const productHref = (product) => {
+  const key = cleanText(product?.slug || product?._id || product?.id, '');
+  return key ? `/marketplace/${encodeURIComponent(key)}` : '/marketplace';
+};
+
+const safeExternalHref = (url) => {
+  const candidate = cleanText(url, '');
+  return /^https?:\/\//i.test(candidate) ? candidate : '#';
+};
+
 const createDefaultCustomStudioBlockMap = () => ({
   title: {
     colStart: 1,
@@ -1816,6 +1872,30 @@ const createDefaultCustomStudioBlockMap = () => ({
     borderStyle: 'solid',
     borderRadius: 16,
     padding: 14,
+    shellShadowEnabled: false,
+    shellShadowLevel: 0,
+    contentShadowEnabled: false,
+    contentShadowLevel: 0,
+    shadowLevel: 0,
+    underlineStyle: 'none',
+    underlineColor: '#9b4f2f'
+  },
+  'product-tags': {
+    colStart: 10,
+    colSpan: 3,
+    rowStart: 27,
+    rowSpan: 2,
+    fontScale: 0.92,
+    textAlign: 'center',
+    shellBackgroundColor: '#efe4d8',
+    contentBackgroundColor: '#fffaf2',
+    backgroundColor: '#fffaf2',
+    textColor: '#4c3f36',
+    borderColor: '#cdbba9',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    padding: 10,
     shellShadowEnabled: false,
     shellShadowLevel: 0,
     contentShadowEnabled: false,
@@ -2165,7 +2245,7 @@ const normalizeCustomStudio = (studio, defaultStudio) => {
 
   let blocks = Array.isArray(studio?.blocks)
     ? studio.blocks
-        .slice(0, 18)
+        .slice(0, 24)
         .map((block, index) =>
           normalizeCustomStudioBlock(block, fallbackByType[block?.type] || fallback.blocks[index], index, columns)
         )
@@ -2291,6 +2371,7 @@ export const normalizeArticleTemplateData = (article = {}) => {
   const coverImage = cleanText(article.coverImage, '');
   const galleryImages = parseGalleryImages(article.galleryImages).filter((url, index, list) => url !== coverImage && list.indexOf(url) === index);
   const readingMinutes = estimateReadingMinutes(content);
+  const productTags = normalizeProductTagsForTemplate(article);
 
   return {
     title: cleanText(article.title, 'Untitled Story'),
@@ -2307,7 +2388,13 @@ export const normalizeArticleTemplateData = (article = {}) => {
     highlights: extractHighlights(metaDescription, paragraphs, tags),
     readingMinutes,
     templateThemeMode: normalizeTemplateThemeMode(article.templateThemeMode, 'auto'),
-    isLongRead: readingMinutes >= 8 || paragraphs.length >= 18
+    isLongRead: readingMinutes >= 8 || paragraphs.length >= 18,
+    linkedProduct: article.linkedProduct || null,
+    linkedProducts: productTags.products,
+    externalProductLinks: productTags.externalLinks,
+    unresolvedProductTagCount: productTags.unresolvedCount,
+    productTagCount: productTags.total,
+    isTemplatePreview: Boolean(article.isTemplatePreview)
   };
 };
 
@@ -2736,7 +2823,13 @@ export const recommendArticleTemplate = (article = {}, options = {}) => {
   };
 };
 
-const resolveTemplatePreset = (templateId) => PRESET_MAP[templateId] || PRESET_MAP[DEFAULT_TEMPLATE_ID];
+const resolveTemplatePreset = (templateId) => {
+  const requestedTemplateId = cleanText(templateId, DEFAULT_TEMPLATE_ID);
+  if (requestedTemplateId !== CUSTOM_TEMPLATE_ID) {
+    return PRESET_MAP[DEFAULT_TEMPLATE_ID];
+  }
+  return PRESET_MAP[CUSTOM_TEMPLATE_ID] || PRESET_MAP[DEFAULT_TEMPLATE_ID];
+};
 
 const runtimeTemplate = (templateId, customTemplate, runtimeOptions = null) => {
   const preset = resolveTemplatePreset(templateId);
@@ -3547,6 +3640,79 @@ const renderCustomStudioVideo = (article, block) => {
   return `<div class="custom-studio-video-grid layout-${layoutMode}">${embeds}</div>`;
 };
 
+const renderCustomStudioProductTagAnchor = (article, showPlaceholder = false) => {
+  const productTags = normalizeProductTagsForTemplate(article);
+  const { products, externalLinks, unresolvedCount, total } = productTags;
+
+  if (!total) {
+    return showPlaceholder
+      ? '<div class="custom-product-tag-placeholder"><strong>Product Tag Anchor</strong><span>Tagged products will appear here.</span></div>'
+      : '';
+  }
+
+  const firstProduct = products[0] || null;
+  const firstExternal = externalLinks[0] || null;
+  const firstImage =
+    firstProduct?.transparentThumbnail
+    || firstProduct?.thumbnail
+    || firstExternal?.thumbnail
+    || '';
+  const summaryLabel = `${total} product${total === 1 ? '' : 's'}`;
+  const productRows = products
+    .map((product) => {
+      const image = product.transparentThumbnail || product.thumbnail || '/image/lekhon_url.png';
+      const price = productPriceLabel(product);
+      return `
+        <a class="custom-product-tag-row" href="${escapeHtml(productHref(product))}" target="_blank" rel="noopener noreferrer">
+          <img src="${escapeHtml(image)}" alt="${escapeHtml(product.title || 'Tagged product')}" loading="lazy" />
+          <span class="custom-product-tag-row-copy">
+            <strong>${escapeHtml(product.title || 'Tagged product')}</strong>
+            ${price ? `<span>${escapeHtml(price)}</span>` : ''}
+          </span>
+        </a>
+      `;
+    })
+    .join('');
+  const externalRows = externalLinks
+    .map((link) => `
+      <a class="custom-product-tag-row" href="${escapeHtml(safeExternalHref(link.url))}" target="_blank" rel="noopener noreferrer">
+        ${
+          link.thumbnail
+            ? `<img src="${escapeHtml(link.thumbnail)}" alt="${escapeHtml(link.title || 'External product')}" loading="lazy" />`
+            : '<span class="custom-product-tag-external-icon">Open</span>'
+        }
+        <span class="custom-product-tag-row-copy">
+          <strong>${escapeHtml(link.title || 'External product')}</strong>
+          <span>${escapeHtml(link.priceLabel || link.platform || 'External')}</span>
+        </span>
+      </a>
+    `)
+    .join('');
+  const unresolvedRow = unresolvedCount > 0
+    ? `<div class="custom-product-tag-row custom-product-tag-row-muted"><span class="custom-product-tag-external-icon">+</span><span class="custom-product-tag-row-copy"><strong>${unresolvedCount} linked product${unresolvedCount === 1 ? '' : 's'}</strong><span>Product details load after publishing.</span></span></div>`
+    : '';
+
+  return `
+    <div class="custom-product-tag-anchor" aria-label="Tagged products">
+      <details class="custom-product-tag-overlay">
+        <summary class="custom-product-tag-summary">
+          ${
+            firstImage
+              ? `<img class="custom-product-tag-image" src="${escapeHtml(firstImage)}" alt="${escapeHtml(firstProduct?.title || firstExternal?.title || 'Tagged product')}" loading="lazy" />`
+              : ''
+          }
+          <span class="custom-product-tag-chip">${summaryLabel}</span>
+        </summary>
+        <div class="custom-product-tag-panel">
+          ${productRows}
+          ${externalRows}
+          ${unresolvedRow}
+        </div>
+      </details>
+    </div>
+  `;
+};
+
 const splitContentIntoStudioSegments = (content, segmentCount) => {
   const normalizedCount = clampInt(segmentCount, 1, 8, 1);
   const raw = cleanText(content).replace(/\r\n/g, '\n').trim();
@@ -3591,6 +3757,10 @@ const renderCustomStudioContentByType = (block, article, template, contentHtml, 
     case 'title':
       return `
         <div class="custom-studio-title-wrap">
+          <span class="custom-studio-article-logo" aria-hidden="true">
+            <img class="custom-studio-article-logo-img custom-studio-article-logo-dark" src="/image/article_logo_dark.png" alt="" loading="lazy" />
+            <img class="custom-studio-article-logo-img custom-studio-article-logo-light" src="/image/article_logo_light.png" alt="" loading="lazy" />
+          </span>
           <p class="custom-studio-kicker">${escapeHtml(template.badge)} | ${escapeHtml(article.category)}</p>
           <h1 class="custom-studio-headline">${escapeHtml(article.title)}</h1>
           <p class="custom-studio-deck">${escapeHtml(article.metaDescription)}</p>
@@ -3621,6 +3791,8 @@ const renderCustomStudioContentByType = (block, article, template, contentHtml, 
       return renderCustomStudioHighlights(article);
     case 'tags':
       return renderCustomStudioTags(article);
+    case 'product-tags':
+      return renderCustomStudioProductTagAnchor(article, Boolean(runtime.showProductAnchorPlaceholder));
     case 'video':
       return renderCustomStudioVideo(article, block);
     case 'quote':
@@ -3671,8 +3843,14 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
   );
   const rowCount = clampInt(studio.rows, CUSTOM_STUDIO_MIN_ROWS, CUSTOM_STUDIO_MAX_ROWS, CUSTOM_STUDIO_DEFAULT_ROWS);
   const rowHeight = clampInt(studio.rowHeight, 24, 54, CUSTOM_STUDIO_DEFAULT_ROW_HEIGHT);
+  const showProductAnchorPlaceholder = Boolean(article.isTemplatePreview);
+  const hasProductTags = Number(article.productTagCount || 0) > 0;
   const visibleBlocks = (studio.blocks || [])
-    .filter((block) => block.visible !== false)
+    .filter((block) => {
+      if (block.visible === false) return false;
+      if (block.type !== 'product-tags') return true;
+      return hasProductTags || showProductAnchorPlaceholder;
+    })
     .sort((left, right) => left.rowStart - right.rowStart || left.colStart - right.colStart);
 
   const contentBlocks = visibleBlocks.filter((block) => block.type === 'content');
@@ -3758,7 +3936,8 @@ const renderCustomCanvasLayout = (article, template, contentHtml) => {
               contentHtmlByBlockId,
               primaryContentBlockId: contentBlocks[0]?.id || null,
               contentPartIndexByBlockId,
-              contentPartCount: contentBlocks.length
+              contentPartCount: contentBlocks.length,
+              showProductAnchorPlaceholder
             })}
           </div>
         </section>
@@ -3999,6 +4178,26 @@ const renderTemplateHtml = (article, template) => {
       border: 1px solid var(--border);
       box-shadow: var(--shadow);
       border-radius: 18px;
+    }
+
+    body.template-custom-studio {
+      padding-bottom: 0;
+      background:
+        radial-gradient(circle at 10% 8%, color-mix(in srgb, var(--accent) 16%, transparent 84%), transparent 32rem),
+        linear-gradient(180deg, color-mix(in srgb, var(--bg) 92%, var(--surface) 8%), var(--bg-alt));
+    }
+
+    body.template-custom-studio .template-root {
+      width: min(100%, 1680px);
+      max-width: none;
+      margin: 0 auto;
+      padding: clamp(12px, 2vw, 30px) clamp(18px, 4.6vw, 72px) clamp(26px, 5vw, 70px);
+      gap: clamp(14px, 2vw, 28px);
+    }
+
+    body.template-custom-studio .progress-top,
+    body.template-custom-studio .progress-serif {
+      display: none !important;
     }
 
     .hero {
@@ -6974,30 +7173,36 @@ const renderTemplateHtml = (article, template) => {
     }
 
     .custom-canvas-shell {
-      padding: 14px;
-      background: linear-gradient(140deg, color-mix(in srgb, var(--bg) 88%, white 12%), color-mix(in srgb, var(--bg-alt) 92%, black 8%));
-      border-color: color-mix(in srgb, var(--border) 86%, var(--accent) 14%);
+      padding: 0;
+      margin: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+      border-radius: 0;
     }
 
     .custom-canvas-page {
       display: grid;
       grid-template-columns: repeat(var(--studio-grid-columns, 12), minmax(0, 1fr));
       grid-auto-rows: minmax(var(--studio-row-height, 30px), auto);
-      gap: 12px;
+      gap: 0;
+      margin: 0;
       min-height: calc(var(--studio-grid-rows, 28) * var(--studio-row-height, 30px));
       position: relative;
     }
 
     .custom-studio-block {
       border-radius: var(--studio-block-radius, 16px);
-      border: var(--studio-block-border-width, 1px) var(--studio-block-border-style, solid) var(--studio-block-border, var(--border));
+      border: 0;
       background: var(--studio-block-shell-bg, var(--surface));
       color: var(--studio-block-text, var(--text));
-      padding: max(6px, calc(var(--studio-block-padding, 14px) * 0.42));
+      padding: 0;
+      margin: 0;
       font-size: clamp(0.88rem, calc(0.82rem * var(--studio-block-font-scale, 1)), 1.2rem);
-      overflow: hidden;
+      overflow: visible;
       position: relative;
-      box-shadow: var(--studio-shell-shadow, none);
+      box-shadow: none;
+      container-type: inline-size;
     }
 
     .custom-studio-block[data-shape]:not([data-shape="rect"]) {
@@ -7018,9 +7223,10 @@ const renderTemplateHtml = (article, template) => {
       height: 100%;
       border-radius: calc(var(--studio-block-radius, 16px) - 5px);
       background: var(--studio-block-content-bg, var(--surface-muted));
-      padding: var(--studio-block-padding, 14px);
-      box-shadow: var(--studio-content-shadow, none);
-      overflow: hidden;
+      padding: 0;
+      margin: 0;
+      box-shadow: none;
+      overflow: visible;
     }
 
     .custom-studio-block[data-shape]:not([data-shape="rect"]) .custom-studio-block-inner {
@@ -7083,16 +7289,77 @@ const renderTemplateHtml = (article, template) => {
 
     .custom-studio-title-wrap {
       display: grid;
-      gap: 10px;
+      gap: clamp(8px, 1.3cqi, 14px);
       height: 100%;
       align-content: start;
+      min-width: 0;
+    }
+
+    .custom-studio-article-logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: clamp(38px, 5.2cqi, 58px);
+      aspect-ratio: 1;
+      margin-bottom: clamp(1px, 0.45cqi, 4px);
+      pointer-events: none;
+      user-select: none;
+    }
+
+    .custom-studio-block.align-center .custom-studio-article-logo {
+      justify-self: center;
+    }
+
+    .custom-studio-block.align-right .custom-studio-article-logo {
+      justify-self: end;
+    }
+
+    .custom-studio-article-logo-img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      opacity: 0.94;
+      filter: drop-shadow(0 8px 16px color-mix(in srgb, var(--ink) 12%, transparent 88%));
+    }
+
+    .custom-studio-article-logo-light {
+      display: none;
+    }
+
+    body.theme-dark .custom-studio-article-logo-dark {
+      display: none;
+    }
+
+    body.theme-dark .custom-studio-article-logo-light {
+      display: block;
+      filter:
+        drop-shadow(0 1px 0 rgba(15, 23, 20, 0.6))
+        drop-shadow(1px 0 0 rgba(15, 23, 20, 0.42))
+        drop-shadow(-1px 0 0 rgba(15, 23, 20, 0.42))
+        drop-shadow(0 8px 16px rgba(0, 0, 0, 0.22));
+    }
+
+    @media (prefers-color-scheme: dark) {
+      body.theme-auto .custom-studio-article-logo-dark {
+        display: none;
+      }
+
+      body.theme-auto .custom-studio-article-logo-light {
+        display: block;
+        filter:
+          drop-shadow(0 1px 0 rgba(15, 23, 20, 0.6))
+          drop-shadow(1px 0 0 rgba(15, 23, 20, 0.42))
+          drop-shadow(-1px 0 0 rgba(15, 23, 20, 0.42))
+          drop-shadow(0 8px 16px rgba(0, 0, 0, 0.22));
+      }
     }
 
     .custom-studio-kicker {
       margin: 0;
-      font-size: 0.74rem;
+      font-size: clamp(0.68rem, 2.2cqi, 0.82rem);
       text-transform: uppercase;
-      letter-spacing: 0.14em;
+      letter-spacing: 0;
       opacity: 0.78;
       font-weight: 700;
     }
@@ -7100,34 +7367,44 @@ const renderTemplateHtml = (article, template) => {
     .custom-studio-headline {
       margin: 0;
       font-family: var(--title-font);
-      font-size: clamp(1.6rem, 4.1vw, 3.2rem);
-      line-height: 1.06;
-      letter-spacing: -0.02em;
+      font-size: clamp(1.7rem, 11cqi, 5.4rem);
+      line-height: 0.96;
+      letter-spacing: 0;
+      max-width: 17ch;
+      text-wrap: balance;
+      overflow-wrap: break-word;
+      hyphens: auto;
     }
 
     .custom-studio-deck {
       margin: 0;
+      max-width: 72ch;
+      font-size: clamp(0.94rem, 3.1cqi, 1.24rem);
       line-height: 1.55;
       opacity: 0.88;
+      overflow-wrap: break-word;
     }
 
     .custom-studio-meta {
       margin: 0;
-      padding: 0;
+      padding: 0 0 0 clamp(12px, 3.2cqi, 28px);
       list-style: none;
       display: grid;
-      gap: 10px;
+      gap: 0;
       height: 100%;
       align-content: start;
+      border-left: 1px solid color-mix(in srgb, var(--studio-block-border, var(--border)) 74%, transparent 26%);
     }
 
     .custom-studio-meta li {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      border-bottom: 1px dashed color-mix(in srgb, var(--studio-block-border, var(--border)) 80%, transparent 20%);
-      padding-bottom: 6px;
-      font-size: 0.92rem;
+      display: grid;
+      grid-template-columns: minmax(72px, 0.65fr) minmax(0, 1fr);
+      align-items: center;
+      gap: clamp(8px, 2cqi, 16px);
+      border-bottom: 1px solid color-mix(in srgb, var(--studio-block-border, var(--border)) 56%, transparent 44%);
+      padding: clamp(7px, 1.4cqi, 12px) 0;
+      font-size: clamp(0.78rem, 2.5cqi, 0.96rem);
+      min-width: 0;
     }
 
     .custom-studio-meta li span {
@@ -7136,6 +7413,9 @@ const renderTemplateHtml = (article, template) => {
 
     .custom-studio-meta li strong {
       font-weight: 700;
+      min-width: 0;
+      text-align: right;
+      overflow-wrap: break-word;
     }
 
     .custom-studio-image,
@@ -7143,15 +7423,16 @@ const renderTemplateHtml = (article, template) => {
     .custom-studio-collage,
     .custom-studio-image-fallback {
       margin: 0;
-      border-radius: calc(var(--studio-block-radius, 16px) - 4px);
+      border-radius: clamp(10px, 1.4cqi, 22px);
       overflow: hidden;
       min-height: 100%;
       height: 100%;
-      border: 1px solid color-mix(in srgb, var(--studio-block-border, var(--border)) 82%, transparent 18%);
+      border: 0;
       background: color-mix(in srgb, var(--studio-block-content-bg, var(--surface)) 84%, black 16%);
       display: grid;
       place-items: center;
       position: relative;
+      box-shadow: 0 18px 42px color-mix(in srgb, var(--ink) 18%, transparent 82%);
     }
 
     .custom-studio-image img,
@@ -7170,7 +7451,7 @@ const renderTemplateHtml = (article, template) => {
 
     .custom-studio-gallery-track {
       display: grid;
-      gap: 8px;
+      gap: clamp(6px, 1.2cqi, 10px);
       height: 100%;
       grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
       align-content: stretch;
@@ -7184,9 +7465,9 @@ const renderTemplateHtml = (article, template) => {
     .custom-studio-collage {
       grid-template-columns: repeat(3, minmax(0, 1fr));
       grid-template-rows: repeat(2, minmax(80px, 1fr)) auto;
-      gap: 8px;
+      gap: clamp(6px, 1.2cqi, 10px);
       align-content: stretch;
-      padding: 8px;
+      padding: clamp(6px, 1.2cqi, 10px);
     }
 
     .custom-studio-collage-cell {
@@ -7277,6 +7558,197 @@ const renderTemplateHtml = (article, template) => {
       gap: 8px;
     }
 
+    .custom-studio-type-product-tags {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      box-shadow: none;
+      overflow: visible;
+    }
+
+    .custom-studio-type-product-tags .custom-studio-block-inner {
+      background: transparent;
+      box-shadow: none;
+      overflow: visible;
+      padding: 0;
+    }
+
+    .custom-product-tag-placeholder {
+      min-height: 100%;
+      display: grid;
+      place-items: center;
+      gap: 4px;
+      border-radius: max(8px, calc(var(--studio-block-radius, 16px) - 6px));
+      border: 1px dashed color-mix(in srgb, var(--studio-block-border, var(--border)) 78%, transparent 22%);
+      background: transparent;
+      padding: 8px;
+      text-align: center;
+    }
+
+    .custom-product-tag-placeholder strong,
+    .custom-product-tag-placeholder span {
+      display: block;
+    }
+
+    .custom-product-tag-placeholder strong {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .custom-product-tag-placeholder span {
+      font-size: 0.72rem;
+      opacity: 0.76;
+    }
+
+    .custom-product-tag-anchor {
+      min-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .custom-product-tag-overlay {
+      position: relative;
+      width: fit-content;
+      max-width: 100%;
+      color: #111827;
+    }
+
+    .custom-product-tag-summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      min-width: 74px;
+      min-height: 42px;
+      position: relative;
+      outline: none;
+    }
+
+    .custom-product-tag-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .custom-product-tag-summary:focus-visible .custom-product-tag-chip {
+      outline: 2px solid color-mix(in srgb, var(--accent) 52%, transparent 48%);
+      outline-offset: 3px;
+    }
+
+    .custom-product-tag-image {
+      width: min(92px, 100%);
+      max-height: 108px;
+      object-fit: contain;
+      transform: rotate(-5deg);
+      pointer-events: none;
+      filter: drop-shadow(0 14px 20px rgba(0, 0, 0, 0.28));
+    }
+
+    .custom-product-tag-chip {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      font-size: 0.68rem;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--studio-block-text, var(--ink));
+      text-shadow: 0 1px 2px color-mix(in srgb, var(--bg) 75%, transparent 25%);
+      box-shadow: none;
+      white-space: nowrap;
+    }
+
+    .custom-product-tag-panel {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      z-index: 80;
+      width: min(18rem, 78vw);
+      max-height: 320px;
+      overflow: auto;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.36);
+      background: #fff;
+      color: #111827;
+      padding: 8px;
+      box-shadow: 0 24px 52px rgba(15, 23, 42, 0.28);
+    }
+
+    .custom-product-tag-overlay:not([open]) .custom-product-tag-panel {
+      display: none;
+    }
+
+    .custom-product-tag-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-radius: 9px;
+      padding: 8px;
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .custom-product-tag-row:hover {
+      background: #f3f4f6;
+    }
+
+    .custom-product-tag-row img,
+    .custom-product-tag-external-icon {
+      width: 44px;
+      height: 44px;
+      flex: 0 0 auto;
+      border-radius: 9px;
+      background: #f3f4f6;
+      object-fit: cover;
+    }
+
+    .custom-product-tag-external-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.64rem;
+      font-weight: 800;
+      color: #6b7280;
+    }
+
+    .custom-product-tag-row-copy {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+      text-align: left;
+    }
+
+    .custom-product-tag-row-copy strong,
+    .custom-product-tag-row-copy span {
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .custom-product-tag-row-copy strong {
+      font-size: 0.82rem;
+      color: #111827;
+    }
+
+    .custom-product-tag-row-copy span {
+      font-size: 0.72rem;
+      color: #6b7280;
+    }
+
+    .custom-product-tag-row-muted {
+      color: #6b7280;
+      cursor: default;
+    }
+
     .custom-studio-quote {
       margin: 0;
       display: grid;
@@ -7302,23 +7774,23 @@ const renderTemplateHtml = (article, template) => {
     }
 
     .template-custom-studio .custom-canvas-device-tablet.custom-canvas-shell {
-      padding: 10px;
+      padding: 0;
     }
 
     .template-custom-studio .custom-canvas-device-tablet .custom-canvas-page {
-      gap: 10px;
+      gap: 0;
     }
 
     .template-custom-studio .custom-canvas-device-tablet .custom-studio-block {
-      padding: max(4px, calc(var(--studio-block-padding, 14px) * 0.34));
+      padding: 0;
     }
 
     .template-custom-studio .custom-canvas-device-tablet .custom-studio-block-inner {
-      padding: clamp(9px, calc(var(--studio-block-padding, 14px) * 0.72), 20px);
+      padding: 0;
     }
 
     .template-custom-studio .custom-canvas-device-tablet .custom-studio-headline {
-      font-size: clamp(1.34rem, 4.6vw, 2.52rem);
+      font-size: clamp(1.34rem, 10cqi, 3rem);
     }
 
     .template-custom-studio .custom-canvas-device-tablet .custom-studio-meta li {
@@ -7327,26 +7799,26 @@ const renderTemplateHtml = (article, template) => {
     }
 
     .template-custom-studio .custom-canvas-device-mobile.custom-canvas-shell {
-      padding: 8px;
+      padding: 0;
     }
 
     .template-custom-studio .custom-canvas-device-mobile .custom-canvas-page {
-      gap: 8px;
+      gap: 0;
     }
 
     .template-custom-studio .custom-canvas-device-mobile .custom-studio-block {
-      padding: max(3px, calc(var(--studio-block-padding, 14px) * 0.3));
+      padding: 0;
       font-size: clamp(0.84rem, calc(0.78rem * var(--studio-block-font-scale, 1)), 1rem);
     }
 
     .template-custom-studio .custom-canvas-device-mobile .custom-studio-block-inner {
-      padding: clamp(8px, calc(var(--studio-block-padding, 14px) * 0.6), 14px);
+      padding: 0;
     }
 
     .template-custom-studio .custom-canvas-device-mobile .custom-studio-headline {
-      font-size: clamp(1.16rem, 6vw, 1.9rem);
+      font-size: clamp(1.16rem, 12cqi, 2.18rem);
       line-height: 1.12;
-      letter-spacing: -0.01em;
+      letter-spacing: 0;
     }
 
     .template-custom-studio .custom-canvas-device-mobile .custom-studio-deck,
@@ -7361,6 +7833,7 @@ const renderTemplateHtml = (article, template) => {
       font-size: 0.78rem;
       gap: 6px;
       padding-bottom: 5px;
+      grid-template-columns: minmax(68px, 0.7fr) minmax(0, 1fr);
     }
 
     .template-custom-studio .custom-canvas-device-mobile .custom-studio-list {
@@ -7392,18 +7865,19 @@ const renderTemplateHtml = (article, template) => {
 
     .custom-studio-video-grid {
       display: grid;
-      gap: 10px;
+      gap: clamp(8px, 1.4cqi, 14px);
       grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
       height: 100%;
       align-content: start;
     }
 
     .custom-studio-video-card {
-      border-radius: 12px;
+      border-radius: clamp(10px, 1.4cqi, 18px);
       overflow: hidden;
-      border: 1px solid color-mix(in srgb, var(--studio-block-border, var(--border)) 84%, transparent 16%);
+      border: 0;
       min-height: 126px;
       background: color-mix(in srgb, var(--studio-block-content-bg, var(--surface)) 74%, black 26%);
+      box-shadow: 0 16px 34px color-mix(in srgb, var(--ink) 16%, transparent 84%);
     }
 
     .custom-studio-video-card iframe,
@@ -7456,18 +7930,35 @@ const renderTemplateHtml = (article, template) => {
 
     .custom-studio-type-content .reader-toolbar {
       border-bottom-color: color-mix(in srgb, var(--studio-block-border, var(--border)) 78%, transparent 22%);
-      padding-top: 0;
+      padding: 0 0 clamp(8px, 1.5cqi, 14px);
+      margin-bottom: clamp(8px, 1.5cqi, 14px);
     }
 
     .custom-studio-type-content .reader-content {
-      margin-top: 8px;
+      margin-top: 0;
       max-height: none;
     }
 
     .custom-studio-type-content .story {
-      margin: 0;
+      margin: 0 auto;
       padding: 0;
-      max-width: 100%;
+      max-width: min(72ch, 100%);
+      overflow-wrap: normal;
+      word-break: normal;
+    }
+
+    .custom-studio-type-content .story p,
+    .custom-studio-type-content .story li,
+    .custom-studio-type-content .story blockquote {
+      font-size: clamp(1rem, 3cqi, 1.16rem);
+      line-height: 1.72;
+    }
+
+    .custom-studio-type-content .story-page {
+      border: 0;
+      background: color-mix(in srgb, var(--studio-block-content-bg, var(--surface)) 92%, transparent 8%);
+      box-shadow: none;
+      padding: clamp(16px, 4cqi, 34px);
     }
 
     .custom-studio-type-content .story h2 {
@@ -7606,6 +8097,14 @@ const renderTemplateHtml = (article, template) => {
     .longread .story {
       margin-inline: auto;
       max-width: min(920px, 100%);
+    }
+
+    .longread .custom-studio-type-content .reader-shell {
+      padding: 0;
+    }
+
+    .longread .custom-studio-type-content .story {
+      max-width: min(72ch, 100%);
     }
 
     .newspaper-story .inline-media {
@@ -8907,6 +9406,12 @@ const renderTemplateHtml = (article, template) => {
         gap: 12px;
       }
 
+      body.template-custom-studio .template-root {
+        width: min(100%, 100vw);
+        padding: 12px;
+        gap: 14px;
+      }
+
       .headline {
         font-size: clamp(1.6rem, 8vw, 2.4rem);
       }
@@ -8984,7 +9489,7 @@ const renderTemplateHtml = (article, template) => {
       var reportFrameHeight = function () {
         try {
           var rootNode = document.querySelector('.template-root');
-          var rootHeight = rootNode ? Math.ceil(rootNode.getBoundingClientRect().height + 56) : 0;
+          var rootHeight = rootNode ? Math.ceil(rootNode.getBoundingClientRect().height + ${template.id === CUSTOM_TEMPLATE_ID ? 0 : 56}) : 0;
           var docEl = document.documentElement;
           var body = document.body;
           var documentHeight = Math.max(
@@ -9009,6 +9514,10 @@ const renderTemplateHtml = (article, template) => {
         requestAnimationFrame(reportFrameHeight);
         setTimeout(reportFrameHeight, 120);
       };
+
+      Array.prototype.slice.call(document.querySelectorAll('.custom-product-tag-overlay')).forEach(function (node) {
+        node.addEventListener('toggle', scheduleHeightSync);
+      });
 
       var updateProgress = function () {
         var doc = document.documentElement;
@@ -9571,6 +10080,25 @@ export const CUSTOM_TEMPLATE_PAGE_PLACEMENT_OPTIONS = CUSTOM_STUDIO_PAGE_PLACEME
 export const CUSTOM_TEMPLATE_BORDER_PRESET_OPTIONS = CUSTOM_STUDIO_BORDER_PRESET_OPTIONS;
 export const CUSTOM_TEMPLATE_HIGHLIGHT_PRESET_OPTIONS = CUSTOM_STUDIO_HIGHLIGHT_PRESET_OPTIONS;
 export const CUSTOM_TEMPLATE_SHAPE_PRESET_OPTIONS = CUSTOM_STUDIO_SHAPE_PRESET_OPTIONS;
+export const customTemplateHasProductTagAnchor = (customTemplate, runtimeDevice = null) => {
+  if (!customTemplate || typeof customTemplate !== 'object') return false;
+
+  const normalized = normalizeCustomTemplate(customTemplate);
+  const studios = normalized?.studios || {};
+  const requestedDevice = cleanEnum(
+    cleanText(runtimeDevice, ''),
+    CUSTOM_TEMPLATE_DEVICE_OPTIONS_LIST.map((option) => option.id),
+    ''
+  );
+  const studioKeys = requestedDevice
+    ? [requestedDevice]
+    : CUSTOM_TEMPLATE_DEVICE_OPTIONS_LIST.map((option) => option.id);
+
+  return studioKeys.some((key) =>
+    Array.isArray(studios[key]?.blocks)
+    && studios[key].blocks.some((block) => block?.visible !== false && block?.type === 'product-tags')
+  );
+};
 export const canUseCustomTemplateShapeForBlockType = (blockType) =>
   isCustomStudioShapeEligibleTypeInternal(blockType);
 export const getCustomTemplateShapeClipPath = (
@@ -9607,7 +10135,7 @@ export const articleTemplates = VISIBLE_TEMPLATE_PRESETS.map((template) => ({
 
 export const getArticleTemplateById = (templateId) =>
   articleTemplates.find((template) => template.id === templateId)
-  || PRESET_MAP[templateId]
+  || PRESET_MAP[CUSTOM_TEMPLATE_ID]
   || articleTemplates[0];
 
 export const curatedArticleTemplateIds = CURATED_TEMPLATE_IDS.slice();

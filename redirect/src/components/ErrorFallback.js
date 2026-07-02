@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-const ErrorFallback = ({ error, resetError }) => {
+const ErrorFallback = ({ resetError }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
@@ -23,11 +23,6 @@ const ErrorFallback = ({ error, resetError }) => {
         <p className="text-gray-600 mb-6 text-lg">
           {t('Failed to load content. Please try again.')}
         </p>
-        {error && (
-          <p className="text-sm text-red-700 mb-6 bg-red-50 border border-red-200 p-3 rounded-lg">
-            {error.message}
-          </p>
-        )}
         <div className="flex gap-4 justify-center flex-wrap">
           <button
             onClick={() => window.location.reload()}

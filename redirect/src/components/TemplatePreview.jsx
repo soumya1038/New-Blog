@@ -17,12 +17,10 @@ import {
 import {
   articleTemplates,
   generateArticleTemplateHTML,
-  DEFAULT_ARTICLE_TEMPLATE_ID,
   CUSTOM_ARTICLE_TEMPLATE_ID,
   createDefaultCustomTemplate,
   normalizeCustomTemplate,
-  getArticleTemplateById,
-  recommendArticleTemplate
+  getArticleTemplateById
 } from '../utils/articleTemplates';
 import CustomTemplateStudioPanel from './CustomTemplateStudioPanel';
 import {
@@ -35,6 +33,9 @@ import {
 
 const CUSTOM_TEMPLATE_NAME_STORAGE_KEY = 'lekhon:custom-template-saved-names';
 const CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY = 'lekhon:custom-template-presets:v1';
+const CUSTOM_STUDIO_PREVIEW_TEMPLATES = articleTemplates.filter(
+  (template) => template.id === CUSTOM_ARTICLE_TEMPLATE_ID
+);
 
 const hasAuthToken = () =>
   typeof window !== 'undefined' && Boolean(window.localStorage.getItem('token'));
@@ -57,18 +58,12 @@ const normalizePresetRecord = (preset) => {
 const TemplatePreview = ({
   article,
   onClose,
-  selectedTemplateId = DEFAULT_ARTICLE_TEMPLATE_ID,
+  selectedTemplateId = CUSTOM_ARTICLE_TEMPLATE_ID,
   customTemplate,
-  onApplyTemplate,
-  suggestedTemplateId,
-  suggestedReason
+  onApplyTemplate
 }) => {
-  const defaultTemplateIndex = Math.max(
-    0,
-    articleTemplates.findIndex((template) => template.id === selectedTemplateId)
-  );
-
-  const [currentTemplateIndex, setCurrentTemplateIndex] = useState(defaultTemplateIndex);
+  const previewTemplates = CUSTOM_STUDIO_PREVIEW_TEMPLATES;
+  const [currentTemplateIndex, setCurrentTemplateIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [autoThemeMode, setAutoThemeMode] = useState(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
@@ -88,10 +83,7 @@ const TemplatePreview = ({
   const templateStripRef = useRef(null);
 
   useEffect(() => {
-    const nextIndex = articleTemplates.findIndex((template) => template.id === selectedTemplateId);
-    if (nextIndex >= 0) {
-      setCurrentTemplateIndex(nextIndex);
-    }
+    setCurrentTemplateIndex(0);
   }, [selectedTemplateId]);
 
   useEffect(() => {
@@ -191,21 +183,22 @@ const TemplatePreview = ({
       }
 
       if (event.key === 'ArrowLeft') {
-        setCurrentTemplateIndex((prev) => (prev === 0 ? articleTemplates.length - 1 : prev - 1));
+        setCurrentTemplateIndex((prev) => (prev === 0 ? previewTemplates.length - 1 : prev - 1));
       }
 
       if (event.key === 'ArrowRight') {
-        setCurrentTemplateIndex((prev) => (prev === articleTemplates.length - 1 ? 0 : prev + 1));
+        setCurrentTemplateIndex((prev) => (prev === previewTemplates.length - 1 ? 0 : prev + 1));
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isFullscreen, onClose]);
+  }, [isFullscreen, onClose, previewTemplates.length]);
 
-  const currentTemplate = articleTemplates[currentTemplateIndex] || articleTemplates[0];
-  const selectedTemplateMeta = getArticleTemplateById(selectedTemplateId);
+  const currentTemplate = previewTemplates[currentTemplateIndex] || getArticleTemplateById(CUSTOM_ARTICLE_TEMPLATE_ID);
+  const selectedTemplateMeta = currentTemplate;
   const isCustomTemplate = currentTemplate.id === CUSTOM_ARTICLE_TEMPLATE_ID;
+  const hasTemplateChoices = previewTemplates.length > 1;
 
   useEffect(() => {
     if (isCustomTemplate && !isFullscreen) {
@@ -230,6 +223,10 @@ const TemplatePreview = ({
       category: article?.category || 'General',
       videoUrls: article?.videoUrls || [],
       galleryImages: article?.galleryImages || [],
+      linkedProduct: article?.linkedProduct || null,
+      linkedProducts: article?.linkedProducts || [],
+      externalProductLinks: article?.externalProductLinks || [],
+      isTemplatePreview: true,
       createdAt: article?.createdAt || new Date().toISOString()
     }),
     [article]
@@ -237,14 +234,6 @@ const TemplatePreview = ({
 
   const effectiveThemeMode = previewThemeMode === 'auto' ? autoThemeMode : previewThemeMode;
 
-  const derivedRecommendation = useMemo(
-    () => recommendArticleTemplate(articleData),
-    [articleData]
-  );
-
-  const activeSuggestedTemplateId = suggestedTemplateId || derivedRecommendation.templateId;
-  const activeSuggestedReason = suggestedReason || derivedRecommendation.reason;
-  const suggestedTemplateMeta = getArticleTemplateById(activeSuggestedTemplateId);
   const resolvedPreviewCustomTemplate = useMemo(() => {
     if (!isCustomTemplate) return null;
     return normalizeCustomTemplate(customDraft);
@@ -434,12 +423,7 @@ const TemplatePreview = ({
     if (!preset?.template) return;
     const nextDraft = normalizeCustomTemplate(preset.template);
     setCustomDraft(nextDraft);
-    const customTemplateIndex = articleTemplates.findIndex(
-      (template) => template.id === CUSTOM_ARTICLE_TEMPLATE_ID
-    );
-    if (customTemplateIndex >= 0) {
-      setCurrentTemplateIndex(customTemplateIndex);
-    }
+    setCurrentTemplateIndex(0);
   };
 
   const handleSaveCustomPresetFromStudio = async (templateInput) => {
@@ -558,11 +542,11 @@ const TemplatePreview = ({
   };
 
   const handlePrevTemplate = () => {
-    setCurrentTemplateIndex((prev) => (prev === 0 ? articleTemplates.length - 1 : prev - 1));
+    setCurrentTemplateIndex((prev) => (prev === 0 ? previewTemplates.length - 1 : prev - 1));
   };
 
   const handleNextTemplate = () => {
-    setCurrentTemplateIndex((prev) => (prev === articleTemplates.length - 1 ? 0 : prev + 1));
+    setCurrentTemplateIndex((prev) => (prev === previewTemplates.length - 1 ? 0 : prev + 1));
   };
 
   const handleTemplateStripWheel = (event) => {
@@ -672,22 +656,26 @@ const TemplatePreview = ({
                   ))}
                 </div>
               )}
-              <button
-                onClick={handlePrevTemplate}
-                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 p-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 sm:gap-2 sm:px-3 sm:py-2"
-                title="Previous template"
-              >
-                <FaChevronLeft />
-                <span className="hidden sm:inline">Prev</span>
-              </button>
-              <button
-                onClick={handleNextTemplate}
-                className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 p-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 sm:gap-2 sm:px-3 sm:py-2"
-                title="Next template"
-              >
-                <span className="hidden sm:inline">Next</span>
-                <FaChevronRight />
-              </button>
+              {hasTemplateChoices && (
+                <>
+                  <button
+                    onClick={handlePrevTemplate}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 p-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 sm:gap-2 sm:px-3 sm:py-2"
+                    title="Previous template"
+                  >
+                    <FaChevronLeft />
+                    <span className="hidden sm:inline">Prev</span>
+                  </button>
+                  <button
+                    onClick={handleNextTemplate}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 p-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 sm:gap-2 sm:px-3 sm:py-2"
+                    title="Next template"
+                  >
+                    <span className="hidden sm:inline">Next</span>
+                    <FaChevronRight />
+                  </button>
+                </>
+              )}
               <button
                 onClick={handleUseTemplate}
                 className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-emerald-600 p-2 text-sm font-semibold text-white transition hover:bg-emerald-500 sm:gap-2 sm:px-3 sm:py-2"
@@ -797,12 +785,7 @@ const TemplatePreview = ({
           >
             {!isFullscreen && (
               <div className="absolute left-3 top-3 z-10 rounded-full bg-slate-900/80 px-3 py-1 text-xs font-medium text-slate-100">
-                {currentTemplateIndex + 1} / {articleTemplates.length}
-              </div>
-            )}
-            {!isFullscreen && activeSuggestedTemplateId && (
-              <div className="absolute left-3 top-11 z-10 max-w-[70%] rounded-full border border-emerald-300/70 bg-emerald-500/20 px-3 py-1 text-[11px] font-semibold text-emerald-100">
-                Suggested: {suggestedTemplateMeta?.name || 'Smart Pick'}{activeSuggestedReason ? ` | ${activeSuggestedReason}` : ''}
+                {currentTemplateIndex + 1} / {previewTemplates.length}
               </div>
             )}
             {!isFullscreen && (
@@ -837,9 +820,8 @@ const TemplatePreview = ({
             className="mx-auto flex max-w-[1400px] gap-2 overflow-x-auto rounded-xl border border-slate-700 bg-slate-900/90 p-2"
             title="Use mouse wheel here to scroll templates horizontally"
           >
-            {articleTemplates.map((template, index) => {
+            {previewTemplates.map((template, index) => {
               const active = index === currentTemplateIndex;
-              const isSuggested = template.id === activeSuggestedTemplateId;
               return (
                 <button
                   key={template.id}
@@ -847,12 +829,10 @@ const TemplatePreview = ({
                   className={`whitespace-nowrap rounded-lg border px-3 py-2 text-xs font-medium transition ${
                     active
                       ? 'border-cyan-300 bg-cyan-500 text-slate-900'
-                      : isSuggested
-                      ? 'border-emerald-300 bg-emerald-600/25 text-emerald-100 hover:bg-emerald-600/35'
                       : 'border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700'
                   }`}
                 >
-                  {template.name}{isSuggested ? ' - Suggested' : ''}
+                  {template.name}
                 </button>
               );
             })}
