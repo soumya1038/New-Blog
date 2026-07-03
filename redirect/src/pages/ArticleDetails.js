@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
@@ -11,6 +11,7 @@ import {
   FaEdit,
   FaEllipsisH,
   FaEnvelope,
+  FaEye,
   FaFacebook,
   FaFeatherAlt,
   FaGift,
@@ -28,16 +29,18 @@ import {
   FaShoppingBag,
   FaTimes,
   FaTrash,
+  FaUserCheck,
+  FaUserPlus,
   FaWhatsapp,
 } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
 import { BiMenuAltRight } from 'react-icons/bi';
 import { GoVerified } from 'react-icons/go';
-import { TbBrandAmongUs } from 'react-icons/tb';
+import { TbBrandAmongUs, TbBrandBlogger } from 'react-icons/tb';
+import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import toast, { Toaster } from 'react-hot-toast';
 import Avatar from '../components/Avatar';
 import EnhancedComment from '../components/EnhancedComment';
-import ArticleCard from '../components/ArticleCard';
 import SEOHead from '../components/SEOHead';
 import StatusViewer from '../components/StatusViewer';
 import { bumpReplyCount, removeCommentFromReplyMap, updateCommentsById, updateReplyMapById } from '../utils/commentTree';
@@ -158,7 +161,7 @@ const normalizeArticleProductTags = (article) => {
       key,
       source: 'marketplace',
       title: product.title || 'Marketplace product',
-      image: product.transparentThumbnail || product.thumbnail || '/image/lekhon_url.png',
+      image: product.thumbnail || product.transparentThumbnail || '/image/lekhon_url.png',
       meta: formatProductPrice(product),
       href: `/marketplace/${product.slug || product._id || product.id}`,
       external: false,
@@ -184,13 +187,125 @@ const normalizeArticleProductTags = (article) => {
 };
 
 const FALLBACK_PRODUCT_DOT_POSITIONS = [
-  { x: 72, y: 38 },
-  { x: 28, y: 58 },
-  { x: 52, y: 46 },
-  { x: 82, y: 66 },
-  { x: 18, y: 32 },
-  { x: 62, y: 74 },
+  { x: 86, y: 34 },
+  { x: 86, y: 54 },
+  { x: 76, y: 44 },
+  { x: 90, y: 68 },
+  { x: 70, y: 28 },
+  { x: 78, y: 72 },
 ];
+
+const getRelatedPath = (item) => {
+  const idOrSlug = item?.slug || item?._id || '';
+  if (item?.contentType === 'blog') return `/blog/${idOrSlug}`;
+  if (item?.contentType === 'short') return `/shorts/${idOrSlug}`;
+  return `/article/${idOrSlug}`;
+};
+
+const getRelatedImage = (item) =>
+  item?.coverImage || item?.image || item?.featuredImage || item?.galleryImages?.[0] || '/image/article_logo_dark.png';
+
+const getRelatedExcerpt = (item) =>
+  stripInlineMarkdown(item?.metaDescription || item?.excerpt || item?.summary || item?.content || '').slice(0, 128);
+
+const getRelatedAuthorName = (item) =>
+  item?.author?.fullName || item?.author?.username || item?.authorName || 'Lekhon author';
+
+const getAuthorFirstName = (name = '') => String(name || 'Author').trim().split(/\s+/)[0] || 'Author';
+
+const getRelatedReadMinutes = (item) =>
+  item?.readingTime || item?.readTime || estimateReadTime(item?.content || item?.metaDescription || '');
+
+const hashString = (value = '') => {
+  const text = String(value || '');
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash) + text.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+};
+
+const getRelatedTypeLabel = (type) => {
+  if (type === 'blog') return 'Blog';
+  if (type === 'short') return 'Short';
+  return 'Article';
+};
+
+const getRelatedTypeIcon = (type) => {
+  if (type === 'blog') return TbBrandBlogger;
+  if (type === 'short') return MdOutlineSwitchAccessShortcutAdd;
+  return FaFeatherAlt;
+};
+
+const getRelatedTypeClass = (type) => {
+  if (type === 'blog' || type === 'short') return type;
+  return 'article';
+};
+
+const RelatedContentCard = ({ item, compact = false, variant, mobileVariant = '' }) => {
+  if (!item) return null;
+  const image = getRelatedImage(item);
+  const path = getRelatedPath(item);
+  const label = getRelatedTypeLabel(item.contentType);
+  const TypeIcon = getRelatedTypeIcon(item.contentType);
+  const typeClass = getRelatedTypeClass(item.contentType);
+  const useTypeLogoMedia = item.contentType === 'blog' || item.contentType === 'short';
+  const cardVariant = variant || (compact ? 'compact' : 'editorial');
+  const author = item?.author && typeof item.author === 'object'
+    ? item.author
+    : { username: getRelatedAuthorName(item) };
+  const authorName = getRelatedAuthorName(item);
+  const readMinutes = getRelatedReadMinutes(item);
+  const tags = (Array.isArray(item.tags) ? item.tags : []).filter(Boolean).slice(0, 3);
+
+  return (
+    <Link to={path} className={`article-related-card is-${cardVariant} ${mobileVariant ? `mobile-${mobileVariant}` : ''}`}>
+      <span className={`article-related-media ${useTypeLogoMedia ? `is-type-logo is-${typeClass}` : 'is-article-image'}`}>
+        {useTypeLogoMedia ? (
+          <TypeIcon className="article-related-media-logo" aria-hidden="true" focusable="false" />
+        ) : (
+          <img src={image} alt="" loading="lazy" />
+        )}
+      </span>
+      <span className="article-related-copy">
+        <span className={`article-related-eyebrow article-related-type-icon is-${typeClass}`} aria-label={label} title={label}>
+          {item.contentType === 'article' ? (
+            <img src="/image/article_logo_light.png" alt="" aria-hidden="true" />
+          ) : (
+            <TypeIcon aria-hidden="true" focusable="false" />
+          )}
+        </span>
+        {!compact && tags.length > 0 && (
+          <span className="article-related-tags">
+            {tags.map((tag) => <span key={tag}>{tag}</span>)}
+          </span>
+        )}
+        <strong>{item.title || 'Untitled content'}</strong>
+        {!compact && <small>{getRelatedExcerpt(item)}</small>}
+        <span className="article-related-stats">
+          <span><FaEye /> {compactCount(item.views || 0)}</span>
+          <span><FaHeart /> {compactCount(item.likeCount || item.likes?.length || 0)}</span>
+          <span><FaRegCommentDots /> {compactCount(item.commentCount || 0)}</span>
+        </span>
+        {!compact && (
+          <span className="article-related-footer">
+            <span className="article-related-author-mini">
+              <Avatar user={author} size="xs" />
+              <span>
+                <span className="article-related-author-name">{authorName}</span>
+                <small>{readMinutes} min read</small>
+              </span>
+            </span>
+            <span className="article-related-heart">
+              <FaHeart /> {compactCount(item.likeCount || item.likes?.length || 0)}
+            </span>
+          </span>
+        )}
+      </span>
+    </Link>
+  );
+};
 
 const ArticleGalleryDock = ({
   title,
@@ -201,13 +316,67 @@ const ArticleGalleryDock = ({
   productTags,
   placements,
 }) => {
-  const [openProductKey, setOpenProductKey] = useState('');
+  const [productListOpen, setProductListOpen] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const touchStartX = useRef(null);
   const activeImage = images[activeIndex] || images[0];
   const hasGallery = images.length > 1;
 
   useEffect(() => {
-    setOpenProductKey('');
+    setProductListOpen(false);
   }, [activeIndex]);
+
+  useEffect(() => {
+    if (!hasGallery || isPaused || lightboxOpen) return undefined;
+    const interval = window.setInterval(() => {
+      setActiveIndex((current) => (current + 1) % images.length);
+    }, 5200);
+    return () => window.clearInterval(interval);
+  }, [hasGallery, images.length, isPaused, lightboxOpen, setActiveIndex]);
+
+  useEffect(() => {
+    if (!lightboxOpen) return undefined;
+    const originalOverflow = document.body.style.overflow;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setLightboxOpen(false);
+      if (hasGallery && event.key === 'ArrowRight') {
+        setActiveIndex((current) => (current + 1) % images.length);
+      }
+      if (hasGallery && event.key === 'ArrowLeft') {
+        setActiveIndex((current) => (current - 1 + images.length) % images.length);
+      }
+    };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [hasGallery, images.length, lightboxOpen, setActiveIndex]);
+
+  const goToImage = (index) => {
+    setIsPaused(true);
+    setActiveIndex(index);
+  };
+
+  const handleTouchStart = (event) => {
+    touchStartX.current = event.touches?.[0]?.clientX ?? null;
+    setIsPaused(true);
+  };
+
+  const handleTouchEnd = (event) => {
+    if (!hasGallery || touchStartX.current === null) return;
+    const endX = event.changedTouches?.[0]?.clientX ?? touchStartX.current;
+    const deltaX = endX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(deltaX) < 42) return;
+    setActiveIndex((current) => (
+      deltaX < 0
+        ? (current + 1) % images.length
+        : (current - 1 + images.length) % images.length
+    ));
+  };
 
   const normalizedPlacements = Array.isArray(placements) ? placements : [];
   const activeProductDots = productTags
@@ -229,87 +398,159 @@ const ArticleGalleryDock = ({
       };
     })
     .filter(Boolean);
+  const productGroupAnchor = activeProductDots.length > 0
+    ? {
+        x: clampPercent(
+          activeProductDots.reduce((total, tag) => total + Number(tag.x || 0), 0) / activeProductDots.length,
+          86
+        ),
+        y: clampPercent(
+          activeProductDots.reduce((total, tag) => total + Number(tag.y || 0), 0) / activeProductDots.length,
+          44
+        ),
+      }
+    : null;
+  const productListLeft = productGroupAnchor ? Math.max(26, Math.min(82, productGroupAnchor.x)) : 86;
+  const productListTop = productGroupAnchor ? Math.max(20, Math.min(78, productGroupAnchor.y)) : 44;
+  const productListPlacement = productListTop < 28 ? 'is-below' : 'is-above';
 
   if (!activeImage) return null;
 
   return (
-    <figure className="article-editorial-gallery">
-      <div className="article-gallery-stage">
-        <img src={activeImage} alt={title} />
-        {hasGallery && (
+    <>
+      <figure className="article-editorial-gallery">
+        <div
+          className="article-gallery-stage"
+          onMouseEnter={() => setIsPaused(true)}
+          onMouseLeave={() => setIsPaused(false)}
+          onFocus={() => setIsPaused(true)}
+          onBlur={() => setIsPaused(false)}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+        >
+          <button
+            type="button"
+            className="article-gallery-image-button"
+            onClick={() => {
+              setIsPaused(true);
+              setLightboxOpen(true);
+            }}
+            aria-label="Open article image"
+          >
+            <img src={activeImage} alt={title} />
+          </button>
+
+          {activeProductDots.length > 0 && productGroupAnchor && (
+            <div className="article-product-tag-layer" aria-label="Tagged products">
+              <button
+                type="button"
+                className={`article-product-dot article-product-dot-group ${productListOpen ? 'is-active' : ''}`}
+                style={{ left: `${productGroupAnchor.x}%`, top: `${productGroupAnchor.y}%` }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setIsPaused(true);
+                  setProductListOpen((current) => !current);
+                }}
+                aria-label={`View ${activeProductDots.length} tagged product${activeProductDots.length === 1 ? '' : 's'}`}
+                aria-expanded={productListOpen}
+              >
+                <FaShoppingBag />
+                {activeProductDots.length > 1 && (
+                  <span className="article-product-dot-count">{activeProductDots.length}</span>
+                )}
+              </button>
+              {productListOpen && (
+                <div
+                  className={`article-product-list-popover ${productListPlacement}`}
+                  style={{ left: `${productListLeft}%`, top: `${productListTop}%` }}
+                >
+                  <div className="article-product-list-head">
+                    <strong>Tagged products</strong>
+                    <small>{activeProductDots.length} item{activeProductDots.length === 1 ? '' : 's'}</small>
+                  </div>
+                  <div className="article-product-list">
+                    {activeProductDots.map((tag) => (
+                      <div className="article-product-list-item" key={tag.key}>
+                        <img src={tag.image || '/image/lekhon_url.png'} alt="" />
+                        <span className="article-product-tag-copy">
+                          <strong>{tag.title}</strong>
+                          <small>{tag.meta}</small>
+                        </span>
+                        {tag.external ? (
+                          <a href={tag.href} target="_blank" rel="noopener noreferrer">
+                            View <FaExternalLinkAlt />
+                          </a>
+                        ) : (
+                          <Link to={tag.href}>View</Link>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="article-gallery-controls">
+          <div className="article-gallery-dots" aria-label="Article image carousel">
+            {images.map((image, index) => (
+              <button
+                key={`${image}-${index}`}
+                type="button"
+                className={activeIndex === index ? 'is-active' : ''}
+                onClick={() => goToImage(index)}
+                aria-label={`Show image ${index + 1} of ${images.length}`}
+                aria-current={activeIndex === index ? 'true' : undefined}
+              />
+            ))}
+          </div>
           <span className="article-gallery-counter" aria-label={`Image ${activeIndex + 1} of ${images.length}`}>
             {activeIndex + 1} / {images.length}
           </span>
-        )}
+        </div>
 
-        {activeProductDots.length > 0 && (
-          <div className="article-product-tag-layer" aria-label="Tagged products">
-            {activeProductDots.map((tag) => {
-              const isOpen = openProductKey === tag.key;
-              const popoverLeft = Math.max(18, Math.min(82, tag.x));
-              const popoverTop = Math.max(16, Math.min(88, tag.y));
-              return (
-                <React.Fragment key={tag.key}>
+        <figcaption className="article-gallery-caption">
+          <span>{category} visual gallery</span>
+          <small>{hasGallery ? 'Swipe or use the dots to browse.' : 'Cover image'}</small>
+        </figcaption>
+      </figure>
+
+      {lightboxOpen && (
+        <div
+          className="article-gallery-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Article image viewer"
+          onClick={() => setLightboxOpen(false)}
+        >
+          <button
+            type="button"
+            className="article-gallery-lightbox-close"
+            onClick={() => setLightboxOpen(false)}
+            aria-label="Close image viewer"
+          >
+            <FaTimes />
+          </button>
+          <div className="article-gallery-lightbox-inner" onClick={(event) => event.stopPropagation()}>
+            <img src={activeImage} alt={title} />
+            {hasGallery && (
+              <div className="article-gallery-lightbox-dots">
+                {images.map((image, index) => (
                   <button
+                    key={`${image}-lightbox-${index}`}
                     type="button"
-                    className={`article-product-dot ${isOpen ? 'is-active' : ''}`}
-                    style={{ left: `${tag.x}%`, top: `${tag.y}%` }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setOpenProductKey(isOpen ? '' : tag.key);
-                    }}
-                    aria-label={`View tagged product ${tag.title}`}
-                    aria-expanded={isOpen}
-                  >
-                    {tag.source === 'external' ? <FaExternalLinkAlt /> : <FaShoppingBag />}
-                  </button>
-                  {isOpen && (
-                    <div
-                      className="article-product-tag-popover"
-                      style={{ left: `${popoverLeft}%`, top: `${popoverTop}%` }}
-                    >
-                      <img src={tag.image || '/image/lekhon_url.png'} alt="" />
-                      <span className="article-product-tag-copy">
-                        <strong>{tag.title}</strong>
-                        <small>{tag.meta}</small>
-                      </span>
-                      {tag.external ? (
-                        <a href={tag.href} target="_blank" rel="noopener noreferrer">
-                          View <FaExternalLinkAlt />
-                        </a>
-                      ) : (
-                        <Link to={tag.href}>View</Link>
-                      )}
-                    </div>
-                  )}
-                </React.Fragment>
-              );
-            })}
+                    className={activeIndex === index ? 'is-active' : ''}
+                    onClick={() => goToImage(index)}
+                    aria-label={`Show image ${index + 1}`}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        )}
-      </div>
-
-      <figcaption className="article-gallery-caption">
-        <span>{category} visual gallery</span>
-        <small>{hasGallery ? 'Select a thumbnail to change the active image.' : 'Cover image'}</small>
-      </figcaption>
-
-      {hasGallery && (
-        <div className="article-gallery-thumb-dock" aria-label="Article image gallery">
-          {images.map((image, index) => (
-            <button
-              key={`${image}-${index}`}
-              type="button"
-              className={activeIndex === index ? 'is-active' : ''}
-              onClick={() => setActiveIndex(index)}
-              aria-label={`Show article image ${index + 1}`}
-            >
-              <img src={image} alt="" />
-            </button>
-          ))}
         </div>
       )}
-    </figure>
+    </>
   );
 };
 
@@ -334,12 +575,20 @@ const ArticleDetails = () => {
   const [deletingComment, setDeletingComment] = useState(null);
   const [editingComment, setEditingComment] = useState(null);
   const [editText, setEditText] = useState('');
-  const [moreByAuthor, setMoreByAuthor] = useState([]);
+  const [relatedContent, setRelatedContent] = useState([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
+  const [authorContent, setAuthorContent] = useState([]);
+  const [authorContentLoading, setAuthorContentLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [showAuthorStatusViewer, setShowAuthorStatusViewer] = useState(false);
   const [twoFactorPrompt, setTwoFactorPrompt] = useState(null);
   const [sensitiveAuthPrompt, setSensitiveAuthPrompt] = useState(false);
   const [activeGalleryIndex, setActiveGalleryIndex] = useState(0);
+  const [mobileCardSeed, setMobileCardSeed] = useState(() => `${Date.now()}-${Math.random()}`);
+  const [savedArticle, setSavedArticle] = useState(false);
+  const [showGiftModal, setShowGiftModal] = useState(false);
+  const [isFollowingAuthor, setIsFollowingAuthor] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
   const contentId = article?._id || id;
 
   useEffect(() => {
@@ -354,15 +603,52 @@ const ArticleDetails = () => {
   }, []);
 
   useEffect(() => {
-    if (article?.author?._id) {
-      api.get(`/articles?author=${article.author._id}&limit=3`)
-        .then(({ data }) => setMoreByAuthor(data.articles.filter(a => a._id !== article._id).slice(0, 3)));
+    if (!article?._id) {
+      setRelatedContent([]);
+      setAuthorContent([]);
+      return;
     }
-  }, [article]);
+
+    let cancelled = false;
+    setRelatedLoading(true);
+    api.get(`/articles/${article._id}/related?limit=12`)
+      .then(({ data }) => {
+        if (!cancelled) setRelatedContent(Array.isArray(data.related) ? data.related : []);
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedContent([]);
+      })
+      .finally(() => {
+        if (!cancelled) setRelatedLoading(false);
+      });
+
+    setAuthorContentLoading(true);
+    api.get(`/articles/${article._id}/author-content?limit=12`)
+      .then(({ data }) => {
+        if (!cancelled) setAuthorContent(Array.isArray(data.authorContent) ? data.authorContent : []);
+      })
+      .catch(() => {
+        if (!cancelled) setAuthorContent([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAuthorContentLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [article?._id]);
 
   useEffect(() => {
     setActiveGalleryIndex(0);
+    setMobileCardSeed(`${Date.now()}-${Math.random()}`);
   }, [article?._id]);
+
+  useEffect(() => {
+    if (!contentId) return;
+    const key = `lekhon:saved-article:${user?._id || 'guest'}:${contentId}`;
+    setSavedArticle(localStorage.getItem(key) === '1');
+  }, [contentId, user?._id]);
 
   useEffect(() => {
     // console.log('ArticleDetails mounted, id:', id);
@@ -416,6 +702,7 @@ const ArticleDetails = () => {
       // console.log('Article data:', data);
       setArticle(data.article);
       setLiked(data.article.likes?.some(like => like._id === user?._id));
+      setIsFollowingAuthor(Boolean(data.article.author?.isFollowing));
 
       if (data.redirect?.shouldRedirect && data.redirect?.to) {
         navigate(data.redirect.to, { replace: true });
@@ -487,24 +774,94 @@ const ArticleDetails = () => {
     setShowShareModal(true);
   };
 
-  const handleCopyLink = async () => {
+  const copyTextToClipboard = async (value, successMessage = 'Link copied to clipboard!') => {
     try {
-      await navigator.clipboard.writeText(shareUrl);
-      toast.success('Link copied to clipboard!');
+      await navigator.clipboard.writeText(value);
+      toast.success(successMessage);
     } catch (error) {
       const textArea = document.createElement('textarea');
-      textArea.value = shareUrl;
+      textArea.value = value;
       textArea.style.position = 'fixed';
       textArea.style.left = '-999999px';
       document.body.appendChild(textArea);
       textArea.select();
       try {
         document.execCommand('copy');
-        toast.success('Link copied to clipboard!');
+        toast.success(successMessage);
       } catch (err) {
         toast.error('Failed to copy link');
       }
       document.body.removeChild(textArea);
+    }
+  };
+
+  const handleCopyLink = () => copyTextToClipboard(shareUrl);
+
+  const handleSaveArticle = () => {
+    if (!contentId) return;
+    const key = `lekhon:saved-article:${user?._id || 'guest'}:${contentId}`;
+    const nextSaved = !savedArticle;
+    setSavedArticle(nextSaved);
+    if (nextSaved) {
+      localStorage.setItem(key, '1');
+      toast.success('Article saved to your reading list.');
+    } else {
+      localStorage.removeItem(key);
+      toast.success('Article removed from saved items.');
+    }
+  };
+
+  const handleGiftArticle = () => {
+    setShowGiftModal(true);
+  };
+
+  const scrollToComments = () => {
+    const commentsSection = document.getElementById('article-comments-section');
+    if (!commentsSection) return;
+    commentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.setTimeout(() => {
+      const input = commentsSection.querySelector('.article-comments-textarea');
+      if (input) input.focus({ preventScroll: true });
+    }, 420);
+  };
+
+  const handleFollowAuthor = async () => {
+    const authorId = article?.author?._id;
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    if (!authorId || authorId === user._id) return;
+
+    setFollowLoading(true);
+    try {
+      const { data } = await api.post(`/social/follow/${authorId}`);
+      setIsFollowingAuthor(Boolean(data.following));
+      setArticle((current) => {
+        if (!current?.author) return current;
+        const wasFollowing = Boolean(current.author.isFollowing ?? isFollowingAuthor);
+        const currentFollowerCount = Number(
+          current.author.followerCount ?? current.author.followersCount ?? 0
+        );
+        const nextFollowerCount = Math.max(
+          0,
+          currentFollowerCount + (data.following === wasFollowing ? 0 : data.following ? 1 : -1)
+        );
+        return {
+          ...current,
+          author: {
+            ...current.author,
+            isFollowing: Boolean(data.following),
+            followerCount: nextFollowerCount,
+            followersCount: nextFollowerCount,
+          },
+        };
+      });
+      toast.success(data.following ? 'Following author.' : 'Unfollowed author.');
+    } catch (error) {
+      toast.error('Failed to update follow status.');
+    } finally {
+      setFollowLoading(false);
     }
   };
 
@@ -514,6 +871,15 @@ const ArticleDetails = () => {
 
   const shareUrl = window.location.href;
   const shareTitle = article?.title || 'Check out this article';
+  const giftUrl = (() => {
+    try {
+      const url = new URL(shareUrl);
+      url.searchParams.set('gift', '1');
+      return url.toString();
+    } catch (error) {
+      return `${shareUrl}${shareUrl.includes('?') ? '&' : '?'}gift=1`;
+    }
+  })();
 
   const handleReply = async (parentCommentId, content, replyToUserId) => {
     if (!user) {
@@ -719,21 +1085,9 @@ const ArticleDetails = () => {
       name: 'Copy Link',
       icon: <FaLink className="text-2xl" />,
       color: 'bg-gray-800 hover:bg-gray-900',
-      action: () => {
-        const textArea = document.createElement('textarea');
-        textArea.value = shareUrl;
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-999999px';
-        document.body.appendChild(textArea);
-        textArea.select();
-        try {
-          document.execCommand('copy');
-          toast.success('Link copied to clipboard!');
-          setShowShareModal(false);
-        } catch (err) {
-          toast.error('Failed to copy link');
-        }
-        document.body.removeChild(textArea);
+      action: async () => {
+        await copyTextToClipboard(shareUrl);
+        setShowShareModal(false);
       }
     }
   ];
@@ -837,7 +1191,20 @@ const ArticleDetails = () => {
     [article]
   );
   const authorFollowerCount = article?.author?.followerCount ?? article?.author?.followersCount ?? article?.author?.followers?.length ?? 0;
-  const authorArticleCount = article?.author?.articleCount || article?.author?.articlesCount || (moreByAuthor.length + 1);
+  const authorArticleCountFromApi = Number(article?.author?.articleCount ?? article?.author?.articlesCount ?? 0);
+  const authorArticleCount = Math.max(
+    authorArticleCountFromApi,
+    article?._id ? 1 : 0,
+    (authorContent.filter((item) => item.contentType === 'article').length || 0) + (article?._id ? 1 : 0)
+  );
+  const authorFirstName = getAuthorFirstName(authorName);
+  const canFollowAuthor = Boolean(user && article?.author?._id && user._id !== article.author._id);
+  const authorRelatedContent = authorContent.slice(0, 8);
+  const bottomRelatedContent = relatedContent.slice(0, 12);
+  const getMobileCardVariant = (item, index, section) => {
+    const sectionOffset = hashString(`${mobileCardSeed}:${section}`) % 3;
+    return (index + sectionOffset) % 3 === 0 ? 'split' : 'editorial';
+  };
   const { lead: articleLead, rest: articleRest } = useMemo(
     () => splitArticleContent(article?.content || ''),
     [article?.content]
@@ -954,11 +1321,17 @@ const ArticleDetails = () => {
                 </div>
               </dl>
               <div className="article-editorial-actions" aria-label="Article actions">
-                <button type="button" aria-label={t('Save')}>
+                <button
+                  type="button"
+                  onClick={handleSaveArticle}
+                  className={savedArticle ? 'is-active' : ''}
+                  aria-label={savedArticle ? t('Remove saved article') : t('Save article')}
+                  aria-pressed={savedArticle}
+                >
                   <FaRegBookmark />
                   <span>{t('Save')}</span>
                 </button>
-                <button type="button" aria-label={t('Gift')}>
+                <button type="button" onClick={handleGiftArticle} aria-label={t('Gift this article')}>
                   <FaGift />
                   <span>{t('Gift')}</span>
                 </button>
@@ -995,11 +1368,17 @@ const ArticleDetails = () => {
                 <FaHeart />
                 <span>{compactCount(article.likeCount || article.likes?.length || 0)}</span>
               </button>
-              <button type="button" aria-label={t('Comments')}>
+              <button type="button" onClick={scrollToComments} aria-label={t('Jump to comments')}>
                 <FaRegCommentDots />
                 <span>{compactCount(article.commentCount || comments.length)}</span>
               </button>
-              <button type="button" aria-label={t('Save')}>
+              <button
+                type="button"
+                onClick={handleSaveArticle}
+                className={savedArticle ? 'is-active' : ''}
+                aria-label={savedArticle ? t('Remove saved article') : t('Save article')}
+                aria-pressed={savedArticle}
+              >
                 <FaRegBookmark />
               </button>
               <button type="button" onClick={handleShare} aria-label={t('Share')}>
@@ -1043,6 +1422,27 @@ const ArticleDetails = () => {
               <div className="article-editorial-author-stats">
                 <span>{compactCount(authorFollowerCount)} followers</span>
                 <span>{compactCount(authorArticleCount)} articles</span>
+                {canFollowAuthor && (
+                  <button
+                    type="button"
+                    onClick={handleFollowAuthor}
+                    disabled={followLoading}
+                    className={`article-editorial-follow-button ${isFollowingAuthor ? 'is-following' : ''}`}
+                    aria-pressed={isFollowingAuthor}
+                  >
+                    {followLoading ? (
+                      t('...')
+                    ) : isFollowingAuthor ? (
+                      <>
+                        <FaUserCheck /> {t('Following')}
+                      </>
+                    ) : (
+                      <>
+                        <FaUserPlus /> {t('Follow')}
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
               {article.author?.bio && (
                 <p className="article-editorial-author-bio">{article.author.bio}</p>
@@ -1060,30 +1460,62 @@ const ArticleDetails = () => {
                   </button>
                 </div>
               )}
+              {(authorRelatedContent.length > 0 || authorContentLoading) && (
+                <section className="article-editorial-side-related article-author-related-section" aria-label={`More from ${authorName}`}>
+                  <p className="article-editorial-side-related-title">More From {authorFirstName}</p>
+                  <div className="article-author-content-grid">
+                    {authorContentLoading && authorRelatedContent.length === 0 ? (
+                      Array.from({ length: 3 }).map((_, index) => (
+                        <div className="article-related-card is-compact is-loading" key={`author-loading-${index}`}>
+                          <span />
+                          <span />
+                        </div>
+                      ))
+                    ) : (
+                      authorRelatedContent.map((item, index) => (
+                        <RelatedContentCard
+                          key={`${item.contentType}-${item._id}`}
+                          item={item}
+                          variant="editorial"
+                          mobileVariant={getMobileCardVariant(item, index, 'author')}
+                        />
+                      ))
+                    )}
+                  </div>
+                </section>
+              )}
             </aside>
           </div>
         </section>
 
         <div className="article-detail-afterword-custom">
-        {moreByAuthor.length > 0 && (
-          <section style={{ marginTop: 'var(--spacing-16)', marginBottom: 'var(--spacing-12)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-3)', marginBottom: 'var(--spacing-6)' }}>
-              <div style={{ width: '4px', height: '20px', background: 'var(--primary)' }} />
-              <p style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize: 'var(--label-md)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                color: 'var(--primary)',
-                fontWeight: 700,
-              }}>
-                More from {article.author?.username}
-              </p>
+        {(bottomRelatedContent.length > 0 || relatedLoading) && (
+          <section className="article-related-section" aria-label="More like this content">
+            <div className="article-related-heading">
+              <span />
+              <div>
+                <p>More Like This</p>
+                <small>Popular reads from {articleCategory} and nearby interests.</small>
+              </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: 'var(--spacing-5)' }}>
-              {moreByAuthor.map((a, i) => (
-                <ArticleCard key={a._id} article={a} index={i} />
-              ))}
+            <div className="article-related-grid article-related-limited-grid">
+              {relatedLoading && bottomRelatedContent.length === 0 ? (
+                Array.from({ length: 3 }).map((_, index) => (
+                  <div className="article-related-card is-loading" key={`related-loading-${index}`}>
+                    <span />
+                    <span />
+                  </div>
+                ))
+              ) : (
+                bottomRelatedContent.map((item, index) => (
+                  <RelatedContentCard
+                    key={`${item.contentType}-${item._id}`}
+                    item={item}
+                    variant="split"
+                    mobileVariant={getMobileCardVariant(item, index, 'related')}
+                  />
+                ))
+              )}
             </div>
           </section>
         )}
@@ -1096,7 +1528,7 @@ const ArticleDetails = () => {
           />
         )}
 
-        <section className="article-comments-panel" aria-label={t('Comments')}>
+        <section id="article-comments-section" className="article-comments-panel" aria-label={t('Comments')}>
           <div className="article-comments-header">
             <h2 className="article-comments-title">{t('Comments')} <span>({comments.length})</span></h2>
             <div className="article-comments-sort">
@@ -1233,6 +1665,47 @@ const ArticleDetails = () => {
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {showGiftModal && (
+        <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4" onClick={() => setShowGiftModal(false)}>
+          <div className="theme-modal-card rounded-2xl p-6 max-w-md w-full article-gift-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start gap-4 mb-4">
+              <div>
+                <p className="article-gift-modal-kicker">{t('Gift article')}</p>
+                <h3 className="text-xl font-bold text-[var(--text-primary)]">{article.title}</h3>
+              </div>
+              <button onClick={() => setShowGiftModal(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]" aria-label={t('Close gift dialog')}>
+                <FaTimes size={22} />
+              </button>
+            </div>
+            <p className="article-gift-modal-copy">
+              {t('Send a clean gift link so someone can open this article directly.')}
+            </p>
+            <div className="article-gift-link-box">
+              <span>{giftUrl}</span>
+              <button
+                type="button"
+                onClick={async () => {
+                  await copyTextToClipboard(giftUrl, 'Gift link copied.');
+                  setShowGiftModal(false);
+                }}
+              >
+                <FaLink /> {t('Copy gift link')}
+              </button>
+            </div>
+            <button
+              type="button"
+              className="article-gift-share-button"
+              onClick={() => {
+                setShowGiftModal(false);
+                setShowShareModal(true);
+              }}
+            >
+              <FaRegShareSquare /> {t('More sharing options')}
+            </button>
           </div>
         </div>
       )}

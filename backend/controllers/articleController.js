@@ -1,4 +1,6 @@
 const Article = require('../models/Article');
+const Blog = require('../models/Blog');
+const Short = require('../models/Short');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
@@ -34,6 +36,78 @@ const triggerSearchIndexRefresh = (reason) => {
 };
 
 const MAX_TEMPLATE_PAYLOAD_BYTES = 450000;
+
+const RELATED_CATEGORY_MAP = {
+  lifestyle: ['health', 'food', 'travel', 'culture', 'education', 'technology', 'finance'],
+  technology: ['education', 'business', 'finance', 'science', 'lifestyle'],
+  food: ['lifestyle', 'health', 'travel', 'culture'],
+  health: ['lifestyle', 'food', 'fitness', 'education'],
+  education: ['technology', 'science', 'career', 'finance', 'lifestyle'],
+  finance: ['business', 'technology', 'education', 'lifestyle'],
+  travel: ['lifestyle', 'food', 'culture', 'photography'],
+  culture: ['lifestyle', 'travel', 'food', 'education'],
+  science: ['technology', 'education', 'health'],
+  business: ['finance', 'technology', 'education'],
+};
+
+const normalizeCategoryName = (value = '') => String(value || '').trim().toLowerCase();
+
+const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildRelatedCategories = (category = '') => {
+  const normalized = normalizeCategoryName(category);
+  const related = RELATED_CATEGORY_MAP[normalized] || [];
+  return [normalized, ...related].filter(Boolean);
+};
+
+const createCategoryRegexes = (categories = []) =>
+  categories.map((category) => new RegExp(`^${escapeRegex(category)}$`, 'i'));
+
+const getLikeCount = (item) => (Array.isArray(item.likes) ? item.likes.length : Number(item.likeCount || 0));
+
+const scoreRelatedContent = ({ item, commentCount, categoryPriority, tagOverlap }) =>
+  (Number(item.views || 0) * 1.2)
+  + (getLikeCount(item) * 4)
+  + (Number(commentCount || 0) * 5)
+  + (categoryPriority * 120)
+  + (tagOverlap * 18);
+
+const serializeRelatedItem = ({ item, type, commentCount, currentCategory, relatedCategories, currentTags }) => {
+  const normalizedCategory = normalizeCategoryName(item.category);
+  const categoryPriority = normalizedCategory === currentCategory ? 2 : relatedCategories.includes(normalizedCategory) ? 1 : 0;
+  const tags = Array.isArray(item.tags) ? item.tags : [];
+  const tagOverlap = tags.filter((tag) => currentTags.has(String(tag || '').trim().toLowerCase())).length;
+  const itemObj = item.toObject ? item.toObject() : item;
+
+  return {
+    ...itemObj,
+    contentType: type,
+    likeCount: getLikeCount(itemObj),
+    commentCount,
+    popularityScore: scoreRelatedContent({ item: itemObj, commentCount, categoryPriority, tagOverlap }),
+  };
+};
+
+const getRelatedItemKey = (item) => `${item.contentType}:${item._id}`;
+
+const compareRelatedContent = (a, b) => {
+  if (b.popularityScore !== a.popularityScore) return b.popularityScore - a.popularityScore;
+  return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+};
+
+const selectWithRequiredContentType = (items, limit, requiredType = 'article') => {
+  const selected = items.slice(0, limit);
+  if (selected.some((item) => item.contentType === requiredType)) return selected;
+
+  const requiredCandidate = items.find((item) => item.contentType === requiredType);
+  if (!requiredCandidate) return selected;
+
+  const requiredKey = getRelatedItemKey(requiredCandidate);
+  const next = selected.filter((item) => getRelatedItemKey(item) !== requiredKey);
+  if (next.length >= limit) next.pop();
+  next.push(requiredCandidate);
+  return next.sort(compareRelatedContent);
+};
 
 const parseJsonArrayField = (value) => {
   if (Array.isArray(value)) return value;
@@ -424,8 +498,9 @@ exports.getArticles = async (req, res) => {
 exports.getArticle = async (req, res) => {
   try {
     const viewerId = String(req.user?._id || 'anon');
-    const detailCacheKey = `article:detail:${req.params.id}:viewer:${viewerId}`;
-    const cachedPayload = await getCache(detailCacheKey);
+    const detailCacheKey = `article:detail:v2:${req.params.id}:viewer:${viewerId}`;
+    const canUseDetailCache = viewerId === 'anon';
+    const cachedPayload = canUseDetailCache ? await getCache(detailCacheKey) : null;
     if (cachedPayload) {
       return res.json(cachedPayload);
     }
@@ -445,13 +520,20 @@ exports.getArticle = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Article not found' });
     }
 
-    const commentCount = await Comment.countDocuments({ article: article._id });
+    const authorIdForStats = article.author?._id || article.author;
+    const [commentCount, authorArticleCount] = await Promise.all([
+      Comment.countDocuments({ article: article._id }),
+      authorIdForStats
+        ? Article.countDocuments({ author: authorIdForStats, isDraft: false })
+        : Promise.resolve(0),
+    ]);
 
     const articleObj = article.toObject();
+    let authorIsFollowing = false;
     if (articleObj.author && articleObj.author.statuses) {
       const authorId = String(articleObj.author._id || '');
       const isOwner = viewerId !== 'anon' && viewerId === authorId;
-      const isFollower = Array.isArray(articleObj.author.followers)
+      authorIsFollowing = Array.isArray(articleObj.author.followers)
         ? articleObj.author.followers.some((id) => String(id) === viewerId)
         : false;
       const visibleStatuses = (articleObj.author.statuses || []).filter((status) => {
@@ -459,16 +541,22 @@ exports.getArticle = async (req, res) => {
         if (isOwner) return true;
         const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
         if (audience === 'public') return true;
-        if (audience === 'followers' && isFollower) return true;
+        if (audience === 'followers' && authorIsFollowing) return true;
         return false;
       });
       articleObj.author.hasActiveStatus = visibleStatuses.length > 0;
       articleObj.author.statuses = visibleStatuses;
     }
     if (articleObj.author) {
+      if (!authorIsFollowing && Array.isArray(articleObj.author.followers)) {
+        authorIsFollowing = articleObj.author.followers.some((id) => String(id) === viewerId);
+      }
       articleObj.author.followerCount = Array.isArray(articleObj.author.followers)
         ? articleObj.author.followers.length
         : Number(articleObj.author.followerCount || articleObj.author.followersCount || 0);
+      articleObj.author.articleCount = authorArticleCount;
+      articleObj.author.articlesCount = authorArticleCount;
+      articleObj.author.isFollowing = viewerId !== 'anon' && authorIsFollowing;
       delete articleObj.author.followers;
     }
 
@@ -485,9 +573,231 @@ exports.getArticle = async (req, res) => {
       }
     };
 
-    await setCache(detailCacheKey, payload, ARTICLE_DETAIL_CACHE_TTL_SECONDS);
+    if (canUseDetailCache) {
+      await setCache(detailCacheKey, payload, ARTICLE_DETAIL_CACHE_TTL_SECONDS);
+    }
 
     res.json(payload);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getRelatedArticleContent = async (req, res) => {
+  try {
+    const limit = Math.max(4, Math.min(Number(req.query.limit) || 10, 16));
+    const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id);
+    const article = resolved.doc;
+
+    if (!article || article.isDraft) {
+      return res.status(404).json({ success: false, message: 'Article not found' });
+    }
+
+    const currentCategory = normalizeCategoryName(article.category || 'General');
+    const relatedCategories = buildRelatedCategories(article.category || 'General');
+    const categoryRegexes = createCategoryRegexes(relatedCategories);
+    const currentTags = new Set((Array.isArray(article.tags) ? article.tags : [])
+      .map((tag) => String(tag || '').trim().toLowerCase())
+      .filter(Boolean));
+    const currentAuthorId = article.author?._id || article.author;
+    const seen = new Set([`article:${article._id}`]);
+    const categoryFilter = categoryRegexes.length ? { category: { $in: categoryRegexes } } : {};
+    const differentAuthorFilter = currentAuthorId ? { author: { $ne: currentAuthorId } } : {};
+
+    const [articles, blogs, shorts] = await Promise.all([
+      Article.find({ _id: { $ne: article._id }, isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+      Blog.find({ isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+      Short.find({ isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+    ]);
+
+    const relatedWithScores = await Promise.all([
+      ...articles.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'article',
+        commentCount: await Comment.countDocuments({ article: item._id }),
+        currentCategory,
+        relatedCategories,
+        currentTags,
+      })),
+      ...blogs.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'blog',
+        commentCount: await Comment.countDocuments({ blog: item._id }),
+        currentCategory,
+        relatedCategories,
+        currentTags,
+      })),
+      ...shorts.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'short',
+        commentCount: await Comment.countDocuments({ short: item._id }),
+        currentCategory,
+        relatedCategories,
+        currentTags,
+      })),
+    ]);
+
+    const ranked = relatedWithScores
+      .filter((item) => {
+        const key = `${item.contentType}:${item._id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort(compareRelatedContent);
+
+    if (ranked.length < limit) {
+      const fallbackLimit = (limit - ranked.length) * 2;
+      const [fallbackArticles, fallbackBlogs, fallbackShorts] = await Promise.all([
+        Article.find({ _id: { $ne: article._id }, isDraft: false, ...differentAuthorFilter })
+          .populate('author', 'fullName username profileImage isGuest role isVerified')
+          .sort({ views: -1, createdAt: -1 })
+          .limit(fallbackLimit),
+        Blog.find({ isDraft: false, ...differentAuthorFilter })
+          .populate('author', 'fullName username profileImage isGuest role isVerified')
+          .sort({ views: -1, createdAt: -1 })
+          .limit(fallbackLimit),
+        Short.find({ isDraft: false, ...differentAuthorFilter })
+          .populate('author', 'fullName username profileImage isGuest role isVerified')
+          .sort({ views: -1, createdAt: -1 })
+          .limit(fallbackLimit),
+      ]);
+
+      const fallbackItems = await Promise.all([
+        ...fallbackArticles.map(async (item) => serializeRelatedItem({
+          item,
+          type: 'article',
+          commentCount: await Comment.countDocuments({ article: item._id }),
+          currentCategory,
+          relatedCategories,
+          currentTags,
+        })),
+        ...fallbackBlogs.map(async (item) => serializeRelatedItem({
+          item,
+          type: 'blog',
+          commentCount: await Comment.countDocuments({ blog: item._id }),
+          currentCategory,
+          relatedCategories,
+          currentTags,
+        })),
+        ...fallbackShorts.map(async (item) => serializeRelatedItem({
+          item,
+          type: 'short',
+          commentCount: await Comment.countDocuments({ short: item._id }),
+          currentCategory,
+          relatedCategories,
+          currentTags,
+        })),
+      ]);
+
+      fallbackItems
+        .sort(compareRelatedContent)
+        .forEach((item) => {
+          const key = `${item.contentType}:${item._id}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            ranked.push(item);
+          }
+        });
+    }
+
+    res.json({
+      success: true,
+      related: selectWithRequiredContentType(ranked, limit, 'article'),
+      category: article.category || 'General',
+      relatedCategories,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getAuthorArticleContent = async (req, res) => {
+  try {
+    const limit = Math.max(4, Math.min(Number(req.query.limit) || 10, 16));
+    const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id);
+    const article = resolved.doc;
+
+    if (!article || article.isDraft) {
+      return res.status(404).json({ success: false, message: 'Article not found' });
+    }
+
+    const authorId = article.author?._id || article.author;
+    if (!authorId) {
+      return res.json({ success: true, authorContent: [] });
+    }
+
+    const currentCategory = normalizeCategoryName(article.category || 'General');
+    const currentTags = new Set((Array.isArray(article.tags) ? article.tags : [])
+      .map((tag) => String(tag || '').trim().toLowerCase())
+      .filter(Boolean));
+
+    const [articles, blogs, shorts] = await Promise.all([
+      Article.find({ _id: { $ne: article._id }, author: authorId, isDraft: false })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+      Blog.find({ author: authorId, isDraft: false })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+      Short.find({ author: authorId, isDraft: false })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+    ]);
+
+    const authorItems = await Promise.all([
+      ...articles.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'article',
+        commentCount: await Comment.countDocuments({ article: item._id }),
+        currentCategory,
+        relatedCategories: [currentCategory],
+        currentTags,
+      })),
+      ...blogs.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'blog',
+        commentCount: await Comment.countDocuments({ blog: item._id }),
+        currentCategory,
+        relatedCategories: [currentCategory],
+        currentTags,
+      })),
+      ...shorts.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'short',
+        commentCount: await Comment.countDocuments({ short: item._id }),
+        currentCategory,
+        relatedCategories: [currentCategory],
+        currentTags,
+      })),
+    ]);
+
+    const seen = new Set();
+    const ranked = authorItems
+      .filter((item) => {
+        const key = `${item.contentType}:${item._id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort(compareRelatedContent);
+
+    res.json({
+      success: true,
+      authorContent: selectWithRequiredContentType(ranked, limit, 'article'),
+      author: authorId,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

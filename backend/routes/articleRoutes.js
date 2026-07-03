@@ -5,6 +5,8 @@ const {
   createArticle,
   getArticles,
   getArticle,
+  getRelatedArticleContent,
+  getAuthorArticleContent,
   updateArticle,
   deleteArticle,
   trackView,
@@ -13,6 +15,8 @@ const {
 
 router.post('/', protect, createArticle);
 router.get('/', optionalAuth, getArticles);
+router.get('/:id/related', optionalAuth, getRelatedArticleContent);
+router.get('/:id/author-content', optionalAuth, getAuthorArticleContent);
 router.get('/:id', optionalAuth, getArticle);
 router.put('/:id', protect, updateArticle);
 router.delete('/:id', protect, deleteArticle);
