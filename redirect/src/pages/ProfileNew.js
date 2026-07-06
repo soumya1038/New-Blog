@@ -219,6 +219,7 @@ export const ProfileLegacy = () => {
   const [imageDeleting, setImageDeleting] = useState(false);
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [expandedCard, setExpandedCard] = useState(null);
+  const [highlightTarget, setHighlightTarget] = useState('');
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showPasswordSetupNotice, setShowPasswordSetupNotice] = useState(false);
@@ -395,6 +396,68 @@ export const ProfileLegacy = () => {
       navigate('/profile/manage', { replace: true });
     }
   }, [location.search, navigate]);
+
+  useEffect(() => {
+    if (loading) return undefined;
+
+    const searchParams = new URLSearchParams(location.search || '');
+    const target = searchParams.get('target') || '';
+    if (!target) return undefined;
+
+    if (target === 'profile-details') {
+      setShowProfileForm(true);
+    }
+
+    if (target === 'developer') {
+      setExpandedCard('developer');
+    }
+
+    if (target === 'contact') {
+      setExpandedCard('contact');
+      setShowContactSection(true);
+    }
+
+    if (target === 'security' || target === 'password') {
+      setExpandedCard(null);
+    }
+
+    if (target === 'password') {
+      setShowForgotPassword(false);
+      setShowPasswordForm(true);
+    }
+
+    if (target === 'two-factor') {
+      setIsTwoFactorExpanded(true);
+      setShowTwoFactorSetupOptions(true);
+    }
+
+    const startedAt = Date.now();
+    let retryTimeoutId;
+    let clearHighlightTimeoutId;
+
+    const focusTarget = () => {
+      const targetElement = document.querySelector(`[data-profile-manage-target="${target}"]`);
+      if (!targetElement) {
+        if (Date.now() - startedAt < 2400) {
+          retryTimeoutId = window.setTimeout(focusTarget, 120);
+        }
+        return;
+      }
+
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightTarget('');
+      window.requestAnimationFrame(() => setHighlightTarget(target));
+      clearHighlightTimeoutId = window.setTimeout(() => setHighlightTarget(''), 2600);
+    };
+
+    const timeoutId = window.setTimeout(focusTarget, 180);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearTimeout(retryTimeoutId);
+      window.clearTimeout(clearHighlightTimeoutId);
+    };
+  }, [loading, location.search]);
 
   useEffect(() => {
     const onboardingSource = sessionStorage.getItem('socialEmailSetupRequired');
@@ -1889,7 +1952,10 @@ export const ProfileLegacy = () => {
           {/* LEFT COLUMN */}
           <div className="lg:col-span-3 space-y-6">
             {/* Profile Card */}
-            <div className="lekhon-profile-card theme-panel rounded-3xl shadow-xl p-6 transition-all duration-300">
+            <div
+              data-profile-manage-target="profile-details"
+              className={`lekhon-profile-card theme-panel rounded-3xl shadow-xl p-6 transition-all duration-300 ${highlightTarget === 'profile-details' ? 'lekhon-target-pulse' : ''}`}
+            >
               <div className="flex flex-col md:flex-row md:items-center md:gap-6 lg:flex-col lg:items-center">
                 {/* Avatar Section */}
                 <div className="flex flex-col items-center md:items-start lg:items-center mb-4 md:mb-0 lg:mb-4">
@@ -2419,7 +2485,7 @@ export const ProfileLegacy = () => {
 
             {/* Developer & Contact Row */}
             <div className="flex flex-col md:flex-row gap-6">
-              <div onClick={() => setExpandedCard(expandedCard === 'developer' ? null : 'developer')} className={`theme-panel rounded-3xl shadow-xl p-6 cursor-pointer hover:shadow-2xl transition-all duration-500 ${
+              <div data-profile-manage-target="developer" onClick={() => setExpandedCard(expandedCard === 'developer' ? null : 'developer')} className={`theme-panel rounded-3xl shadow-xl p-6 cursor-pointer hover:shadow-2xl transition-all duration-500 ${highlightTarget === 'developer' ? 'lekhon-target-pulse' : ''} ${
                 expandedCard === 'developer' ? 'md:w-full' : expandedCard === 'contact' ? 'md:w-1/2' : 'md:w-1/2'
               }`}>
                 <div className="flex items-start justify-between mb-4">
@@ -2469,7 +2535,7 @@ export const ProfileLegacy = () => {
                 </div>
               </div>
               
-              <div onClick={() => setExpandedCard(expandedCard === 'contact' ? null : 'contact')} className={`theme-panel rounded-3xl shadow-xl p-6 cursor-pointer hover:shadow-2xl transition-all duration-500 ${
+              <div data-profile-manage-target="contact" onClick={() => setExpandedCard(expandedCard === 'contact' ? null : 'contact')} className={`theme-panel rounded-3xl shadow-xl p-6 cursor-pointer hover:shadow-2xl transition-all duration-500 ${highlightTarget === 'contact' ? 'lekhon-target-pulse' : ''} ${
                 expandedCard === 'contact' ? 'md:w-full' : expandedCard === 'developer' ? 'md:w-1/2' : 'md:w-1/2'
               }`}>
                 <div className="flex items-start justify-between mb-4">
@@ -2523,7 +2589,10 @@ export const ProfileLegacy = () => {
             </div>
 
             {/* Password & Security */}
-            <div className="theme-panel rounded-3xl shadow-xl p-6 transition-all duration-300">
+            <div
+              data-profile-manage-target="security"
+              className={`theme-panel rounded-3xl shadow-xl p-6 transition-all duration-300 ${highlightTarget === 'security' ? 'lekhon-target-pulse' : ''}`}
+            >
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">{t('Password & Security')}</h3>
@@ -2560,7 +2629,10 @@ export const ProfileLegacy = () => {
                   </button>
                 </div>
               )}
-              <div className="mb-4 overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)]">
+              <div
+                data-profile-manage-target="two-factor"
+                className={`mb-4 overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)] ${highlightTarget === 'two-factor' ? 'lekhon-target-pulse' : ''}`}
+              >
                 <div className="flex flex-col gap-2 border-b border-[var(--border-default)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <button
                     type="button"
@@ -2805,7 +2877,10 @@ export const ProfileLegacy = () => {
                 </div>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div
+                data-profile-manage-target="password"
+                className={`flex flex-wrap gap-2 rounded-xl ${highlightTarget === 'password' ? 'lekhon-target-pulse' : ''}`}
+              >
                 <button onClick={() => { setShowPasswordForm(!showPasswordForm); setShowForgotPassword(false); }} className="theme-soft-button inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold hover:border-[var(--brand-primary)]">
                   <FaKey size={11} className="text-[var(--brand-primary)]" /> {t('Change Password')}
                 </button>

@@ -191,7 +191,7 @@ const ProfileOverviewMobile = () => {
 
             <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
               <Link
-                to="/profile/settings?section=edit"
+                to="/profile/settings?section=edit&target=edit"
                 className="rounded-xl bg-[var(--brand-primary)] px-4 py-3 text-sm font-black text-white shadow-sm transition active:scale-[0.98]"
               >
                 {t('Edit Profile')}
@@ -257,10 +257,10 @@ const ProfileOverviewMobile = () => {
 
         <section className="space-y-2 pb-4">
           <h3 className="text-sm font-black text-[var(--text-primary)]">{t('Security')}</h3>
-          <SecurityRow to="/profile/settings?section=privacy" icon={FaLock} label={t('Privacy')} value={displayUser?.privacy?.profileVisibility || 'public'} />
-          <SecurityRow to="/profile/manage" icon={FaUserShield} label={t('Account tools')} value={twoFactorStatus?.enabled ? t('2FA on') : t('Manage')} />
-          <SecurityRow to="/profile/settings?section=edit" icon={FaEdit} label={t('Profile details')} value={t('Edit')} />
-          <SecurityRow to="/profile/settings" icon={FaBoxOpen} label={t('Preferences')} value={t('Open')} />
+          <SecurityRow to="/profile/settings?section=privacy&target=privacy" icon={FaLock} label={t('Privacy')} value={displayUser?.privacy?.profileVisibility || 'public'} />
+          <SecurityRow to="/profile/manage?target=security" icon={FaUserShield} label={t('Account tools')} value={twoFactorStatus?.enabled ? t('2FA on') : t('Manage')} />
+          <SecurityRow to="/profile/settings?section=edit&target=edit" icon={FaEdit} label={t('Profile details')} value={t('Edit')} />
+          <SecurityRow to="/profile/settings?target=preferences" icon={FaBoxOpen} label={t('Preferences')} value={t('Open')} />
         </section>
       </div>
     </main>

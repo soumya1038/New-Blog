@@ -28,8 +28,12 @@ import { useTheme } from '../context/ThemeContext';
 import useCurrentProfileSummary from '../hooks/useCurrentProfileSummary';
 
 const sectionTitleClass = 'px-1 pt-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--text-secondary)]';
+const pulseClass = 'lekhon-target-pulse';
 
-const SettingsRow = ({ icon: Icon, label, value, onClick, to, tone = 'default' }) => {
+const getHighlightClass = (isActive) => (isActive ? pulseClass : '');
+
+const SettingsRow = ({ icon: Icon, label, value, onClick, to, tone = 'default', targetId, highlightTarget }) => {
+  const rowClass = `flex items-center justify-between gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-3 py-3 ${getHighlightClass(highlightTarget === targetId)}`;
   const content = (
     <>
       <span className="flex min-w-0 items-center gap-3">
@@ -53,7 +57,8 @@ const SettingsRow = ({ icon: Icon, label, value, onClick, to, tone = 'default' }
     return (
       <Link
         to={to}
-        className="flex items-center justify-between gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-3 py-3"
+        data-profile-settings-target={targetId}
+        className={rowClass}
       >
         {content}
       </Link>
@@ -64,21 +69,25 @@ const SettingsRow = ({ icon: Icon, label, value, onClick, to, tone = 'default' }
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-3 py-3 text-left"
+      data-profile-settings-target={targetId}
+      className={`${rowClass} w-full text-left`}
     >
       {content}
     </button>
   );
 };
 
-const SettingsGroup = ({ title, children }) => (
-  <section className="space-y-2">
+const SettingsGroup = ({ title, children, targetId, highlightTarget }) => (
+  <section
+    data-profile-settings-target={targetId}
+    className={`space-y-2 rounded-2xl ${getHighlightClass(highlightTarget === targetId)}`}
+  >
     <h2 className={sectionTitleClass}>{title}</h2>
     <div className="space-y-2">{children}</div>
   </section>
 );
 
-const EditProfilePanel = ({ profile, onSave, saving }) => {
+const EditProfilePanel = ({ profile, onSave, saving, highlightTarget }) => {
   const { t } = useTranslation();
   const [form, setForm] = useState({
     fullName: '',
@@ -108,7 +117,8 @@ const EditProfilePanel = ({ profile, onSave, saving }) => {
         event.preventDefault();
         onSave(form);
       }}
-      className="rounded-2xl border border-[var(--border-default)] bg-[var(--surface-card)] p-4 shadow-sm"
+      data-profile-settings-target="edit"
+      className={`rounded-2xl border border-[var(--border-default)] bg-[var(--surface-card)] p-4 shadow-sm ${getHighlightClass(highlightTarget === 'edit')}`}
     >
       <div className="mb-4">
         <h2 className="text-base font-black text-[var(--text-primary)]">{t('Edit profile')}</h2>
@@ -125,21 +135,31 @@ const EditProfilePanel = ({ profile, onSave, saving }) => {
         </label>
         <label className="block text-xs font-bold text-[var(--text-secondary)]">
           {t('Email')}
-          <input
-            type="email"
-            value={form.email}
-            onChange={(event) => setField('email', event.target.value)}
-            className="mt-1 w-full rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)] px-3 py-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
-          />
+          <span
+            data-profile-settings-target="email-phone"
+            className={`mt-1 block rounded-xl ${getHighlightClass(highlightTarget === 'email-phone')}`}
+          >
+            <input
+              type="email"
+              value={form.email}
+              onChange={(event) => setField('email', event.target.value)}
+              className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)] px-3 py-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
+            />
+          </span>
         </label>
         <label className="block text-xs font-bold text-[var(--text-secondary)]">
           {t('Phone')}
-          <input
-            type="tel"
-            value={form.phone}
-            onChange={(event) => setField('phone', event.target.value)}
-            className="mt-1 w-full rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)] px-3 py-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
-          />
+          <span
+            data-profile-settings-target="email-phone"
+            className={`mt-1 block rounded-xl ${getHighlightClass(highlightTarget === 'email-phone')}`}
+          >
+            <input
+              type="tel"
+              value={form.phone}
+              onChange={(event) => setField('phone', event.target.value)}
+              className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)] px-3 py-3 text-sm text-[var(--text-primary)] outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
+            />
+          </span>
         </label>
         <label className="block text-xs font-bold text-[var(--text-secondary)]">
           {t('Birthday')}
@@ -185,16 +205,81 @@ const ProfileSettingsPage = () => {
     updateProfile,
   } = useCurrentProfileSummary();
   const [saving, setSaving] = useState(false);
+  const [highlightTarget, setHighlightTarget] = useState('');
   const activeSection = searchParams.get('section') || '';
+  const activeTarget = searchParams.get('target') || '';
+  const activePulse = searchParams.get('pulse') || '';
 
   const privacyLabel = useMemo(
     () => profile?.privacy?.profileVisibility || 'public',
     [profile?.privacy?.profileVisibility]
   );
 
-  const openSection = (section) => {
-    setSearchParams(section ? { section } : {});
+  const openSection = (section, target = '') => {
+    const nextParams = {};
+    if (section) nextParams.section = section;
+    if (target) {
+      nextParams.target = target;
+      nextParams.pulse = String(Date.now());
+    }
+    setSearchParams(nextParams);
   };
+
+  const pulseCurrentTarget = (target) => {
+    setSearchParams((currentParams) => {
+      const nextParams = new URLSearchParams(currentParams);
+      nextParams.set('target', target);
+      nextParams.set('pulse', String(Date.now()));
+      return nextParams;
+    });
+  };
+
+  useEffect(() => {
+    if (loading || !activeTarget) return undefined;
+
+    const requiredSection = {
+      edit: 'edit',
+      'email-phone': 'edit',
+      privacy: 'privacy',
+      notifications: 'privacy',
+    }[activeTarget];
+
+    if (requiredSection && activeSection !== requiredSection) {
+      setSearchParams((currentParams) => {
+        const nextParams = new URLSearchParams(currentParams);
+        nextParams.set('section', requiredSection);
+        return nextParams;
+      });
+      return undefined;
+    }
+
+    const startedAt = Date.now();
+    let retryTimeoutId;
+    let clearHighlightTimeoutId;
+
+    const focusTarget = () => {
+      const targetElement = document.querySelector(`[data-profile-settings-target="${activeTarget}"]`);
+      if (!targetElement) {
+        if (Date.now() - startedAt < 2400) {
+          retryTimeoutId = window.setTimeout(focusTarget, 120);
+        }
+        return;
+      }
+
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightTarget('');
+      window.requestAnimationFrame(() => setHighlightTarget(activeTarget));
+      clearHighlightTimeoutId = window.setTimeout(() => setHighlightTarget(''), 2600);
+    };
+
+    const timeoutId = window.setTimeout(focusTarget, 120);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearTimeout(retryTimeoutId);
+      window.clearTimeout(clearHighlightTimeoutId);
+    };
+  }, [activeSection, activePulse, activeTarget, loading, setSearchParams]);
 
   const handleSaveProfile = async (form) => {
     setSaving(true);
@@ -266,32 +351,45 @@ const ProfileSettingsPage = () => {
             </section>
 
             {activeSection === 'edit' ? (
-              <EditProfilePanel profile={profile} onSave={handleSaveProfile} saving={saving} />
+              <EditProfilePanel profile={profile} onSave={handleSaveProfile} saving={saving} highlightTarget={highlightTarget} />
             ) : null}
 
             {activeSection === 'privacy' ? (
               <div className="space-y-3">
-                <PrivacySettings
-                  profile={profile}
-                  onUpdate={(updates) => handleSettingsUpdate(updates, t('Privacy settings updated'))}
-                />
-                <EmailNotificationSettings
-                  profile={profile}
-                  onUpdate={(updates) => handleSettingsUpdate(updates, t('Email settings updated'))}
-                />
+                <div
+                  data-profile-settings-target="privacy"
+                  className={`rounded-2xl ${getHighlightClass(highlightTarget === 'privacy')}`}
+                >
+                  <PrivacySettings
+                    profile={profile}
+                    onUpdate={(updates) => handleSettingsUpdate(updates, t('Privacy settings updated'))}
+                  />
+                </div>
+                <div
+                  data-profile-settings-target="notifications"
+                  className={`rounded-2xl ${getHighlightClass(highlightTarget === 'notifications')}`}
+                >
+                  <EmailNotificationSettings
+                    profile={profile}
+                    onUpdate={(updates) => handleSettingsUpdate(updates, t('Email settings updated'))}
+                  />
+                </div>
               </div>
             ) : null}
           </div>
 
           <div className="space-y-4">
-            <SettingsGroup title={t('Account')}>
-              <SettingsRow icon={FaUserEdit} label={t('Edit Profile')} value={profile?.fullName || t('Name, bio, photo')} onClick={() => openSection(activeSection === 'edit' ? '' : 'edit')} />
-              <SettingsRow icon={FaKey} label={t('Change Password')} value={t('Advanced security')} to="/profile/manage?forcePasswordChange=1" />
-              <SettingsRow icon={FaEnvelope} label={t('Email & Phone')} value={profile?.email || profile?.phone || t('Add contact details')} onClick={() => openSection('edit')} />
+            <SettingsGroup title={t('Account')} targetId="account" highlightTarget={highlightTarget}>
+              <SettingsRow icon={FaUserEdit} label={t('Edit Profile')} value={profile?.fullName || t('Name, bio, photo')} onClick={() => openSection('edit', 'edit')} targetId="account-edit" highlightTarget={highlightTarget} />
+              <SettingsRow icon={FaKey} label={t('Change Password')} value={t('Advanced security')} to="/profile/manage?target=password" targetId="change-password" highlightTarget={highlightTarget} />
+              <SettingsRow icon={FaEnvelope} label={t('Email & Phone')} value={profile?.email || profile?.phone || t('Add contact details')} onClick={() => openSection('edit', 'email-phone')} targetId="email-phone-row" highlightTarget={highlightTarget} />
             </SettingsGroup>
 
-            <SettingsGroup title={t('Preferences')}>
-              <div className="rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-3 py-3">
+            <SettingsGroup title={t('Preferences')} targetId="preferences" highlightTarget={highlightTarget}>
+              <div
+                data-profile-settings-target="language"
+                className={`rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-3 py-3 ${getHighlightClass(highlightTarget === 'language')}`}
+              >
                 <div className="mb-2 flex items-center gap-3">
                   <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--background-secondary)] text-[var(--brand-primary)]">
                     <FaGlobe />
@@ -305,8 +403,12 @@ const ProfileSettingsPage = () => {
               </div>
               <button
                 type="button"
-                onClick={toggleTheme}
-                className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-3 py-3 text-left"
+                onClick={() => {
+                  toggleTheme();
+                  pulseCurrentTarget('theme');
+                }}
+                data-profile-settings-target="theme"
+                className={`flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-3 py-3 text-left ${getHighlightClass(highlightTarget === 'theme')}`}
               >
                 <span className="flex min-w-0 items-center gap-3">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--background-secondary)] text-[var(--brand-primary)]">
@@ -321,14 +423,14 @@ const ProfileSettingsPage = () => {
                   {t('Switch')}
                 </span>
               </button>
-              <SettingsRow icon={FaPalette} label={t('Content Preferences')} value={t('Advanced tools')} to="/profile/manage" />
+              <SettingsRow icon={FaPalette} label={t('Content Preferences')} value={t('Advanced tools')} to="/profile/manage?target=developer" targetId="content-preferences" highlightTarget={highlightTarget} />
             </SettingsGroup>
 
-            <SettingsGroup title={t('Privacy & Security')}>
-              <SettingsRow icon={FaLock} label={t('Privacy')} value={privacyLabel} onClick={() => openSection(activeSection === 'privacy' ? '' : 'privacy')} />
-              <SettingsRow icon={FaUserLock} label={t('Blocked Users')} value={t('Manage in chat')} to="/chat" />
-              <SettingsRow icon={FaShieldAlt} label={t('2FA')} value={twoFactorStatus?.enabled ? t('On') : t('Off')} to="/profile/manage" />
-              <SettingsRow icon={FaCog} label={t('Advanced profile tools')} value={t('Full settings')} to="/profile/manage" />
+            <SettingsGroup title={t('Privacy & Security')} targetId="security" highlightTarget={highlightTarget}>
+              <SettingsRow icon={FaLock} label={t('Privacy')} value={privacyLabel} onClick={() => openSection('privacy', 'privacy')} targetId="privacy-row" highlightTarget={highlightTarget} />
+              <SettingsRow icon={FaUserLock} label={t('Blocked Users')} value={t('Manage in chat')} to="/chat" targetId="blocked-users" highlightTarget={highlightTarget} />
+              <SettingsRow icon={FaShieldAlt} label={t('2FA')} value={twoFactorStatus?.enabled ? t('On') : t('Off')} to="/profile/manage?target=two-factor" targetId="two-factor-row" highlightTarget={highlightTarget} />
+              <SettingsRow icon={FaCog} label={t('Advanced profile tools')} value={t('Full settings')} to="/profile/manage?target=security" targetId="advanced-tools" highlightTarget={highlightTarget} />
             </SettingsGroup>
 
             <SettingsGroup title={t('Support')}>
