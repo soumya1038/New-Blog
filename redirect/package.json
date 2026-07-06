@@ -1,6 +1,6 @@
 {
   "name": "blog-frontend",
-  "version": "1.7.22",
+  "version": "1.7.23",
   "private": true,
   "dependencies": {
     "@capacitor/android": "^8.4.0",
