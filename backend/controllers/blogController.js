@@ -1,4 +1,6 @@
 const Blog = require('../models/Blog');
+const Article = require('../models/Article');
+const Short = require('../models/Short');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
@@ -33,6 +35,78 @@ const triggerSearchIndexRefresh = (reason) => {
   });
 };
 
+const RELATED_CATEGORY_MAP = {
+  lifestyle: ['health', 'food', 'travel', 'culture', 'education', 'technology', 'finance'],
+  technology: ['education', 'business', 'finance', 'science', 'lifestyle'],
+  food: ['lifestyle', 'health', 'travel', 'culture'],
+  health: ['lifestyle', 'food', 'fitness', 'education'],
+  education: ['technology', 'science', 'career', 'finance', 'lifestyle'],
+  finance: ['business', 'technology', 'education', 'lifestyle'],
+  travel: ['lifestyle', 'food', 'culture', 'photography'],
+  culture: ['lifestyle', 'travel', 'food', 'education'],
+  science: ['technology', 'education', 'health'],
+  business: ['finance', 'technology', 'education'],
+};
+
+const normalizeCategoryName = (value = '') => String(value || '').trim().toLowerCase();
+
+const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const buildRelatedCategories = (category = '') => {
+  const normalized = normalizeCategoryName(category);
+  const related = RELATED_CATEGORY_MAP[normalized] || [];
+  return [normalized, ...related].filter(Boolean);
+};
+
+const createCategoryRegexes = (categories = []) =>
+  categories.map((category) => new RegExp(`^${escapeRegex(category)}$`, 'i'));
+
+const getLikeCount = (item) => (Array.isArray(item.likes) ? item.likes.length : Number(item.likeCount || 0));
+
+const scoreRelatedContent = ({ item, commentCount, categoryPriority, tagOverlap }) =>
+  (Number(item.views || 0) * 1.2)
+  + (getLikeCount(item) * 4)
+  + (Number(commentCount || 0) * 5)
+  + (categoryPriority * 120)
+  + (tagOverlap * 18);
+
+const serializeRelatedItem = ({ item, type, commentCount, currentCategory, relatedCategories, currentTags }) => {
+  const normalizedCategory = normalizeCategoryName(item.category);
+  const categoryPriority = normalizedCategory === currentCategory ? 2 : relatedCategories.includes(normalizedCategory) ? 1 : 0;
+  const tags = Array.isArray(item.tags) ? item.tags : [];
+  const tagOverlap = tags.filter((tag) => currentTags.has(String(tag || '').trim().toLowerCase())).length;
+  const itemObj = item.toObject ? item.toObject() : item;
+
+  return {
+    ...itemObj,
+    contentType: type,
+    likeCount: getLikeCount(itemObj),
+    commentCount,
+    popularityScore: scoreRelatedContent({ item: itemObj, commentCount, categoryPriority, tagOverlap }),
+  };
+};
+
+const getRelatedItemKey = (item) => `${item.contentType}:${item._id}`;
+
+const compareRelatedContent = (a, b) => {
+  if (b.popularityScore !== a.popularityScore) return b.popularityScore - a.popularityScore;
+  return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+};
+
+const selectWithRequiredContentType = (items, limit, requiredType = 'blog') => {
+  const selected = items.slice(0, limit);
+  if (selected.some((item) => item.contentType === requiredType)) return selected;
+
+  const requiredCandidate = items.find((item) => item.contentType === requiredType);
+  if (!requiredCandidate) return selected;
+
+  const requiredKey = getRelatedItemKey(requiredCandidate);
+  const next = selected.filter((item) => getRelatedItemKey(item) !== requiredKey);
+  if (next.length >= limit) next.pop();
+  next.push(requiredCandidate);
+  return next.sort(compareRelatedContent);
+};
+
 const parseArrayField = (value) => {
   if (Array.isArray(value)) return value;
   if (value === undefined || value === null || value === '') return [];
@@ -45,6 +119,24 @@ const parseArrayField = (value) => {
     }
   }
   return [value];
+};
+
+const normalizeStringArray = (value) =>
+  parseArrayField(value)
+    .map(item => String(item || '').trim())
+    .filter(Boolean);
+
+const deleteCloudinaryPublicIds = async (publicIds = []) => {
+  const ids = normalizeStringArray(publicIds);
+  if (!ids.length) return;
+  const cloudinary = require('../utils/cloudinary');
+  await Promise.all(ids.map(async (publicId) => {
+    try {
+      await cloudinary.uploader.destroy(publicId);
+    } catch (error) {
+      console.error('Cloudinary delete error:', error);
+    }
+  }));
 };
 
 const normalizeProductLinks = (body) => {
@@ -85,7 +177,22 @@ const normalizeProductLinks = (body) => {
 // Create blog
 exports.createBlog = async (req, res) => {
   try {
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls } = req.body;
+    const {
+      title,
+      content,
+      tags,
+      isDraft,
+      category,
+      coverImage,
+      cloudinaryPublicId,
+      galleryImages,
+      galleryImagePublicIds,
+      metaDescription,
+      slug,
+      isScheduled,
+      scheduledPublishDate,
+      videoUrls
+    } = req.body;
     const productLinks = normalizeProductLinks(req.body);
 
     console.log('=== BACKEND CREATE BLOG ===');
@@ -108,6 +215,8 @@ exports.createBlog = async (req, res) => {
 
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
     const videoUrlsArray = videoUrls ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : [];
+    const galleryImagesArray = normalizeStringArray(galleryImages);
+    const galleryImagePublicIdsArray = normalizeStringArray(galleryImagePublicIds);
 
     // If publishing (not draft and not scheduled), delete any existing draft with same title
     if (!isDraft && !isScheduled) {
@@ -127,6 +236,7 @@ exports.createBlog = async (req, res) => {
             console.error('Cloudinary delete error:', err);
           }
         }
+        await deleteCloudinaryPublicIds(existingDraft.galleryImagePublicIds);
         await Blog.findByIdAndDelete(existingDraft._id);
       }
     }
@@ -145,6 +255,8 @@ exports.createBlog = async (req, res) => {
       category: category || 'General',
       coverImage: coverImage || null,
       cloudinaryPublicId: cloudinaryPublicId || null,
+      galleryImages: galleryImagesArray,
+      galleryImagePublicIds: galleryImagePublicIdsArray,
       videoUrls: videoUrlsArray,
       metaDescription: metaDescription || null,
       slug: generatedSlug,
@@ -330,7 +442,7 @@ exports.getBlogs = async (req, res) => {
 exports.getBlog = async (req, res) => {
   try {
     const viewerId = String(req.user?._id || 'anon');
-    const detailCacheKey = `blog:detail:${req.params.id}:viewer:${viewerId}`;
+    const detailCacheKey = `blog:detail:v3:${req.params.id}:viewer:${viewerId}`;
     const cachedPayload = await getCache(detailCacheKey);
     if (cachedPayload) {
       return res.json(cachedPayload);
@@ -351,26 +463,45 @@ exports.getBlog = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Blog not found' });
     }
 
-    const commentCount = await Comment.countDocuments({ blog: blog._id });
+    const authorIdForStats = blog.author?._id || blog.author;
+    const [commentCount, authorArticleCount, authorBlogCount] = await Promise.all([
+      Comment.countDocuments({ blog: blog._id }),
+      authorIdForStats ? Article.countDocuments({ author: authorIdForStats, isDraft: false }) : 0,
+      authorIdForStats ? Blog.countDocuments({ author: authorIdForStats, isDraft: false }) : 0
+    ]);
 
     const blogObj = blog.toObject();
     // Add audience-aware hasActiveStatus and visible statuses for viewing
+    let authorIsFollowing = false;
+    if (blogObj.author && Array.isArray(blogObj.author.followers)) {
+      authorIsFollowing = blogObj.author.followers.some((id) => String(id) === viewerId);
+    }
+
     if (blogObj.author && blogObj.author.statuses) {
       const authorId = String(blogObj.author._id || '');
       const isOwner = viewerId !== 'anon' && viewerId === authorId;
-      const isFollower = Array.isArray(blogObj.author.followers)
-        ? blogObj.author.followers.some((id) => String(id) === viewerId)
-        : false;
       const visibleStatuses = (blogObj.author.statuses || []).filter((status) => {
         if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
         if (isOwner) return true;
         const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
         if (audience === 'public') return true;
-        if (audience === 'followers' && isFollower) return true;
+        if (audience === 'followers' && authorIsFollowing) return true;
         return false;
       });
       blogObj.author.hasActiveStatus = visibleStatuses.length > 0;
       blogObj.author.statuses = visibleStatuses;
+    }
+
+    if (blogObj.author) {
+      blogObj.author.followerCount = Array.isArray(blogObj.author.followers)
+        ? blogObj.author.followers.length
+        : Number(blogObj.author.followerCount || blogObj.author.followersCount || 0);
+      blogObj.author.articleCount = authorArticleCount;
+      blogObj.author.articlesCount = authorArticleCount;
+      blogObj.author.blogCount = authorBlogCount;
+      blogObj.author.blogsCount = authorBlogCount;
+      blogObj.author.postsCount = authorArticleCount + authorBlogCount;
+      blogObj.author.isFollowing = viewerId !== 'anon' && authorIsFollowing;
       delete blogObj.author.followers;
     }
 
@@ -395,6 +526,226 @@ exports.getBlog = async (req, res) => {
   }
 };
 
+exports.getRelatedBlogContent = async (req, res) => {
+  try {
+    const limit = Math.max(4, Math.min(Number(req.query.limit) || 10, 16));
+    const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id);
+    const blog = resolved.doc;
+
+    if (!blog || blog.isDraft) {
+      return res.status(404).json({ success: false, message: 'Blog not found' });
+    }
+
+    const currentCategory = normalizeCategoryName(blog.category || 'General');
+    const relatedCategories = buildRelatedCategories(blog.category || 'General');
+    const categoryRegexes = createCategoryRegexes(relatedCategories);
+    const currentTags = new Set((Array.isArray(blog.tags) ? blog.tags : [])
+      .map((tag) => String(tag || '').trim().toLowerCase())
+      .filter(Boolean));
+    const currentAuthorId = blog.author?._id || blog.author;
+    const seen = new Set([`blog:${blog._id}`]);
+    const categoryFilter = categoryRegexes.length ? { category: { $in: categoryRegexes } } : {};
+    const differentAuthorFilter = currentAuthorId ? { author: { $ne: currentAuthorId } } : {};
+
+    const [articles, blogs, shorts] = await Promise.all([
+      Article.find({ isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+      Blog.find({ _id: { $ne: blog._id }, isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+      Short.find({ isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+    ]);
+
+    const relatedWithScores = await Promise.all([
+      ...articles.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'article',
+        commentCount: await Comment.countDocuments({ article: item._id }),
+        currentCategory,
+        relatedCategories,
+        currentTags,
+      })),
+      ...blogs.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'blog',
+        commentCount: await Comment.countDocuments({ blog: item._id }),
+        currentCategory,
+        relatedCategories,
+        currentTags,
+      })),
+      ...shorts.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'short',
+        commentCount: await Comment.countDocuments({ short: item._id }),
+        currentCategory,
+        relatedCategories,
+        currentTags,
+      })),
+    ]);
+
+    const ranked = relatedWithScores
+      .filter((item) => {
+        const key = getRelatedItemKey(item);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort(compareRelatedContent);
+
+    if (ranked.length < limit) {
+      const fallbackLimit = (limit - ranked.length) * 2;
+      const [fallbackArticles, fallbackBlogs, fallbackShorts] = await Promise.all([
+        Article.find({ isDraft: false, ...differentAuthorFilter })
+          .populate('author', 'fullName username profileImage isGuest role isVerified')
+          .sort({ views: -1, createdAt: -1 })
+          .limit(fallbackLimit),
+        Blog.find({ _id: { $ne: blog._id }, isDraft: false, ...differentAuthorFilter })
+          .populate('author', 'fullName username profileImage isGuest role isVerified')
+          .sort({ views: -1, createdAt: -1 })
+          .limit(fallbackLimit),
+        Short.find({ isDraft: false, ...differentAuthorFilter })
+          .populate('author', 'fullName username profileImage isGuest role isVerified')
+          .sort({ views: -1, createdAt: -1 })
+          .limit(fallbackLimit),
+      ]);
+
+      const fallbackItems = await Promise.all([
+        ...fallbackArticles.map(async (item) => serializeRelatedItem({
+          item,
+          type: 'article',
+          commentCount: await Comment.countDocuments({ article: item._id }),
+          currentCategory,
+          relatedCategories,
+          currentTags,
+        })),
+        ...fallbackBlogs.map(async (item) => serializeRelatedItem({
+          item,
+          type: 'blog',
+          commentCount: await Comment.countDocuments({ blog: item._id }),
+          currentCategory,
+          relatedCategories,
+          currentTags,
+        })),
+        ...fallbackShorts.map(async (item) => serializeRelatedItem({
+          item,
+          type: 'short',
+          commentCount: await Comment.countDocuments({ short: item._id }),
+          currentCategory,
+          relatedCategories,
+          currentTags,
+        })),
+      ]);
+
+      fallbackItems
+        .sort(compareRelatedContent)
+        .forEach((item) => {
+          const key = getRelatedItemKey(item);
+          if (!seen.has(key)) {
+            seen.add(key);
+            ranked.push(item);
+          }
+        });
+    }
+
+    res.json({
+      success: true,
+      related: selectWithRequiredContentType(ranked, limit, 'blog'),
+      category: blog.category || 'General',
+      relatedCategories,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getAuthorBlogContent = async (req, res) => {
+  try {
+    const limit = Math.max(4, Math.min(Number(req.query.limit) || 10, 16));
+    const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id);
+    const blog = resolved.doc;
+
+    if (!blog || blog.isDraft) {
+      return res.status(404).json({ success: false, message: 'Blog not found' });
+    }
+
+    const authorId = blog.author?._id || blog.author;
+    if (!authorId) {
+      return res.json({ success: true, authorContent: [] });
+    }
+
+    const currentCategory = normalizeCategoryName(blog.category || 'General');
+    const currentTags = new Set((Array.isArray(blog.tags) ? blog.tags : [])
+      .map((tag) => String(tag || '').trim().toLowerCase())
+      .filter(Boolean));
+
+    const [articles, blogs, shorts] = await Promise.all([
+      Article.find({ author: authorId, isDraft: false })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+      Blog.find({ _id: { $ne: blog._id }, author: authorId, isDraft: false })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+      Short.find({ author: authorId, isDraft: false })
+        .populate('author', 'fullName username profileImage isGuest role isVerified')
+        .sort({ views: -1, createdAt: -1 })
+        .limit(limit * 2),
+    ]);
+
+    const authorItems = await Promise.all([
+      ...articles.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'article',
+        commentCount: await Comment.countDocuments({ article: item._id }),
+        currentCategory,
+        relatedCategories: [currentCategory],
+        currentTags,
+      })),
+      ...blogs.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'blog',
+        commentCount: await Comment.countDocuments({ blog: item._id }),
+        currentCategory,
+        relatedCategories: [currentCategory],
+        currentTags,
+      })),
+      ...shorts.map(async (item) => serializeRelatedItem({
+        item,
+        type: 'short',
+        commentCount: await Comment.countDocuments({ short: item._id }),
+        currentCategory,
+        relatedCategories: [currentCategory],
+        currentTags,
+      })),
+    ]);
+
+    const seen = new Set();
+    const ranked = authorItems
+      .filter((item) => {
+        const key = getRelatedItemKey(item);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort(compareRelatedContent);
+
+    res.json({
+      success: true,
+      authorContent: selectWithRequiredContentType(ranked, limit, 'blog'),
+      author: authorId,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Update blog
 exports.updateBlog = async (req, res) => {
   try {
@@ -409,7 +760,22 @@ exports.updateBlog = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    const { title, content, tags, isDraft, category, coverImage, cloudinaryPublicId, metaDescription, slug, isScheduled, scheduledPublishDate, videoUrls } = req.body;
+    const {
+      title,
+      content,
+      tags,
+      isDraft,
+      category,
+      coverImage,
+      cloudinaryPublicId,
+      galleryImages,
+      galleryImagePublicIds,
+      metaDescription,
+      slug,
+      isScheduled,
+      scheduledPublishDate,
+      videoUrls
+    } = req.body;
     const hasProductLinkInput = ['linkedProduct', 'linkedProducts', 'externalProductLinks', 'isPromoPost']
       .some(key => Object.prototype.hasOwnProperty.call(req.body, key));
     const productLinks = hasProductLinkInput ? normalizeProductLinks(req.body) : null;
@@ -424,6 +790,10 @@ exports.updateBlog = async (req, res) => {
     
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : blog.tags;
     const videoUrlsArray = videoUrls !== undefined ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : blog.videoUrls;
+    const galleryImagesArray = galleryImages !== undefined ? normalizeStringArray(galleryImages) : blog.galleryImages;
+    const galleryImagePublicIdsArray = galleryImagePublicIds !== undefined
+      ? normalizeStringArray(galleryImagePublicIds)
+      : blog.galleryImagePublicIds;
 
     const publishingFromDraft =
       (blog.isDraft || blog.isScheduled) && isDraft === false && !isScheduled;
@@ -446,6 +816,7 @@ exports.updateBlog = async (req, res) => {
             console.error('Cloudinary delete error:', err);
           }
         }
+        await deleteCloudinaryPublicIds(otherDraft.galleryImagePublicIds);
         await Blog.findByIdAndDelete(otherDraft._id);
       }
     }
@@ -456,6 +827,8 @@ exports.updateBlog = async (req, res) => {
     blog.category = category || blog.category;
     blog.coverImage = coverImage !== undefined ? coverImage : blog.coverImage;
     blog.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : blog.cloudinaryPublicId;
+    blog.galleryImages = galleryImagesArray;
+    blog.galleryImagePublicIds = galleryImagePublicIdsArray;
     blog.videoUrls = videoUrlsArray;
     blog.metaDescription = metaDescription !== undefined ? metaDescription : blog.metaDescription;
     if (productLinks) {
@@ -535,6 +908,7 @@ exports.deleteBlog = async (req, res) => {
         console.error('Cloudinary delete error:', err);
       }
     }
+    await deleteCloudinaryPublicIds(blog.galleryImagePublicIds);
 
     // Delete associated comments
     await Comment.deleteMany({ blog: blog._id });

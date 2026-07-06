@@ -1,4 +1,4 @@
-import React, { useState, useContext, useRef } from 'react';
+import React, { useState, useContext, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
@@ -6,6 +6,8 @@ import {
   FaArrowLeft,
   FaArrowRight,
   FaBoxOpen,
+  FaCamera,
+  FaCheck,
   FaFilePdf,
   FaImage,
   FaLink,
@@ -13,6 +15,7 @@ import {
   FaPlus,
   FaRocket,
   FaSave,
+  FaSpinner,
   FaTable,
   FaTimes,
   FaUpload,
@@ -62,6 +65,10 @@ const STEPS = [
 
 const BADGE_OPTIONS = ['Bestseller', 'New', 'Limited Edition', 'Top Rated', 'Staff Pick'];
 const MAX_PRODUCT_IMAGE_SIZE_BYTES = 4 * 1024 * 1024;
+const LOCAL_WORKING_COPY_DB = 'lekhon-product-working-copy';
+const LOCAL_WORKING_COPY_STORE = 'productWorkingCopies';
+const LOCAL_WORKING_COPY_ID = 'add-product';
+const LOCAL_WORKING_COPY_TTL_MS = 60 * 60 * 1000;
 
 const inputCls = 'w-full px-3 py-2.5 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500 transition';
 const sectionCls = 'p-5 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] space-y-4';
@@ -124,11 +131,310 @@ const FIELD_STEPS = {
 
 const getStepIndex = (stepId) => Math.max(0, STEPS.findIndex(step => step.id === stepId));
 
+const createDefaultForm = () => ({
+  type: '',
+  title: '',
+  description: '',
+  specifications: [{ key: '', value: '' }],
+  warranty: '',
+  countryOfOrigin: 'India',
+  category: [],
+  tags: '',
+  price: '',
+  compareAtPrice: '',
+  currency: 'INR',
+  isFree: false,
+  seoTitle: '',
+  seoDescription: '',
+  promoBanner: '',
+  badges: [],
+  maxDownloads: 5,
+  stock: '',
+  minimumOrderQuantity: 1,
+  sku: '',
+  weight: '',
+  dimensionL: '',
+  dimensionW: '',
+  dimensionH: '',
+  estimatedDeliveryDays: 7,
+  shippingZones: ['India'],
+  deliveryDays: 3,
+  revisions: 1,
+  includes: '',
+  excludes: '',
+  externalUrl: '',
+  externalPlatform: 'Other',
+});
+
+const createPreviewImage = (file) => ({
+  file,
+  preview: URL.createObjectURL(file),
+});
+
+const isBlobLike = (value) =>
+  typeof Blob !== 'undefined' && value instanceof Blob;
+
+const hasProductWorkingInput = (form, images = [], digitalFile = null) => {
+  if (images.length > 0 || digitalFile) return true;
+  const defaults = createDefaultForm();
+  return Object.keys(defaults).some(key =>
+    JSON.stringify(form[key] ?? '') !== JSON.stringify(defaults[key] ?? '')
+  );
+};
+
+const hasText = (value) => String(value || '').trim().length > 0;
+
+const getFileSignature = (file) => {
+  const source = file?.file || file;
+  if (!isBlobLike(source)) return '';
+  return [
+    source.name || '',
+    source.size || 0,
+    source.type || '',
+    source.lastModified || 0,
+  ].join(':');
+};
+
+const getStepSignatures = (form, images = [], digitalFile = null) => ({
+  basic: JSON.stringify({
+    type: form.type,
+    title: String(form.title || '').trim(),
+    description: String(form.description || '').trim(),
+    specifications: cleanSpecifications(form.specifications),
+    warranty: String(form.warranty || '').trim(),
+    countryOfOrigin: String(form.countryOfOrigin || '').trim(),
+    category: form.category || [],
+    tags: String(form.tags || '').trim(),
+  }),
+  images: images.map(getFileSignature).filter(Boolean).join('|'),
+  details: JSON.stringify({
+    type: form.type,
+    digitalFile: getFileSignature(digitalFile),
+    stock: String(form.stock || '').trim(),
+    minimumOrderQuantity: String(form.minimumOrderQuantity || '').trim(),
+    sku: String(form.sku || '').trim(),
+    weight: String(form.weight || '').trim(),
+    dimensionL: String(form.dimensionL || '').trim(),
+    dimensionW: String(form.dimensionW || '').trim(),
+    dimensionH: String(form.dimensionH || '').trim(),
+    estimatedDeliveryDays: String(form.estimatedDeliveryDays || '').trim(),
+    shippingZones: form.shippingZones || [],
+    deliveryDays: String(form.deliveryDays || '').trim(),
+    revisions: String(form.revisions || '').trim(),
+    includes: String(form.includes || '').trim(),
+    excludes: String(form.excludes || '').trim(),
+    externalUrl: String(form.externalUrl || '').trim(),
+    externalPlatform: String(form.externalPlatform || '').trim(),
+  }),
+  pricing: JSON.stringify({
+    isFree: Boolean(form.isFree),
+    price: String(form.price || '').trim(),
+    compareAtPrice: String(form.compareAtPrice || '').trim(),
+    currency: form.currency,
+  }),
+  marketing: JSON.stringify({
+    seoTitle: String(form.seoTitle || '').trim(),
+    seoDescription: String(form.seoDescription || '').trim(),
+    promoBanner: String(form.promoBanner || '').trim(),
+    badges: form.badges || [],
+  }),
+});
+
+const getCompletedSteps = (form, images = [], digitalFile = null) => {
+  const completed = [];
+
+  if (hasText(form.type) && hasText(form.title)) {
+    completed.push('basic');
+  }
+
+  if (images.length > 0) {
+    completed.push('images');
+  }
+
+  if (form.type === 'digital' && isBlobLike(digitalFile)) {
+    completed.push('details');
+  }
+  if (
+    form.type === 'physical' &&
+    hasText(form.stock) &&
+    hasText(form.weight) &&
+    hasText(form.dimensionL) &&
+    hasText(form.dimensionW) &&
+    hasText(form.dimensionH)
+  ) {
+    completed.push('details');
+  }
+  if (form.type === 'service' && hasText(form.deliveryDays) && String(form.revisions ?? '').trim() !== '') {
+    completed.push('details');
+  }
+  if (form.type === 'external' && hasText(form.externalUrl)) {
+    completed.push('details');
+  }
+
+  if (form.isFree || hasText(form.price)) {
+    completed.push('pricing');
+  }
+
+  if (
+    hasText(form.promoBanner) ||
+    hasText(form.seoTitle) ||
+    hasText(form.seoDescription) ||
+    (form.badges || []).length > 0
+  ) {
+    completed.push('marketing');
+  }
+
+  return completed;
+};
+
+const STEP_FORM_FIELDS = {
+  basic: [
+    'type',
+    'title',
+    'description',
+    'specifications',
+    'warranty',
+    'countryOfOrigin',
+    'category',
+    'tags',
+  ],
+  details: [
+    'maxDownloads',
+    'stock',
+    'minimumOrderQuantity',
+    'sku',
+    'weight',
+    'dimensionL',
+    'dimensionW',
+    'dimensionH',
+    'estimatedDeliveryDays',
+    'shippingZones',
+    'deliveryDays',
+    'revisions',
+    'includes',
+    'excludes',
+    'externalUrl',
+    'externalPlatform',
+  ],
+  pricing: ['price', 'compareAtPrice', 'currency', 'isFree'],
+  marketing: ['seoTitle', 'seoDescription', 'promoBanner', 'badges'],
+};
+
+const cloneFormValue = (value) => {
+  if (Array.isArray(value)) {
+    return value.map(item => (item && typeof item === 'object' ? { ...item } : item));
+  }
+  if (value && typeof value === 'object') {
+    return { ...value };
+  }
+  return value;
+};
+
+const applyStepFormValues = (targetForm, sourceForm, stepId) => {
+  (STEP_FORM_FIELDS[stepId] || []).forEach(field => {
+    targetForm[field] = cloneFormValue(sourceForm[field]);
+  });
+};
+
+const openWorkingCopyDb = () =>
+  new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('Local product save is not available in this browser.'));
+      return;
+    }
+
+    const request = indexedDB.open(LOCAL_WORKING_COPY_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(LOCAL_WORKING_COPY_STORE)) {
+        db.createObjectStore(LOCAL_WORKING_COPY_STORE, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Unable to open local product save.'));
+  });
+
+const withWorkingCopyStore = async (mode, callback) => {
+  const db = await openWorkingCopyDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(LOCAL_WORKING_COPY_STORE, mode);
+    const store = transaction.objectStore(LOCAL_WORKING_COPY_STORE);
+    const result = callback(store);
+
+    transaction.oncomplete = () => {
+      db.close();
+      resolve(result);
+    };
+    transaction.onerror = () => {
+      db.close();
+      reject(transaction.error || new Error('Local product save failed.'));
+    };
+    transaction.onabort = () => {
+      db.close();
+      reject(transaction.error || new Error('Local product save was interrupted.'));
+    };
+  });
+};
+
+const saveProductWorkingCopy = (payload) =>
+  withWorkingCopyStore('readwrite', store => {
+    store.put({
+      id: LOCAL_WORKING_COPY_ID,
+      savedAt: Date.now(),
+      ...payload,
+    });
+  });
+
+const deleteProductWorkingCopy = () =>
+  withWorkingCopyStore('readwrite', store => {
+    store.delete(LOCAL_WORKING_COPY_ID);
+  }).catch(() => {});
+
+const loadProductWorkingCopy = () =>
+  new Promise(async (resolve) => {
+    try {
+      const db = await openWorkingCopyDb();
+      const transaction = db.transaction(LOCAL_WORKING_COPY_STORE, 'readonly');
+      const store = transaction.objectStore(LOCAL_WORKING_COPY_STORE);
+      const request = store.get(LOCAL_WORKING_COPY_ID);
+
+      request.onsuccess = async () => {
+        const record = request.result;
+        db.close();
+        if (!record) {
+          resolve(null);
+          return;
+        }
+
+        if (Date.now() - Number(record.savedAt || 0) > LOCAL_WORKING_COPY_TTL_MS) {
+          await deleteProductWorkingCopy();
+          resolve(null);
+          return;
+        }
+
+        resolve(record);
+      };
+
+      request.onerror = () => {
+        db.close();
+        resolve(null);
+      };
+    } catch {
+      resolve(null);
+    }
+  });
+
 const AddProduct = () => {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const fileInputRef = useRef();
+  const cameraFileInputRef = useRef();
   const digitalRef = useRef();
+  const videoRef = useRef();
+  const canvasRef = useRef();
+  const cameraStreamRef = useRef(null);
+  const imagesRef = useRef([]);
+  const saveFeedbackTimerRef = useRef(null);
 
   const [activeStep, setActiveStep] = useState(0);
   const [highestStep, setHighestStep] = useState(0);
@@ -138,43 +444,120 @@ const AddProduct = () => {
   const [digitalFile, setDigitalFile] = useState(null);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [aiLoading, setAiLoading] = useState('');
+  const [localSaveMessage, setLocalSaveMessage] = useState('');
+  const [localSaveState, setLocalSaveState] = useState('idle');
+  const [localSaveFeedbackStep, setLocalSaveFeedbackStep] = useState(null);
+  const [savedStepIds, setSavedStepIds] = useState(() => new Set());
+  const [savedStepSignatures, setSavedStepSignatures] = useState({});
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraLoading, setCameraLoading] = useState(false);
+  const [cameraError, setCameraError] = useState('');
 
-  const [form, setForm] = useState({
-    type: '',
-    title: '',
-    description: '',
-    specifications: [{ key: '', value: '' }],
-    warranty: '',
-    countryOfOrigin: 'India',
-    category: [],
-    tags: '',
-    price: '',
-    compareAtPrice: '',
-    currency: 'INR',
-    isFree: false,
-    seoTitle: '',
-    seoDescription: '',
-    promoBanner: '',
-    badges: [],
-    maxDownloads: 5,
-    stock: '',
-    minimumOrderQuantity: 1,
-    sku: '',
-    weight: '',
-    dimensionL: '',
-    dimensionW: '',
-    dimensionH: '',
-    estimatedDeliveryDays: 7,
-    shippingZones: ['India'],
-    deliveryDays: 3,
-    revisions: 1,
-    includes: '',
-    excludes: '',
-    externalUrl: '',
-    externalPlatform: 'Other',
-  });
+  const [form, setForm] = useState(createDefaultForm);
 
   const currentStep = STEPS[activeStep];
+
+  const stopCamera = useCallback(() => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(track => track.stop());
+      cameraStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const restoreWorkingCopy = async () => {
+      const record = await loadProductWorkingCopy();
+      if (cancelled) return;
+
+      if (record?.form) {
+        setForm({ ...createDefaultForm(), ...record.form });
+        setActiveStep(Math.min(Number(record.activeStep || 0), STEPS.length - 1));
+        setHighestStep(Math.min(Number(record.highestStep || record.activeStep || 0), STEPS.length - 1));
+
+        const restoredImages = (record.imageFiles || [])
+          .filter(isBlobLike)
+          .slice(0, 8)
+          .map(createPreviewImage);
+        setImages(restoredImages);
+
+        if (isBlobLike(record.digitalFile)) {
+          setDigitalFile(record.digitalFile);
+        }
+
+        const completedSteps = record.completedSteps || getCompletedSteps(record.form, restoredImages, record.digitalFile);
+        const stepSignatures = record.stepSignatures || getStepSignatures(record.form, restoredImages, record.digitalFile);
+        setSavedStepIds(new Set(completedSteps));
+        setSavedStepSignatures(stepSignatures);
+
+        setLocalSaveMessage('Restored saved info from this device.');
+      }
+    };
+
+    restoreWorkingCopy();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persistWorkingCopy = useCallback(async () => {
+    const previousRecord = await loadProductWorkingCopy();
+    const savedForm = { ...createDefaultForm(), ...(previousRecord?.form || {}) };
+    const currentStepId = currentStep.id;
+
+    applyStepFormValues(savedForm, form, currentStepId);
+
+    const savedImages = currentStepId === 'images'
+      ? images.map(image => image.file).filter(isBlobLike)
+      : (previousRecord?.imageFiles || []).filter(isBlobLike);
+    const savedDigitalFile = currentStepId === 'details'
+      ? (isBlobLike(digitalFile) ? digitalFile : null)
+      : (isBlobLike(previousRecord?.digitalFile) ? previousRecord.digitalFile : null);
+
+    if (!hasProductWorkingInput(savedForm, savedImages, savedDigitalFile)) {
+      await deleteProductWorkingCopy();
+      setSavedStepIds(new Set());
+      setSavedStepSignatures({});
+      setLocalSaveMessage('No product inputs to save.');
+      return false;
+    }
+
+    const completedSteps = getCompletedSteps(savedForm, savedImages, savedDigitalFile);
+    const stepSignatures = getStepSignatures(savedForm, savedImages, savedDigitalFile);
+
+    await saveProductWorkingCopy({
+      form: savedForm,
+      activeStep,
+      highestStep,
+      imageFiles: savedImages,
+      digitalFile: savedDigitalFile,
+      completedSteps,
+      stepSignatures,
+    });
+
+    setSavedStepIds(new Set(completedSteps));
+    setSavedStepSignatures(stepSignatures);
+    return true;
+  }, [activeStep, currentStep.id, highestStep, form, images, digitalFile]);
+
+  useEffect(() => () => {
+    clearTimeout(saveFeedbackTimerRef.current);
+    stopCamera();
+    imagesRef.current.forEach(image => {
+      if (image?.preview) URL.revokeObjectURL(image.preview);
+    });
+  }, [stopCamera]);
+
   const clearFieldError = (...fields) => {
     setFieldErrors(prev => {
       const next = { ...prev };
@@ -238,19 +621,26 @@ const AddProduct = () => {
     set('specifications', next.length ? next : [{ key: '', value: '' }]);
   };
 
-  const handleImageSelect = (event) => {
-    const selectedFiles = Array.from(event.target.files || []);
-    const validFiles = selectedFiles.filter(file => file.size <= MAX_PRODUCT_IMAGE_SIZE_BYTES);
-    const skippedCount = selectedFiles.length - validFiles.length;
-    const files = validFiles.slice(0, 8 - images.length);
-    const newImages = files.map(file => ({ file, preview: URL.createObjectURL(file) }));
+  const addImageFiles = (selectedFiles) => {
+    const filesToReview = Array.from(selectedFiles || []);
+    if (!filesToReview.length) return;
+
+    const validFiles = filesToReview.filter(file => file.size <= MAX_PRODUCT_IMAGE_SIZE_BYTES);
+    const remainingSlots = Math.max(0, 8 - images.length);
+    const files = validFiles.slice(0, remainingSlots);
+    const skippedCount = filesToReview.length - files.length;
+    const newImages = files.map(createPreviewImage);
 
     setImages(prev => [...prev, ...newImages].slice(0, 8));
     if (skippedCount > 0) {
-      setFieldMessage('images', `${skippedCount} image(s) were larger than 4MB and skipped.`);
+      setFieldMessage('images', `${skippedCount} image(s) were too large or exceeded the 8 image limit and were skipped.`);
     } else {
       clearFieldError('images');
     }
+  };
+
+  const handleImageSelect = (event) => {
+    addImageFiles(event.target.files || []);
     event.target.value = '';
   };
 
@@ -262,6 +652,86 @@ const AddProduct = () => {
   const handleDigitalFile = (event) => {
     const file = event.target.files?.[0];
     if (file) setDigitalFile(file);
+  };
+
+  const getCameraErrorMessage = (error) => {
+    if (!error) return 'Unable to access camera.';
+    if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+      return 'Camera permission denied. Allow camera access and try again.';
+    }
+    if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+      return 'No camera found on this device.';
+    }
+    if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+      return 'Camera is already in use by another app.';
+    }
+    if (error.name === 'SecurityError') {
+      return 'Camera requires HTTPS, localhost, or the mobile app.';
+    }
+    return error.message || 'Unable to access camera.';
+  };
+
+  const openCamera = async () => {
+    if (images.length >= 8) {
+      setFieldMessage('images', 'You can upload up to 8 product images.');
+      return;
+    }
+
+    setCameraOpen(true);
+    setCameraLoading(true);
+    setCameraError('');
+    stopCamera();
+
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera is not supported in this browser.');
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+
+      cameraStreamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (error) {
+      setCameraError(getCameraErrorMessage(error));
+    } finally {
+      setCameraLoading(false);
+    }
+  };
+
+  const closeCamera = () => {
+    stopCamera();
+    setCameraOpen(false);
+    setCameraLoading(false);
+    setCameraError('');
+  };
+
+  const captureCameraImage = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !video.videoWidth || !video.videoHeight) {
+      setCameraError('Camera is still starting. Please try again in a moment.');
+      return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        setCameraError('Could not capture the photo. Please try again.');
+        return;
+      }
+      const photo = new File([blob], `product-photo-${Date.now()}.jpg`, { type: 'image/jpeg' });
+      addImageFiles([photo]);
+      closeCamera();
+    }, 'image/jpeg', 0.9);
   };
 
   const validateStep = (stepId = currentStep.id) => {
@@ -463,27 +933,81 @@ const AddProduct = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
-      const productId = data.product._id;
-      if (form.type === 'digital' && digitalFile) {
-        setUploadingFile(true);
-        const fileFd = new FormData();
-        fileFd.append('file', digitalFile);
-        await api.post(`/marketplace/seller/products/${productId}/upload-file`, fileFd, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-        setUploadingFile(false);
-      }
+	      const productId = data.product._id;
+	      if (form.type === 'digital' && digitalFile) {
+	        setUploadingFile(true);
+	        const fileFd = new FormData();
+	        fileFd.append('file', digitalFile);
+	        await api.post(`/marketplace/seller/products/${productId}/upload-file`, fileFd, {
+	          headers: { 'Content-Type': 'multipart/form-data' },
+	        });
+	        setUploadingFile(false);
+	      }
 
-      navigate('/seller/dashboard', {
-        state: { toast: publishStatus === 'active' ? 'Product published!' : 'Draft saved.' },
-      });
+	      await deleteProductWorkingCopy();
+	      setSavedStepIds(new Set());
+	      setSavedStepSignatures({});
+	      setLocalSaveMessage('');
+	      navigate('/seller/dashboard', {
+	        state: { toast: publishStatus === 'active' ? 'Product published!' : 'Draft saved.' },
+	      });
     } catch (err) {
       setFieldMessage('review', err.response?.data?.message || 'Failed to save product. Please try again.');
-    } finally {
-      setSaving(false);
-      setUploadingFile(false);
-    }
-  };
+	    } finally {
+	      setSaving(false);
+	      setUploadingFile(false);
+	    }
+	  };
+
+	  const handleLocalSave = async () => {
+	    if (localSaveState === 'saving') return;
+	    clearTimeout(saveFeedbackTimerRef.current);
+	    setLocalSaveMessage('');
+	    setLocalSaveFeedbackStep(activeStep);
+	    setLocalSaveState('saving');
+
+	    try {
+	      const didSave = await persistWorkingCopy();
+	      if (!didSave) {
+	        setLocalSaveState('idle');
+	        return;
+	      }
+	      setLocalSaveState('saved');
+	      saveFeedbackTimerRef.current = setTimeout(() => {
+	        setLocalSaveState('idle');
+	        setLocalSaveFeedbackStep(null);
+	      }, 2600);
+	    } catch (error) {
+	      setLocalSaveState('idle');
+	      setLocalSaveMessage(error.message || 'Could not save on this device.');
+	    }
+	  };
+
+	  const handleCancel = async () => {
+	    const hasInputs = hasProductWorkingInput(form, images, digitalFile) || savedStepIds.size > 0;
+	    if (hasInputs) {
+	      setCancelModalOpen(true);
+	      return;
+	    }
+
+	    await confirmCancel();
+	  };
+
+	  const confirmCancel = async () => {
+	    images.forEach(image => {
+	      if (image?.preview) URL.revokeObjectURL(image.preview);
+	    });
+	    setImages([]);
+	    setDigitalFile(null);
+	    setForm(createDefaultForm());
+	    setActiveStep(0);
+	    setHighestStep(0);
+	    setSavedStepIds(new Set());
+	    setSavedStepSignatures({});
+	    setCancelModalOpen(false);
+	    await deleteProductWorkingCopy();
+	    navigate('/seller/dashboard');
+	  };
 
   const renderBasic = () => (
     <div className={sectionCls}>
@@ -667,20 +1191,31 @@ const AddProduct = () => {
             </button>
           </div>
         ))}
-        {images.length < 8 && (
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="aspect-square rounded-xl border-2 border-dashed border-[var(--border-color)] flex flex-col items-center justify-center gap-1.5 text-[var(--text-muted)] hover:border-violet-400 hover:text-violet-500 transition-colors"
-          >
-            <FaImage size={20} />
-            <span className="text-[10px]">Add Image</span>
-          </button>
-        )}
-      </div>
-      <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageSelect} className="hidden" />
-    </div>
-  );
+	        {images.length < 8 && (
+	          <div className="aspect-square rounded-xl border-2 border-dashed border-[var(--border-color)] p-2 flex flex-col items-stretch justify-center gap-2 text-[var(--text-muted)]">
+	            <button
+	              type="button"
+	              onClick={() => fileInputRef.current?.click()}
+	              className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg hover:bg-[var(--bg-secondary)] hover:text-violet-500 transition-colors"
+	            >
+	              <FaImage size={18} />
+	              <span className="text-[10px] font-semibold">Upload</span>
+	            </button>
+	            <button
+	              type="button"
+	              onClick={openCamera}
+	              className="flex flex-1 flex-col items-center justify-center gap-1 rounded-lg hover:bg-[var(--bg-secondary)] hover:text-violet-500 transition-colors"
+	            >
+	              <FaCamera size={17} />
+	              <span className="text-[10px] font-semibold">Camera</span>
+	            </button>
+	          </div>
+	        )}
+	      </div>
+	      <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageSelect} className="hidden" />
+	      <input ref={cameraFileInputRef} type="file" accept="image/*" capture="environment" onChange={handleImageSelect} className="hidden" />
+	    </div>
+	  );
 
   const renderDetails = () => {
     if (form.type === 'digital') {
@@ -913,102 +1448,270 @@ const AddProduct = () => {
     }
   };
 
-  if (!user?.isSeller) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4">
+	  if (!user?.isSeller) {
+	    return (
+	      <div className="min-h-screen flex items-center justify-center p-4">
         <div className="text-center space-y-3">
           <p className="text-[var(--text-muted)]">You need a seller account to add products.</p>
           <Link to="/become-seller" className="px-5 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-medium">Become a Seller</Link>
         </div>
       </div>
-    );
-  }
+	    );
+	  }
 
-  return (
-    <div className="min-h-screen bg-[var(--bg-primary)] py-8 px-4">
+	  const currentStepSignatures = getStepSignatures(form, images, digitalFile);
+	  const isSavedCompleteStep = (stepId) =>
+	    stepId !== 'review' &&
+	    savedStepIds.has(stepId) &&
+	    savedStepSignatures[stepId] &&
+	    savedStepSignatures[stepId] === currentStepSignatures[stepId];
+	  const showLocalSaveSuccess = localSaveState === 'saved' && localSaveFeedbackStep === activeStep;
+	  const isLocalSaving = localSaveState === 'saving' && localSaveFeedbackStep === activeStep;
+
+	  return (
+	    <div className="min-h-screen bg-[var(--bg-primary)] py-8 px-4">
       <div className="max-w-4xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <Link to="/seller/dashboard" className="text-xs text-[var(--text-muted)] hover:text-violet-500">Back to Seller Dashboard</Link>
-            <h1 className="text-2xl font-bold text-[var(--text-primary)] mt-0.5">Add New Product</h1>
-          </div>
-        </div>
+	        <div className="flex items-center justify-between">
+	          <div>
+	            <Link to="/seller/dashboard" className="text-xs text-[var(--text-muted)] hover:text-violet-500">Back to Seller Dashboard</Link>
+	            <h1 className="text-2xl font-bold text-[var(--text-primary)] mt-0.5">Add New Product</h1>
+	          </div>
+	          <Link
+	            to="/help/article/add-and-save-product"
+	            className="text-xs font-bold text-[var(--brand-primary)] no-underline"
+	          >
+	            How saving works
+	          </Link>
+	        </div>
+
+	        {localSaveMessage && (
+	          <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-xs font-medium text-violet-700 dark:border-violet-800 dark:bg-violet-900/20 dark:text-violet-300">
+	            {localSaveMessage}
+	          </div>
+	        )}
 
         <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-4">
           <div className="flex flex-wrap gap-2">
-            {STEPS.map((step, index) => (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => {
-                  if (index <= highestStep) setActiveStep(index);
-                }}
-                disabled={index > highestStep}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-                  index === activeStep
-                    ? hasStepError(step.id)
-                      ? 'bg-red-600 text-white border-red-600'
-                      : 'bg-violet-600 text-white border-violet-600'
-                    : index < activeStep
-                      ? hasStepError(step.id)
-                        ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 border-red-300 dark:border-red-700'
-                        : 'bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-300 border-violet-200 dark:border-violet-700'
-                      : hasStepError(step.id)
-                        ? 'border-red-300 text-red-600 dark:border-red-700 dark:text-red-300'
-                        : 'border-[var(--border-color)] text-[var(--text-muted)]'
-                } ${index > highestStep ? 'cursor-not-allowed opacity-60' : ''}`}
-              >
-                {index + 1}. {step.label}
-              </button>
-            ))}
+	            {STEPS.map((step, index) => {
+	              const stepHasError = hasStepError(step.id);
+	              const stepSavedComplete = isSavedCompleteStep(step.id);
+	              const stepClass = stepHasError
+	                ? index === activeStep
+	                  ? 'bg-red-600 text-white border-red-600'
+	                  : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-300 border-red-300 dark:border-red-700'
+	                : stepSavedComplete
+	                  ? index === activeStep
+	                    ? 'bg-green-600 text-white border-green-600 shadow-sm shadow-green-500/20'
+	                    : 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700'
+	                  : index === activeStep
+	                    ? 'bg-violet-600 text-white border-violet-600'
+	                    : index < activeStep
+	                      ? 'bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-300 border-violet-200 dark:border-violet-700'
+	                      : 'border-[var(--border-color)] text-[var(--text-muted)]';
+
+	              return (
+	                <button
+	                  key={step.id}
+	                  type="button"
+	                  onClick={() => {
+	                    if (index <= highestStep) setActiveStep(index);
+	                  }}
+	                  disabled={index > highestStep}
+	                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${stepClass} ${index > highestStep ? 'cursor-not-allowed opacity-60' : ''}`}
+	                >
+	                  {stepSavedComplete ? <FaCheck size={10} /> : <span>{index + 1}.</span>}
+	                  {step.label}
+	                </button>
+	              );
+	            })}
           </div>
         </div>
 
         {renderStep()}
 
-        <div className="flex items-center justify-between gap-3 pb-8">
-          <button
-            type="button"
-            onClick={goPrev}
-            disabled={activeStep === 0 || saving}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--border-color)] text-[var(--text-secondary)] font-semibold text-sm hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <FaArrowLeft /> Previous
-          </button>
+	        <div className="flex flex-col gap-3 pb-8 sm:flex-row sm:items-center sm:justify-between">
+	          <div className="flex gap-2">
+	            <button
+	              type="button"
+	              onClick={handleCancel}
+	              disabled={saving}
+	              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-red-200 text-red-600 font-semibold text-sm hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+	            >
+	              <FaTimes /> Cancel
+	            </button>
+	            <button
+	              type="button"
+	              onClick={goPrev}
+	              disabled={activeStep === 0 || saving}
+	              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-[var(--border-color)] text-[var(--text-secondary)] font-semibold text-sm hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+	            >
+	              <FaArrowLeft /> Previous
+	            </button>
+	          </div>
 
-          {activeStep < STEPS.length - 1 ? (
-            <button
-              type="button"
-              onClick={goNext}
-              disabled={saving}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm transition-colors disabled:opacity-50"
-            >
-              Next <FaArrowRight />
-            </button>
-          ) : (
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => handleSave('draft')}
-                disabled={saving}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 border-[var(--border-color)] text-[var(--text-secondary)] font-semibold text-sm hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50"
-              >
-                <FaSave /> {saving ? 'Saving...' : 'Save Draft'}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSave('active')}
-                disabled={saving}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm transition-colors disabled:opacity-50"
-              >
-                <FaRocket /> {uploadingFile ? 'Uploading file...' : saving ? 'Publishing...' : 'Publish'}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
+	          <div className="flex gap-2 sm:justify-end">
+	            {activeStep < STEPS.length - 1 ? (
+	              <>
+		                <button
+		                  type="button"
+		                  onClick={handleLocalSave}
+		                  disabled={saving || isLocalSaving}
+		                  className="relative inline-flex flex-1 items-center justify-center gap-2 px-5 py-2.5 rounded-xl border-2 border-[var(--border-color)] text-[var(--text-secondary)] font-semibold text-sm hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-60 sm:flex-none"
+		                >
+		                  {isLocalSaving ? <FaSpinner className="animate-spin" /> : <FaSave />}
+		                  {isLocalSaving ? 'Saving...' : 'Save'}
+		                  {showLocalSaveSuccess && (
+		                    <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-green-500 text-white shadow-sm shadow-green-500/40">
+		                      <FaCheck size={10} />
+		                    </span>
+		                  )}
+		                </button>
+	                <button
+	                  type="button"
+	                  onClick={goNext}
+	                  disabled={saving}
+	                  className="inline-flex flex-1 items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm transition-colors disabled:opacity-50 sm:flex-none"
+	                >
+	                  Next <FaArrowRight />
+	                </button>
+	              </>
+	            ) : (
+	              <>
+	                <button
+	                  type="button"
+	                  onClick={() => handleSave('draft')}
+	                  disabled={saving}
+	                  className="inline-flex flex-1 items-center justify-center gap-2 px-5 py-2.5 rounded-xl border-2 border-[var(--border-color)] text-[var(--text-secondary)] font-semibold text-sm hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50 sm:flex-none"
+	                >
+	                  <FaSave /> {saving ? 'Saving...' : 'Save Draft'}
+	                </button>
+	                <button
+	                  type="button"
+	                  onClick={() => handleSave('active')}
+	                  disabled={saving}
+	                  className="inline-flex flex-1 items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm transition-colors disabled:opacity-50 sm:flex-none"
+	                >
+	                  <FaRocket /> {uploadingFile ? 'Uploading file...' : saving ? 'Publishing...' : 'Publish'}
+	                </button>
+	              </>
+	            )}
+	          </div>
+	        </div>
+	      </div>
+
+	      {cameraOpen && (
+	        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+	          <div className="relative w-full max-w-3xl overflow-hidden rounded-2xl bg-black shadow-2xl">
+	            <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent p-4">
+	              <div>
+	                <h2 className="font-semibold text-white">Take Product Photo</h2>
+	                <p className="text-xs text-white/70">Capture a clear image for the product gallery.</p>
+	              </div>
+	              <button
+	                type="button"
+	                onClick={closeCamera}
+	                className="grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+	                aria-label="Close camera"
+	              >
+	                <FaTimes />
+	              </button>
+	            </div>
+
+	            <div className="relative aspect-[3/4] max-h-[78vh] w-full bg-black sm:aspect-video">
+	              {cameraLoading && (
+	                <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 text-sm text-white">
+	                  Opening camera...
+	                </div>
+	              )}
+	              {cameraError ? (
+	                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center text-white">
+	                  <FaCamera size={34} className="opacity-70" />
+	                  <p className="text-sm">{cameraError}</p>
+	                  <button
+	                    type="button"
+	                    onClick={() => {
+	                      closeCamera();
+	                      cameraFileInputRef.current?.click();
+	                    }}
+	                    className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black"
+	                  >
+	                    Use device picker
+	                  </button>
+	                </div>
+	              ) : (
+	                <video
+	                  ref={videoRef}
+	                  autoPlay
+	                  playsInline
+	                  muted
+	                  className="h-full w-full object-cover"
+	                />
+	              )}
+	              <canvas ref={canvasRef} className="hidden" />
+	            </div>
+
+	            {!cameraError && (
+	              <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center bg-gradient-to-t from-black/80 to-transparent p-5">
+	                <button
+	                  type="button"
+	                  onClick={captureCameraImage}
+	                  disabled={cameraLoading}
+	                  className="grid h-16 w-16 place-items-center rounded-full border-4 border-white/70 bg-white text-black shadow-lg transition-transform hover:scale-105 disabled:opacity-60"
+	                  aria-label="Capture product photo"
+	                >
+	                  <FaCamera size={24} />
+	                </button>
+	              </div>
+	            )}
+	          </div>
+	        </div>
+	      )}
+
+	      {cancelModalOpen && (
+	        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+	          <div className="w-full max-w-md rounded-2xl border border-red-200 bg-[var(--bg-card)] p-5 shadow-2xl dark:border-red-900/60">
+	            <div className="mb-4 flex items-start gap-3">
+	              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-300">
+	                <FaTimes />
+	              </div>
+	              <div>
+	                <h2 className="font-bold text-[var(--text-primary)]">Cancel this product?</h2>
+	                <p className="mt-1 text-sm text-[var(--text-muted)]">
+	                  This will close the add-product flow and delete the saved product information from this device.
+	                </p>
+	              </div>
+	            </div>
+
+	            <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-200">
+	              <p className="font-semibold">What will happen:</p>
+	              <ul className="mt-2 list-disc space-y-1 pl-4">
+	                <li>Saved basic info, images, and other local inputs for this product will be removed.</li>
+	                <li>Unsaved changes in the current section will not be recoverable.</li>
+	                <li>Already published products or backend saved drafts are not affected.</li>
+	              </ul>
+	            </div>
+
+	            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+	              <button
+	                type="button"
+	                onClick={() => setCancelModalOpen(false)}
+	                className="rounded-xl border border-[var(--border-color)] px-4 py-2.5 text-sm font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]"
+	              >
+	                Keep Editing
+	              </button>
+	              <button
+	                type="button"
+	                onClick={confirmCancel}
+	                className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700"
+	              >
+	                Cancel and Delete Saved Info
+	              </button>
+	            </div>
+	          </div>
+	        </div>
+	      )}
+	    </div>
+	  );
+	};
 
 export default AddProduct;

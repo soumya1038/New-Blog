@@ -7,6 +7,17 @@ const bcrypt = require('bcryptjs');
 const generateApiKey = require('../utils/generateApiKey');
 const cloudinary = require('../utils/cloudinary');
 const { enqueueEmailJob } = require('../jobs/queueService');
+const {
+  ACTION_LABELS,
+  buildTwoFactorStatus,
+  createVerifiedActionToken,
+  getPasswordAttemptState,
+  getChallengeMethodsPayload,
+  PASSWORD_ATTEMPT_LIMIT,
+  recordPasswordAttemptFailure,
+  resetPasswordAttemptState,
+  verifyTwoFactorActionToken,
+} = require('../utils/twoFactor');
 
 const SOCIAL_PROVIDER_DOMAIN_MATCHERS = {
   google: ['google.com', 'accounts.google.com'],
@@ -66,9 +77,16 @@ exports.getProfile = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
+    if (!req.params.id && (req.user?.isGuest || req.user?.role === 'guest')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Profile settings are available to registered users only'
+      });
+    }
+
     // Check if user exists first
     const user = await User.findById(targetUserId)
-      .select('-password')
+      .select('-password -twoFactor.sms.phone')
       .populate('followers', 'username profileImage')
       .populate('following', 'username profileImage');
 
@@ -183,9 +201,42 @@ exports.updateProfile = async (req, res) => {
       emailNotifications,
     } = req.body;
 
+    const existingUser = await User.findById(req.user._id);
+    if (!existingUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const emailProvided = Object.prototype.hasOwnProperty.call(req.body, 'email');
+    const requestedEmail = emailProvided ? String(email || '').trim() : existingUser.email;
+    const emailChanged = emailProvided &&
+      String(existingUser.email || '').trim().toLowerCase() !== requestedEmail.toLowerCase();
+
+    if (emailChanged && !['admin', 'coAdmin'].includes(existingUser.role)) {
+      const twoFactorStatus = buildTwoFactorStatus(existingUser);
+      if (twoFactorStatus.enabled) {
+        const token = req.headers['x-two-factor-token'] || req.body?.twoFactorToken;
+        const verified = await verifyTwoFactorActionToken({
+          userId: existingUser._id,
+          action: 'change_email',
+          token,
+        });
+
+        if (!verified) {
+          return res.status(403).json({
+            success: false,
+            requiresTwoFactor: true,
+            action: 'change_email',
+            actionLabel: 'change your email',
+            message: 'Two-factor verification required',
+            twoFactor: getChallengeMethodsPayload(existingUser),
+          });
+        }
+      }
+    }
+
     const updates = {
       fullName,
-      email,
+      email: requestedEmail,
       phone,
       dateOfBirth,
       address,
@@ -208,7 +259,7 @@ exports.updateProfile = async (req, res) => {
       req.user._id,
       updates,
       { new: true, runValidators: true }
-    ).select('-password');
+    ).select('-password -twoFactor.sms.phone');
 
     res.json({ success: true, user });
   } catch (error) {
@@ -555,6 +606,117 @@ exports.updateUsername = async (req, res) => {
     res.json({ success: true, user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.verifySensitiveActionPassword = async (req, res) => {
+  try {
+    const action = String(req.body.action || '').trim();
+    const password = String(req.body.password || '');
+
+    if (!ACTION_LABELS[action]) {
+      return res.status(400).json({ success: false, message: 'Unsupported sensitive action' });
+    }
+
+    if (!password) {
+      return res.status(400).json({ success: false, message: 'Account password is required' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (['admin', 'coAdmin'].includes(user.role)) {
+      const { token } = await createVerifiedActionToken({
+        userId: user._id,
+        action,
+        method: 'password',
+        metadata: { adminBypass: true },
+      });
+
+      return res.json({
+        success: true,
+        sensitiveActionToken: token,
+        requiresTwoFactor: false,
+        attemptsRemaining: PASSWORD_ATTEMPT_LIMIT,
+        message: 'Admin verification bypassed',
+      });
+    }
+
+    const attemptState = getPasswordAttemptState(user);
+    if (attemptState.isLocked) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many failed password attempts. Try again after the lock expires.',
+        attemptsRemaining: 0,
+        lockedUntil: attemptState.lockedUntil,
+        showForgotPassword: true,
+      });
+    }
+
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      const failureState = recordPasswordAttemptFailure(user);
+      await user.save();
+
+      return res.status(failureState.isLocked ? 429 : 401).json({
+        success: false,
+        message: failureState.isLocked
+          ? 'Too many failed password attempts. Try again tomorrow or reset your password.'
+          : 'Account password is incorrect',
+        attemptsRemaining: failureState.attemptsRemaining,
+        failedAttempts: failureState.failedAttempts,
+        lockedUntil: failureState.lockedUntil,
+        showForgotPassword: true,
+      });
+    }
+
+    resetPasswordAttemptState(user);
+    await user.save();
+
+    const { token } = await createVerifiedActionToken({
+      userId: user._id,
+      action,
+      method: 'password',
+    });
+    const twoFactorStatus = buildTwoFactorStatus(user);
+
+    return res.json({
+      success: true,
+      sensitiveActionToken: token,
+      requiresTwoFactor: twoFactorStatus.enabled,
+      twoFactor: twoFactorStatus.enabled ? getChallengeMethodsPayload(user) : null,
+      action,
+      actionLabel: ACTION_LABELS[action],
+      attemptsRemaining: PASSWORD_ATTEMPT_LIMIT,
+      message: twoFactorStatus.enabled
+        ? 'Password verified. Complete two-factor verification to continue.'
+        : 'Password verified',
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getSensitiveActionPasswordStatus = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const state = getPasswordAttemptState(user);
+    return res.json({
+      success: true,
+      attemptsRemaining: state.attemptsRemaining,
+      failedAttempts: state.failedAttempts,
+      lockedUntil: state.lockedUntil,
+      isLocked: state.isLocked,
+      limit: PASSWORD_ATTEMPT_LIMIT,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 

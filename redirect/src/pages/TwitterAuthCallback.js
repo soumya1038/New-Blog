@@ -5,6 +5,7 @@ import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 import { getOAuthRedirectUri } from '../utils/oauthRedirects';
 import { redirectOAuthCallbackToNativeApp } from '../utils/nativeOAuthBridge';
+import { storeAuthSession } from '../utils/authSession';
 
 const extractTwitterErrorDetail = (payload = {}) => {
   if (!payload || typeof payload !== 'object') return '';
@@ -102,8 +103,7 @@ const TwitterAuthCallback = () => {
         const passwordSetupRequired = Boolean(response?.data?.passwordSetupRequired);
         const missingEmailForWelcome = Boolean(response?.data?.missingEmailForWelcome);
 
-        localStorage.setItem('token', token);
-        localStorage.setItem('rememberMe', 'true');
+        storeAuthSession({ token, user: response?.data?.user, rememberMe: true });
         sessionStorage.setItem('showLoginIntro', 'true');
         if (missingEmailForWelcome) {
           sessionStorage.setItem('socialEmailSetupRequired', 'twitter');

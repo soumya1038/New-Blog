@@ -275,13 +275,12 @@ const MyOrders = () => {
                         </>
                       ) : isDelivered ? (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => alert('Return request support is not connected yet. Please contact support for this order.')}
+                          <Link
+                            to={`/help/article/resolve-an-order-delivery-or-return-problem?reference=${encodeURIComponent(order.orderNumber || order._id)}`}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--border-color)] text-xs text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] font-medium"
                           >
-                            <FaUndoAlt size={10} /> Return
-                          </button>
+                            <FaUndoAlt size={10} /> Order help
+                          </Link>
                           <Link
                             to={`/order/${order._id}`}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium"

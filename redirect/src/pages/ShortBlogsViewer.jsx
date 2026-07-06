@@ -24,6 +24,14 @@ import Avatar from '../components/Avatar';
 import EnhancedComment from '../components/EnhancedComment';
 import WaveformBars from '../components/WaveformBars';
 import { bumpReplyCount, removeCommentFromReplyMap, updateCommentsById, updateReplyMapById } from '../utils/commentTree';
+import TwoFactorVerificationModal from '../components/TwoFactorVerificationModal';
+import SensitiveActionAuthModal from '../components/SensitiveActionAuthModal';
+import {
+  buildSensitiveActionHeaders,
+  getTwoFactorRequirement,
+  requestAuthenticatedTwoFactorChallenge,
+  verifyAuthenticatedTwoFactorChallenge,
+} from '../utils/twoFactorFlow';
 import './ShortBlogsViewer.css';
 
 const ShortBlogsViewer = () => {
@@ -67,6 +75,8 @@ const ShortBlogsViewer = () => {
   const [loadingOwnerShorts, setLoadingOwnerShorts] = useState(false);
   const [loadingComments, setLoadingComments] = useState(false);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const [twoFactorPrompt, setTwoFactorPrompt] = useState(null);
+  const [sensitiveAuthPrompt, setSensitiveAuthPrompt] = useState(false);
 
   const containerRef = useRef(null);
   const scrollTimeoutRef = useRef(null);
@@ -838,26 +848,94 @@ const ShortBlogsViewer = () => {
     navigate(`/edit/${currentBlog._id}`);
   };
 
+  const performDelete = async ({ sensitiveActionToken, twoFactorToken } = {}) => {
+    await api.delete(`/shorts/${currentBlog._id}`, {
+      headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
+      data: {
+        ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+        ...(twoFactorToken ? { twoFactorToken } : {}),
+      },
+    });
+    setShowDeleteConfirm(false);
+    setDeleting(false);
+    if (blogs.length > 1) {
+      const newBlogs = blogs.filter(b => b._id !== currentBlog._id);
+      setBlogs(newBlogs);
+      if (currentIndex >= newBlogs.length) {
+        setCurrentIndex(newBlogs.length - 1);
+      }
+    } else {
+      navigate('/home');
+    }
+  };
+
   const handleDelete = async () => {
+    if (!['admin', 'coAdmin'].includes(user?.role)) {
+      setShowDeleteConfirm(false);
+      setSensitiveAuthPrompt(true);
+      return;
+    }
+
     setDeleting(true);
     try {
-      await api.delete(`/shorts/${currentBlog._id}`);
-      setShowDeleteConfirm(false);
-      setDeleting(false);
-      if (blogs.length > 1) {
-        const newBlogs = blogs.filter(b => b._id !== currentBlog._id);
-        setBlogs(newBlogs);
-        if (currentIndex >= newBlogs.length) {
-          setCurrentIndex(newBlogs.length - 1);
-        }
-      } else {
-        navigate('/home');
-      }
+      await performDelete();
     } catch (error) {
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        setTwoFactorPrompt({
+          ...requirement,
+          onVerified: performDelete,
+        });
+        setShowDeleteConfirm(false);
+        setDeleting(false);
+        return;
+      }
       console.error('Error deleting blog:', error);
       setDeleting(false);
       alert('Failed to delete blog');
     }
+  };
+
+  const handleTwoFactorVerified = async (token) => {
+    const prompt = twoFactorPrompt;
+    setTwoFactorPrompt(null);
+    if (!prompt?.onVerified) return;
+    setDeleting(true);
+    try {
+      await prompt.onVerified(token);
+    } catch (error) {
+      console.error('Error deleting blog:', error);
+      setDeleting(false);
+      alert(error.response?.data?.message || 'Failed to delete blog');
+    }
+  };
+
+  const handleSensitiveAuthVerified = async (result) => {
+    setSensitiveAuthPrompt(false);
+    const sensitiveActionToken = result.sensitiveActionToken;
+    if (result.requiresTwoFactor) {
+      setTwoFactorPrompt({
+        action: result.action || 'delete_short',
+        actionLabel: result.actionLabel || 'delete this short',
+        twoFactor: result.twoFactor,
+        onVerified: async (twoFactorToken) => performDelete({ sensitiveActionToken, twoFactorToken }),
+      });
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await performDelete({ sensitiveActionToken });
+    } catch (error) {
+      console.error('Error deleting blog:', error);
+      setDeleting(false);
+      alert(error.response?.data?.message || 'Failed to delete blog');
+    }
+  };
+
+  const handleDeleteForgotPassword = () => {
+    setSensitiveAuthPrompt(false);
+    navigate('/profile?forgotPassword=1');
   };
 
   if (loading) {
@@ -2086,6 +2164,26 @@ const ShortBlogsViewer = () => {
           </div>
         ))}
       </div>
+      <TwoFactorVerificationModal
+        open={Boolean(twoFactorPrompt)}
+        action={twoFactorPrompt?.action}
+        actionLabel={twoFactorPrompt?.actionLabel}
+        twoFactor={twoFactorPrompt?.twoFactor}
+        requestChallenge={requestAuthenticatedTwoFactorChallenge}
+        verifyChallenge={verifyAuthenticatedTwoFactorChallenge}
+        onVerified={handleTwoFactorVerified}
+        onClose={() => setTwoFactorPrompt(null)}
+      />
+      <SensitiveActionAuthModal
+        open={sensitiveAuthPrompt}
+        action="delete_short"
+        actionLabel="delete this short"
+        title="Verify before deleting"
+        description="Confirm your password before this short is permanently deleted."
+        onVerified={handleSensitiveAuthVerified}
+        onForgotPassword={handleDeleteForgotPassword}
+        onClose={() => setSensitiveAuthPrompt(false)}
+      />
     </div>
   );
 };

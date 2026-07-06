@@ -3,6 +3,42 @@ const Notification = require('../models/Notification');
 const { enqueueEmailJob } = require('../jobs/queueService');
 const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
 
+const hasUserId = (ids = [], userId) =>
+  Array.isArray(ids) && ids.some((id) => id.toString() === userId.toString());
+
+const queueNewFollowerNotification = async (req, userToFollow, userId) => {
+  await Notification.create({
+    recipient: userId,
+    sender: req.user._id,
+    type: 'follow',
+    message: `${req.user.username} started following you`
+  });
+
+  if (userToFollow.email && isEmailNotificationEnabled(userToFollow, 'newFollower')) {
+    enqueueEmailJob(
+      'new-follower',
+      {
+        email: userToFollow.email,
+        username: userToFollow.username,
+        followerName: req.user.username,
+        followerProfileUrl: `/user/${req.user._id}`
+      },
+      {
+        jobId: `new-follower:${userId}:${req.user._id}`
+      }
+    ).catch((error) => {
+      console.error('Failed to queue new follower email:', error?.message || error);
+    });
+  }
+
+  const io = req.app.get('io');
+  if (io) {
+    io.to(`user:${userId}`).emit('notification:follow', {
+      sender: { _id: req.user._id, username: req.user.username, profileImage: req.user.profileImage }
+    });
+  }
+};
+
 // Follow/Unfollow user
 exports.toggleFollow = async (req, res) => {
   try {
@@ -18,7 +54,7 @@ exports.toggleFollow = async (req, res) => {
     }
 
     const currentUser = await User.findById(req.user._id);
-    const isFollowing = currentUser.following.includes(userId);
+    const isFollowing = hasUserId(currentUser.following, userId);
 
     if (isFollowing) {
       // Unfollow
@@ -37,41 +73,56 @@ exports.toggleFollow = async (req, res) => {
       await currentUser.save();
       await userToFollow.save();
 
-      // Create notification
-      await Notification.create({
-        recipient: userId,
-        sender: req.user._id,
-        type: 'follow',
-        message: `${req.user.username} started following you`
-      });
-
-      if (userToFollow.email && isEmailNotificationEnabled(userToFollow, 'newFollower')) {
-        enqueueEmailJob(
-          'new-follower',
-          {
-            email: userToFollow.email,
-            username: userToFollow.username,
-            followerName: req.user.username,
-            followerProfileUrl: `/user/${req.user._id}`
-          },
-          {
-            jobId: `new-follower:${userId}:${req.user._id}`
-          }
-        ).catch((error) => {
-          console.error('Failed to queue new follower email:', error?.message || error);
-        });
-      }
-      
-      // Emit socket event
-      const io = req.app.get('io');
-      if (io) {
-        io.to(`user:${userId}`).emit('notification:follow', {
-          sender: { _id: req.user._id, username: req.user.username, profileImage: req.user.profileImage }
-        });
-      }
+      await queueNewFollowerNotification(req, userToFollow, userId);
 
       res.json({ success: true, following: true });
     }
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Follow user without toggling back to unfollow.
+exports.followOnly = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (userId === req.user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'Cannot follow yourself' });
+    }
+
+    const userToFollow = await User.findById(userId);
+    if (!userToFollow) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const currentUser = await User.findById(req.user._id);
+    const isFollowing = hasUserId(currentUser.following, userId);
+
+    if (isFollowing) {
+      return res.json({
+        success: true,
+        following: true,
+        alreadyFollowing: true,
+        followerCount: Array.isArray(userToFollow.followers) ? userToFollow.followers.length : 0,
+      });
+    }
+
+    currentUser.following.push(userId);
+    if (!hasUserId(userToFollow.followers, req.user._id)) {
+      userToFollow.followers.push(req.user._id);
+    }
+
+    await currentUser.save();
+    await userToFollow.save();
+    await queueNewFollowerNotification(req, userToFollow, userId);
+
+    res.json({
+      success: true,
+      following: true,
+      alreadyFollowing: false,
+      followerCount: Array.isArray(userToFollow.followers) ? userToFollow.followers.length : 0,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

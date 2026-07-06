@@ -6,6 +6,8 @@ const {
   createBlog,
   getBlogs,
   getBlog,
+  getRelatedBlogContent,
+  getAuthorBlogContent,
   updateBlog,
   deleteBlog,
   toggleLike,
@@ -13,6 +15,7 @@ const {
   getShortBlogs
 } = require('../controllers/blogController');
 const { protect, optionalAuth } = require('../middleware/auth');
+const { requireSensitiveActionToken, requireTwoFactorForAction } = require('../utils/twoFactor');
 const trackActivity = require('../middleware/trackActivity');
 
 const router = express.Router();
@@ -137,10 +140,12 @@ router.delete('/delete-image/:publicId', protect, async (req, res) => {
 router.post('/', protect, trackActivity, createBlog);
 router.get('/', optionalAuth, getBlogs);
 router.get('/short/all', getShortBlogs);
+router.get('/:id/related', optionalAuth, getRelatedBlogContent);
+router.get('/:id/author-content', optionalAuth, getAuthorBlogContent);
 router.get('/:id', optionalAuth, getBlog);
 router.post('/:id/view', optionalAuth, trackView);
 router.put('/:id', protect, trackActivity, updateBlog);
-router.delete('/:id', protect, trackActivity, deleteBlog);
+router.delete('/:id', protect, requireSensitiveActionToken('delete_blog'), requireTwoFactorForAction('delete_blog'), trackActivity, deleteBlog);
 router.post('/:id/like', protect, trackActivity, toggleLike);
 
 module.exports = router;

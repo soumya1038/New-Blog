@@ -1,4 +1,4 @@
-import { useState, useContext, useEffect, useRef } from 'react';
+import { useState, useContext, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
@@ -8,6 +8,7 @@ import axios from 'axios';
 import GuestUsernameModal from '../components/GuestUsernameModal';
 import GuestInfoModal from '../components/GuestInfoModal';
 import { requestSocialAuthUrl } from '../utils/socialAuth';
+import TwoFactorVerificationModal from '../components/TwoFactorVerificationModal';
 
 const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
 
@@ -270,7 +271,7 @@ const SOCIAL_ICONS = [
 // ════════════════════════════════════════════════════════════════════════════
 const Login = () => {
   const { t } = useTranslation();
-  const { login, user } = useContext(AuthContext);
+  const { login, user, completeLogin } = useContext(AuthContext);
   const navigate = useNavigate();
 
   // Use the shared theme state so auth pages always match the navbar.
@@ -334,6 +335,7 @@ const Login = () => {
   const [finalTimer, setFinalTimer]                   = useState(120);
   const [isConfirming, setIsConfirming]               = useState(false);
   const [showSuccessModal, setShowSuccessModal]       = useState(false);
+  const [forgotTwoFactorPrompt, setForgotTwoFactorPrompt] = useState(null);
 
   const inputRef = useRef(null);
   const fmtTime  = s => `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
@@ -479,6 +481,30 @@ const Login = () => {
     handleSocialLoginRedirect('linkedin');
   };
 
+  useEffect(() => {
+    if (!socialAuthLoading) return undefined;
+
+    let resetTimer;
+    const resetOnReturn = () => {
+      if (document.visibilityState !== 'visible') return;
+      window.clearTimeout(resetTimer);
+      resetTimer = window.setTimeout(() => {
+        setSocialAuthLoading('');
+      }, 300);
+    };
+
+    window.addEventListener('focus', resetOnReturn);
+    window.addEventListener('pageshow', resetOnReturn);
+    document.addEventListener('visibilitychange', resetOnReturn);
+
+    return () => {
+      window.clearTimeout(resetTimer);
+      window.removeEventListener('focus', resetOnReturn);
+      window.removeEventListener('pageshow', resetOnReturn);
+      document.removeEventListener('visibilitychange', resetOnReturn);
+    };
+  }, [socialAuthLoading]);
+
   // Forgot password handlers (identical to Login.js)
   const handleForgotPassword = async (e) => {
     e.preventDefault(); setForgotError(''); setSendingCode(true);
@@ -528,13 +554,63 @@ const Login = () => {
     finally{ setSendingChangeCode(false); }
   };
 
+  const requestForgotTwoFactorChallenge = useCallback(async ({ method }) => {
+    const { data } = await axios.post(`${API}/api/auth/forgot-password/2fa/challenge`, {
+      username: forgotUsername,
+      email: forgotEmail,
+      method,
+    });
+    return data;
+  }, [forgotEmail, forgotUsername]);
+
+  const verifyForgotTwoFactorChallenge = useCallback(async ({ challengeId, code }) => {
+    const { data } = await axios.post(`${API}/api/auth/forgot-password/2fa/verify`, {
+      username: forgotUsername,
+      email: forgotEmail,
+      challengeId,
+      code,
+    });
+    return data;
+  }, [forgotEmail, forgotUsername]);
+
   const handleConfirmPasswordChange = async (e) => {
     e.preventDefault(); setFinalError(''); setIsConfirming(true);
     try {
       await axios.post(`${API}/api/auth/forgot-password/confirm`, { username:forgotUsername, email:forgotEmail, code:finalCode });
       setShowFinalCodeModal(false); setShowSuccessModal(true);
-    } catch(err){ setFinalError(err.response?.data?.message || t('Invalid confirmation code')); }
+    } catch(err){
+      if (err.response?.data?.requiresTwoFactor) {
+        setForgotTwoFactorPrompt({
+          action: err.response.data.action,
+          actionLabel: err.response.data.actionLabel,
+          twoFactor: err.response.data.twoFactor,
+        });
+      } else {
+        setFinalError(err.response?.data?.message || t('Invalid confirmation code'));
+      }
+    }
     finally{ setIsConfirming(false); }
+  };
+
+  const handleForgotTwoFactorVerified = async (token) => {
+    setForgotTwoFactorPrompt(null);
+    setIsConfirming(true);
+    setFinalError('');
+    try {
+      await axios.post(`${API}/api/auth/forgot-password/confirm`, {
+        username: forgotUsername,
+        email: forgotEmail,
+        code: finalCode,
+        twoFactorToken: token,
+      });
+      setShowFinalCodeModal(false);
+      setShowSuccessModal(true);
+    } catch (err) {
+      setFinalError(err.response?.data?.message || t('Invalid confirmation code'));
+      setShowFinalCodeModal(true);
+    } finally {
+      setIsConfirming(false);
+    }
   };
 
   const handleSuccessClose = () => {
@@ -544,13 +620,18 @@ const Login = () => {
     setError(''); navigate('/login');
   };
 
+  const handleGuestEntryClick = () => {
+    setError('');
+    setShowGuestModal(true);
+  };
+
   const handleGuestContinue = (u) => { setGuestUsername(u); setShowGuestModal(false); setShowGuestInfoModal(true); };
   const handleGuestLogin = async () => {
     try {
       const { data } = await axios.post(`${API}/api/auth/guest-login`, { username:guestUsername });
-      localStorage.setItem('token', data.token); localStorage.setItem('rememberMe','true');
+      completeLogin(data, true);
       sessionStorage.setItem('showLoginIntro','true');
-      setShowGuestInfoModal(false); window.location.href='/home';
+      setShowGuestInfoModal(false); navigate('/home', { replace: true });
     } catch(err){
       setError(err.response?.data?.message || t('Guest login failed'));
       setShowGuestInfoModal(false);
@@ -713,11 +794,20 @@ const Login = () => {
                       </button>
                     )}
                   </div>
-                  <div style={{display:'flex',justifyContent:'flex-end',marginTop:8}}>
-                    <span onClick={()=>setShowForgotModal(true)}
-                      style={{fontSize:12,color:C.brand,cursor:'pointer',fontWeight:600}}>
+                  <div style={{display:'flex',justifyContent:'space-between',gap:12,marginTop:8,flexWrap:'wrap'}}>
+                    <Link
+                      to="/help/article/secure-a-compromised-account"
+                      style={{fontSize:12,color:C.muted,fontWeight:600,textDecoration:'none'}}
+                    >
+                      {t('Account security help')}
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={()=>setShowForgotModal(true)}
+                      style={{fontSize:12,color:C.brand,cursor:'pointer',fontWeight:600,border:0,padding:0,background:'transparent'}}
+                    >
                       {t('Forgot Password?')}
-                    </span>
+                    </button>
                   </div>
                 </div>
               )}
@@ -757,7 +847,15 @@ const Login = () => {
                     <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <circle cx="12" cy="12" r="10"/><path strokeLinecap="round" d="M12 8v4M12 16h.01"/>
                     </svg>
-                    {error}
+                    <span>{error}</span>
+                    {/suspend/i.test(error) ? (
+                      <Link
+                        to="/help/article/appeal-an-enforcement-or-seller-decision"
+                        style={{color:C.error,fontWeight:700,textDecoration:'underline'}}
+                      >
+                        {t('Appeal help')}
+                      </Link>
+                    ) : null}
                   </p>
                 )}
               </div>
@@ -807,7 +905,7 @@ const Login = () => {
                     {/* LinkedIn real OAuth */}
                     <SocialBtn label="LinkedIn" icon={SOCIAL_ICONS[3].icon} C={C} onClick={handleLinkedInLoginRedirect} disabled={!!socialAuthLoading} loading={socialAuthLoading==='linkedin'}/>
                   </div>
-                  <button onClick={()=>setShowGuestModal(true)}
+                  <button onClick={handleGuestEntryClick}
                     style={{width:'100%',padding:'13px',borderRadius:13,
                       border:`1.5px solid ${C.brand}`,background:'transparent',color:C.brand,
                       fontSize:14,fontWeight:600,fontFamily:"'Palatino Linotype',Palatino,serif",
@@ -1044,6 +1142,17 @@ const Login = () => {
           </div>
         </div>
       )}
+
+      <TwoFactorVerificationModal
+        open={Boolean(forgotTwoFactorPrompt)}
+        action={forgotTwoFactorPrompt?.action}
+        actionLabel={forgotTwoFactorPrompt?.actionLabel}
+        twoFactor={forgotTwoFactorPrompt?.twoFactor}
+        requestChallenge={requestForgotTwoFactorChallenge}
+        verifyChallenge={verifyForgotTwoFactorChallenge}
+        onVerified={handleForgotTwoFactorVerified}
+        onClose={() => setForgotTwoFactorPrompt(null)}
+      />
 
       {/* Guest modals */}
       {showGuestModal&&<GuestUsernameModal onClose={()=>setShowGuestModal(false)} onContinue={handleGuestContinue}/>}

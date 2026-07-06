@@ -1,6 +1,11 @@
-import React, { createContext, useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { createContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
+import {
+  clearAuthSession,
+  getStoredAuthUser,
+  hasAuthToken,
+  storeAuthSession,
+} from '../utils/authSession';
 
 export const AuthContext = createContext();
 
@@ -10,75 +15,114 @@ export const AuthProvider = ({ children }) => {
   const [sessionExpired, setSessionExpired] = useState(false);
   const [guestExpired, setGuestExpired] = useState(false);
 
+  const checkAuth = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    const rememberMe = localStorage.getItem('rememberMe');
+
+    if (!token) {
+      clearAuthSession();
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+
+    const cachedUser = getStoredAuthUser();
+    if (cachedUser) {
+      setUser(cachedUser);
+    }
+
+    try {
+      const { data } = await api.get('/auth/me');
+      const nextUser = storeAuthSession({
+        token,
+        user: data.user,
+        rememberMe: rememberMe !== 'false',
+      });
+      setUser(nextUser || data.user);
+      setSessionExpired(false);
+      setGuestExpired(false);
+    } catch (error) {
+      if (error.response?.status === 401) {
+        clearAuthSession();
+        setUser(null);
+        if (error.response?.data?.guestExpired) {
+          setGuestExpired(true);
+        }
+      } else if (!cachedUser) {
+        setUser(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     checkAuth();
     
     // Listen for session expiration from API interceptor
     const handleSessionExpired = () => {
+      clearAuthSession();
       setUser(null);
       setSessionExpired(true);
       setLoading(false);
     };
     
     const handleGuestExpired = () => {
+      clearAuthSession();
       setUser(null);
       setGuestExpired(true);
       setLoading(false);
     };
+
+    const handleAuthSessionChanged = (event) => {
+      if (event.detail?.user) {
+        setUser(event.detail.user);
+        return;
+      }
+
+      if (!hasAuthToken()) {
+        setUser(null);
+      }
+    };
     
     window.addEventListener('sessionExpired', handleSessionExpired);
     window.addEventListener('guestExpired', handleGuestExpired);
+    window.addEventListener('authSessionChanged', handleAuthSessionChanged);
     return () => {
       window.removeEventListener('sessionExpired', handleSessionExpired);
       window.removeEventListener('guestExpired', handleGuestExpired);
+      window.removeEventListener('authSessionChanged', handleAuthSessionChanged);
     };
-  }, []);
-
-  const checkAuth = async () => {
-    const token = localStorage.getItem('token');
-    const rememberMe = localStorage.getItem('rememberMe');
-    
-    if (!token) {
-      if (!rememberMe) {
-        localStorage.removeItem('token');
-      }
-      setUser(null);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const { data } = await api.get('/auth/me');
-      setUser(data.user);
-      setSessionExpired(false);
-    } catch (error) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('rememberMe');
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [checkAuth]);
 
   const login = async (username, password, rememberMe) => {
     const { data } = await api.post('/auth/login', { username, password, rememberMe });
-    localStorage.setItem('token', data.token);
-    localStorage.setItem('rememberMe', rememberMe ? 'true' : 'false');
+    const fallbackUser = storeAuthSession({
+      token: data.token,
+      user: data.user,
+      rememberMe,
+    });
+    if (fallbackUser) {
+      setUser(fallbackUser);
+    }
     try {
       const meRes = await api.get('/auth/me');
-      setUser(meRes.data.user);
-    } catch {
-      setUser({
-        _id: data.user.id,
-        username: data.user.username,
-        name: data.user.name || '',
-        profileImage: data.user.profileImage,
-        role: data.user.role,
-        isVerified: data.user.isVerified || false,
-        isSeller: data.user.isSeller || false,
+      const nextUser = storeAuthSession({
+        token: data.token,
+        user: meRes.data.user,
+        rememberMe,
       });
+      setUser(nextUser || meRes.data.user);
+    } catch (error) {
+      if (error.response?.status === 401) {
+        clearAuthSession();
+        setUser(null);
+        throw error;
+      }
+      setUser(fallbackUser || null);
     }
     setSessionExpired(false);
+    setGuestExpired(false);
     return data;
   };
 
@@ -97,14 +141,25 @@ export const AuthProvider = ({ children }) => {
       }
     }
     
-    localStorage.removeItem('token');
-    localStorage.removeItem('rememberMe');
+    clearAuthSession();
     setUser(null);
     setSessionExpired(false);
   };
 
+  const completeLogin = (data, rememberMe = true) => {
+    const nextUser = storeAuthSession({
+      token: data?.token,
+      user: data?.user,
+      rememberMe,
+    });
+    setUser(nextUser);
+    setSessionExpired(false);
+    setGuestExpired(false);
+    return nextUser;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, sessionExpired, guestExpired, setGuestExpired, login, register, logout, setUser }}>
+    <AuthContext.Provider value={{ user, loading, sessionExpired, guestExpired, setGuestExpired, login, register, logout, setUser, completeLogin }}>
       {children}
     </AuthContext.Provider>
   );

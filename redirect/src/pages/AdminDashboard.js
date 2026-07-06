@@ -4,13 +4,14 @@ import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { TbBrandBlogger } from "react-icons/tb";
-import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes, FaServer, FaExclamationTriangle, FaChartLine, FaBug, FaTachometerAlt, FaEnvelope, FaStore, FaMoneyBillWave, FaRupeeSign } from 'react-icons/fa';
+import { FaUsers, FaUserCheck, FaTrash, FaBan, FaCheckCircle, FaEye, FaSearch, FaUserShield, FaUserTie, FaTimes, FaServer, FaExclamationTriangle, FaChartLine, FaBug, FaTachometerAlt, FaEnvelope, FaStore, FaMoneyBillWave, FaRupeeSign, FaHeadset } from 'react-icons/fa';
 import { GoVerified, GoUnverified } from 'react-icons/go';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { StatsCardSkeleton, TableRowSkeleton } from '../components/SkeletonLoader';
 import { BarLoader, PropagateLoader } from 'react-spinners';
 import AdminSellerApplications from '../components/AdminSellerApplications';
+import AdminSupportRequests from '../components/AdminSupportRequests';
 
 const AdminPayoutsPanel = () => {
   const [payouts, setPayouts] = useState([]);
@@ -896,6 +897,13 @@ const AdminDashboard = () => {
             <FaRupeeSign size={14} />
             {t('Price Changes')}
           </button>
+          <button
+            onClick={() => setActiveTab('support')}
+            className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base flex items-center gap-1.5 ${activeTab === 'support' ? 'border-b-2 border-[var(--brand-primary)] text-[var(--brand-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
+          >
+            <FaHeadset size={14} />
+            Support
+          </button>
         </div>
 
         {/* Overview Tab */}
@@ -1672,6 +1680,10 @@ const AdminDashboard = () => {
 
         {activeTab === 'price-changes' && (
           <AdminPriceChangesPanel />
+        )}
+
+        {activeTab === 'support' && (
+          <AdminSupportRequests />
         )}
 
         {/* Blogs Tab */}

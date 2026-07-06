@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { clearAuthSession } from '../utils/authSession';
 
 const API_URL = process.env.REACT_APP_API_URL 
   ? `${process.env.REACT_APP_API_URL}/api`
@@ -33,22 +34,20 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    if (error.response?.status === 401) {
       const token = localStorage.getItem('token');
       
       // Only show session expired if user actually had a token (was logged in)
       if (token) {
         // Check if guest session expired
         if (error.response?.data?.guestExpired) {
-          localStorage.removeItem('token');
-          localStorage.removeItem('rememberMe');
+          clearAuthSession();
           window.dispatchEvent(new CustomEvent('guestExpired'));
           return Promise.reject(error);
         }
         
         // Clear auth data
-        localStorage.removeItem('token');
-        localStorage.removeItem('rememberMe');
+        clearAuthSession();
         
         // Store current path for redirect after login
         const currentPath = window.location.pathname;

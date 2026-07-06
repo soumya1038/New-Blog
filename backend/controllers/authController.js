@@ -6,6 +6,11 @@ const crypto = require('crypto');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
+const {
+  buildTwoFactorStatus,
+  getChallengeMethodsPayload,
+  verifyTwoFactorActionToken,
+} = require('../utils/twoFactor');
 
 const GOOGLE_AUTH_BASE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -2463,7 +2468,7 @@ exports.facebookDataDeletionStatus = async (req, res) => {
 // Get current user
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
+    const user = await User.findById(req.user._id).select('-password -twoFactor.sms.phone');
     res.json({ success: true, user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -2798,6 +2803,26 @@ exports.confirmForgotPasswordChange = async (req, res) => {
     const user = await User.findOne({ username, email });
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const twoFactorStatus = buildTwoFactorStatus(user);
+    if (twoFactorStatus.enabled) {
+      const verified = await verifyTwoFactorActionToken({
+        userId: user._id,
+        action: 'forgot_password',
+        token: req.body.twoFactorToken,
+      });
+
+      if (!verified) {
+        return res.status(403).json({
+          success: false,
+          requiresTwoFactor: true,
+          action: 'forgot_password',
+          actionLabel: 'reset your password',
+          message: 'Two-factor verification required',
+          twoFactor: getChallengeMethodsPayload(user),
+        });
+      }
     }
 
     user.password = storedData.newPassword;

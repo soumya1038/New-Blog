@@ -8,6 +8,10 @@ const SkeletonBlock = ({ className = '' }) => (
   <div className={`${blockBase} ${className} ${shimmer}`.trim()} />
 );
 
+const BlogSkeletonBlock = ({ className = '' }) => (
+  <div className={`blog-detail-skeleton-block ${className} ${shimmer}`.trim()} />
+);
+
 // Blog Card Skeleton
 export const BlogCardSkeleton = () => (
   <div className="theme-panel rounded-xl shadow-lg overflow-hidden p-6 border border-[var(--border-default)]">
@@ -62,22 +66,148 @@ export const HomePageSkeleton = () => (
 
 // Blog Detail Skeleton
 export const BlogDetailSkeleton = () => (
-  <div className="bg-white rounded-2xl shadow-xl p-8">
-    <div className={`h-10 bg-gray-200 rounded w-3/4 mb-6 ${shimmer}`}></div>
-    <div className="flex items-center gap-3 mb-6">
-      <div className={`w-12 h-12 bg-gray-200 rounded-full ${shimmer}`}></div>
-      <div>
-        <div className={`h-4 bg-gray-200 rounded w-32 mb-2 ${shimmer}`}></div>
-        <div className={`h-3 bg-gray-200 rounded w-24 ${shimmer}`}></div>
-      </div>
-    </div>
-    <div className="space-y-3 mb-6">
-      <div className={`h-4 bg-gray-200 rounded w-full ${shimmer}`}></div>
-      <div className={`h-4 bg-gray-200 rounded w-full ${shimmer}`}></div>
-      <div className={`h-4 bg-gray-200 rounded w-5/6 ${shimmer}`}></div>
-      <div className={`h-4 bg-gray-200 rounded w-full ${shimmer}`}></div>
-      <div className={`h-4 bg-gray-200 rounded w-4/6 ${shimmer}`}></div>
-    </div>
+  <div className="blog-detail-layout blog-detail-skeleton-layout" role="status" aria-live="polite" aria-label="Loading blog detail">
+    <aside className="blog-detail-engagement-rail blog-detail-skeleton-rail" aria-hidden="true">
+      {[0, 1, 2].map((item) => (
+        <BlogSkeletonBlock key={`blog-skeleton-rail-${item}`} />
+      ))}
+    </aside>
+
+    <main className="blog-detail-reader-panel">
+      <article className="blog-detail-reader-card blog-detail-skeleton-card" aria-hidden="true">
+        <BlogSkeletonBlock className="blog-detail-skeleton-back" />
+        <BlogSkeletonBlock className="blog-detail-skeleton-kicker" />
+        <BlogSkeletonBlock className="blog-detail-skeleton-title is-wide" />
+        <BlogSkeletonBlock className="blog-detail-skeleton-title is-medium" />
+        <BlogSkeletonBlock className="blog-detail-skeleton-title is-short" />
+        <BlogSkeletonBlock className="blog-detail-skeleton-rule" />
+        <BlogSkeletonBlock className="blog-detail-skeleton-deck is-wide" />
+        <BlogSkeletonBlock className="blog-detail-skeleton-deck" />
+
+        <div className="blog-detail-skeleton-meta">
+          <BlogSkeletonBlock className="blog-detail-skeleton-avatar" />
+          <BlogSkeletonBlock />
+          <BlogSkeletonBlock />
+          <BlogSkeletonBlock />
+        </div>
+
+        <div className="blog-detail-skeleton-tags">
+          {[0, 1, 2, 3].map((item) => (
+            <BlogSkeletonBlock key={`blog-skeleton-tag-${item}`} />
+          ))}
+        </div>
+
+        <BlogSkeletonBlock className="blog-detail-skeleton-gallery" />
+
+        <div className="blog-detail-action-strip blog-detail-skeleton-actions">
+          {[0, 1, 2, 3, 4].map((item) => (
+            <BlogSkeletonBlock key={`blog-skeleton-action-${item}`} />
+          ))}
+        </div>
+
+        <section className="blog-detail-body-frame blog-detail-skeleton-body">
+          <div className="blog-detail-skeleton-audio">
+            <BlogSkeletonBlock className="blog-detail-skeleton-audio-play" />
+            <BlogSkeletonBlock className="blog-detail-skeleton-audio-icon" />
+            <BlogSkeletonBlock className="blog-detail-skeleton-audio-range" />
+            <BlogSkeletonBlock className="blog-detail-skeleton-audio-summary" />
+          </div>
+          <div className="blog-detail-skeleton-copy">
+            <BlogSkeletonBlock className="is-dropcap" />
+            {[0, 1, 2, 3, 4, 5].map((item) => (
+              <BlogSkeletonBlock
+                key={`blog-skeleton-line-${item}`}
+                className={item === 5 ? 'is-short' : item === 2 ? 'is-medium' : ''}
+              />
+            ))}
+          </div>
+          <BlogSkeletonBlock className="blog-detail-skeleton-subhead" />
+          <div className="blog-detail-skeleton-copy">
+            {[0, 1, 2, 3].map((item) => (
+              <BlogSkeletonBlock
+                key={`blog-skeleton-late-line-${item}`}
+                className={item === 3 ? 'is-medium' : ''}
+              />
+            ))}
+          </div>
+        </section>
+
+        <section className="blog-detail-author-strip blog-detail-skeleton-author-inline">
+          <BlogSkeletonBlock className="blog-detail-skeleton-avatar is-large" />
+          <span>
+            <BlogSkeletonBlock />
+            <BlogSkeletonBlock className="is-short" />
+          </span>
+          <BlogSkeletonBlock className="blog-detail-skeleton-follow" />
+        </section>
+
+        <section className="article-editorial-side-related article-author-related-section blog-detail-inline-author-related blog-detail-skeleton-author-related">
+          <BlogSkeletonBlock className="blog-detail-skeleton-section-title" />
+          <div className="article-author-content-grid">
+            {[0, 1, 2, 3].map((item) => (
+              <div className="article-related-card is-editorial blog-detail-skeleton-related-card" key={`blog-skeleton-author-card-${item}`}>
+                <BlogSkeletonBlock className="article-related-media" />
+                <span className="article-related-copy">
+                  <BlogSkeletonBlock />
+                  <BlogSkeletonBlock />
+                  <BlogSkeletonBlock className="is-short" />
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="blog-detail-comments-panel blog-detail-skeleton-comments">
+          <div className="blog-detail-comments-header">
+            <BlogSkeletonBlock className="blog-detail-skeleton-comments-title" />
+            <BlogSkeletonBlock className="blog-detail-skeleton-sort" />
+          </div>
+          <div className="blog-detail-comment-form">
+            <BlogSkeletonBlock className="blog-detail-skeleton-avatar" />
+            <BlogSkeletonBlock className="blog-detail-skeleton-comment-input" />
+          </div>
+        </section>
+      </article>
+    </main>
+
+    <aside className="blog-detail-side-panel blog-detail-skeleton-side" aria-hidden="true">
+      <section className="blog-detail-side-card blog-detail-side-author">
+        <BlogSkeletonBlock className="blog-detail-skeleton-section-title" />
+        <div className="blog-detail-side-author-head">
+          <BlogSkeletonBlock className="blog-detail-skeleton-avatar is-large" />
+          <span>
+            <BlogSkeletonBlock />
+            <BlogSkeletonBlock className="is-short" />
+          </span>
+        </div>
+        <BlogSkeletonBlock className="blog-detail-skeleton-stat-line" />
+        <BlogSkeletonBlock className="blog-detail-skeleton-bio" />
+        <BlogSkeletonBlock className="blog-detail-skeleton-bio is-medium" />
+      </section>
+
+      <section className="article-editorial-side-related article-author-related-section blog-detail-side-author-related blog-detail-skeleton-author-related">
+        <BlogSkeletonBlock className="blog-detail-skeleton-section-title" />
+        <div className="article-author-content-grid">
+          {[0, 1, 2].map((item) => (
+            <div className="article-related-card is-editorial blog-detail-skeleton-related-card" key={`blog-skeleton-side-card-${item}`}>
+              <BlogSkeletonBlock className="article-related-media" />
+              <span className="article-related-copy">
+                <BlogSkeletonBlock />
+                <BlogSkeletonBlock />
+                <BlogSkeletonBlock className="is-short" />
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="blog-detail-side-card">
+        <BlogSkeletonBlock className="blog-detail-skeleton-section-title" />
+        {[0, 1, 2].map((item) => (
+          <BlogSkeletonBlock className="blog-detail-skeleton-side-row" key={`blog-skeleton-side-row-${item}`} />
+        ))}
+      </section>
+    </aside>
   </div>
 );
 

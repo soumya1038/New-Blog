@@ -1,6 +1,7 @@
 const express = require('express');
 const {
   toggleFollow,
+  followOnly,
   getNotifications,
   getUnreadCount,
   markAsRead,
@@ -14,6 +15,7 @@ const trackActivity = require('../middleware/trackActivity');
 
 const router = express.Router();
 
+router.post('/follow-only/:userId', protect, trackActivity, followOnly);
 router.post('/follow/:userId', protect, trackActivity, toggleFollow);
 router.get('/notifications', protect, trackActivity, getNotifications);
 router.get('/notifications/unread-count', protect, trackActivity, getUnreadCount);

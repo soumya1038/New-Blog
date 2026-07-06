@@ -41,6 +41,7 @@ const couponRoutes = require('./routes/couponRoutes');
 const earningsRoutes = require('./routes/earningsRoutes');
 const priceChangeRoutes = require('./routes/priceChangeRoutes');
 const systemRoutes = require('./routes/systemRoutes');
+const supportRoutes = require('./routes/supportRoutes');
 const { errorHandler } = require('./middleware/errorHandler');
 const { systemMonitor, getMetrics } = require('./middleware/monitoring');
 const { startDatabaseMonitor } = require('./utils/dbMonitor');
@@ -145,6 +146,14 @@ const authLimiter = rateLimit({
   handler: createRateLimitHandler('Too many authentication attempts. Please try again later.', authRateLimitWindowMs)
 });
 
+const authLimiterExceptSessionHydration = (req, res, next) => {
+  if (req.method === 'GET' && req.path === '/me') {
+    return next();
+  }
+
+  return authLimiter(req, res, next);
+};
+
 const apiLimiter = rateLimit({
   windowMs: apiRateLimitWindowMs,
   max: toPositiveInt(process.env.API_RATE_LIMIT_MAX, 180),
@@ -218,7 +227,7 @@ app.use('/', seoRoutes);
 
 // Routes
 app.use('/api/auth/zoho', authLimiter, zohoAuthRoutes);
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth', authLimiterExceptSessionHydration, authRoutes);
 app.use('/api/users', apiLimiter, userRoutes);
 app.use('/api/blogs', apiLimiter, blogRoutes);
 app.use('/api/articles', apiLimiter, articleRoutes);
@@ -240,6 +249,7 @@ app.use('/api/chatbot', apiLimiter, chatbotRoutes);
 app.use('/api/search', apiLimiter, searchRoutes);
 app.use('/api/template-presets', apiLimiter, templatePresetRoutes);
 app.use('/api/system', apiLimiter, systemRoutes);
+app.use('/api/support', apiLimiter, supportRoutes);
 app.use('/api/seller', apiLimiter, sellerRoutes);
 app.use('/api/seller', apiLimiter, earningsRoutes);
 app.use('/api/marketplace', apiLimiter, productRoutes);

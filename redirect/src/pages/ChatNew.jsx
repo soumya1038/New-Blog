@@ -2890,6 +2890,15 @@ const ChatNew = () => {
                           )}
                         </button>
                         <button
+                          onClick={() => {
+                            setShowConvMenu(null);
+                            navigate(`/help/article/report-abuse-fraud-or-unsafe-content?reference=${encodeURIComponent(chat.user.username || chat.user._id)}`);
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--background-secondary)] flex items-center gap-2"
+                        >
+                          <FiAlertCircle className="text-[var(--text-secondary)]" /> {t('Safety and report help')}
+                        </button>
+                        <button
                           onClick={() => handleDeleteConversation(chat.user._id)}
                           className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--background-secondary)] flex items-center gap-2 text-red-600"
                         >
@@ -3160,6 +3169,15 @@ const ChatNew = () => {
                         ) : (
                           <><FiBellOff className="w-4 h-4" /> <span>{t('Mute')}</span></>
                         )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowUserPanel(false);
+                          navigate(`/help/article/report-abuse-fraud-or-unsafe-content?reference=${encodeURIComponent(selectedChat.username || selectedChat._id)}`);
+                        }}
+                        className="px-4 py-2.5 text-sm hover:bg-amber-500/10 rounded-lg flex items-center justify-center gap-2 transition-colors border border-amber-200 text-amber-700"
+                      >
+                        <FiAlertCircle className="w-4 h-4" /> <span>{t('Safety help')}</span>
                       </button>
                       <button
                         onClick={() => {

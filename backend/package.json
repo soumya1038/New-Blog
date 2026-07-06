@@ -1,6 +1,6 @@
 {
   "name": "blog-backend",
-  "version": "1.7.22",
+  "version": "1.7.23",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,7 +10,8 @@
     "check-startup": "node check-startup.js",
     "diagnose": "node check-startup.js",
     "backfill:facebook-social:dry": "node scripts/backfillFacebookSocialLinks.js",
-    "backfill:facebook-social": "node scripts/backfillFacebookSocialLinks.js --apply"
+    "backfill:facebook-social": "node scripts/backfillFacebookSocialLinks.js --apply",
+    "support:cleanup:dry": "node scripts/supportCleanupAudit.js --prefix QA-CLEANUP"
   },
   "dependencies": {
     "@sentry/node": "^7.120.4",

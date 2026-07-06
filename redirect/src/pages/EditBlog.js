@@ -296,12 +296,14 @@ const EditBlog = () => {
           includePlacements: isArticleMode,
           imageSources: [coverImage, ...persistedGallery.galleryImages],
         })),
+        ...(!isShortMode ? {
+          galleryImages: JSON.stringify(persistedGallery.galleryImages),
+          galleryImagePublicIds: JSON.stringify(persistedGallery.galleryImagePublicIds)
+        } : {}),
         ...(isArticleMode ? {
           templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
-          templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
-          galleryImages: JSON.stringify(persistedGallery.galleryImages),
-          galleryImagePublicIds: JSON.stringify(persistedGallery.galleryImagePublicIds)
+          templateThemeMode: FORCED_TEMPLATE_THEME_MODE
         } : {}) 
       });
       setLastSaved(new Date());
@@ -368,7 +370,7 @@ const EditBlog = () => {
         uploadedImageUrl = '';
       }
 
-      const galleryUploadPayload = isArticleMode
+      const galleryUploadPayload = !isShortMode
         ? await uploadGalleryItems()
         : { galleryImages: [], galleryImagePublicIds: [] };
       await deleteRemovedGalleryImages();
@@ -391,12 +393,14 @@ const EditBlog = () => {
             includePlacements: isArticleMode,
             imageSources: [uploadedImageUrl, ...galleryUploadPayload.galleryImages],
           })),
+          ...(!isShortMode ? {
+            galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
+            galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+          } : {}),
           ...(isArticleMode ? {
             templateId: templateIdForSubmit,
             customTemplate: customTemplateForSubmit,
-            templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
-            galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
-            galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+            templateThemeMode: FORCED_TEMPLATE_THEME_MODE
           } : {})
         });
         const deleteEndpoint = originalMode === 'article' ? `/articles/${id}` : (originalMode === 'short' ? `/shorts/${id}` : `/blogs/${id}`);
@@ -429,12 +433,14 @@ const EditBlog = () => {
             includePlacements: isArticleMode,
             imageSources: [uploadedImageUrl, ...galleryUploadPayload.galleryImages],
           })),
+          ...(!isShortMode ? {
+            galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
+            galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+          } : {}),
           ...(isArticleMode ? {
             templateId: templateIdForSubmit,
             customTemplate: customTemplateForSubmit,
-            templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
-            galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
-            galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+            templateThemeMode: FORCED_TEMPLATE_THEME_MODE
           } : {})
         });
         const stayOnId = isArticleMode
@@ -486,7 +492,7 @@ const EditBlog = () => {
         uploadedImageUrl = '';
       }
 
-      const galleryUploadPayload = originalMode === 'article'
+      const galleryUploadPayload = originalMode !== 'short'
         ? await uploadGalleryItems()
         : { galleryImages: [], galleryImagePublicIds: [] };
       await deleteRemovedGalleryImages();
@@ -513,12 +519,14 @@ const EditBlog = () => {
           includePlacements: originalMode === 'article',
           imageSources: [uploadedImageUrl, ...galleryUploadPayload.galleryImages],
         })),
+        ...(originalMode !== 'short' ? {
+          galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
+          galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+        } : {}),
         ...(originalMode === 'article' ? {
           templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
-          templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
-          galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
-          galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+          templateThemeMode: FORCED_TEMPLATE_THEME_MODE
         } : {})
       });
       
@@ -905,7 +913,7 @@ const EditBlog = () => {
               </div>
             </div>
 
-            {isArticleMode && (
+            {!isShortMode && (
               <div>
                 <label className="block text-[var(--text-secondary)] mb-2 font-semibold">{t('Gallery Images')}</label>
                 <input
@@ -915,7 +923,7 @@ const EditBlog = () => {
                   onChange={handleGalleryImagesUpload}
                   className="w-full px-4 py-3 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
                 />
-                <p className="text-xs text-[var(--text-muted)] mt-2">{t('Upload up to 8 gallery images. These images are used inside article templates.')}</p>
+                <p className="text-xs text-[var(--text-muted)] mt-2">{t('Upload up to 8 gallery images. These images are used in the article or blog gallery.')}</p>
 
                 {galleryItems.length > 0 && (
                   <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

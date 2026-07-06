@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
@@ -602,6 +602,20 @@ const BecomeASeller = () => {
       case 4: return (
         <div className="space-y-4">
           <h3 className="font-bold text-[var(--text-primary)]">Terms & Agreement</h3>
+          <div className="flex flex-wrap gap-4 text-xs font-semibold">
+            <Link
+              to="/help/article/apply-to-become-seller"
+              className="text-[var(--brand-primary)] no-underline"
+            >
+              Seller application guide
+            </Link>
+            <Link
+              to="/policies"
+              className="text-[var(--brand-primary)] no-underline"
+            >
+              Policy directory
+            </Link>
+          </div>
           <div className="p-4 rounded-xl bg-[var(--bg-secondary)] text-sm text-[var(--text-secondary)] space-y-2 max-h-48 overflow-y-auto">
             <p><strong>Seller Terms & Conditions</strong></p>
             <p>By becoming a seller on Lekhon, you agree to:</p>
@@ -623,7 +637,7 @@ const BecomeASeller = () => {
               className="mt-0.5 w-4 h-4 rounded text-violet-600"
             />
             <span className="text-sm text-[var(--text-secondary)]">
-              I have read and agree to the <strong>Seller Terms & Conditions</strong> and <strong>Commission Policy</strong>.
+              I have read and agree to the seller rules displayed above. I understand that the dedicated Seller Terms document is still in formal review.
             </span>
           </label>
         </div>

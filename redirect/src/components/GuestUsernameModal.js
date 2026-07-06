@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { TbBrandAmongUs } from 'react-icons/tb';
-import { FaCheck, FaTimes, FaRedo } from 'react-icons/fa';
+import { FaCheck, FaTimes } from 'react-icons/fa';
 import api from '../services/api';
 import { ClipLoader } from 'react-spinners';
 
@@ -9,24 +9,9 @@ const GuestUsernameModal = ({ onClose, onContinue }) => {
   const [checking, setChecking] = useState(false);
   const [status, setStatus] = useState(null);
   const [message, setMessage] = useState('');
-  const [captcha, setCaptcha] = useState('');
-  const [captchaInput, setCaptchaInput] = useState('');
+  const [humanVerified, setHumanVerified] = useState(false);
+  const [humanChecking, setHumanChecking] = useState(false);
   const [error, setError] = useState('');
-
-  const generateCaptcha = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    let result = '';
-    for (let i = 0; i < 6; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setCaptcha(result);
-    setCaptchaInput('');
-    setError('');
-  };
-
-  useEffect(() => {
-    generateCaptcha();
-  }, []);
 
   useEffect(() => {
     if (!username) {
@@ -64,14 +49,23 @@ const GuestUsernameModal = ({ onClose, onContinue }) => {
     return () => clearTimeout(timer);
   }, [username]);
 
+  const handleHumanVerify = () => {
+    if (humanVerified || humanChecking) return;
+    setHumanChecking(true);
+    setError('');
+    setTimeout(() => {
+      setHumanChecking(false);
+      setHumanVerified(true);
+    }, 900);
+  };
+
   const handleContinue = () => {
     if (username.trim().length < 3) {
       setError('Username must be at least 3 characters.');
       return;
     }
-    if (captchaInput !== captcha) {
-      setError('Incorrect captcha. Please try again.');
-      generateCaptcha();
+    if (!humanVerified) {
+      setError('Please verify you are human first.');
       return;
     }
     if (status === 'available' && username) {
@@ -123,40 +117,56 @@ const GuestUsernameModal = ({ onClose, onContinue }) => {
 
         <div className="mb-6">
           <label className="theme-modal-text block text-sm font-semibold mb-2">Verify you're human</label>
-          <div className="px-4 py-3 rounded-lg border-2 font-mono text-2xl font-bold text-center mb-2 select-none tracking-widest" style={{ background: 'var(--background-secondary)', borderColor: 'var(--border-default)', color: 'var(--text-primary)' }}>
-            {captcha}
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={captchaInput}
-              onChange={(e) => setCaptchaInput(e.target.value)}
-              placeholder="Enter text above"
-              className="theme-input flex-1 px-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)]"
-              maxLength={6}
-            />
-            <button
-              type="button"
-              onClick={generateCaptcha}
-              className="p-2 rounded-lg transition"
-              style={{ color: 'var(--brand-primary)', background: 'var(--tag-bg)' }}
-              title="Refresh captcha"
+          <button
+            type="button"
+            onClick={handleHumanVerify}
+            disabled={humanVerified || humanChecking}
+            className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl border text-left transition ${
+              humanVerified ? 'cursor-default' : humanChecking ? 'cursor-wait' : 'hover:opacity-90'
+            }`}
+            style={{
+              background: 'var(--background-secondary)',
+              borderColor: humanVerified ? 'var(--success, #16a34a)' : error ? 'var(--error, #dc2626)' : 'var(--border-default)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <span
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2"
+              style={{
+                borderColor: humanVerified ? 'var(--success, #16a34a)' : 'var(--border-default)',
+                background: humanVerified ? 'var(--success, #16a34a)' : 'transparent',
+              }}
             >
-              <FaRedo size={18} />
-            </button>
+              {humanChecking && (
+                <span
+                  className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-t-transparent"
+                  style={{ borderColor: 'var(--brand-primary)', borderTopColor: 'transparent' }}
+                />
+              )}
+              {humanVerified && <FaCheck className="text-white text-xs" />}
+            </span>
+            <span className="flex-1 text-sm font-medium">
+              {humanVerified ? "Verified - you're human!" : humanChecking ? 'Verifying...' : "I'm not a robot"}
+            </span>
+            <span className="text-center text-[10px]" style={{ color: 'var(--text-muted)' }}>
+              reCAPTCHA
+            </span>
+          </button>
+          <div className="theme-modal-muted text-xs mt-2">
+            Required before creating the guest session.
           </div>
         </div>
 
         <div className="flex gap-3">
           <button
             onClick={handleContinue}
-            disabled={status !== 'available' || username.length < 3 || !captchaInput}
+            disabled={status !== 'available' || username.length < 3 || !humanVerified}
             className={`flex-1 py-3 rounded-lg font-semibold transition ${
-              status === 'available' && username.length >= 3 && captchaInput
+              status === 'available' && username.length >= 3 && humanVerified
                 ? 'text-white hover:opacity-90'
                 : 'theme-soft-button cursor-not-allowed opacity-60'
             }`}
-            style={status === 'available' && username.length >= 3 && captchaInput ? { background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))' } : undefined}
+            style={status === 'available' && username.length >= 3 && humanVerified ? { background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))' } : undefined}
           >
             Continue
           </button>

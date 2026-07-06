@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { FaFacebookF, FaInstagram, FaLinkedinIn } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
+import './PublicFooter.css';
 
 const LOGO_URL =
   'https://res.cloudinary.com/ddpdydsji/image/upload/v1769780228/ChatGPT_Image_Jan_30_2026_03_07_38_AM-photoaidcom-cropped_oq1pfz.png';
@@ -29,11 +30,57 @@ const socialLinks = [
   },
 ];
 
-const legalLinks = [
-  { label: 'Home', to: '/' },
-  { label: 'About', to: '/about' },
-  { label: 'Privacy', to: '/privacy' },
-  { label: 'Terms', to: '/terms' },
+export const footerColumns = [
+  {
+    title: 'Explore Lekhon',
+    links: [
+      { label: 'Home', to: '/home' },
+      { label: 'About', to: '/about' },
+      { label: 'Writing help', to: '/help/category/writing-publishing' },
+      { label: 'Marketplace', to: '/marketplace' },
+      { label: 'Android app', to: '/help/category/android' },
+    ],
+  },
+  {
+    title: 'Create and connect',
+    links: [
+      { label: 'Publishing guides', to: '/help/category/writing-publishing' },
+      { label: 'AI tools', to: '/help/category/ai-tools' },
+      { label: 'Messages and calls', to: '/help/category/community-messaging' },
+      { label: 'Privacy and security', to: '/help/category/privacy-security' },
+      { label: 'Safety Center', to: '/safety' },
+    ],
+  },
+  {
+    title: 'Buy and sell',
+    links: [
+      { label: 'Buyer help', to: '/help/category/marketplace-buyers' },
+      { label: 'Seller help', to: '/help/category/selling' },
+      { label: 'Orders and refunds', to: '/help/article/cancel-order-and-understand-refund' },
+      { label: 'Earnings and payouts', to: '/help/article/understand-seller-earnings-and-payouts' },
+      { label: 'Marketplace policies', to: '/policies' },
+    ],
+  },
+  {
+    title: 'Help and safety',
+    links: [
+      { label: 'Help Center', to: '/help' },
+      { label: 'Contact support', to: '/contact' },
+      { label: 'Report abuse or fraud', to: '/report' },
+      { label: 'Submit an appeal', to: '/appeals' },
+      { label: 'Account security', to: '/help/category/privacy-security' },
+    ],
+  },
+  {
+    title: 'Legal',
+    links: [
+      { label: 'Policy directory', to: '/policies' },
+      { label: 'Terms of Service', to: '/terms' },
+      { label: 'Privacy Policy', to: '/privacy' },
+      { label: 'AI usage guidance', to: '/help/article/use-ai-tools-responsibly' },
+      { label: 'API safety', to: '/help/article/create-and-protect-api-key' },
+    ],
+  },
 ];
 
 const PublicFooter = () => {
@@ -42,33 +89,21 @@ const PublicFooter = () => {
       className="border-t border-[var(--border-default)] bg-[var(--surface-card)]"
       aria-label="Lekhon public footer"
     >
-      <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <Link to="/home" className="flex items-center gap-3 text-[var(--text-primary)] no-underline">
+      <div className="public-footer__inner">
+        <div className="public-footer__top">
+          <Link to="/home" className="public-footer__brand">
             <img
               src={LOGO_URL}
               alt="Lekhon"
-              className="h-9 w-9 rounded-lg object-cover shadow-sm"
+              className="public-footer__logo"
             />
             <div>
-              <p className="m-0 text-sm font-extrabold tracking-wide">Lekhon</p>
-              <p className="m-0 text-xs text-[var(--text-muted)]">Write. Connect. Inspire.</p>
+              <p className="public-footer__name">Lekhon</p>
+              <p className="public-footer__tagline">Write. Connect. Inspire.</p>
             </div>
           </Link>
 
-          <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm" aria-label="Public pages">
-            {legalLinks.map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className="font-semibold text-[var(--text-secondary)] no-underline transition hover:text-[var(--brand-primary)]"
-              >
-                {link.label}
-              </Link>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-3" aria-label="Lekhon social links">
+          <div className="public-footer__socials" aria-label="Lekhon social links">
             {socialLinks.map((item) => {
               const Icon = item.icon;
               return (
@@ -79,7 +114,7 @@ const PublicFooter = () => {
                   rel="noopener noreferrer"
                   aria-label={`Lekhon on ${item.label}`}
                   title={`Lekhon on ${item.label}`}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-default)] bg-[var(--surface-elevated)] text-[var(--text-secondary)] transition hover:-translate-y-0.5 hover:border-[var(--brand-primary)] hover:text-[var(--brand-primary)]"
+                  className="public-footer__social-link"
                 >
                   <Icon size={16} />
                 </a>
@@ -88,10 +123,46 @@ const PublicFooter = () => {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 border-t border-[var(--border-default)] pt-3 text-xs text-[var(--text-muted)] sm:flex-row sm:items-center sm:justify-between">
-          <p className="m-0">&copy; 2026 Lekhon. All rights reserved.</p>
-          <p className="m-0">
-            Google Sign-In is used for authentication, account creation, and account management.
+        <nav
+          className="public-footer__columns public-footer__columns--desktop"
+          aria-label="Footer navigation"
+        >
+          {footerColumns.map((column) => (
+            <div key={column.title} className="public-footer__column">
+              <h2>{column.title}</h2>
+              <div className="public-footer__links">
+                {column.links.map((link) => (
+                  <Link key={`${column.title}-${link.to}-${link.label}`} to={link.to}>
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <nav
+          className="public-footer__columns public-footer__columns--mobile"
+          aria-label="Footer navigation"
+        >
+          {footerColumns.map((column) => (
+            <details key={column.title} className="public-footer__column">
+              <summary>{column.title}</summary>
+              <div className="public-footer__links">
+                {column.links.map((link) => (
+                  <Link key={`${column.title}-${link.to}-${link.label}`} to={link.to}>
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            </details>
+          ))}
+        </nav>
+
+        <div className="public-footer__bottom">
+          <p>&copy; 2026 Lekhon. All rights reserved.</p>
+          <p>
+            Published policies apply as shown. Documents marked in review are not final terms.
           </p>
         </div>
       </div>

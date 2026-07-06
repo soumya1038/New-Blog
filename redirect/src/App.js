@@ -23,6 +23,7 @@ import { getCallState, clearCallState } from './utils/callStateManager';
 import { useGroupCall } from './context/GroupCallContext';
 import { captureFrontendException } from './utils/sentry';
 import { isNativeApp } from './utils/nativeApp';
+import { hasAuthToken } from './utils/authSession';
 
 const Home = lazy(() => import('./pages/Home'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -64,6 +65,13 @@ const AddProduct = lazy(() => import('./pages/AddProduct'));
 const EditProduct = lazy(() => import('./pages/EditProduct'));
 const MyOrders = lazy(() => import('./pages/MyOrders'));
 const SellerEarnings = lazy(() => import('./pages/SellerEarnings'));
+const HelpCenter = lazy(() => import('./pages/HelpCenter'));
+const HelpCategory = lazy(() => import('./pages/HelpCategory'));
+const HelpArticle = lazy(() => import('./pages/HelpArticle'));
+const PolicyCenter = lazy(() => import('./pages/PolicyCenter'));
+const PolicyDetail = lazy(() => import('./pages/PolicyDetail'));
+const SafetyCenter = lazy(() => import('./pages/SafetyCenter'));
+const SupportRequest = lazy(() => import('./pages/SupportRequest'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center">
@@ -118,8 +126,31 @@ const PublicOnlyRoute = ({ children }) => {
   return children;
 };
 
+const RegisteredUserRoute = ({ children }) => {
+  const { user, loading } = useContext(AuthContext);
+  const location = useLocation();
+
+  if (loading) return <LoadingFallback />;
+
+  if (!user || !hasAuthToken()) {
+    try {
+      sessionStorage.setItem('redirectAfterLogin', `${location.pathname}${location.search}${location.hash}`);
+    } catch {
+      // Ignore storage failures and still send the visitor to sign in.
+    }
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  if (user.isGuest || user.role === 'guest') {
+    return <Navigate to="/home" replace />;
+  }
+
+  return children;
+};
+
 const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/', '/privacy', '/terms', '/auth/google/callback', '/auth/facebook/callback', '/auth/twitter/callback', '/auth/linkedin/callback']);
 const PUBLIC_FOOTER_ROUTES = new Set(['/about', '/privacy', '/terms']);
+const PUBLIC_FOOTER_PREFIXES = ['/help', '/policies', '/safety', '/contact', '/report', '/appeals'];
 
 function AppContent() {
   const { user, sessionExpired, guestExpired, setGuestExpired } = useContext(AuthContext);
@@ -132,7 +163,11 @@ function AppContent() {
   }, [location.pathname]);
   const runningNativeApp = useMemo(() => isNativeApp(), []);
   const hideGlobalChrome = ROUTES_WITHOUT_GLOBAL_CHROME.has(normalizedPath);
-  const showPublicFooter = PUBLIC_FOOTER_ROUTES.has(normalizedPath);
+  const showPublicFooter =
+    PUBLIC_FOOTER_ROUTES.has(normalizedPath) ||
+    PUBLIC_FOOTER_PREFIXES.some(
+      (prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)
+    );
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   const [globalCallState, setGlobalCallState] = useState(null);
@@ -524,7 +559,7 @@ function AppContent() {
             <Route path="/edit/:id" element={<EditBlog />} />
             <Route path="/blog/:id" element={<BlogDetail />} />
             <Route path="/article/:id" element={<ArticleDetails />} />
-            <Route path="/profile" element={<Profile />} />
+            <Route path="/profile" element={<RegisteredUserRoute><Profile /></RegisteredUserRoute>} />
             <Route path="/user/:id" element={<UserProfile />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/drafts" element={<Drafts />} />
@@ -540,6 +575,15 @@ function AppContent() {
             <Route path="/about" element={<About />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/help" element={<HelpCenter />} />
+            <Route path="/help/category/:categoryId" element={<HelpCategory />} />
+            <Route path="/help/article/:slug" element={<HelpArticle />} />
+            <Route path="/policies" element={<PolicyCenter />} />
+            <Route path="/policies/:slug" element={<PolicyDetail />} />
+            <Route path="/safety" element={<SafetyCenter />} />
+            <Route path="/contact" element={<SupportRequest />} />
+            <Route path="/report" element={<SupportRequest />} />
+            <Route path="/appeals" element={<SupportRequest />} />
             <Route path="/auth/google/callback" element={<GoogleAuthCallback />} />
             <Route path="/auth/facebook/callback" element={<FacebookAuthCallback />} />
             <Route path="/auth/twitter/callback" element={<TwitterAuthCallback />} />

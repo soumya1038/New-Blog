@@ -38,6 +38,7 @@ import { BiMenuAltRight } from 'react-icons/bi';
 import { GoVerified } from 'react-icons/go';
 import { TbBrandAmongUs, TbBrandBlogger } from 'react-icons/tb';
 import { MdOutlineSwitchAccessShortcutAdd } from 'react-icons/md';
+import { RxVideo } from 'react-icons/rx';
 import toast, { Toaster } from 'react-hot-toast';
 import Avatar from '../components/Avatar';
 import EnhancedComment from '../components/EnhancedComment';
@@ -150,6 +151,71 @@ const normalizeArticleImages = (article, fallbackImage) => {
       return true;
     });
 };
+
+const normalizeArticleVideoUrls = (article) => {
+  const seen = new Set();
+  return (Array.isArray(article?.videoUrls) ? article.videoUrls : [])
+    .map((url) => String(url || '').trim())
+    .filter(Boolean)
+    .filter((url) => {
+      if (seen.has(url)) return false;
+      seen.add(url);
+      return true;
+    });
+};
+
+const getYouTubeId = (url) => {
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname.includes('youtu.be')) {
+      return parsed.pathname.split('/').filter(Boolean)[0] || '';
+    }
+    if (parsed.hostname.includes('youtube.com')) {
+      if (parsed.pathname.startsWith('/embed/')) return parsed.pathname.split('/')[2] || '';
+      if (parsed.pathname.startsWith('/shorts/')) return parsed.pathname.split('/')[2] || '';
+      return parsed.searchParams.get('v') || '';
+    }
+  } catch {
+    return '';
+  }
+  return '';
+};
+
+const getVideoEmbedUrl = (url) => {
+  const trimmedUrl = String(url || '').trim();
+  if (!trimmedUrl) return '';
+
+  const youtubeId = getYouTubeId(trimmedUrl);
+  if (youtubeId) return `https://www.youtube.com/embed/${youtubeId}`;
+
+  try {
+    const parsed = new URL(trimmedUrl);
+    if (parsed.hostname.includes('vimeo.com')) {
+      const videoId = parsed.pathname.split('/').filter(Boolean).find(part => /^\d+$/.test(part));
+      if (videoId) return `https://player.vimeo.com/video/${videoId}`;
+    }
+  } catch {
+    return trimmedUrl;
+  }
+
+  return trimmedUrl;
+};
+
+const isDirectVideoUrl = (url) => /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(String(url || ''));
+
+const normalizeArticleGalleryMedia = (article, fallbackImage) => [
+  ...normalizeArticleImages(article, fallbackImage).map((src, index) => ({
+    id: `image-${index}-${src}`,
+    type: 'image',
+    src,
+  })),
+  ...normalizeArticleVideoUrls(article).map((src, index) => ({
+    id: `video-${index}-${src}`,
+    type: 'video',
+    src,
+    embedSrc: getVideoEmbedUrl(src),
+  })),
+];
 
 const normalizeArticleProductTags = (article) => {
   const productMap = new Map();
@@ -310,7 +376,7 @@ const RelatedContentCard = ({ item, compact = false, variant, mobileVariant = ''
 const ArticleGalleryDock = ({
   title,
   category,
-  images,
+  mediaItems,
   activeIndex,
   setActiveIndex,
   productTags,
@@ -319,32 +385,54 @@ const ArticleGalleryDock = ({
   const [productListOpen, setProductListOpen] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
   const touchStartX = useRef(null);
-  const activeImage = images[activeIndex] || images[0];
-  const hasGallery = images.length > 1;
+  const activeMedia = mediaItems[activeIndex] || mediaItems[0];
+  const lightboxMedia = mediaItems[lightboxIndex] || activeMedia;
+  const hasGallery = mediaItems.length > 1;
+  const activeIsVideo = activeMedia?.type === 'video';
+  const lightboxIsVideo = lightboxMedia?.type === 'video';
 
   useEffect(() => {
     setProductListOpen(false);
   }, [activeIndex]);
 
   useEffect(() => {
+    if (lightboxIndex >= mediaItems.length) {
+      setLightboxIndex(0);
+    }
+  }, [lightboxIndex, mediaItems.length]);
+
+  useEffect(() => {
     if (!hasGallery || isPaused || lightboxOpen) return undefined;
     const interval = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % images.length);
+      setActiveIndex((current) => (current + 1) % mediaItems.length);
     }, 5200);
     return () => window.clearInterval(interval);
-  }, [hasGallery, images.length, isPaused, lightboxOpen, setActiveIndex]);
+  }, [hasGallery, mediaItems.length, isPaused, lightboxOpen, setActiveIndex]);
 
   useEffect(() => {
     if (!lightboxOpen) return undefined;
     const originalOverflow = document.body.style.overflow;
     const handleKeyDown = (event) => {
-      if (event.key === 'Escape') setLightboxOpen(false);
+      if (event.key === 'Escape') {
+        setActiveIndex(lightboxIndex);
+        setIsPaused(false);
+        setLightboxOpen(false);
+      }
       if (hasGallery && event.key === 'ArrowRight') {
-        setActiveIndex((current) => (current + 1) % images.length);
+        setLightboxIndex((current) => {
+          const nextIndex = (current + 1) % mediaItems.length;
+          setActiveIndex(nextIndex);
+          return nextIndex;
+        });
       }
       if (hasGallery && event.key === 'ArrowLeft') {
-        setActiveIndex((current) => (current - 1 + images.length) % images.length);
+        setLightboxIndex((current) => {
+          const nextIndex = (current - 1 + mediaItems.length) % mediaItems.length;
+          setActiveIndex(nextIndex);
+          return nextIndex;
+        });
       }
     };
     document.body.style.overflow = 'hidden';
@@ -353,11 +441,14 @@ const ArticleGalleryDock = ({
       document.body.style.overflow = originalOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [hasGallery, images.length, lightboxOpen, setActiveIndex]);
+  }, [hasGallery, lightboxIndex, mediaItems.length, lightboxOpen, setActiveIndex]);
 
-  const goToImage = (index) => {
-    setIsPaused(true);
+  const goToMedia = (index) => {
+    setIsPaused(false);
     setActiveIndex(index);
+    if (lightboxOpen) {
+      setLightboxIndex(index);
+    }
   };
 
   const handleTouchStart = (event) => {
@@ -370,12 +461,16 @@ const ArticleGalleryDock = ({
     const endX = event.changedTouches?.[0]?.clientX ?? touchStartX.current;
     const deltaX = endX - touchStartX.current;
     touchStartX.current = null;
-    if (Math.abs(deltaX) < 42) return;
+    if (Math.abs(deltaX) < 42) {
+      setIsPaused(false);
+      return;
+    }
     setActiveIndex((current) => (
       deltaX < 0
-        ? (current + 1) % images.length
-        : (current - 1 + images.length) % images.length
+        ? (current + 1) % mediaItems.length
+        : (current - 1 + mediaItems.length) % mediaItems.length
     ));
+    setIsPaused(false);
   };
 
   const normalizedPlacements = Array.isArray(placements) ? placements : [];
@@ -384,17 +479,19 @@ const ArticleGalleryDock = ({
       const explicitPlacement = normalizedPlacements.find(
         placement => placement.productKey === tag.key
       );
+      const useExplicitPlacement = explicitPlacement
+        && Number(explicitPlacement.imageIndex || 0) === activeIndex;
 
-      if (explicitPlacement && Number(explicitPlacement.imageIndex || 0) !== activeIndex) {
+      if (explicitPlacement && !useExplicitPlacement && !activeIsVideo) {
         return null;
       }
 
       const fallback = FALLBACK_PRODUCT_DOT_POSITIONS[index % FALLBACK_PRODUCT_DOT_POSITIONS.length];
       return {
         ...tag,
-        x: clampPercent(explicitPlacement?.x, fallback.x),
-        y: clampPercent(explicitPlacement?.y, fallback.y),
-        isFallback: !explicitPlacement,
+        x: clampPercent(useExplicitPlacement ? explicitPlacement.x : undefined, fallback.x),
+        y: clampPercent(useExplicitPlacement ? explicitPlacement.y : undefined, fallback.y),
+        isFallback: !useExplicitPlacement,
       };
     })
     .filter(Boolean);
@@ -414,7 +511,19 @@ const ArticleGalleryDock = ({
   const productListTop = productGroupAnchor ? Math.max(20, Math.min(78, productGroupAnchor.y)) : 44;
   const productListPlacement = productListTop < 28 ? 'is-below' : 'is-above';
 
-  if (!activeImage) return null;
+  if (!activeMedia) return null;
+
+  const openLightbox = () => {
+    setLightboxIndex(activeIndex);
+    setIsPaused(true);
+    setLightboxOpen(true);
+  };
+
+  const closeLightbox = () => {
+    setActiveIndex(lightboxIndex);
+    setIsPaused(false);
+    setLightboxOpen(false);
+  };
 
   return (
     <>
@@ -428,17 +537,44 @@ const ArticleGalleryDock = ({
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          <button
-            type="button"
-            className="article-gallery-image-button"
-            onClick={() => {
-              setIsPaused(true);
-              setLightboxOpen(true);
-            }}
-            aria-label="Open article image"
-          >
-            <img src={activeImage} alt={title} />
-          </button>
+          {activeIsVideo ? (
+            <div
+              className="article-gallery-video-button"
+            >
+              <span className="article-gallery-video-frame">
+                {isDirectVideoUrl(activeMedia.src) ? (
+                  <video
+                    src={activeMedia.src}
+                    muted
+                    playsInline
+                    preload="metadata"
+                  />
+                ) : (
+                  <iframe
+                    src={activeMedia.embedSrc || activeMedia.src}
+                    title={`${title} video ${activeIndex + 1}`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                )}
+              </span>
+              <button
+                type="button"
+                className="article-gallery-video-open"
+                onClick={openLightbox}
+                aria-label="Open article video"
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="article-gallery-image-button"
+              onClick={openLightbox}
+              aria-label="Open article image"
+            >
+              <img src={activeMedia.src} alt={title} />
+            </button>
+          )}
 
           {activeProductDots.length > 0 && productGroupAnchor && (
             <div className="article-product-tag-layer" aria-label="Tagged products">
@@ -493,26 +629,28 @@ const ArticleGalleryDock = ({
         </div>
 
         <div className="article-gallery-controls">
-          <div className="article-gallery-dots" aria-label="Article image carousel">
-            {images.map((image, index) => (
+          <div className="article-gallery-dots" aria-label="Article media carousel">
+            {mediaItems.map((media, index) => (
               <button
-                key={`${image}-${index}`}
+                key={`${media.id}-${index}`}
                 type="button"
-                className={activeIndex === index ? 'is-active' : ''}
-                onClick={() => goToImage(index)}
-                aria-label={`Show image ${index + 1} of ${images.length}`}
+                className={`${media.type === 'video' ? 'is-video' : ''} ${activeIndex === index ? 'is-active' : ''}`.trim()}
+                onClick={() => goToMedia(index)}
+                aria-label={`Show ${media.type} ${index + 1} of ${mediaItems.length}`}
                 aria-current={activeIndex === index ? 'true' : undefined}
-              />
+              >
+                {media.type === 'video' && <RxVideo aria-hidden="true" focusable="false" />}
+              </button>
             ))}
           </div>
-          <span className="article-gallery-counter" aria-label={`Image ${activeIndex + 1} of ${images.length}`}>
-            {activeIndex + 1} / {images.length}
+          <span className="article-gallery-counter" aria-label={`Media ${activeIndex + 1} of ${mediaItems.length}`}>
+            {activeIndex + 1} / {mediaItems.length}
           </span>
         </div>
 
         <figcaption className="article-gallery-caption">
           <span>{category} visual gallery</span>
-          <small>{hasGallery ? 'Swipe or use the dots to browse.' : 'Cover image'}</small>
+          <small>{hasGallery ? 'Swipe or use the dots to browse.' : activeIsVideo ? 'Video' : 'Cover image'}</small>
         </figcaption>
       </figure>
 
@@ -521,29 +659,46 @@ const ArticleGalleryDock = ({
           className="article-gallery-lightbox"
           role="dialog"
           aria-modal="true"
-          aria-label="Article image viewer"
-          onClick={() => setLightboxOpen(false)}
+          aria-label={lightboxIsVideo ? 'Article video viewer' : 'Article image viewer'}
+          onClick={closeLightbox}
         >
           <button
             type="button"
             className="article-gallery-lightbox-close"
-            onClick={() => setLightboxOpen(false)}
+            onClick={closeLightbox}
             aria-label="Close image viewer"
           >
             <FaTimes />
           </button>
           <div className="article-gallery-lightbox-inner" onClick={(event) => event.stopPropagation()}>
-            <img src={activeImage} alt={title} />
+            {lightboxIsVideo ? (
+              <div className="article-gallery-lightbox-video">
+                {isDirectVideoUrl(lightboxMedia.src) ? (
+                  <video src={lightboxMedia.src} controls playsInline autoPlay />
+                ) : (
+                  <iframe
+                    src={lightboxMedia.embedSrc || lightboxMedia.src}
+                    title={`${title} video ${lightboxIndex + 1}`}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                )}
+              </div>
+            ) : (
+              <img src={lightboxMedia.src} alt={title} />
+            )}
             {hasGallery && (
               <div className="article-gallery-lightbox-dots">
-                {images.map((image, index) => (
+                {mediaItems.map((media, index) => (
                   <button
-                    key={`${image}-lightbox-${index}`}
+                    key={`${media.id}-lightbox-${index}`}
                     type="button"
-                    className={activeIndex === index ? 'is-active' : ''}
-                    onClick={() => goToImage(index)}
-                    aria-label={`Show image ${index + 1}`}
-                  />
+                    className={`${media.type === 'video' ? 'is-video' : ''} ${lightboxIndex === index ? 'is-active' : ''}`.trim()}
+                    onClick={() => goToMedia(index)}
+                    aria-label={`Show ${media.type} ${index + 1}`}
+                  >
+                    {media.type === 'video' && <RxVideo aria-hidden="true" focusable="false" />}
+                  </button>
                 ))}
               </div>
             )}
@@ -553,6 +708,167 @@ const ArticleGalleryDock = ({
     </>
   );
 };
+
+const SkeletonBlock = ({ className = '' }) => (
+  <span className={`article-skeleton-block ${className}`} aria-hidden="true" />
+);
+
+const ArticleDetailSkeleton = () => (
+  <div className="article-detail-page-custom article-detail-loading-page" style={{ minHeight: '100vh' }}>
+    <div className="reading-progress article-skeleton-progress" />
+    <div className="article-skeleton-screen-reader" role="status" aria-live="polite">
+      Loading article
+    </div>
+
+    <div className="article-detail-backbar-custom">
+      <div className="article-detail-backinner-custom">
+        <SkeletonBlock className="article-skeleton-back" />
+      </div>
+    </div>
+
+    <article className="article-detail-shell-custom article-skeleton-shell" aria-hidden="true">
+      <section className="article-editorial-layout article-detail-skeleton">
+        <div className="article-editorial-top article-skeleton-top">
+          <header className="article-editorial-head article-skeleton-head">
+            <SkeletonBlock className="article-skeleton-logo" />
+            <SkeletonBlock className="article-skeleton-kicker" />
+            <SkeletonBlock className="article-skeleton-title is-wide" />
+            <SkeletonBlock className="article-skeleton-title is-medium" />
+            <SkeletonBlock className="article-skeleton-rule" />
+            <SkeletonBlock className="article-skeleton-deck is-wide" />
+            <SkeletonBlock className="article-skeleton-deck is-short" />
+            <div className="article-skeleton-meta-strip">
+              <SkeletonBlock />
+              <SkeletonBlock />
+              <SkeletonBlock />
+              <SkeletonBlock />
+            </div>
+          </header>
+
+          <aside className="article-editorial-meta-panel article-skeleton-meta-panel">
+            <div className="article-skeleton-meta-list">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div className="article-skeleton-meta-row" key={`article-meta-skeleton-${index}`}>
+                  <SkeletonBlock className="article-skeleton-meta-label" />
+                  <SkeletonBlock className="article-skeleton-meta-value" />
+                </div>
+              ))}
+            </div>
+            <div className="article-skeleton-actions">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <SkeletonBlock key={`article-action-skeleton-${index}`} />
+              ))}
+            </div>
+          </aside>
+
+          <figure className="article-editorial-gallery article-skeleton-gallery">
+            <SkeletonBlock className="article-skeleton-gallery-stage" />
+            <div className="article-skeleton-gallery-controls">
+              <span>
+                <SkeletonBlock />
+                <SkeletonBlock />
+                <SkeletonBlock />
+              </span>
+              <SkeletonBlock />
+            </div>
+            <div className="article-skeleton-gallery-caption">
+              <SkeletonBlock />
+              <SkeletonBlock />
+            </div>
+          </figure>
+        </div>
+
+        <div className="article-editorial-reader-grid article-skeleton-reader">
+          <aside className="article-editorial-engagement-rail article-skeleton-rail">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <SkeletonBlock key={`article-rail-skeleton-${index}`} />
+            ))}
+          </aside>
+
+          <section className="article-editorial-body article-skeleton-body">
+            <div className="article-skeleton-lead">
+              <SkeletonBlock className="article-skeleton-dropcap" />
+              <div>
+                <SkeletonBlock className="is-wide" />
+                <SkeletonBlock />
+                <SkeletonBlock className="is-medium" />
+              </div>
+            </div>
+            {Array.from({ length: 8 }).map((_, index) => (
+              <SkeletonBlock
+                key={`article-body-skeleton-${index}`}
+                className={index % 3 === 2 ? 'is-short' : index % 2 === 0 ? 'is-wide' : ''}
+              />
+            ))}
+            <SkeletonBlock className="article-skeleton-subhead" />
+            {Array.from({ length: 4 }).map((_, index) => (
+              <SkeletonBlock
+                key={`article-body-late-skeleton-${index}`}
+                className={index === 3 ? 'is-medium' : ''}
+              />
+            ))}
+          </section>
+
+          <aside className="article-editorial-author-panel article-skeleton-author">
+            <div className="article-skeleton-author-row">
+              <SkeletonBlock className="article-skeleton-avatar" />
+              <span>
+                <SkeletonBlock />
+                <SkeletonBlock className="is-short" />
+              </span>
+            </div>
+            <div className="article-skeleton-author-stats">
+              <SkeletonBlock />
+              <SkeletonBlock />
+              <SkeletonBlock />
+            </div>
+            <SkeletonBlock className="is-wide" />
+            <SkeletonBlock className="is-medium" />
+            <SkeletonBlock className="article-skeleton-link" />
+            <div className="article-skeleton-related-cards">
+              {Array.from({ length: 2 }).map((_, index) => (
+                <div className="article-skeleton-related-card" key={`article-side-related-skeleton-${index}`}>
+                  <SkeletonBlock />
+                  <span>
+                    <SkeletonBlock />
+                    <SkeletonBlock className="is-short" />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <div className="article-detail-afterword-custom article-skeleton-afterword">
+        <div className="article-skeleton-related-grid">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div className="article-skeleton-related-card" key={`article-bottom-related-skeleton-${index}`}>
+              <SkeletonBlock />
+              <span>
+                <SkeletonBlock />
+                <SkeletonBlock className="is-short" />
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="article-skeleton-comments">
+          <div>
+            <SkeletonBlock />
+            <SkeletonBlock />
+          </div>
+          <SkeletonBlock />
+        </div>
+      </div>
+    </article>
+
+    <div className="article-skeleton-mobile-actions" aria-hidden="true">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <SkeletonBlock key={`article-mobile-action-skeleton-${index}`} />
+      ))}
+    </div>
+  </div>
+);
 
 const ArticleDetails = () => {
   const { t } = useTranslation();
@@ -832,34 +1148,36 @@ const ArticleDetails = () => {
       return;
     }
     if (!authorId || authorId === user._id) return;
+    if (isFollowingAuthor) return;
 
     setFollowLoading(true);
     try {
-      const { data } = await api.post(`/social/follow/${authorId}`);
-      setIsFollowingAuthor(Boolean(data.following));
+      const { data } = await api.post(`/social/follow-only/${authorId}`);
+      const nextFollowing = Boolean(data.following);
+      setIsFollowingAuthor(nextFollowing);
       setArticle((current) => {
         if (!current?.author) return current;
         const wasFollowing = Boolean(current.author.isFollowing ?? isFollowingAuthor);
         const currentFollowerCount = Number(
           current.author.followerCount ?? current.author.followersCount ?? 0
         );
-        const nextFollowerCount = Math.max(
-          0,
-          currentFollowerCount + (data.following === wasFollowing ? 0 : data.following ? 1 : -1)
-        );
+        const apiFollowerCount = Number(data.followerCount);
+        const nextFollowerCount = Number.isFinite(apiFollowerCount)
+          ? apiFollowerCount
+          : Math.max(0, currentFollowerCount + (nextFollowing && !wasFollowing ? 1 : 0));
         return {
           ...current,
           author: {
             ...current.author,
-            isFollowing: Boolean(data.following),
+            isFollowing: nextFollowing,
             followerCount: nextFollowerCount,
             followersCount: nextFollowerCount,
           },
         };
       });
-      toast.success(data.following ? 'Following author.' : 'Unfollowed author.');
+      toast.success(data.alreadyFollowing ? 'Already following author.' : 'Following author.');
     } catch (error) {
-      toast.error('Failed to update follow status.');
+      toast.error('Failed to follow author.');
     } finally {
       setFollowLoading(false);
     }
@@ -1052,39 +1370,39 @@ const ArticleDetails = () => {
 
   const shareOptions = [
     {
+      key: 'facebook',
       name: 'Facebook',
-      icon: <FaFacebook className="text-2xl" />,
-      color: 'bg-blue-600 hover:bg-blue-700',
+      icon: <FaFacebook />,
       action: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
     },
     {
+      key: 'twitter',
       name: 'Twitter',
-      icon: <FaXTwitter className="text-2xl" />,
-      color: 'bg-black hover:bg-gray-800',
+      icon: <FaXTwitter />,
       action: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')
     },
     {
+      key: 'linkedin',
       name: 'LinkedIn',
-      icon: <FaLinkedin className="text-2xl" />,
-      color: 'bg-blue-700 hover:bg-blue-800',
+      icon: <FaLinkedin />,
       action: () => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank')
     },
     {
+      key: 'whatsapp',
       name: 'WhatsApp',
-      icon: <FaWhatsapp className="text-2xl" />,
-      color: 'bg-green-500 hover:bg-green-600',
+      icon: <FaWhatsapp />,
       action: () => window.open(`https://wa.me/?text=${encodeURIComponent(shareTitle + ' ' + shareUrl)}`, '_blank')
     },
     {
+      key: 'email',
       name: 'Email',
-      icon: <FaEnvelope className="text-2xl" />,
-      color: 'bg-gray-600 hover:bg-gray-700',
+      icon: <FaEnvelope />,
       action: () => window.location.href = `mailto:?subject=${encodeURIComponent(shareTitle)}&body=${encodeURIComponent(shareUrl)}`
     },
     {
+      key: 'copy',
       name: 'Copy Link',
-      icon: <FaLink className="text-2xl" />,
-      color: 'bg-gray-800 hover:bg-gray-900',
+      icon: <FaLink />,
       action: async () => {
         await copyTextToClipboard(shareUrl);
         setShowShareModal(false);
@@ -1182,8 +1500,8 @@ const ArticleDetails = () => {
   const articleReadMinutes = article?.readingTime || article?.readTime || estimateReadTime(article?.content);
   const articleDescription = article?.metaDescription || article?.excerpt || article?.summary || '';
   const articleCoverImage = article?.coverImage || article?.image || article?.featuredImage || '/image/lekhon_url.png';
-  const articleGalleryImages = useMemo(
-    () => normalizeArticleImages(article, articleCoverImage),
+  const articleGalleryMedia = useMemo(
+    () => normalizeArticleGalleryMedia(article, articleCoverImage),
     [article, articleCoverImage]
   );
   const articleProductTags = useMemo(
@@ -1211,10 +1529,10 @@ const ArticleDetails = () => {
   );
 
   useEffect(() => {
-    if (activeGalleryIndex >= articleGalleryImages.length) {
+    if (activeGalleryIndex >= articleGalleryMedia.length) {
       setActiveGalleryIndex(0);
     }
-  }, [activeGalleryIndex, articleGalleryImages.length]);
+  }, [activeGalleryIndex, articleGalleryMedia.length]);
 
   if (loading) {
     return (
@@ -1227,9 +1545,7 @@ const ArticleDetails = () => {
           image={seoImage}
           type="article"
         />
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
+        <ArticleDetailSkeleton />
       </>
     );
   }
@@ -1349,7 +1665,7 @@ const ArticleDetails = () => {
             <ArticleGalleryDock
               title={article.title}
               category={articleCategory}
-              images={articleGalleryImages}
+              mediaItems={articleGalleryMedia}
               activeIndex={activeGalleryIndex}
               setActiveIndex={setActiveGalleryIndex}
               productTags={articleProductTags}
@@ -1426,9 +1742,10 @@ const ArticleDetails = () => {
                   <button
                     type="button"
                     onClick={handleFollowAuthor}
-                    disabled={followLoading}
+                    disabled={followLoading || isFollowingAuthor}
                     className={`article-editorial-follow-button ${isFollowingAuthor ? 'is-following' : ''}`}
                     aria-pressed={isFollowingAuthor}
+                    aria-label={isFollowingAuthor ? t('Following author') : t('Follow author')}
                   >
                     {followLoading ? (
                       t('...')
@@ -1530,7 +1847,7 @@ const ArticleDetails = () => {
 
         <section id="article-comments-section" className="article-comments-panel" aria-label={t('Comments')}>
           <div className="article-comments-header">
-            <h2 className="article-comments-title">{t('Comments')} <span>({comments.length})</span></h2>
+            <h2 className="article-comments-title">{t('Comments')} <span>{comments.length}</span></h2>
             <div className="article-comments-sort">
               <button
                 onClick={() => setShowSortMenu(!showSortMenu)}
@@ -1542,11 +1859,13 @@ const ArticleDetails = () => {
               {showSortMenu && (
                 <div className="article-comments-sort-menu">
                   <button
+                    className={sortBy === 'top' ? 'is-active' : ''}
                     onClick={() => { setSortBy('top'); setShowSortMenu(false); }}
                   >
                     {t('Most Engaging')}
                   </button>
                   <button
+                    className={sortBy === 'newest' ? 'is-active' : ''}
                     onClick={() => { setSortBy('newest'); setShowSortMenu(false); }}
                   >
                     {t('Newest First')}
@@ -1645,23 +1964,44 @@ const ArticleDetails = () => {
 
       {/* Share Modal */}
       {showShareModal && (
-        <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4" onClick={() => setShowShareModal(false)}>
-          <div className="theme-modal-card rounded-2xl p-6 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-[var(--text-primary)]">{t('Share this article')}</h3>
-              <button onClick={() => setShowShareModal(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]">
-                <FaTimes size={24} />
+        <div className="fixed inset-0 theme-modal-overlay article-share-overlay flex items-center justify-center z-50 p-4" onClick={() => setShowShareModal(false)}>
+          <div className="theme-modal-card article-share-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="article-share-head">
+              <div>
+                <p>{t('Share')}</p>
+                <h3>{t('Share this article')}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowShareModal(false)}
+                className="article-share-close"
+                aria-label={t('Close share dialog')}
+              >
+                <FaTimes />
               </button>
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              {shareOptions.map((option, index) => (
+
+            <div className="article-share-preview">
+              <span className="article-share-preview-mark" aria-hidden="true">
+                <img src="/image/article_logo_light.png" alt="" />
+              </span>
+              <span>
+                <strong>{article.title}</strong>
+                <small>{new URL(shareUrl).host}</small>
+              </span>
+            </div>
+
+            <div className="article-share-options">
+              {shareOptions.map((option) => (
                 <button
-                  key={index}
+                  key={option.key}
+                  type="button"
                   onClick={option.action}
-                  className={`${option.color} text-white p-4 rounded-lg flex flex-col items-center gap-2 transition`}
+                  className={`article-share-option is-${option.key}`}
+                  aria-label={`${t('Share with')} ${option.name}`}
                 >
-                  {option.icon}
-                  <span className="text-xs font-semibold">{option.name}</span>
+                  <span className="article-share-icon" aria-hidden="true">{option.icon}</span>
+                  <span>{option.name}</span>
                 </button>
               ))}
             </div>

@@ -438,7 +438,7 @@ const buildSteps = (t) => [
 // ════════════════════════════════════════════════════════════════════════════
 const Register = () => {
   const { t } = useTranslation();
-  const { register, user } = useContext(AuthContext);
+  const { register, user, completeLogin } = useContext(AuthContext);
   const navigate = useNavigate();
 
   // Use the shared theme state so auth pages always match the navbar.
@@ -695,12 +695,17 @@ const Register = () => {
     handleSocialLoginRedirect('linkedin');
   };
 
+  const handleGuestEntryClick = () => {
+    setError('');
+    setShowGuestModal(true);
+  };
+
   const handleGuestContinue = (u) => { setGuestUsername(u); setShowGuestModal(false); setShowGuestInfoModal(true); };
   const handleGuestLogin = async () => {
     try {
       const { data } = await axios.post(`${API}/api/auth/guest-login`, { username: guestUsername });
-      localStorage.setItem('token', data.token); localStorage.setItem('rememberMe','true');
-      setShowGuestInfoModal(false); window.location.href='/';
+      completeLogin(data, true);
+      setShowGuestInfoModal(false); navigate('/home', { replace: true });
     } catch(err) {
       setError(err.response?.data?.message || t('Guest login failed'));
       setShowGuestInfoModal(false);
@@ -1104,7 +1109,7 @@ const Register = () => {
                     {/* LinkedIn real OAuth */}
                     <SocialBtn label="LinkedIn"   icon={SOCIAL_ICONS[3].icon} C={C} onClick={handleLinkedInLoginRedirect} disabled={!!socialAuthLoading} loading={socialAuthLoading==='linkedin'}/>
                   </div>
-                  <button onClick={()=>setShowGuestModal(true)}
+                  <button onClick={handleGuestEntryClick}
                     style={{width:'100%',padding:'13px',borderRadius:13,
                       border:`1.5px solid ${C.brand}`,background:'transparent',color:C.brand,
                       fontSize:14,fontWeight:600,fontFamily:"'Palatino Linotype',Palatino,serif",

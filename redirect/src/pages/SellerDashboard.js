@@ -6,7 +6,7 @@ import StarRating             from '../components/StarRating';
 import {
   FaPlus, FaStore, FaBoxOpen, FaChartLine, FaTag, FaCog,
   FaEdit, FaArchive, FaCheck, FaTruck, FaEye, FaToggleOn, FaToggleOff, FaTrash,
-  FaWallet, FaRupeeSign, FaSearch, FaTimes,
+  FaWallet, FaRupeeSign, FaSearch, FaTimes, FaQuestionCircle,
 } from 'react-icons/fa';
 import { MdStorefront } from 'react-icons/md';
 
@@ -72,6 +72,22 @@ const getCouponStatus = (coupon) => {
   return { status: 'active', label: 'Active', className: COUPON_STATUS_COLOR.active };
 };
 
+const tableScrollStyle = {
+  WebkitOverflowScrolling: 'touch',
+  scrollbarWidth: 'none',
+  msOverflowStyle: 'none',
+};
+
+const ScrollableTable = ({ children, minWidth = 760 }) => (
+  <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden">
+    <div className="overflow-x-auto" style={tableScrollStyle}>
+      <div style={{ minWidth }}>
+        {children}
+      </div>
+    </div>
+  </div>
+);
+
 const SellerDashboard = () => {
   const { user }   = useContext(AuthContext);
   const navigate   = useNavigate();
@@ -130,11 +146,16 @@ const SellerDashboard = () => {
 
   const getProductImage = (product) => product?.thumbnail || product?.images?.[0] || '';
 
+  const publishedProducts = useMemo(
+    () => products.filter(product => product.status === 'active'),
+    [products]
+  );
+
   const filteredPickerProducts = useMemo(() => {
     const query = productPickerQuery.trim().toLowerCase();
-    if (!query) return products;
+    if (!query) return publishedProducts;
 
-    return products.filter(product => [
+    return publishedProducts.filter(product => [
       product.title,
       product.type,
       product.slug,
@@ -142,7 +163,7 @@ const SellerDashboard = () => {
       ...(product.category || []),
       ...(product.tags || []),
     ].some(value => String(value || '').toLowerCase().includes(query)));
-  }, [products, productPickerQuery]);
+  }, [publishedProducts, productPickerQuery]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
   const changeProductStatus = async (id, status) => {
@@ -275,7 +296,7 @@ const SellerDashboard = () => {
     <div className="min-h-screen bg-[var(--bg-primary)]">
       {/* ── Top header ───────────────────────────────────────────────────────── */}
       <div className="border-b border-[var(--border-color)] bg-[var(--bg-card)] px-4 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/30">
               <MdStorefront size={22} className="text-amber-600 dark:text-amber-400" />
@@ -285,10 +306,16 @@ const SellerDashboard = () => {
               <p className="text-xs text-[var(--text-muted)]">{settings.storeName || user?.name}</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
+            <Link
+              to="/help/article/manage-your-seller-dashboard"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--border-color)] text-xs font-semibold text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors"
+            >
+              <FaQuestionCircle size={12} /> Help
+            </Link>
             <Link
               to={`/store/${user?.username}`}
-              target="_blank"
+              state={{ fromSellerDashboard: true }}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--border-color)] text-xs text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] transition-colors"
             >
               <FaEye size={11} /> View Store
@@ -350,7 +377,7 @@ const SellerDashboard = () => {
             {/* Recent orders */}
             <div>
               <h2 className="font-bold text-[var(--text-primary)] mb-3">Recent Orders</h2>
-              <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden">
+              <ScrollableTable minWidth={680}>
                 <table className="w-full text-sm">
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
@@ -381,7 +408,7 @@ const SellerDashboard = () => {
                     )}
                   </tbody>
                 </table>
-              </div>
+              </ScrollableTable>
             </div>
           </div>
         )}
@@ -396,7 +423,7 @@ const SellerDashboard = () => {
               </Link>
             </div>
 
-            <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden">
+            <ScrollableTable minWidth={920}>
               <table className="w-full text-sm">
                 <thead className="bg-[var(--bg-secondary)]">
                   <tr>
@@ -465,7 +492,7 @@ const SellerDashboard = () => {
                   )}
                 </tbody>
               </table>
-            </div>
+            </ScrollableTable>
           </div>
         )}
 
@@ -490,7 +517,7 @@ const SellerDashboard = () => {
               </button>
             </div>
 
-            <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden">
+            <ScrollableTable minWidth={900}>
               <table className="w-full text-sm">
                 <thead className="bg-[var(--bg-secondary)]">
                   <tr>
@@ -548,14 +575,14 @@ const SellerDashboard = () => {
                   )}
                 </tbody>
               </table>
-            </div>
+            </ScrollableTable>
           </div>
         )}
 
         {tab === 'orders' && (
           <div className="space-y-4">
             <h2 className="font-bold text-[var(--text-primary)]">Orders ({orders.length})</h2>
-            <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden">
+            <ScrollableTable minWidth={760}>
               <table className="w-full text-sm">
                 <thead className="bg-[var(--bg-secondary)]">
                   <tr>
@@ -609,7 +636,7 @@ const SellerDashboard = () => {
                   )}
                 </tbody>
               </table>
-            </div>
+            </ScrollableTable>
           </div>
         )}
 
@@ -661,7 +688,7 @@ const SellerDashboard = () => {
             </div>
 
             {/* Coupon list */}
-            <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden">
+            <ScrollableTable minWidth={820}>
               <table className="w-full text-sm">
                 <thead className="bg-[var(--bg-secondary)]">
                   <tr>
@@ -705,7 +732,7 @@ const SellerDashboard = () => {
                   )}
                 </tbody>
               </table>
-            </div>
+            </ScrollableTable>
           </div>
         )}
 
@@ -782,10 +809,10 @@ const SellerDashboard = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
           <div className="bg-[var(--bg-card)] rounded-2xl border border-[var(--border-color)] w-full max-w-xl overflow-hidden shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-[var(--border-color)] px-5 py-4">
-              <div>
-                <h3 className="font-bold text-[var(--text-primary)]">Choose Product</h3>
-                <p className="text-xs text-[var(--text-muted)]">{products.length} products available</p>
-              </div>
+	              <div>
+	                <h3 className="font-bold text-[var(--text-primary)]">Choose Product</h3>
+	                <p className="text-xs text-[var(--text-muted)]">{publishedProducts.length} published products available</p>
+	              </div>
               <button
                 onClick={() => setProductPickerOpen(false)}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border-color)] text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--text-primary)]"
@@ -847,19 +874,20 @@ const SellerDashboard = () => {
                 );
               })}
 
-              {products.length === 0 && (
-                <div className="px-4 py-10 text-center">
-                  <p className="text-sm font-semibold text-[var(--text-primary)]">No products yet</p>
-                  <Link to="/seller/add-product" className="mt-2 inline-flex text-sm font-semibold text-violet-600 hover:underline">
-                    Add your first product
-                  </Link>
-                </div>
-              )}
+	              {publishedProducts.length === 0 && (
+	                <div className="px-4 py-10 text-center">
+	                  <p className="text-sm font-semibold text-[var(--text-primary)]">No published products yet</p>
+	                  <p className="mt-1 text-xs text-[var(--text-muted)]">Only published products can request a price change.</p>
+	                  <Link to="/seller/add-product" className="mt-2 inline-flex text-sm font-semibold text-violet-600 hover:underline">
+	                    Add product
+	                  </Link>
+	                </div>
+	              )}
 
-              {products.length > 0 && filteredPickerProducts.length === 0 && (
-                <div className="px-4 py-10 text-center text-sm text-[var(--text-muted)]">
-                  No products match "{productPickerQuery}"
-                </div>
+	              {publishedProducts.length > 0 && filteredPickerProducts.length === 0 && (
+	                <div className="px-4 py-10 text-center text-sm text-[var(--text-muted)]">
+	                  No products match "{productPickerQuery}"
+	                </div>
               )}
             </div>
           </div>

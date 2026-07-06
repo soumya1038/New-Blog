@@ -37,7 +37,12 @@ const {
   facebookDataDeletionRequest,
   facebookDataDeletionStatus
 } = require('../controllers/authController');
+const {
+  createForgotPasswordTwoFactorChallenge,
+  verifyForgotPasswordTwoFactorChallenge,
+} = require('../controllers/twoFactorController');
 const { protect } = require('../middleware/auth');
+const { requireTwoFactorForAction } = require('../utils/twoFactor');
 const trackActivity = require('../middleware/trackActivity');
 
 const router = express.Router();
@@ -57,8 +62,10 @@ router.post('/forgot-password/request', requestForgotPassword);
 router.post('/forgot-password/verify', verifyForgotPasswordCode);
 router.post('/forgot-password/change', requestForgotPasswordChange);
 router.post('/forgot-password/confirm', confirmForgotPasswordChange);
+router.post('/forgot-password/2fa/challenge', createForgotPasswordTwoFactorChallenge);
+router.post('/forgot-password/2fa/verify', verifyForgotPasswordTwoFactorChallenge);
 router.post('/forgot-password/change-authenticated', protect, requestAuthenticatedPasswordChange);
-router.post('/forgot-password/confirm-authenticated', protect, confirmAuthenticatedPasswordChange);
+router.post('/forgot-password/confirm-authenticated', protect, requireTwoFactorForAction('change_password'), confirmAuthenticatedPasswordChange);
 router.get('/google/start', startGoogleAuth);
 router.post('/google/exchange', exchangeGoogleCode);
 router.get('/google/connect/start', protect, startGoogleConnectAuth);

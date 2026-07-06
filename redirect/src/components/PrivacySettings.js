@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { FaLock, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { Link } from 'react-router-dom';
 
 const KNOWN_SOCIAL_PROVIDERS = [
   { key: 'google', label: 'Google', aliases: ['google.com', 'accounts.google.com', 'google'] },
@@ -155,6 +156,12 @@ const PrivacySettings = ({ profile, onUpdate }) => {
           isExpanded ? 'max-h-[32rem] opacity-100 mt-4' : 'max-h-0 opacity-0'
         }`}
       >
+        <Link
+          to="/help/article/manage-profile-privacy"
+          className="mb-3 inline-flex text-xs font-bold text-[var(--brand-primary)] no-underline"
+        >
+          What each privacy setting means
+        </Link>
         <div className="space-y-2.5">
           <div>
             <label className="text-sm font-medium text-[var(--text-secondary)] mb-1.5 block">

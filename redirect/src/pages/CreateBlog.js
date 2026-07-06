@@ -913,12 +913,14 @@ const CreateBlog = () => {
           includePlacements: isArticleMode,
           imageSources: [coverImage, ...persistedGallery.galleryImages],
         })),
+        ...(!isShortMode ? {
+          galleryImages: JSON.stringify(persistedGallery.galleryImages),
+          galleryImagePublicIds: JSON.stringify(persistedGallery.galleryImagePublicIds)
+        } : {}),
         ...(isArticleMode ? {
           templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
-          templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
-          galleryImages: JSON.stringify(persistedGallery.galleryImages),
-          galleryImagePublicIds: JSON.stringify(persistedGallery.galleryImagePublicIds)
+          templateThemeMode: FORCED_TEMPLATE_THEME_MODE
         } : {})
       };
 
@@ -1077,7 +1079,7 @@ const CreateBlog = () => {
         uploadedImageUrl = imageData.url;
         cloudinaryPublicId = imageData.public_id;
       }
-      const galleryUploadPayload = isArticleMode
+      const galleryUploadPayload = !isShortMode
         ? await uploadGalleryItems()
         : { galleryImages: [], galleryImagePublicIds: [] };
 
@@ -1145,7 +1147,11 @@ const CreateBlog = () => {
             isDraft: false,
             isScheduled,
             scheduledPublishDate,
-            ...productAttachmentPayload()
+            galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
+            galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds),
+            ...productAttachmentPayload({
+              imageSources: [uploadedImageUrl, ...galleryUploadPayload.galleryImages],
+            })
           });
           
           // Create short in Short table
@@ -1179,7 +1185,11 @@ const CreateBlog = () => {
             isDraft: false,
             isScheduled,
             scheduledPublishDate,
-            ...productAttachmentPayload()
+            galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
+            galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds),
+            ...productAttachmentPayload({
+              imageSources: [uploadedImageUrl, ...galleryUploadPayload.galleryImages],
+            })
           });
           
           setHasUnsavedChanges(false);
@@ -1240,7 +1250,7 @@ const CreateBlog = () => {
         cloudinaryPublicId = imageData.public_id;
       }
 
-      const galleryUploadPayload = isArticleMode
+      const galleryUploadPayload = !isShortMode
         ? await uploadGalleryItems()
         : { galleryImages: [], galleryImagePublicIds: [] };
 
@@ -1261,12 +1271,14 @@ const CreateBlog = () => {
             includePlacements: isArticleMode,
             imageSources: [uploadedImageUrl || coverImage, ...galleryUploadPayload.galleryImages],
           })),
+          ...(!isShortMode ? {
+            galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
+            galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+          } : {}),
           ...(isArticleMode ? {
             templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
-          templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
-            galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
-            galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+          templateThemeMode: FORCED_TEMPLATE_THEME_MODE
           } : {})
         });
       } else {
@@ -1299,12 +1311,14 @@ const CreateBlog = () => {
             includePlacements: isArticleMode,
             imageSources: [uploadedImageUrl, ...galleryUploadPayload.galleryImages],
           })),
+          ...(!isShortMode ? {
+            galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
+            galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+          } : {}),
           ...(isArticleMode ? {
             templateId: selectedArticleTemplateId,
           customTemplate: selectedArticleTemplateId === CUSTOM_ARTICLE_TEMPLATE_ID ? customArticleTemplate : null,
-          templateThemeMode: FORCED_TEMPLATE_THEME_MODE,
-            galleryImages: JSON.stringify(galleryUploadPayload.galleryImages),
-            galleryImagePublicIds: JSON.stringify(galleryUploadPayload.galleryImagePublicIds)
+          templateThemeMode: FORCED_TEMPLATE_THEME_MODE
           } : {})
         });
         setDraftId(isArticleMode ? data.article._id : (isShortMode ? data.short._id : data.blog._id));
@@ -1782,7 +1796,7 @@ const CreateBlog = () => {
               </div>
             </div>
 
-            {isArticleMode && (
+            {!isShortMode && (
               <div>
                 <label className="block text-[var(--text-secondary)] mb-2 font-semibold">{t('Gallery Images')}</label>
                 <input
@@ -1792,7 +1806,7 @@ const CreateBlog = () => {
                   onChange={handleGalleryImagesUpload}
                   className="w-full px-4 py-3 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
                 />
-                <p className="text-xs text-[var(--text-muted)] mt-2">{t('Upload up to 8 gallery images. These images are used inside article templates.')}</p>
+                <p className="text-xs text-[var(--text-muted)] mt-2">{t('Upload up to 8 gallery images. These images are used in the article or blog gallery.')}</p>
 
                 {galleryItems.length > 0 && (
                   <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

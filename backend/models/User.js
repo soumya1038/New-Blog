@@ -61,6 +61,34 @@ const userSchema = new mongoose.Schema({
     // Content-published emails are intentionally system-managed.
     contentPublished: { type: Boolean, default: true },
   },
+  twoFactor: {
+    enabled: { type: Boolean, default: false },
+    preferredMethod: {
+      type: String,
+      enum: ['authenticator', 'sms'],
+      default: 'authenticator',
+    },
+    authenticator: {
+      enabled: { type: Boolean, default: false },
+      secret: { type: String, default: '', select: false },
+      setupSecret: { type: String, default: '', select: false },
+      confirmedAt: { type: Date, default: null },
+    },
+    sms: {
+      enabled: { type: Boolean, default: false },
+      phone: { type: String, default: '' },
+      verifiedAt: { type: Date, default: null },
+    },
+    lastChangedAt: { type: Date, default: null },
+  },
+  security: {
+    sensitiveActionPassword: {
+      failedAttempts: { type: Number, default: 0 },
+      windowStartedAt: { type: Date, default: null },
+      lockedUntil: { type: Date, default: null },
+      lastFailedAt: { type: Date, default: null },
+    },
+  },
   followers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   following: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   blockedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],

@@ -36,6 +36,22 @@ const SummaryCard = ({ label, value, sub, icon: Icon, color, highlight }) => (
   </div>
 );
 
+const tableScrollStyle = {
+  WebkitOverflowScrolling: 'touch',
+  scrollbarWidth: 'none',
+  msOverflowStyle: 'none',
+};
+
+const ScrollableTable = ({ children, minWidth = 760 }) => (
+  <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden">
+    <div className="overflow-x-auto" style={tableScrollStyle}>
+      <div style={{ minWidth }}>
+        {children}
+      </div>
+    </div>
+  </div>
+);
+
 const SellerEarnings = () => {
   const { user }     = useContext(AuthContext);
   const navigate     = useNavigate();
@@ -103,6 +119,12 @@ const SellerEarnings = () => {
             <h1 className="text-2xl font-bold text-[var(--text-primary)] mt-0.5 flex items-center gap-2">
               <FaWallet className="text-violet-500" /> Earnings & Payouts
             </h1>
+            <Link
+              to="/help/article/understand-seller-earnings-and-payouts"
+              className="mt-1 inline-flex text-xs font-bold text-[var(--brand-primary)] no-underline"
+            >
+              Understand fees, holds, and payout states
+            </Link>
           </div>
 
           {/* Payout button */}
@@ -192,8 +214,8 @@ const SellerEarnings = () => {
                 <p>No {filter === 'all' ? '' : filter.replace('_', ' ')} earnings yet</p>
               </div>
             ) : (
-              <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden">
-                <table className="w-full text-sm">
+	              <ScrollableTable minWidth={780}>
+	                <table className="w-full text-sm">
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
                       {['Order', 'Gross', 'Fees', 'You Get', 'Status', 'Hold Until'].map(h => (
@@ -230,8 +252,8 @@ const SellerEarnings = () => {
                       );
                     })}
                   </tbody>
-                </table>
-              </div>
+	                </table>
+	              </ScrollableTable>
             )}
           </div>
         )}

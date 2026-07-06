@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AuthContext }   from '../context/AuthContext';
 import api               from '../services/api';
 import { CouponInput }   from '../components/CouponInput';
@@ -297,7 +297,15 @@ const Checkout = () => {
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] py-8 px-4">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)] mb-6">Checkout</h1>
+        <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+          <h1 className="m-0 text-2xl font-bold text-[var(--text-primary)]">Checkout</h1>
+          <Link
+            to="/help/article/checkout-and-payment"
+            className="text-xs font-bold text-[var(--brand-primary)] no-underline"
+          >
+            Payment and checkout help
+          </Link>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
           {/* ── Left: Address + Coupon ──────────────────────────────────────── */}

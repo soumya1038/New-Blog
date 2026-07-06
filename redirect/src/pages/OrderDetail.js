@@ -183,13 +183,12 @@ const OrderDetail = () => {
           <div className="flex flex-wrap gap-2">
             {canReview && (
               <>
-                <button
-                  type="button"
-                  onClick={() => alert('Return request support is not connected yet. Please contact support for this order.')}
+                <Link
+                  to={`/help/article/resolve-an-order-delivery-or-return-problem?reference=${encodeURIComponent(order.orderNumber || order._id)}`}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--border-color)] text-sm font-medium text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
                 >
-                  <FaUndoAlt size={13} /> Return
-                </button>
+                  <FaUndoAlt size={13} /> Order help
+                </Link>
                 <button
                   type="button"
                   onClick={() => setReviewMode(mode => mode === 'product' ? null : 'product')}

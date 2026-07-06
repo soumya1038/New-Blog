@@ -69,6 +69,43 @@ frontend/.env
 .env
 *.env.local
 
-# Keep existing history, but ignore new documentation/script changes going forward
-docs/
+# Keep existing history, but ignore new documentation/script changes going forward.
+# The Help Center planning pack is intentionally version-controlled.
+docs/*
+!docs/help-center-planning/
+!docs/help-center-planning/**
 scripts/
+!scripts/
+scripts/*
+!scripts/create-help-accessibility-verification-packet.js
+!scripts/create-help-android-evidence-packet.js
+!scripts/create-help-android-verification-worksheet.js
+!scripts/create-help-analytics-approval-packet.js
+!scripts/create-help-coverage-approval-packet.js
+!scripts/create-help-external-verification-worksheet.js
+!scripts/create-help-open-gate-owner-handoff.js
+!scripts/create-help-policy-approval-packet.js
+!scripts/create-help-release-evidence-binder.js
+!scripts/create-help-release-exception-decision-packet.js
+!scripts/create-help-release-pass-checklist.js
+!scripts/create-help-release-candidate.js
+!scripts/create-help-support-lifecycle-packet.js
+!scripts/create-help-visual-evidence-packet.js
+!scripts/create-help-visual-evidence-worksheet.js
+!scripts/report-help-accessibility-environment.js
+!scripts/report-help-accessibility-readiness.js
+!scripts/report-help-analytics-readiness.js
+!scripts/report-help-android-device-evidence.js
+!scripts/report-help-android-readiness.js
+!scripts/report-help-exceptions.js
+!scripts/report-help-gate-closure-readiness.js
+!scripts/report-help-goal-audit.js
+!scripts/report-help-open-gate-owners.js
+!scripts/report-help-policy-readiness.js
+!scripts/report-help-readiness.js
+!scripts/report-help-release-record-audit.js
+!scripts/report-help-release-evidence-status.js
+!scripts/report-help-support-readiness.js
+!scripts/report-help-visual-readiness.js
+!scripts/verify-help-public-routes.js
+!scripts/verify-help-governance.js

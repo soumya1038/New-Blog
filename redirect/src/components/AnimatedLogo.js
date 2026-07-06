@@ -42,6 +42,13 @@ const AnimatedLogo = () => {
   const [fontFamily, setFontFamily] = useState(fonts[0]);
 
   useEffect(() => {
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) {
+      setDisplayText(text);
+      setFontFamily(fonts[0]);
+      return undefined;
+    }
+
     const now = Date.now();
     const cycleIndex = Math.floor(now / CYCLE_TIME);
     const timeInCycle = now % CYCLE_TIME;
@@ -92,7 +99,11 @@ const AnimatedLogo = () => {
   }, []);
 
   return (
-    <span className="text-3xl font-bold inline-block gap-2 min-w-[120px]" style={{ fontFamily }}>
+    <span
+      aria-hidden="true"
+      className="inline-block min-w-[76px] whitespace-nowrap text-xl font-bold leading-none sm:min-w-[120px] sm:text-3xl"
+      style={{ fontFamily }}
+    >
       {displayText}
       <span className="animate-pulse">|</span>
     </span>

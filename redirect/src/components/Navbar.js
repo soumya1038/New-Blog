@@ -116,14 +116,14 @@ const Navbar = () => {
         }}>
           <div className="container mx-auto px-4 py-3 relative z-10">
         <div className="flex justify-between items-center">
-          <Link to="/home" className="flex items-center gap-3 group">
+          <Link to="/home" aria-label="Lekhon home" className="flex min-w-0 items-center gap-2 group sm:gap-3">
             <img 
               src="/image/lekhon_url.png" 
               alt="Lekhon Logo" 
-              className="h-12 w-12 object-cover transition-transform duration-300 group-hover:scale-105" 
+              className="h-10 w-10 shrink-0 object-cover transition-transform duration-300 group-hover:scale-105 sm:h-12 sm:w-12"
               style={{ borderRadius: 'var(--radius-sm)' }}
             />
-            <div className="group-hover:translate-x-1 transition-transform duration-300">
+            <div className="min-w-0 group-hover:translate-x-1 transition-transform duration-300">
               <AnimatedLogo />
             </div>
           </Link>
@@ -148,8 +148,8 @@ const Navbar = () => {
                 </Link>
                 <Link
                   to="/create"
-                  className="px-5 py-2 rounded-xl text-white font-bold uppercase tracking-[0.05em] transition hover:scale-105 hover:opacity-90 shadow-lg flex items-center gap-1.5"
-                  style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))' }}
+                  className="px-5 py-2 rounded-xl font-bold uppercase tracking-[0.05em] transition hover:scale-105 hover:opacity-90 shadow-lg flex items-center gap-1.5"
+                  style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))', color: isDark ? '#ffffff' : '#17130a' }}
                 >
                   <FaPlusCircle size={14} />
                   {t('Create Post')}
@@ -272,8 +272,8 @@ const Navbar = () => {
                 <Link to="/login" className="px-5 py-2.5 rounded-xl text-[var(--text-primary)] hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-105 font-medium">{t('Login')}</Link>
                 <Link
                   to="/register"
-                  className="px-6 py-2.5 rounded-xl font-bold text-white shadow-lg transition-all duration-300 hover:scale-105 hover:opacity-90"
-                  style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))' }}
+                  className="px-6 py-2.5 rounded-xl font-bold shadow-lg transition-all duration-300 hover:scale-105 hover:opacity-90"
+                  style={{ background: 'linear-gradient(135deg, var(--brand-primary), var(--brand-primary-hover))', color: isDark ? '#ffffff' : '#17130a' }}
                 >
                   {t('Sign Up')}
                 </Link>

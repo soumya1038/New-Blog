@@ -66,6 +66,9 @@ jobs:
       - name: Install redirect dependencies
         run: npm ci
 
+      - name: Validate Help Center content and navigation
+        run: npm run test:help -- --runInBand
+
       - name: Build redirect app
         run: npm run build
 

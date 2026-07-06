@@ -3,10 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaTimes, FaArrowLeft, FaArrowRight, FaShare, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaFacebookF, FaGoogle, FaLinkedinIn, FaGithub, FaGlobe, FaVideo, FaMusic, FaRegSmile } from 'react-icons/fa';
+import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaTimes, FaArrowLeft, FaArrowRight, FaShare, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaFacebookF, FaGoogle, FaLinkedinIn, FaGithub, FaGlobe, FaVideo, FaMusic, FaRegSmile, FaShieldAlt, FaMobileAlt } from 'react-icons/fa';
 import { PiBookOpenTextThin } from 'react-icons/pi';
 import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified, GoUnverified } from 'react-icons/go';
+import { QRCodeSVG } from 'qrcode.react';
 import AIBioGenerator from '../components/AIBioGenerator';
 import Avatar from '../components/Avatar';
 import GuestBadge from '../components/GuestBadge';
@@ -20,8 +21,15 @@ import EmailNotificationSettings from '../components/EmailNotificationSettings';
 import Achievements from '../components/Achievements';
 import QRCodeModal from '../components/QRCodeModal';
 import StatusViewer from '../components/StatusViewer';
+import TwoFactorVerificationModal from '../components/TwoFactorVerificationModal';
 import { getOAuthRedirectUri } from '../utils/oauthRedirects';
 import { isNativeApp } from '../utils/nativeApp';
+import {
+  buildTwoFactorHeaders,
+  getTwoFactorRequirement,
+  requestAuthenticatedTwoFactorChallenge,
+  verifyAuthenticatedTwoFactorChallenge,
+} from '../utils/twoFactorFlow';
 
 const STORY_STYLE_PRESETS = [
   {
@@ -121,6 +129,8 @@ const STORY_MUSIC_PRESETS = [
   },
 ];
 
+const PROFILE_SECTION_ICON_CLASS = 'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)] text-[var(--brand-primary)]';
+
 const clampStatusStickerSize = (value) => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return 48;
@@ -217,6 +227,22 @@ const ProfileNew = () => {
   const [sendingPasswordCode, setSendingPasswordCode] = useState(false);
   const [showPasswordCodeModal, setShowPasswordCodeModal] = useState(false);
   const [passwordCode, setPasswordCode] = useState('');
+  const [forgotPasswordValues, setForgotPasswordValues] = useState({ newPassword: '', confirmPassword: '' });
+  const [sendingForgotPasswordCode, setSendingForgotPasswordCode] = useState(false);
+  const [showForgotPasswordCodeModal, setShowForgotPasswordCodeModal] = useState(false);
+  const [forgotPasswordCode, setForgotPasswordCode] = useState('');
+  const [confirmingForgotPassword, setConfirmingForgotPassword] = useState(false);
+  const [twoFactorStatus, setTwoFactorStatus] = useState(null);
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false);
+  const [authenticatorSetup, setAuthenticatorSetup] = useState(null);
+  const [authenticatorCode, setAuthenticatorCode] = useState('');
+  const [smsPhone, setSmsPhone] = useState('');
+  const [smsSetupChallenge, setSmsSetupChallenge] = useState(null);
+  const [smsCode, setSmsCode] = useState('');
+  const [showSmsSetup, setShowSmsSetup] = useState(false);
+  const [showTwoFactorSetupOptions, setShowTwoFactorSetupOptions] = useState(false);
+  const [isTwoFactorExpanded, setIsTwoFactorExpanded] = useState(false);
+  const [twoFactorPrompt, setTwoFactorPrompt] = useState(null);
   const [showApiKeyForm, setShowApiKeyForm] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [visibleKeys, setVisibleKeys] = useState({});
@@ -283,20 +309,41 @@ const ProfileNew = () => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [profileRes, keysRes, blogsRes, articlesRes, shortsRes] = await Promise.all([
-          api.get('/users/profile'),
+        const profileRes = await api.get('/users/profile');
+        if (!isMounted) return;
+
+        const loadedProfile = profileRes.data.user || {};
+        setProfile(loadedProfile);
+        setSmsPhone(loadedProfile?.phone || '');
+        setUser((currentUser) => (
+          currentUser?._id === loadedProfile?._id
+            ? { ...currentUser, ...loadedProfile }
+            : currentUser || loadedProfile
+        ));
+
+        const optionalRequests = await Promise.allSettled([
           api.get('/users/api-keys'),
           api.get(`/blogs?author=${user._id}`),
           api.get(`/articles?author=${user._id}`),
-          api.get(`/shorts?author=${user._id}`)
+          api.get(`/shorts?author=${user._id}`),
+          api.get('/users/2fa/status')
         ]);
         if (!isMounted) return;
 
-        setProfile(profileRes.data.user);
-        setApiKeys(keysRes.data.apiKeys);
-        setBlogs(blogsRes.data.blogs);
-        setArticles(articlesRes.data.articles);
-        setShorts(shortsRes.data.shorts);
+        const [keysRes, blogsRes, articlesRes, shortsRes, twoFactorRes] = optionalRequests;
+        if (keysRes.status === 'fulfilled') setApiKeys(keysRes.value.data.apiKeys || []);
+        if (blogsRes.status === 'fulfilled') setBlogs(blogsRes.value.data.blogs || []);
+        if (articlesRes.status === 'fulfilled') setArticles(articlesRes.value.data.articles || []);
+        if (shortsRes.status === 'fulfilled') setShorts(shortsRes.value.data.shorts || []);
+        if (twoFactorRes.status === 'fulfilled') setTwoFactorStatus(twoFactorRes.value.data.twoFactor || null);
+
+        optionalRequests.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            const labels = ['api keys', 'blogs', 'articles', 'shorts', 'two-factor status'];
+            console.warn(`Unable to load profile ${labels[index]}`, result.reason);
+          }
+        });
+
         try {
           const statusesRes = await api.get('/users/statuses');
           if (isMounted) {
@@ -325,6 +372,15 @@ const ProfileNew = () => {
     const searchParams = new URLSearchParams(location.search || '');
     const forcePasswordChange = searchParams.get('forcePasswordChange') === '1';
     const fromGoogleSession = sessionStorage.getItem('googlePasswordSetupRequired') === 'true';
+    const openForgotPassword = searchParams.get('forgotPassword') === '1';
+
+    if (openForgotPassword) {
+      setExpandedCard(null);
+      setShowPasswordForm(false);
+      setShowForgotPassword(true);
+      navigate('/profile', { replace: true });
+      return;
+    }
 
     if (!forcePasswordChange && !fromGoogleSession) return;
 
@@ -548,10 +604,18 @@ const ProfileNew = () => {
   const MAX_ACTIVE_STATUSES = 5;
   const hasActiveStatus = statuses.length > 0;
   const statusSlotsRemaining = Math.max(0, MAX_ACTIVE_STATUSES - statuses.length);
-  const avatarUser = React.useMemo(
-    () => ({ ...(user || {}), hasActiveStatus }),
-    [user, hasActiveStatus]
+  const displayUser = React.useMemo(
+    () => ({ ...(user || {}), ...(profile || {}) }),
+    [user, profile]
   );
+  const avatarUser = React.useMemo(
+    () => ({ ...(displayUser || {}), hasActiveStatus }),
+    [displayUser, hasActiveStatus]
+  );
+  const displayUserId = displayUser?._id || displayUser?.id || user?._id || user?.id;
+  const memberSinceLabel = displayUser?.createdAt
+    ? new Date(displayUser.createdAt).toLocaleDateString()
+    : t('Not available');
 
   const getActiveStatuses = (items = []) =>
     Array.isArray(items)
@@ -1074,18 +1138,189 @@ const ProfileNew = () => {
     }
   };
 
+  const refreshTwoFactorStatus = async () => {
+    const { data } = await api.get('/users/2fa/status');
+    setTwoFactorStatus(data.twoFactor);
+    return data.twoFactor;
+  };
+
+  const openTwoFactorPrompt = ({ requirement, onVerified }) => {
+    setTwoFactorPrompt({
+      action: requirement.action,
+      actionLabel: requirement.actionLabel,
+      twoFactor: requirement.twoFactor,
+      onVerified,
+    });
+  };
+
+  const completeProfileUpdate = async (twoFactorToken) => {
+    const payload = twoFactorToken ? { ...profile, twoFactorToken } : profile;
+    const { data } = await api.put('/users/profile', payload, {
+      headers: buildTwoFactorHeaders(twoFactorToken),
+    });
+    if (data?.user) {
+      setProfile(data.user);
+    }
+    if (String(profile?.email || '').trim()) {
+      setShowSocialEmailNotice(false);
+    }
+    showModal('success', 'Success', 'Profile updated!');
+    setShowProfileForm(false);
+  };
+
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     try {
-      await api.put('/users/profile', profile);
-      if (String(profile?.email || '').trim()) {
-        setShowSocialEmailNotice(false);
-      }
-      showModal('success', 'Success', 'Profile updated!');
-      setShowProfileForm(false);
+      await completeProfileUpdate();
     } catch (error) {
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        openTwoFactorPrompt({
+          requirement,
+          onVerified: async (token) => completeProfileUpdate(token),
+        });
+        return;
+      }
       showModal('error', 'Error', 'Failed to update profile');
     }
+  };
+
+  const startAuthenticatorSetup = async (twoFactorToken) => {
+    setTwoFactorLoading(true);
+    try {
+      const token = typeof twoFactorToken === 'string' ? twoFactorToken : '';
+      const { data } = await api.post('/users/2fa/authenticator/setup', token ? { twoFactorToken: token } : {}, {
+        headers: buildTwoFactorHeaders(token),
+      });
+      setAuthenticatorSetup(data);
+      if (data.twoFactor) setTwoFactorStatus(data.twoFactor);
+      setShowTwoFactorSetupOptions(true);
+      setIsTwoFactorExpanded(true);
+      setAuthenticatorCode('');
+    } catch (error) {
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        openTwoFactorPrompt({
+          requirement,
+          onVerified: async (token) => startAuthenticatorSetup(token),
+        });
+        return;
+      }
+      showModal('error', 'Error', error.response?.data?.message || 'Failed to start authenticator setup');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const verifyAuthenticatorSetup = async (e) => {
+    e.preventDefault();
+    if (!authenticatorCode) return;
+    setTwoFactorLoading(true);
+    try {
+      const { data } = await api.post('/users/2fa/authenticator/verify', { code: authenticatorCode });
+      setTwoFactorStatus(data.twoFactor);
+      setAuthenticatorSetup(null);
+      setAuthenticatorCode('');
+      setShowTwoFactorSetupOptions(false);
+      setIsTwoFactorExpanded(true);
+      showModal('success', 'Success', 'Authenticator app enabled!');
+    } catch (error) {
+      showModal('error', 'Error', error.response?.data?.message || 'Invalid authenticator code');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const submitSmsSetup = async (twoFactorToken) => {
+    if (!smsPhone.trim()) return;
+    setTwoFactorLoading(true);
+    try {
+      const token = typeof twoFactorToken === 'string' ? twoFactorToken : '';
+      const { data } = await api.post('/users/2fa/sms/setup', { phone: smsPhone, ...(token ? { twoFactorToken: token } : {}) }, {
+        headers: buildTwoFactorHeaders(token),
+      });
+      setSmsSetupChallenge(data.challengeId);
+      setShowTwoFactorSetupOptions(true);
+      setIsTwoFactorExpanded(true);
+      setSmsCode('');
+      showModal('success', 'Code Sent', 'SMS verification code sent.');
+    } catch (error) {
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        openTwoFactorPrompt({
+          requirement,
+          onVerified: async (token) => submitSmsSetup(token),
+        });
+        return;
+      }
+      showModal('error', 'Error', error.response?.data?.message || 'Failed to send SMS code');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const startSmsSetup = async (e) => {
+    e.preventDefault();
+    await submitSmsSetup();
+  };
+
+  const verifySmsSetup = async (e) => {
+    e.preventDefault();
+    if (!smsSetupChallenge || !smsCode) return;
+    setTwoFactorLoading(true);
+    try {
+      const { data } = await api.post('/users/2fa/sms/verify', {
+        challengeId: smsSetupChallenge,
+        code: smsCode,
+      });
+      setTwoFactorStatus(data.twoFactor);
+      setSmsSetupChallenge(null);
+      setSmsCode('');
+      setShowSmsSetup(false);
+      setShowTwoFactorSetupOptions(false);
+      setIsTwoFactorExpanded(true);
+      showModal('success', 'Success', 'SMS verification enabled!');
+    } catch (error) {
+      showModal('error', 'Error', error.response?.data?.message || 'Invalid SMS code');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const setPreferredTwoFactorMethod = async (method) => {
+    setTwoFactorLoading(true);
+    try {
+      const { data } = await api.post('/users/2fa/preferred', { method });
+      setTwoFactorStatus(data.twoFactor);
+      showModal('success', 'Success', 'Preferred method updated.');
+    } catch (error) {
+      showModal('error', 'Error', error.response?.data?.message || 'Failed to update preferred method');
+    } finally {
+      setTwoFactorLoading(false);
+    }
+  };
+
+  const disableTwoFactor = () => {
+    if (!twoFactorStatus?.enabled) return;
+    openTwoFactorPrompt({
+      requirement: {
+        action: 'disable_2fa',
+        actionLabel: 'turn off two-factor authentication',
+        twoFactor: twoFactorStatus,
+      },
+      onVerified: async (token) => {
+        const { data } = await api.post('/users/2fa/disable', { twoFactorToken: token }, {
+          headers: buildTwoFactorHeaders(token),
+        });
+        setTwoFactorStatus(data.twoFactor);
+        setAuthenticatorSetup(null);
+        setSmsSetupChallenge(null);
+        setShowSmsSetup(false);
+        setShowTwoFactorSetupOptions(false);
+        setIsTwoFactorExpanded(false);
+        showModal('success', 'Success', 'Two-factor authentication turned off.');
+      },
+    });
   };
 
   const handleImageUpload = async (e) => {
@@ -1145,34 +1380,142 @@ const ProfileNew = () => {
       setShowPasswordSetupNotice(false);
       sessionStorage.removeItem('googlePasswordSetupRequired');
     } catch (error) {
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        openTwoFactorPrompt({
+          requirement,
+          onVerified: async (token) => {
+            await api.post('/users/password/confirm', { code: passwordCode, twoFactorToken: token }, {
+              headers: buildTwoFactorHeaders(token),
+            });
+            showModal('success', 'Success', 'Password changed!');
+            setShowPasswordCodeModal(false);
+            setPasswordCode('');
+            setPasswords({ currentPassword: '', newPassword: '' });
+            setShowPasswordSetupNotice(false);
+            sessionStorage.removeItem('googlePasswordSetupRequired');
+          },
+        });
+        return;
+      }
       showModal('error', 'Error', 'Invalid code');
     }
   };
 
+  const handleAuthenticatedForgotPasswordRequest = async (e) => {
+    e.preventDefault();
+    const nextPassword = forgotPasswordValues.newPassword;
+    if (nextPassword !== forgotPasswordValues.confirmPassword) {
+      showModal('error', 'Password mismatch', 'Passwords do not match');
+      return;
+    }
+    if (nextPassword.length < 6) {
+      showModal('error', 'Weak Password', 'Password must be at least 6 characters');
+      return;
+    }
+
+    setSendingForgotPasswordCode(true);
+    try {
+      await api.post('/auth/forgot-password/change-authenticated', { newPassword: nextPassword });
+      setShowForgotPassword(false);
+      setShowForgotPasswordCodeModal(true);
+      showModal('success', 'Code Sent', 'Confirmation code sent to your email.');
+    } catch (error) {
+      showModal('error', 'Error', error.response?.data?.message || 'Failed to send confirmation code');
+    } finally {
+      setSendingForgotPasswordCode(false);
+    }
+  };
+
+  const handleConfirmAuthenticatedForgotPassword = async (e) => {
+    e.preventDefault();
+    setConfirmingForgotPassword(true);
+    try {
+      await api.post('/auth/forgot-password/confirm-authenticated', { code: forgotPasswordCode });
+      showModal('success', 'Success', 'Password changed!');
+      setShowForgotPasswordCodeModal(false);
+      setForgotPasswordCode('');
+      setForgotPasswordValues({ newPassword: '', confirmPassword: '' });
+    } catch (error) {
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        openTwoFactorPrompt({
+          requirement,
+          onVerified: async (token) => {
+            await api.post('/auth/forgot-password/confirm-authenticated', {
+              code: forgotPasswordCode,
+              twoFactorToken: token,
+            }, {
+              headers: buildTwoFactorHeaders(token),
+            });
+            showModal('success', 'Success', 'Password changed!');
+            setShowForgotPasswordCodeModal(false);
+            setForgotPasswordCode('');
+            setForgotPasswordValues({ newPassword: '', confirmPassword: '' });
+          },
+        });
+        return;
+      }
+      showModal('error', 'Error', error.response?.data?.message || 'Invalid confirmation code');
+    } finally {
+      setConfirmingForgotPassword(false);
+    }
+  };
+
+  const completeGenerateApiKey = async ({ keyName, twoFactorToken = '' }) => {
+    await api.post('/users/api-keys', { name: keyName }, {
+      headers: buildTwoFactorHeaders(twoFactorToken),
+    });
+    const { data } = await api.get('/users/api-keys');
+    setApiKeys(data.apiKeys);
+    setNewKeyName('');
+    setShowApiKeyForm(false);
+    showModal('success', 'Success', 'API key generated!');
+  };
+
   const generateApiKey = async (e) => {
     e.preventDefault();
-    if (!newKeyName.trim()) return;
+    const keyName = newKeyName.trim();
+    if (!keyName) return;
     try {
-      await api.post('/users/api-keys', { name: newKeyName });
-      showModal('success', 'Success', 'API key generated!');
-      setNewKeyName('');
-      setShowApiKeyForm(false);
-      const { data } = await api.get('/users/api-keys');
-      setApiKeys(data.apiKeys);
+      await completeGenerateApiKey({ keyName });
     } catch (error) {
-      showModal('error', 'Error', 'Failed to generate');
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        openTwoFactorPrompt({
+          requirement,
+          onVerified: async (token) => completeGenerateApiKey({ keyName, twoFactorToken: token }),
+        });
+        return;
+      }
+      showModal('error', 'Error', error.response?.data?.message || 'Failed to generate');
     }
+  };
+
+  const performRevokeApiKey = async ({ keyId, twoFactorToken = '' }) => {
+    await api.delete(`/users/api-keys/${keyId}`, {
+      headers: buildTwoFactorHeaders(twoFactorToken),
+      data: twoFactorToken ? { twoFactorToken } : undefined,
+    });
+    showModal('success', 'Success', 'Key revoked');
+    const { data } = await api.get('/users/api-keys');
+    setApiKeys(data.apiKeys);
   };
 
   const revokeApiKey = (keyId, keyName) => {
     showModal('confirm', 'Revoke Key', `Revoke "${keyName}"?`, async () => {
       try {
-        await api.delete(`/users/api-keys/${keyId}`);
-        showModal('success', 'Success', 'Key revoked');
-        const { data } = await api.get('/users/api-keys');
-        setApiKeys(data.apiKeys);
+        await performRevokeApiKey({ keyId });
       } catch (error) {
-        showModal('error', 'Error', 'Failed to revoke');
+        const requirement = getTwoFactorRequirement(error);
+        if (requirement) {
+          openTwoFactorPrompt({
+            requirement,
+            onVerified: async (token) => performRevokeApiKey({ keyId, twoFactorToken: token }),
+          });
+          return;
+        }
+        showModal('error', 'Error', error.response?.data?.message || 'Failed to revoke');
       }
     });
   };
@@ -1308,7 +1651,8 @@ const ProfileNew = () => {
     setUsernameLoading(true);
     try {
       const { data } = await api.put('/users/username', { username: newUsername.trim() });
-      setUser({ ...user, username: data.user.username });
+      setUser((currentUser) => ({ ...(currentUser || {}), username: data.user.username }));
+      setProfile((currentProfile) => ({ ...(currentProfile || {}), username: data.user.username }));
       setShowUsernameModal(false);
       setNewUsername('');
       showModal('success', 'Success', 'Username updated!');
@@ -1341,6 +1685,20 @@ const ProfileNew = () => {
       showModal('success', 'Success', 'Account deleted');
       setTimeout(() => navigate('/login'), 2000);
     } catch (error) {
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        openTwoFactorPrompt({
+          requirement,
+          onVerified: async (token) => {
+            await api.post('/users/account/delete-confirm', { code: deleteCode, twoFactorToken: token }, {
+              headers: buildTwoFactorHeaders(token),
+            });
+            showModal('success', 'Success', 'Account deleted');
+            setTimeout(() => navigate('/login'), 2000);
+          },
+        });
+        return;
+      }
       showModal('error', 'Error', 'Invalid code');
     }
   };
@@ -1350,6 +1708,92 @@ const ProfileNew = () => {
     setShareUrl(url);
     setShareTitle(postTitle);
     setShowShareModal(true);
+  };
+
+  const handleTwoFactorPromptVerified = async (token) => {
+    const pendingPrompt = twoFactorPrompt;
+    setTwoFactorPrompt(null);
+    if (!pendingPrompt?.onVerified) return;
+    try {
+      await pendingPrompt.onVerified(token);
+      await refreshTwoFactorStatus().catch(() => null);
+    } catch (error) {
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        openTwoFactorPrompt({
+          requirement,
+          onVerified: pendingPrompt.onVerified,
+        });
+        return;
+      }
+      showModal('error', 'Error', error.response?.data?.message || 'Two-factor verification failed');
+    }
+  };
+
+  const twoFactorMethods = Array.isArray(twoFactorStatus?.methods) ? twoFactorStatus.methods : [];
+  const isTwoFactorEnabled = Boolean(twoFactorStatus?.enabled);
+  const isAuthenticatorEnabled = Boolean(twoFactorStatus?.authenticator?.enabled);
+  const isSmsEnabled = Boolean(twoFactorStatus?.sms?.enabled);
+  const preferredTwoFactorMethod = twoFactorStatus?.preferredMethod || twoFactorMethods[0] || '';
+  const authenticatorConnectedLabel = twoFactorStatus?.authenticator?.connectedAt
+    ? new Date(twoFactorStatus.authenticator.connectedAt).toLocaleDateString()
+    : '';
+  const isTwoFactorSetupActive = Boolean(showTwoFactorSetupOptions || authenticatorSetup || showSmsSetup || smsSetupChallenge);
+  const isTwoFactorDetailsExpanded = Boolean(isTwoFactorExpanded || isTwoFactorSetupActive);
+  const shouldShowTwoFactorMethods = isTwoFactorEnabled || isTwoFactorSetupActive;
+  const twoFactorQrCenterImage = displayUser?.profileImage || '/image/lekhon_url.png';
+  const twoFactorDetailsId = 'profile-two-factor-details';
+  const twoFactorSummary = authenticatorSetup
+    ? t('Finish setup to protect sensitive actions')
+    : smsSetupChallenge
+      ? t('Enter the SMS code to finish setup')
+      : showTwoFactorSetupOptions && !isTwoFactorEnabled
+        ? t('Choose a verification method to turn it on')
+        : isTwoFactorEnabled
+          ? t('Enabled for sensitive account actions')
+          : t('Off until you set up Authenticator or SMS');
+
+  const resetTwoFactorSetupDrafts = () => {
+    setAuthenticatorSetup(null);
+    setAuthenticatorCode('');
+    setShowSmsSetup(false);
+    setSmsSetupChallenge(null);
+    setSmsCode('');
+  };
+
+  const handleTwoFactorToggle = () => {
+    if (twoFactorLoading) return;
+
+    if (isTwoFactorEnabled) {
+      disableTwoFactor();
+      return;
+    }
+
+    if (isTwoFactorSetupActive) {
+      resetTwoFactorSetupDrafts();
+      setShowTwoFactorSetupOptions(false);
+      setIsTwoFactorExpanded(false);
+      return;
+    }
+
+    resetTwoFactorSetupDrafts();
+    setShowTwoFactorSetupOptions(true);
+    setIsTwoFactorExpanded(true);
+  };
+
+  const handleAuthenticatorSetupClick = () => {
+    if (!isAuthenticatorEnabled) {
+      setShowTwoFactorSetupOptions(true);
+      startAuthenticatorSetup();
+      return;
+    }
+
+    showModal(
+      'confirm',
+      t('Set up another authenticator app?'),
+      t('Starting setup will remove the currently connected authenticator app. Only continue if you can finish setup with the new app.'),
+      () => startAuthenticatorSetup()
+    );
   };
 
   const formatPostDate = (date) => {
@@ -1466,7 +1910,7 @@ const ProfileNew = () => {
                         <ScaleLoader color="#fff" height={20} width={3} />
                       </div>
                     )}
-                    {user?.profileImage && !imageUploading && !imageDeleting && (
+                    {displayUser?.profileImage && !imageUploading && !imageDeleting && (
                       <button onClick={handleRemoveImage} className="absolute top-0 right-0 bg-red-500 text-white p-1.5 rounded-full hover:bg-red-600" title="Remove">
                         <FaTimes size={12} />
                       </button>
@@ -1487,17 +1931,17 @@ const ProfileNew = () => {
                   </div>
                   <div className="text-center md:text-left lg:text-center">
                     <div className="flex items-center justify-center md:justify-start lg:justify-center gap-2 mb-1">
-                      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{user?.username}</h2>
-                      {!user?.isGuest && user?.role !== 'guest' && (
-                        user?.isVerified ? (
+                      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{displayUser?.username}</h2>
+                      {!displayUser?.isGuest && displayUser?.role !== 'guest' && (
+                        displayUser?.isVerified ? (
                           <div className="bg-blue-600 rounded-full p-1"><GoVerified className="text-white" size={18} /></div>
                         ) : (
                           <GoUnverified className="text-gray-400" size={20} />
                         )
                       )}
-                     {(user?.isGuest || user?.role === 'guest') && <GuestBadge size="lg" />}
+                     {(displayUser?.isGuest || displayUser?.role === 'guest') && <GuestBadge size="lg" />}
                     </div>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{t('Member since')} {new Date(user?.createdAt).toLocaleDateString()}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">{t('Member since')} {memberSinceLabel}</p>
                     <div className="mt-2 flex items-center justify-center md:justify-start lg:justify-center gap-2">
                       <span className="text-xs text-[var(--text-secondary)]">
                         {statuses.length}/{MAX_ACTIVE_STATUSES} active status
@@ -1549,7 +1993,7 @@ const ProfileNew = () => {
                     </div>
                     {/* Buttons always at bottom */}
                     <div className="flex gap-2 w-full lg:flex-col xl:flex-row">
-                      <button onClick={() => { setNewUsername(user?.username || ''); setShowUsernameModal(true); }} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2">
+                      <button onClick={() => { setNewUsername(displayUser?.username || ''); setShowUsernameModal(true); }} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2">
                         <FaEdit size={14} /> {t('Username')}
                       </button>
                       <button onClick={() => setShowProfileForm(true)} className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-lg hover:opacity-90 transition flex items-center justify-center gap-2">
@@ -1921,7 +2365,7 @@ const ProfileNew = () => {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('Posts')} ({blogs.length + articles.length})</h3>
                   {(blogs.length > 0 || articles.length > 0) && (
-                    <button onClick={(e) => { e.stopPropagation(); navigate(`/user/${user._id}`); }} className="flex items-center gap-1 text-[var(--brand-primary)] hover:opacity-80 text-sm font-semibold">
+                    <button onClick={(e) => { e.stopPropagation(); navigate(`/user/${displayUserId}`); }} className="flex items-center gap-1 text-[var(--brand-primary)] hover:opacity-80 text-sm font-semibold">
                       {t('View All')} <FaArrowRight size={12} />
                     </button>
                   )}
@@ -1951,7 +2395,7 @@ const ProfileNew = () => {
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="text-lg font-bold text-[var(--text-primary)]">{t('Shorts')} ({shorts.length})</h3>
                   {shorts.length > 0 && (
-                    <button onClick={(e) => { e.stopPropagation(); navigate(`/user/${user._id}`); }} className="flex items-center gap-1 text-[var(--brand-primary)] hover:opacity-80 text-sm font-semibold">
+                    <button onClick={(e) => { e.stopPropagation(); navigate(`/user/${displayUserId}`); }} className="flex items-center gap-1 text-[var(--brand-primary)] hover:opacity-80 text-sm font-semibold">
                       {t('View All')} <FaArrowRight size={12} />
                     </button>
                   )}
@@ -1981,18 +2425,18 @@ const ProfileNew = () => {
                     <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">{t('Developer')}</h3>
                     <p className="text-sm text-[var(--text-secondary)]">{t('Generate API keys for external access')}</p>
                   </div>
-                  <div className="bg-green-100 dark:bg-green-900/30 p-3 rounded-full">
-                    <FaKey className="text-green-600 dark:text-green-400" size={24} />
+                  <div className={PROFILE_SECTION_ICON_CLASS}>
+                    <FaKey size={16} />
                   </div>
                 </div>
-                <button onClick={(e) => { e.stopPropagation(); setShowApiKeyForm(!showApiKeyForm); }} className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 mb-4 flex items-center gap-2">
-                  {showApiKeyForm ? <><FaTimes /> {t('Cancel')}</> : <><FaPlus /> {t('Generate Key')}</>}
+                <button onClick={(e) => { e.stopPropagation(); setShowApiKeyForm(!showApiKeyForm); }} className="theme-soft-button mb-4 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold hover:border-[var(--brand-primary)]">
+                  {showApiKeyForm ? <><FaTimes size={11} className="text-[var(--brand-primary)]" /> {t('Cancel')}</> : <><FaPlus size={11} className="text-[var(--brand-primary)]" /> {t('Generate Key')}</>}
                 </button>
                 {showApiKeyForm && (
                   <form onSubmit={(e) => { e.preventDefault(); generateApiKey(e); }} className="bg-[var(--background-secondary)] border border-[var(--border-default)] p-4 rounded-lg mb-4" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex gap-2">
-                      <input type="text" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="Key name" className="flex-1 px-4 py-2 border border-[var(--border-default)] rounded-lg focus:ring-2 focus:ring-green-500 bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" required />
-                      <button type="submit" className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700">{t('Generate')}</button>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <input type="text" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="Key name" className="min-w-0 flex-1 rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--brand-primary)]" required />
+                      <button type="submit" className="rounded-lg bg-[var(--brand-primary)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-primary-hover)]">{t('Generate')}</button>
                     </div>
                   </form>
                 )}
@@ -2004,7 +2448,7 @@ const ProfileNew = () => {
                           <h4 className="font-semibold text-[var(--text-primary)]">{key.name}</h4>
                           <p className="text-xs text-[var(--text-secondary)]">{new Date(key.createdAt).toLocaleDateString()}</p>
                         </div>
-                        <button onClick={(e) => { e.stopPropagation(); revokeApiKey(key._id, key.name); }} className="text-red-600 hover:text-red-800 text-sm flex items-center gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); revokeApiKey(key._id, key.name); }} className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20">
                           <FaTrash size={12} /> {t('Revoke')}
                         </button>
                       </div>
@@ -2031,16 +2475,16 @@ const ProfileNew = () => {
                     <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">{t('Help & Info')}</h3>
                     <p className="text-sm text-[var(--text-secondary)]">{t('Get support or learn about us')}</p>
                   </div>
-                  <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-full">
-                    <FaEdit className="text-blue-600 dark:text-blue-400" size={24} />
+                  <div className={PROFILE_SECTION_ICON_CLASS}>
+                    <FaEdit size={15} />
                   </div>
                 </div>
-                <div className="flex gap-3 mb-4">
-                  <button onClick={(e) => { e.stopPropagation(); navigate('/about'); }} className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-lg hover:opacity-90 flex items-center justify-center gap-2">
-                    <PiBookOpenTextThin size={20} /> About Us
+                <div className="mb-4 grid grid-cols-2 gap-2">
+                  <button onClick={(e) => { e.stopPropagation(); navigate('/about'); }} className="theme-soft-button flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold hover:border-[var(--brand-primary)]">
+                    <PiBookOpenTextThin size={16} className="text-[var(--brand-primary)]" /> About Us
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); setShowContactSection(true); }} className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2">
-                    <FaEdit /> Contact
+                  <button onClick={(e) => { e.stopPropagation(); setShowContactSection(true); }} className="theme-soft-button flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold hover:border-[var(--brand-primary)]">
+                    <FaEdit size={13} className="text-[var(--brand-primary)]" /> Contact
                   </button>
                 </div>
                 {showContactSection && (
@@ -2050,7 +2494,7 @@ const ProfileNew = () => {
                       if (!contactForm.issue.trim()) return;
                       setContactLoading(true);
                       try {
-                        await api.post('/users/contact', { issue: contactForm.issue, advice: contactForm.advice, userEmail: user.email, username: user.username });
+                        await api.post('/users/contact', { issue: contactForm.issue, advice: contactForm.advice, userEmail: displayUser.email, username: displayUser.username });
                         setShowContactSection(false);
                         setContactForm({ issue: '', advice: '' });
                         showModal('success', 'Success', 'Message sent!');
@@ -2064,10 +2508,10 @@ const ProfileNew = () => {
                         <textarea value={contactForm.issue} onChange={(e) => setContactForm({ ...contactForm, issue: e.target.value })} className="w-full px-4 py-2 border border-[var(--border-default)] rounded-lg focus:ring-2 focus:ring-green-500 bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" rows="3" placeholder="Your issue..." required />
                         <textarea value={contactForm.advice} onChange={(e) => setContactForm({ ...contactForm, advice: e.target.value })} className="w-full px-4 py-2 border border-[var(--border-default)] rounded-lg focus:ring-2 focus:ring-green-500 bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" rows="2" placeholder="Suggestions..." />
                         <div className="flex gap-2">
-                          <button type="submit" disabled={contactLoading} className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2">
+                          <button type="submit" disabled={contactLoading} className="flex-1 rounded-lg bg-[var(--brand-primary)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-primary-hover)] disabled:opacity-70 flex items-center justify-center gap-2">
                             {contactLoading ? <HashLoader color="#fff" size={20} /> : t('Send')}
                           </button>
-                          <button type="button" onClick={() => { setShowContactSection(false); setContactForm({ issue: '', advice: '' }); }} className="flex-1 theme-soft-button px-4 py-2 rounded-lg">{t('Cancel')}</button>
+                          <button type="button" onClick={() => { setShowContactSection(false); setContactForm({ issue: '', advice: '' }); }} className="flex-1 theme-soft-button px-3 py-2 rounded-lg text-sm font-semibold">{t('Cancel')}</button>
                         </div>
                       </div>
                     </form>
@@ -2083,8 +2527,8 @@ const ProfileNew = () => {
                   <h3 className="text-lg font-bold text-[var(--text-primary)] mb-2">{t('Password & Security')}</h3>
                   <p className="text-sm text-[var(--text-secondary)]">{t('Manage your account security')}</p>
                 </div>
-                <div className="bg-purple-100 dark:bg-purple-900/30 p-3 rounded-full">
-                  <FaKey className="text-purple-600 dark:text-purple-400" size={24} />
+                <div className={PROFILE_SECTION_ICON_CLASS}>
+                  <FaKey size={16} />
                 </div>
               </div>
               {showPasswordSetupNotice && (
@@ -2114,12 +2558,257 @@ const ProfileNew = () => {
                   </button>
                 </div>
               )}
-              <div className="flex gap-3">
-                <button onClick={() => { setShowPasswordForm(!showPasswordForm); setShowForgotPassword(false); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                  <FaKey /> {t('Change Password')}
+              <div className="mb-4 overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)]">
+                <div className="flex flex-col gap-2 border-b border-[var(--border-default)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setIsTwoFactorExpanded((current) => !current)}
+                    aria-expanded={isTwoFactorDetailsExpanded}
+                    aria-controls={twoFactorDetailsId}
+                    className="flex w-full min-w-0 items-center gap-2 rounded-lg text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-primary)] sm:flex-1"
+                  >
+                    <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border ${
+                      isTwoFactorEnabled
+                        ? 'border-[var(--brand-primary)] bg-[var(--surface-card)] text-[var(--brand-primary)]'
+                        : 'border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-secondary)]'
+                    }`}>
+                      <FaShieldAlt size={13} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-[var(--text-primary)]">{t('Two-factor authentication')}</p>
+                      <p className="text-xs text-[var(--text-secondary)]">{twoFactorSummary}</p>
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    <span className={`text-[11px] font-bold ${isTwoFactorEnabled ? 'text-[var(--brand-primary)]' : isTwoFactorSetupActive ? 'text-[var(--brand-primary)]' : 'text-[var(--text-muted)]'}`}>
+                      {isTwoFactorEnabled ? t('On') : isTwoFactorSetupActive ? t('Setup') : t('Off')}
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isTwoFactorEnabled}
+                      aria-label={isTwoFactorEnabled ? t('Turn off two-factor authentication') : isTwoFactorSetupActive ? t('Cancel two-factor setup') : t('Turn on two-factor authentication')}
+                      onClick={handleTwoFactorToggle}
+                      disabled={twoFactorLoading}
+                      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full border p-0.5 transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                        isTwoFactorEnabled
+                          ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)]'
+                          : isTwoFactorSetupActive
+                            ? 'border-[var(--brand-primary)] bg-[var(--brand-primary)]'
+                            : 'border-[var(--border-default)] bg-[var(--surface-card)]'
+                      }`}
+                    >
+                      <span
+                        className={`h-4 w-4 rounded-full shadow-sm transition ${
+                          isTwoFactorEnabled
+                            ? 'translate-x-4 bg-[var(--surface-card)]'
+                            : isTwoFactorSetupActive
+                              ? 'translate-x-2 bg-[var(--surface-card)]'
+                              : 'translate-x-0 bg-[var(--text-muted)]'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                {isTwoFactorDetailsExpanded && (
+                <div id={twoFactorDetailsId} className="divide-y divide-[var(--border-default)]">
+                  {!shouldShowTwoFactorMethods ? (
+                    <div className="px-4 py-4 text-sm text-[var(--text-secondary)]">
+                      {t('Turn on two-factor authentication to choose Authenticator app or SMS verification.')}
+                    </div>
+                  ) : (
+                    <>
+                  <div className="px-4 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[var(--surface-card)] text-[var(--brand-primary)]">
+                          <FaKey size={15} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-[var(--text-primary)]">{t('Authenticator app')}</p>
+                          <p className="text-sm text-[var(--text-secondary)]">
+                            {isAuthenticatorEnabled
+                              ? `${t('Connected authenticator app')}${authenticatorConnectedLabel ? ` · ${authenticatorConnectedLabel}` : ''}`
+                              : t('No authenticator app connected')}
+                          </p>
+                          {isAuthenticatorEnabled && (
+                            <p className="mt-1 text-xs text-[var(--text-muted)]">
+                              {t('Only one authenticator app can be connected at a time.')}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      {!authenticatorSetup && (
+                        <button
+                          type="button"
+                          onClick={handleAuthenticatorSetupClick}
+                          disabled={twoFactorLoading}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold theme-soft-button hover:border-[var(--brand-primary)] disabled:opacity-70"
+                        >
+                          <FaPlus size={10} className="text-[var(--brand-primary)]" />
+                          {isAuthenticatorEnabled ? t('Set up another') : t('Set up')}
+                        </button>
+                      )}
+                    </div>
+
+                    {authenticatorSetup && (
+                      <form onSubmit={verifyAuthenticatorSetup} className="mt-4 grid gap-4 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-4 lg:grid-cols-[auto_1fr]">
+                        <div className="mx-auto w-fit rounded-2xl bg-white p-4">
+                          <QRCodeSVG
+                            value={authenticatorSetup.otpAuthUrl}
+                            size={220}
+                            bgColor="#ffffff"
+                            fgColor="#111827"
+                            level="H"
+                            marginSize={4}
+                            imageSettings={{
+                              src: twoFactorQrCenterImage,
+                              height: 22,
+                              width: 22,
+                              excavate: true,
+                              crossOrigin: 'anonymous',
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0 space-y-3">
+                          {authenticatorSetup.previousAuthenticatorRemoved && (
+                            <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+                              {t('Previous authenticator app removed. Verify the new code to finish setup.')}
+                            </p>
+                          )}
+                          <div>
+                            <p className="mb-1 text-xs font-semibold text-[var(--text-secondary)]">{t('Manual key')}</p>
+                            <code className="block break-all rounded-lg bg-[var(--background-secondary)] px-3 py-2 text-xs text-[var(--text-primary)]">
+                              {authenticatorSetup.secret}
+                            </code>
+                          </div>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={authenticatorCode}
+                            onChange={(e) => setAuthenticatorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            placeholder="000000"
+                            className="w-full rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-4 py-2 text-center text-xl tracking-[0.25em] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--brand-primary)]"
+                            maxLength={6}
+                            required
+                          />
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <button type="submit" disabled={twoFactorLoading || authenticatorCode.length < 6} className="flex-1 rounded-lg bg-[var(--brand-primary)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-primary-hover)] disabled:opacity-70">
+                              {twoFactorLoading ? t('Verifying...') : t('Verify')}
+                            </button>
+                            <button type="button" onClick={() => { setAuthenticatorSetup(null); setAuthenticatorCode(''); if (!isTwoFactorEnabled && !showSmsSetup && !smsSetupChallenge) setShowTwoFactorSetupOptions(false); }} className="rounded-lg px-3 py-2 text-sm font-semibold theme-soft-button">
+                              {t('Cancel')}
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+                    )}
+                  </div>
+
+                  <div className="px-4 py-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-[var(--surface-card)] text-[var(--brand-primary)]">
+                          <FaMobileAlt size={15} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-[var(--text-primary)]">{t('SMS verification')}</p>
+                          <p className="text-sm text-[var(--text-secondary)]">
+                            {isSmsEnabled && twoFactorStatus?.sms?.phoneMasked
+                              ? `${t('Verified mobile')} ${twoFactorStatus.sms.phoneMasked}`
+                              : t('No mobile number connected')}
+                          </p>
+                        </div>
+                      </div>
+                      {!showSmsSetup && !smsSetupChallenge && (
+                        <button
+                          type="button"
+                          onClick={() => setShowSmsSetup(true)}
+                          disabled={twoFactorLoading}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold theme-soft-button hover:border-[var(--brand-primary)] disabled:opacity-70"
+                        >
+                          <FaPlus size={10} className="text-[var(--brand-primary)]" />
+                          {isSmsEnabled ? t('Change mobile') : t('Set up SMS')}
+                        </button>
+                      )}
+                    </div>
+
+                    {(showSmsSetup || smsSetupChallenge) && (
+                      !smsSetupChallenge ? (
+                        <form onSubmit={startSmsSetup} className="mt-4 flex flex-col gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-4 sm:flex-row">
+                          <input
+                            type="tel"
+                            value={smsPhone}
+                            onChange={(e) => setSmsPhone(e.target.value)}
+                            placeholder="+919876543210"
+                            className="min-w-0 flex-1 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-4 py-2 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--brand-primary)]"
+                            required
+                          />
+                          <button type="submit" disabled={twoFactorLoading} className="rounded-lg bg-[var(--brand-primary)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-primary-hover)] disabled:opacity-70">
+                            {twoFactorLoading ? t('Sending...') : t('Send code')}
+                          </button>
+                          <button type="button" onClick={() => { setShowSmsSetup(false); if (!isTwoFactorEnabled && !authenticatorSetup && !smsSetupChallenge) setShowTwoFactorSetupOptions(false); }} className="rounded-lg px-3 py-2 text-sm font-semibold theme-soft-button">
+                            {t('Cancel')}
+                          </button>
+                        </form>
+                      ) : (
+                        <form onSubmit={verifySmsSetup} className="mt-4 flex flex-col gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-4 sm:flex-row">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={smsCode}
+                            onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            placeholder="000000"
+                            className="min-w-0 flex-1 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-4 py-2 text-center text-xl tracking-[0.25em] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--brand-primary)]"
+                            maxLength={6}
+                            required
+                          />
+                          <button type="submit" disabled={twoFactorLoading || smsCode.length < 6} className="rounded-lg bg-[var(--brand-primary)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-primary-hover)] disabled:opacity-70">
+                            {twoFactorLoading ? t('Verifying...') : t('Verify')}
+                          </button>
+                          <button type="button" onClick={() => { setSmsSetupChallenge(null); setSmsCode(''); setShowSmsSetup(false); if (!isTwoFactorEnabled && !authenticatorSetup) setShowTwoFactorSetupOptions(false); }} className="rounded-lg px-3 py-2 text-sm font-semibold theme-soft-button">
+                            {t('Cancel')}
+                          </button>
+                        </form>
+                      )
+                    )}
+                  </div>
+
+                  {isTwoFactorEnabled && twoFactorMethods.length > 1 && (
+                    <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm font-semibold text-[var(--text-primary)]">{t('Default verification method')}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {twoFactorMethods.map((method) => (
+                          <button
+                            key={method}
+                            type="button"
+                            onClick={() => setPreferredTwoFactorMethod(method)}
+                            disabled={twoFactorLoading || preferredTwoFactorMethod === method}
+                            className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                              preferredTwoFactorMethod === method
+                                ? 'bg-[var(--brand-primary)] text-white'
+                                : 'theme-soft-button'
+                            }`}
+                          >
+                            {method === 'sms' ? t('SMS') : t('Authenticator')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                    </>
+                  )}
+                </div>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => { setShowPasswordForm(!showPasswordForm); setShowForgotPassword(false); }} className="theme-soft-button inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold hover:border-[var(--brand-primary)]">
+                  <FaKey size={11} className="text-[var(--brand-primary)]" /> {t('Change Password')}
                 </button>
-                <button onClick={() => { setShowForgotPassword(!showForgotPassword); setShowPasswordForm(false); }} className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700">
-                  <FaKey /> {t('Forgot Password')}
+                <button onClick={() => { setShowForgotPassword(!showForgotPassword); setShowPasswordForm(false); }} className="theme-soft-button inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold hover:border-[var(--brand-primary)]">
+                  <FaKey size={11} className="text-[var(--brand-primary)]" /> {t('Forgot Password')}
                 </button>
               </div>
               {showPasswordForm && (
@@ -2161,35 +2850,48 @@ const ProfileNew = () => {
                     </div>
                   )}
                   <div className="flex gap-2">
-                    <button type="submit" className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2" disabled={sendingPasswordCode}>
+                    <button type="submit" className="flex-1 rounded-lg bg-[var(--brand-primary)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-primary-hover)] flex items-center justify-center gap-2 disabled:opacity-70" disabled={sendingPasswordCode}>
                       {sendingPasswordCode ? <SyncLoader color="#fff" size={8} /> : t('Change Password')}
                     </button>
-                    <button type="button" onClick={() => { setShowPasswordForm(false); setPasswords({ currentPassword: '', newPassword: '' }); }} className="theme-soft-button px-4 py-2 rounded-lg">{t('Cancel')}</button>
+                    <button type="button" onClick={() => { setShowPasswordForm(false); setPasswords({ currentPassword: '', newPassword: '' }); }} className="theme-soft-button px-3 py-2 rounded-lg text-sm font-semibold">{t('Cancel')}</button>
                   </div>
                 </form>
               )}
               {showForgotPassword && (
-                <form onSubmit={async (e) => {
-                  e.preventDefault();
-                  try {
-                    await api.post('/users/forgot-password', { email: user.email });
-                    showModal('success', 'Success', 'Reset link sent to your email!');
-                    setShowForgotPassword(false);
-                  } catch (error) {
-                    showModal('error', 'Error', error.response?.data?.message || 'Failed to send reset link');
-                  }
-                }} className="mt-4 p-4 rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)]">
-                  <p className="text-sm text-[var(--text-primary)] mb-4">{t('A password reset link will be sent to')} <strong>{user.email}</strong></p>
+                <form onSubmit={handleAuthenticatedForgotPasswordRequest} className="space-y-4 mt-4 p-4 rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)]">
+                  <p className="text-sm text-[var(--text-primary)]">
+                    {t('Set a new password and confirm it with a code sent to')} <strong>{displayUser.email}</strong>.
+                  </p>
+                  <input
+                    type="password"
+                    value={forgotPasswordValues.newPassword}
+                    onChange={(e) => setForgotPasswordValues({ ...forgotPasswordValues, newPassword: e.target.value })}
+                    placeholder={t('New Password')}
+                    className="w-full px-4 py-2 border border-[var(--border-default)] rounded-lg focus:ring-2 focus:ring-orange-500 bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+                    minLength={6}
+                    required
+                  />
+                  <input
+                    type="password"
+                    value={forgotPasswordValues.confirmPassword}
+                    onChange={(e) => setForgotPasswordValues({ ...forgotPasswordValues, confirmPassword: e.target.value })}
+                    placeholder={t('Confirm Password')}
+                    className="w-full px-4 py-2 border border-[var(--border-default)] rounded-lg focus:ring-2 focus:ring-orange-500 bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+                    minLength={6}
+                    required
+                  />
                   <div className="flex gap-2">
-                    <button type="submit" className="flex-1 bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700">{t('Send Reset Link')}</button>
-                    <button type="button" onClick={() => setShowForgotPassword(false)} className="theme-soft-button px-4 py-2 rounded-lg">{t('Cancel')}</button>
+                    <button type="submit" disabled={sendingForgotPasswordCode} className="flex-1 rounded-lg bg-[var(--brand-primary)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--brand-primary-hover)] flex items-center justify-center gap-2 disabled:opacity-70">
+                      {sendingForgotPasswordCode ? <SyncLoader color="#fff" size={8} /> : t('Send Confirmation Code')}
+                    </button>
+                    <button type="button" onClick={() => { setShowForgotPassword(false); setForgotPasswordValues({ newPassword: '', confirmPassword: '' }); }} className="theme-soft-button px-3 py-2 rounded-lg text-sm font-semibold">{t('Cancel')}</button>
                   </div>
                 </form>
               )}
             </div>
 
             {/* Danger Zone */}
-            {!user?.isGuest && user?.role !== 'guest' && (
+            {!displayUser?.isGuest && displayUser?.role !== 'guest' && (
               <div className="theme-panel rounded-3xl shadow-xl p-6 border border-red-200 dark:border-red-700">
                 <h3 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">{t('Danger Zone')}</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">{t('Delete account permanently')}</p>
@@ -2201,6 +2903,17 @@ const ProfileNew = () => {
           </div>
         </div>
       </div>
+
+      <TwoFactorVerificationModal
+        open={Boolean(twoFactorPrompt)}
+        action={twoFactorPrompt?.action}
+        actionLabel={twoFactorPrompt?.actionLabel}
+        twoFactor={twoFactorPrompt?.twoFactor}
+        requestChallenge={requestAuthenticatedTwoFactorChallenge}
+        verifyChallenge={verifyAuthenticatedTwoFactorChallenge}
+        onVerified={handleTwoFactorPromptVerified}
+        onClose={() => setTwoFactorPrompt(null)}
+      />
 
       {/* Universal Modal */}
       {modal.show && (
@@ -2260,6 +2973,33 @@ const ProfileNew = () => {
               <div className="flex gap-3">
                 <button type="submit" className="flex-1 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">{t('Confirm')}</button>
                 <button type="button" onClick={() => { setShowPasswordCodeModal(false); setPasswordCode(''); }} className="flex-1 theme-soft-button px-6 py-2 rounded-lg">{t('Cancel')}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Authenticated Forgot Password Code Modal */}
+      {showForgotPasswordCodeModal && (
+        <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4">
+          <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-orange-600 mb-4">{t('Enter Confirmation Code')}</h3>
+            <p className="text-gray-700 dark:text-gray-300 mb-4">{t('6-digit code sent to email')}</p>
+            <form onSubmit={handleConfirmAuthenticatedForgotPassword}>
+              <input
+                type="text"
+                value={forgotPasswordCode}
+                onChange={(e) => setForgotPasswordCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 mb-4 text-center text-2xl tracking-widest dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                maxLength={6}
+                required
+              />
+              <div className="flex gap-3">
+                <button type="submit" disabled={confirmingForgotPassword || forgotPasswordCode.length < 6} className="flex-1 bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 disabled:opacity-70 flex items-center justify-center gap-2">
+                  {confirmingForgotPassword ? <SyncLoader color="#fff" size={8} /> : t('Confirm')}
+                </button>
+                <button type="button" onClick={() => { setShowForgotPasswordCodeModal(false); setForgotPasswordCode(''); }} className="flex-1 theme-soft-button px-6 py-2 rounded-lg">{t('Cancel')}</button>
               </div>
             </form>
           </div>
@@ -2339,15 +3079,15 @@ const ProfileNew = () => {
               <button onClick={() => setShowProfileShareModal(false)} className="text-gray-500 hover:text-gray-700"><FaTimes size={24} /></button>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <button onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${window.location.origin}/user/${user._id}`)}`, '_blank')} className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg flex flex-col items-center gap-2">
+              <button onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${window.location.origin}/user/${displayUserId}`)}`, '_blank')} className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg flex flex-col items-center gap-2">
                 <FaFacebookF className="text-2xl" />
                 <span className="text-xs font-semibold">Facebook</span>
               </button>
-              <button onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(`${window.location.origin}/user/${user._id}`)}&text=${encodeURIComponent(`Check out ${user.username}'s profile!`)}`, '_blank')} className="bg-black hover:bg-gray-800 text-white p-4 rounded-lg flex flex-col items-center gap-2">
+              <button onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(`${window.location.origin}/user/${displayUserId}`)}&text=${encodeURIComponent(`Check out ${displayUser.username}'s profile!`)}`, '_blank')} className="bg-black hover:bg-gray-800 text-white p-4 rounded-lg flex flex-col items-center gap-2">
                 <FaXTwitter className="text-2xl" />
                 <span className="text-xs font-semibold">Twitter</span>
               </button>
-              <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/user/${user._id}`); showModal('success', 'Success', 'Profile link copied!'); setShowProfileShareModal(false); }} className="bg-gray-800 hover:bg-gray-900 text-white p-4 rounded-lg flex flex-col items-center gap-2">
+              <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/user/${displayUserId}`); showModal('success', 'Success', 'Profile link copied!'); setShowProfileShareModal(false); }} className="bg-gray-800 hover:bg-gray-900 text-white p-4 rounded-lg flex flex-col items-center gap-2">
                 <FaCopy className="text-2xl" />
                 <span className="text-xs font-semibold">Copy</span>
               </button>
@@ -2360,8 +3100,9 @@ const ProfileNew = () => {
       <QRCodeModal 
         show={showQRModal} 
         onClose={() => setShowQRModal(false)}
-        profileUrl={`${window.location.origin}/user/${user._id}`}
-        username={user.username}
+        profileUrl={`${window.location.origin}/user/${displayUserId}`}
+        username={displayUser.username}
+        logoSrc={displayUser?.profileImage || '/image/lekhon_url.png'}
       />
 
       {/* Status Composer Modal */}
@@ -2992,7 +3733,7 @@ const ProfileNew = () => {
           statuses={statuses}
           initialIndex={statusViewerIndex}
           onClose={() => setShowStatusViewer(false)}
-          userName={user?.username || t('User')}
+          userName={displayUser?.username || t('User')}
         />
       )}
     </div>

@@ -4,6 +4,8 @@ const {
   updateProfile,
   uploadProfileImage,
   removeProfileImage,
+  getSensitiveActionPasswordStatus,
+  verifySensitiveActionPassword,
   requestPasswordChange,
   confirmPasswordChange,
   requestAccountDeletion,
@@ -22,7 +24,19 @@ const {
   guestLogout,
   disconnectSocialProvider,
 } = require('../controllers/userController');
+const {
+  getTwoFactorStatus,
+  startAuthenticatorSetup,
+  verifyAuthenticatorSetup,
+  startSmsSetup,
+  verifySmsSetup,
+  setPreferredTwoFactorMethod,
+  disableTwoFactor,
+  createTwoFactorChallenge,
+  verifyTwoFactorChallenge,
+} = require('../controllers/twoFactorController');
 const { protect, optionalAuth } = require('../middleware/auth');
+const { requireTwoFactorForAction } = require('../utils/twoFactor');
 const upload = require('../utils/fileUpload');
 const statusUpload = require('../utils/statusUpload');
 const trackActivity = require('../middleware/trackActivity');
@@ -34,12 +48,23 @@ router.put('/profile', protect, updateProfile);
 router.post('/profile/image', protect, upload.single('profileImage'), uploadProfileImage);
 router.delete('/profile/image', protect, removeProfileImage);
 router.post('/password/request', protect, requestPasswordChange);
-router.post('/password/confirm', protect, confirmPasswordChange);
+router.post('/password/confirm', protect, requireTwoFactorForAction('change_password'), confirmPasswordChange);
+router.get('/security/password-challenge', protect, getSensitiveActionPasswordStatus);
+router.post('/security/password-challenge', protect, verifySensitiveActionPassword);
 router.post('/account/delete-request', protect, requestAccountDeletion);
-router.post('/account/delete-confirm', protect, confirmAccountDeletion);
-router.post('/api-keys', protect, generateApiKey);
+router.post('/account/delete-confirm', protect, requireTwoFactorForAction('delete_account'), confirmAccountDeletion);
+router.get('/2fa/status', protect, getTwoFactorStatus);
+router.post('/2fa/authenticator/setup', protect, requireTwoFactorForAction('manage_2fa'), startAuthenticatorSetup);
+router.post('/2fa/authenticator/verify', protect, verifyAuthenticatorSetup);
+router.post('/2fa/sms/setup', protect, requireTwoFactorForAction('manage_2fa'), startSmsSetup);
+router.post('/2fa/sms/verify', protect, verifySmsSetup);
+router.post('/2fa/preferred', protect, setPreferredTwoFactorMethod);
+router.post('/2fa/disable', protect, requireTwoFactorForAction('disable_2fa'), disableTwoFactor);
+router.post('/2fa/challenge', protect, createTwoFactorChallenge);
+router.post('/2fa/verify', protect, verifyTwoFactorChallenge);
+router.post('/api-keys', protect, requireTwoFactorForAction('generate_api_key'), generateApiKey);
 router.get('/api-keys', protect, getApiKeys);
-router.delete('/api-keys/:keyId', protect, revokeApiKey);
+router.delete('/api-keys/:keyId', protect, requireTwoFactorForAction('revoke_api_key'), revokeApiKey);
 router.put('/username', protect, updateUsername);
 router.delete('/social/:provider', protect, disconnectSocialProvider);
 router.post('/statuses', protect, trackActivity, statusUpload.single('statusMedia'), createStatus);

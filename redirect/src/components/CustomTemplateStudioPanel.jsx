@@ -313,6 +313,24 @@ const CustomTemplateStudioPanel = ({
   };
   const studio = studios[activeDevice] || studios.desktop;
   const blocks = Array.isArray(studio?.blocks) ? studio.blocks : [];
+  const contentPageIndexByBlockId = useMemo(() => {
+    const map = new Map();
+    blocks
+      .filter((block) => block.type === 'content')
+      .sort((left, right) => left.rowStart - right.rowStart || left.colStart - right.colStart)
+      .forEach((block, index) => {
+        map.set(block.id, index + 1);
+      });
+    return map;
+  }, [blocks]);
+  const getDisplayBlockLabel = (block) => {
+    if (!block) return '';
+    if (block.type === 'content') {
+      return `Main Content Page ${contentPageIndexByBlockId.get(block.id) || 1}`;
+    }
+    if (block.type === 'product-tags') return 'Product Tag Anchor';
+    return block.label;
+  };
   const stageColumns = toInt(
     studio?.columns,
     CUSTOM_TEMPLATE_GRID_LIMITS.minColumns || 8,
@@ -1381,6 +1399,7 @@ const CustomTemplateStudioPanel = ({
                 && selectedBlock?.id === block.id
                 && selectedBlockSupportsShapeCanvas
                 && (block.shapePreset || 'rect') === 'cells';
+              const isProductTagAnchor = block.type === 'product-tags';
 
               return (
                 <button
@@ -1427,7 +1446,9 @@ const CustomTemplateStudioPanel = ({
                       initialById
                     });
                   }}
-                  className={`absolute overflow-hidden border px-2 py-1 text-left text-[11px] transition ${
+                  className={`absolute border text-left text-[11px] transition ${
+                    isProductTagAnchor ? 'overflow-visible border-dashed px-1.5 py-1' : 'overflow-hidden px-2 py-1'
+                  } ${
                     isActive ? 'border-cyan-300 ring-1 ring-cyan-300/90' : 'border-slate-400/40 hover:border-cyan-400/60'
                   } ${block.locked ? 'opacity-75' : ''}`}
                   style={{
@@ -1436,8 +1457,9 @@ const CustomTemplateStudioPanel = ({
                     top: `${top}%`,
                     height: `${height}%`,
                     zIndex: Number(block.zIndex || 1),
-                    backgroundColor: block.shellBackgroundColor || block.backgroundColor,
+                    backgroundColor: isProductTagAnchor ? 'transparent' : block.shellBackgroundColor || block.backgroundColor,
                     color: block.textColor,
+                    boxShadow: isProductTagAnchor ? 'none' : undefined,
                     borderRadius: useSteppedShape ? '0px' : `${toInt(block.borderRadius ?? 8, 0, 44, 8)}px`,
                     clipPath: useSteppedShape ? shapeClipPath : undefined
                   }}
@@ -1518,7 +1540,7 @@ const CustomTemplateStudioPanel = ({
                       )}
                     </div>
                   )}
-                  <span className="relative z-20 block truncate font-semibold">{block.label}</span>
+                  <span className="relative z-20 block truncate font-semibold">{getDisplayBlockLabel(block)}</span>
                   <span className="relative z-20 block truncate opacity-80">{block.colSpan}x{block.rowSpan}</span>
                   <span className="relative z-20 mt-1 inline-flex items-center gap-1 text-[10px] opacity-80">
                     <FaLayerGroup /> z{block.zIndex || 1}
@@ -1719,6 +1741,7 @@ const CustomTemplateStudioPanel = ({
                 <button type="button" onClick={removeSelectedBlocks} className="inline-flex items-center gap-1 rounded-md border border-rose-500/60 bg-rose-500/15 px-2 py-1 text-xs text-rose-200 hover:bg-rose-500/25"><FaMinusCircle /> Remove</button>
               </div>
             </div>
+            <p className="mb-3 text-xs font-semibold text-slate-100">{getDisplayBlockLabel(selectedBlock)}</p>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <label className="text-xs text-slate-300">Label
@@ -1988,7 +2011,7 @@ const CustomTemplateStudioPanel = ({
 
                 {!isShapeEligibleBlockType(selectedBlock.type) && (
                   <p className="mt-3 rounded-md border border-slate-600 bg-slate-900/70 px-2 py-2 text-[11px] text-slate-300">
-                    Media blocks stay rectangular to keep image/video framing stable.
+                    This block stays rectangular to keep its rendered content stable.
                   </p>
                 )}
 
@@ -2057,7 +2080,13 @@ const CustomTemplateStudioPanel = ({
 
                 {selectedBlock.type === 'content' && (
                   <p className="mt-3 rounded-md border border-cyan-500/50 bg-cyan-500/10 px-2 py-2 text-[11px] text-cyan-100">
-                    Multiple Main Content blocks auto-split the article in visual order (top-left to bottom-right).
+                    {getDisplayBlockLabel(selectedBlock)} displays its article segment. Multiple Main Content blocks auto-split in visual order.
+                  </p>
+                )}
+
+                {selectedBlock.type === 'product-tags' && (
+                  <p className="mt-3 rounded-md border border-emerald-500/50 bg-emerald-500/10 px-2 py-2 text-[11px] text-emerald-100">
+                    Tagged products automatically appear at this anchor. If no products are tagged, the public article hides this anchor.
                   </p>
                 )}
               </>

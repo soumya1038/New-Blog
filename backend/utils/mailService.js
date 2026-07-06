@@ -57,6 +57,46 @@ const sendEmail = async ({ to, subject, html }) => {
   }
 };
 
+const sendSms = async ({ to, content, sender }) => {
+  console.log('[SMS] Starting SMS send process...');
+  console.log('[SMS] To:', to);
+  console.log('[SMS] Using Brevo Transactional SMS API');
+
+  if (!process.env.BREVO_API_KEY) {
+    console.error('[SMS] Missing Brevo API key.');
+    throw new Error('SMS service not configured. Please set BREVO_API_KEY.');
+  }
+
+  const smsSender = String(sender || process.env.BREVO_SMS_SENDER || 'Lekhon').trim().slice(0, 11);
+
+  try {
+    const response = await axios.post(
+      'https://api.brevo.com/v3/transactionalSMS/send',
+      {
+        sender: smsSender,
+        recipient: to,
+        content,
+        type: 'transactional',
+        tag: 'two-factor-authentication',
+      },
+      {
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    console.log('[SMS] SMS sent successfully.');
+    console.log('[SMS] Brevo response:', JSON.stringify(response.data));
+    return { success: true };
+  } catch (error) {
+    console.error('[SMS] SMS send failed.');
+    console.error('[SMS] Error:', error.response?.data || error.message);
+    throw new Error('Failed to send SMS: ' + (error.response?.data?.message || error.message));
+  }
+};
+
 const sendVerificationEmail = async (email, username, verificationCode, expiresAt) => {
   console.log('[EMAIL] Sending verification email to:', email);
   const { subject, html } = renderVerificationEmail({
@@ -317,6 +357,7 @@ const sendPreDeletionWarningEmail = async (email, username, options = {}) => {
 
 module.exports = {
   sendEmail,
+  sendSms,
   sendVerificationEmail,
   sendPasswordResetEmail,
   sendWelcomeEmail,
