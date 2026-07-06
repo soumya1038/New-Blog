@@ -2,7 +2,7 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
-import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun, FaStickyNote, FaUserCircle, FaBolt, FaStore, FaNewspaper, FaPlusCircle, FaQuestionCircle, FaInfoCircle, FaShieldAlt, FaFileContract, FaLifeRing, FaBookOpen } from 'react-icons/fa';
+import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun, FaStickyNote, FaUserCircle, FaBolt, FaStore, FaNewspaper, FaPlusCircle } from 'react-icons/fa';
 import LanguageSelector from './LanguageSelector';
 import Avatar from './Avatar';
 import AnimatedLogo from './AnimatedLogo';
@@ -106,26 +106,6 @@ const Navbar = () => {
     'flex items-center gap-3 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300';
   const mobileMenuSectionLabel =
     'px-4 pt-3 pb-1 text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]';
-  const mobileSecondaryLinks = [
-    { to: '/help', label: 'Help', icon: FaQuestionCircle },
-    { to: '/contact', label: 'Contact Support', icon: FaLifeRing },
-    { to: '/about', label: 'About', icon: FaInfoCircle },
-    { to: '/safety', label: 'Safety', icon: FaShieldAlt },
-    { to: '/privacy', label: 'Privacy', icon: FaShieldAlt },
-    { to: '/terms', label: 'Terms', icon: FaFileContract },
-    { to: '/policies', label: 'Policies', icon: FaBookOpen },
-  ];
-  const renderMobileSecondaryLinks = () => mobileSecondaryLinks.map(({ to, label, icon: Icon }) => (
-    <Link
-      key={to}
-      to={to}
-      onClick={() => setShowMobileMenu(false)}
-      className={mobileMenuItem}
-    >
-      <Icon className="shrink-0" /> {t(label)}
-    </Link>
-  ));
-
   return (
     <>
       <div className="h-20"></div>
@@ -547,8 +527,6 @@ const Navbar = () => {
                 <div className="py-2 px-4 flex items-center gap-3 mx-2">
                   <LanguageSelector />
                 </div>
-                <div className={mobileMenuSectionLabel}>{t('Support')}</div>
-                {renderMobileSecondaryLinks()}
                 <button
                   onClick={() => {
                     handleLogout();
@@ -578,8 +556,6 @@ const Navbar = () => {
                 <div className="py-3 px-4 flex items-center gap-3 mx-2">
                   <LanguageSelector />
                 </div>
-                <div className={mobileMenuSectionLabel}>{t('Support')}</div>
-                {renderMobileSecondaryLinks()}
                 <Link to="/login" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
                   {t('Login')}
                 </Link>

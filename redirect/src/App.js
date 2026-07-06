@@ -36,6 +36,7 @@ const BlogDetail = lazy(() => import('./pages/BlogDetail'));
 const ArticleDetails = lazy(() => import('./pages/ArticleDetails'));
 // const Profile = lazy(() => import('./pages/Profile'));
 const Profile = lazy(() => import('./pages/ProfileNew'));
+const ProfileSettingsPage = lazy(() => import('./pages/ProfileSettingsPage'));
 const UserProfile = lazy(() => import('./pages/UserProfile'));
 const Notifications = lazy(() => import('./pages/Notifications'));
 const Drafts = lazy(() => import('./pages/Drafts'));
@@ -569,6 +570,8 @@ function AppContent() {
             <Route path="/blog/:id" element={<BlogDetail />} />
             <Route path="/article/:id" element={<ArticleDetails />} />
             <Route path="/profile" element={<RegisteredUserRoute><Profile /></RegisteredUserRoute>} />
+            <Route path="/profile/settings" element={<RegisteredUserRoute><ProfileSettingsPage /></RegisteredUserRoute>} />
+            <Route path="/profile/manage" element={<RegisteredUserRoute><Profile /></RegisteredUserRoute>} />
             <Route path="/user/:id" element={<UserProfile />} />
             <Route path="/notifications" element={<Notifications />} />
             <Route path="/drafts" element={<Drafts />} />

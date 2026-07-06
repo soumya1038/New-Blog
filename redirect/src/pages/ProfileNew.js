@@ -30,6 +30,8 @@ import {
   requestAuthenticatedTwoFactorChallenge,
   verifyAuthenticatedTwoFactorChallenge,
 } from '../utils/twoFactorFlow';
+import useCompactProfileLayout from '../hooks/useCompactProfileLayout';
+import ProfileOverviewMobile from './ProfileOverviewMobile';
 
 const STORY_STYLE_PRESETS = [
   {
@@ -197,7 +199,7 @@ const normalizeStoryTrimRange = (startValue, endValue, durationValue) => {
   };
 };
 
-const ProfileNew = () => {
+export const ProfileLegacy = () => {
   const { t } = useTranslation();
   const { user, setUser } = useContext(AuthContext);
   const navigate = useNavigate();
@@ -378,7 +380,7 @@ const ProfileNew = () => {
       setExpandedCard(null);
       setShowPasswordForm(false);
       setShowForgotPassword(true);
-      navigate('/profile', { replace: true });
+      navigate('/profile/manage', { replace: true });
       return;
     }
 
@@ -390,7 +392,7 @@ const ProfileNew = () => {
     setShowPasswordSetupNotice(true);
 
     if (forcePasswordChange) {
-      navigate('/profile', { replace: true });
+      navigate('/profile/manage', { replace: true });
     }
   }, [location.search, navigate]);
 
@@ -3738,6 +3740,23 @@ const ProfileNew = () => {
       )}
     </div>
   );
+};
+
+const ProfileNew = () => {
+  const location = useLocation();
+  const isCompactProfileLayout = useCompactProfileLayout();
+  const searchParams = new URLSearchParams(location.search || '');
+  const forceLegacyProfile =
+    location.pathname === '/profile/manage' ||
+    searchParams.get('full') === '1' ||
+    searchParams.get('forcePasswordChange') === '1' ||
+    searchParams.get('forgotPassword') === '1';
+
+  if (isCompactProfileLayout && !forceLegacyProfile) {
+    return <ProfileOverviewMobile />;
+  }
+
+  return <ProfileLegacy />;
 };
 
 export default ProfileNew;
