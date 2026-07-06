@@ -104,11 +104,13 @@ const ProductTagOverlay = ({ products = [], externalLinks = [], content = null, 
             event.stopPropagation();
             setOpen(value => !value);
           }}
-          className={`${firstImage ? 'absolute bottom-0 right-0' : ''} inline-flex items-center gap-1 rounded-md border-2 border-white bg-white px-2 py-1 text-[11px] font-bold leading-none text-gray-900 shadow-lg`}
+          className={`${firstImage ? 'absolute bottom-0 right-0' : ''} inline-flex min-w-max flex-nowrap items-center gap-1 whitespace-nowrap rounded-md border-2 border-white bg-white px-2 py-1 text-[11px] font-bold leading-none text-gray-900 shadow-lg`}
           aria-expanded={open}
         >
-          {total} product{total === 1 ? '' : 's'}
-          {open ? <FaChevronUp size={9} /> : <FaChevronDown size={9} />}
+          <span className="whitespace-nowrap">
+            {total} product{total === 1 ? '' : 's'}
+          </span>
+          {open ? <FaChevronUp size={9} className="shrink-0" /> : <FaChevronDown size={9} className="shrink-0" />}
         </button>
       </div>
 
