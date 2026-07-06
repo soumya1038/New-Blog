@@ -2,7 +2,7 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
-import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun, FaStickyNote, FaUserCircle, FaBolt, FaStore, FaNewspaper, FaPlusCircle } from 'react-icons/fa';
+import { FaBell, FaSignOutAlt, FaChevronDown, FaBars, FaTimes, FaComments, FaMoon, FaSun, FaStickyNote, FaUserCircle, FaBolt, FaStore, FaNewspaper, FaPlusCircle, FaQuestionCircle, FaInfoCircle, FaShieldAlt, FaFileContract, FaLifeRing, FaBookOpen } from 'react-icons/fa';
 import LanguageSelector from './LanguageSelector';
 import Avatar from './Avatar';
 import AnimatedLogo from './AnimatedLogo';
@@ -102,6 +102,29 @@ const Navbar = () => {
     'w-[calc(100%-1rem)] text-left px-4 py-3 mx-2 my-1 rounded-xl text-red-600 dark:text-red-400 hover:bg-[var(--surface-elevated)] transition-all duration-200 hover:scale-[1.02] flex items-center gap-2 font-semibold';
   const dropdownLogoutCompact =
     'w-full text-left px-4 py-2 mx-2 my-1 rounded-lg text-red-600 dark:text-red-400 hover:bg-[var(--surface-elevated)] transition-colors duration-200 flex items-center gap-2';
+  const mobileMenuItem =
+    'flex items-center gap-3 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300';
+  const mobileMenuSectionLabel =
+    'px-4 pt-3 pb-1 text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]';
+  const mobileSecondaryLinks = [
+    { to: '/help', label: 'Help', icon: FaQuestionCircle },
+    { to: '/contact', label: 'Contact Support', icon: FaLifeRing },
+    { to: '/about', label: 'About', icon: FaInfoCircle },
+    { to: '/safety', label: 'Safety', icon: FaShieldAlt },
+    { to: '/privacy', label: 'Privacy', icon: FaShieldAlt },
+    { to: '/terms', label: 'Terms', icon: FaFileContract },
+    { to: '/policies', label: 'Policies', icon: FaBookOpen },
+  ];
+  const renderMobileSecondaryLinks = () => mobileSecondaryLinks.map(({ to, label, icon: Icon }) => (
+    <Link
+      key={to}
+      to={to}
+      onClick={() => setShowMobileMenu(false)}
+      className={mobileMenuItem}
+    >
+      <Icon className="shrink-0" /> {t(label)}
+    </Link>
+  ));
 
   return (
     <>
@@ -468,13 +491,6 @@ const Navbar = () => {
 
           {/* Mobile Menu Button & Notification */}
           <div className="md:hidden flex items-center gap-2">
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20"
-              title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            >
-              {isDark ? <FaSun size={18} className="text-yellow-300" /> : <FaMoon size={18} className="text-blue-200" />}
-            </button>
             {user && (
               <Link to="/notifications" className="relative p-2 rounded-xl hover:bg-white/20 backdrop-blur-sm transition-all duration-300 hover:scale-110 border border-white/20">
                 <FaBell size={18} />
@@ -514,32 +530,25 @@ const Navbar = () => {
                     <FaBolt className="inline mr-2" /> {t(user.role === 'coAdmin' ? 'Co-Admin Panel' : 'Admin Panel')}
                   </Link>
                 )}
-                <Link to="/marketplace" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
-                  <FaStore className="inline mr-2" /> {t('Marketplace')}
-                </Link>
-                <Link to="/news" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
-                  <FaNewspaper /> {t('News')}
-                </Link>
-                <Link to="/create" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
-                  <FaPlusCircle /> {t('Create Post')}
-                </Link>
-                <Link to="/drafts" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
-                  <FaStickyNote /> {t('My Drafts')}
-                </Link>
-                {user.isSeller && (
-                  <Link to="/seller/dashboard" onClick={() => setShowMobileMenu(false)} className="flex items-center gap-2 py-3 bg-amber-500/10 px-4 rounded-xl mx-2 my-1 text-amber-700 dark:text-amber-300 transition-all duration-300">
-                    <FaStore /> {t('My Store')}
-                  </Link>
-                )}
-                <Link to="/profile" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
-                  <FaUserCircle className="inline mr-2" /> {t('My Profile')}
-                </Link>
-                <Link to="/chat" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300 flex items-center gap-2">
-                  <FaComments /> {t('Chat')}
-                </Link>
+                <div className={mobileMenuSectionLabel}>{t('Preferences')}</div>
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className={`${mobileMenuItem} w-[calc(100%-1rem)] justify-between text-left`}
+                >
+                  <span className="flex items-center gap-3">
+                    {isDark ? <FaSun className="text-yellow-300" /> : <FaMoon className="text-blue-200" />}
+                    {t('Theme')}
+                  </span>
+                  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                    {isDark ? t('Dark') : t('Light')}
+                  </span>
+                </button>
                 <div className="py-2 px-4 flex items-center gap-3 mx-2">
                   <LanguageSelector />
                 </div>
+                <div className={mobileMenuSectionLabel}>{t('Support')}</div>
+                {renderMobileSecondaryLinks()}
                 <button
                   onClick={() => {
                     handleLogout();
@@ -552,12 +561,25 @@ const Navbar = () => {
               </>
             ) : (
               <>
+                <div className={mobileMenuSectionLabel}>{t('Preferences')}</div>
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  className={`${mobileMenuItem} w-[calc(100%-1rem)] justify-between text-left`}
+                >
+                  <span className="flex items-center gap-3">
+                    {isDark ? <FaSun className="text-yellow-300" /> : <FaMoon className="text-blue-200" />}
+                    {t('Theme')}
+                  </span>
+                  <span className="text-xs font-semibold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
+                    {isDark ? t('Dark') : t('Light')}
+                  </span>
+                </button>
                 <div className="py-3 px-4 flex items-center gap-3 mx-2">
                   <LanguageSelector />
                 </div>
-                <Link to="/marketplace" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300 flex items-center gap-2">
-                  <FaStore size={18} /> {t('Marketplace')}
-                </Link>
+                <div className={mobileMenuSectionLabel}>{t('Support')}</div>
+                {renderMobileSecondaryLinks()}
                 <Link to="/login" onClick={() => setShowMobileMenu(false)} className="block py-3 hover:bg-white/10 px-4 rounded-xl mx-2 my-1 transition-all duration-300">
                   {t('Login')}
                 </Link>
