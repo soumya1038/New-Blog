@@ -258,21 +258,21 @@ const Drafts = () => {
   }
 
   return (
-    <div className="min-h-screen theme-page-bg py-8">
+    <div className="lekhon-drafts-page min-h-screen theme-page-bg py-8">
       <Toaster />
       {editLoading && (
         <div className="fixed top-0 left-0 right-0 z-50">
           <BarLoader color="#3B82F6" width="100%" height={4} />
         </div>
       )}
-      <div className="container mx-auto px-4 max-w-4xl">
+      <div className="lekhon-drafts-shell container mx-auto px-4 max-w-4xl">
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 mb-4 font-semibold text-[var(--brand-primary)] hover:opacity-80 transition"
         >
           <FaArrowLeft /> {t('Back')}
         </button>
-        <div className="theme-modal-card rounded-2xl shadow-xl p-8">
+        <div className="lekhon-drafts-card theme-modal-card rounded-2xl shadow-xl p-8">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-3xl font-bold text-gray-800 dark:text-gray-100">{t('My Drafts')}</h1>
             <button
@@ -325,9 +325,9 @@ const Drafts = () => {
               </Link>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="lekhon-drafts-list space-y-4">
               {drafts.map(draft => (
-                <div key={draft._id} className="theme-panel rounded-lg p-4 hover:shadow-md dark:hover:shadow-gray-900/50 transition relative">
+                <div key={draft._id} className="lekhon-draft-item theme-panel rounded-lg p-4 hover:shadow-md dark:hover:shadow-gray-900/50 transition relative">
                   <div className="absolute bottom-3 right-3 flex items-center gap-2 text-gray-400 dark:text-gray-500">
                     {draft.isScheduled && (
                       <BsFillCalendarRangeFill className="w-5 h-5 text-blue-600 dark:text-blue-400" title="Scheduled" />
@@ -376,7 +376,7 @@ const Drafts = () => {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap sm:flex-nowrap gap-2">
+                    <div className="lekhon-draft-actions flex flex-wrap sm:flex-nowrap gap-2">
                       {draft.isScheduled && (
                         <button
                           onClick={() => openRescheduleModal(draft)}

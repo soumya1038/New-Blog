@@ -1469,8 +1469,8 @@ const AddProduct = () => {
 	  const isLocalSaving = localSaveState === 'saving' && localSaveFeedbackStep === activeStep;
 
 	  return (
-	    <div className="min-h-screen bg-[var(--bg-primary)] py-8 px-4">
-      <div className="max-w-4xl mx-auto space-y-6">
+	    <div className="lekhon-seller-page lekhon-product-wizard min-h-screen bg-[var(--bg-primary)] py-8 px-4">
+      <div className="lekhon-seller-content max-w-4xl mx-auto space-y-6">
 	        <div className="flex items-center justify-between">
 	          <div>
 	            <Link to="/seller/dashboard" className="text-xs text-[var(--text-muted)] hover:text-violet-500">Back to Seller Dashboard</Link>
@@ -1490,7 +1490,7 @@ const AddProduct = () => {
 	          </div>
 	        )}
 
-        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-4">
+        <div className="lekhon-product-stepper rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-4">
           <div className="flex flex-wrap gap-2">
 	            {STEPS.map((step, index) => {
 	              const stepHasError = hasStepError(step.id);
@@ -1529,7 +1529,7 @@ const AddProduct = () => {
 
         {renderStep()}
 
-	        <div className="flex flex-col gap-3 pb-8 sm:flex-row sm:items-center sm:justify-between">
+	        <div className="lekhon-product-wizard-actions flex flex-col gap-3 pb-8 sm:flex-row sm:items-center sm:justify-between">
 	          <div className="flex gap-2">
 	            <button
 	              type="button"

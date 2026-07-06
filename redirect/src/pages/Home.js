@@ -651,10 +651,10 @@ const Home = () => {
       {showTour && <ModernProductTour onComplete={() => setShowTour(false)} />}
       <ScrollToTop />
       
-      <div style={{ minHeight:'100vh', background:'var(--background-primary)', paddingTop:'80px', paddingBottom:'60px' }}>
-        <div style={{ maxWidth:'1400px', margin:'0 auto', padding:'0 clamp(12px, 4vw, 24px)' }}>
+      <div className="lekhon-discover-page" style={{ minHeight:'100vh', background:'var(--background-primary)', paddingTop:'80px', paddingBottom:'60px' }}>
+        <div className="lekhon-discover-shell" style={{ maxWidth:'1400px', margin:'0 auto', padding:'0 clamp(12px, 4vw, 24px)' }}>
           {/* Search Bar */}
-          <div style={{ marginBottom:'clamp(28px, 5vw, 40px)', maxWidth:'600px' }}>
+          <div className="lekhon-discover-search" style={{ marginBottom:'clamp(28px, 5vw, 40px)', maxWidth:'600px' }}>
             <div style={{ position:'relative' }}>
               <FaSearch style={{ position:'absolute', left:'16px', top:'50%', transform:'translateY(-50%)', color:'var(--text-muted)', fontSize:'18px' }} />
               <input
@@ -679,7 +679,7 @@ const Home = () => {
           </div>
 
           {/* Filter Buttons */}
-          <div style={{ display:'flex', gap:'12px', marginBottom:'clamp(30px, 5vw, 48px)', flexWrap:'wrap' }}>
+          <div className="lekhon-discover-tabs" style={{ display:'flex', gap:'12px', marginBottom:'clamp(30px, 5vw, 48px)', flexWrap:'wrap' }}>
             {['all', 'articles', 'blogs', 'shorts'].map(filter => (
               <button
                 key={filter}

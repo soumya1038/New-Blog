@@ -222,8 +222,8 @@ const EditProduct = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] py-8 px-4">
-      <div className="max-w-3xl mx-auto space-y-6">
+    <div className="lekhon-seller-page lekhon-product-wizard min-h-screen bg-[var(--bg-primary)] py-8 px-4">
+      <div className="lekhon-seller-content max-w-3xl mx-auto space-y-6">
 
         <div>
           <Link to="/seller/dashboard" className="text-xs text-[var(--text-muted)] hover:text-violet-500">← Seller Dashboard</Link>

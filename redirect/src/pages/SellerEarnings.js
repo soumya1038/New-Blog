@@ -109,8 +109,8 @@ const SellerEarnings = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] py-8 px-4">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="lekhon-seller-page lekhon-seller-earnings min-h-screen bg-[var(--bg-primary)] py-8 px-4">
+      <div className="lekhon-seller-content max-w-4xl mx-auto space-y-6">
 
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -153,7 +153,7 @@ const SellerEarnings = () => {
         )}
 
         {/* Summary cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="lekhon-seller-stat-grid grid grid-cols-2 md:grid-cols-4 gap-4">
           <SummaryCard label="Available Now"  value={fmt(summary?.available)}  sub="Ready to withdraw"   icon={FaWallet}    color="bg-violet-500" highlight />
           <SummaryCard label="On Hold"        value={fmt(summary?.pending)}    sub={`${summary?.holdDays || 7}-day hold`} icon={FaClock}     color="bg-amber-500"  />
           <SummaryCard label="Total Net"      value={fmt(summary?.totalNet)}   sub="All time"            icon={FaChartLine} color="bg-blue-500"   />

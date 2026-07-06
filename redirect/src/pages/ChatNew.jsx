@@ -2143,7 +2143,7 @@ const ChatNew = () => {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-5rem)] min-h-0 bg-[var(--background-primary)] overflow-hidden">
+    <div className="lekhon-chat-page flex h-[calc(100dvh-5rem)] min-h-0 bg-[var(--background-primary)] overflow-hidden">
       {/* Status Modal */}
       {showStatusModal && selectedUserStatuses.length > 0 && (
         <div className="fixed inset-0 bg-black z-[70] flex items-center justify-center">

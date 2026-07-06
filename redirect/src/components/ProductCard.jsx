@@ -9,10 +9,10 @@ import api              from '../services/api';
 import { addGuestCartItem } from '../utils/guestCart';
 
 const TYPE_LABELS = {
-  digital:  { label: 'Digital',       color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
-  physical: { label: 'Physical',      color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
-  service:  { label: 'Service',       color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300' },
-  external: { label: 'External Link', color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300' },
+  digital:  { label: 'Digital',       color: 'bg-[var(--bg-secondary)] text-[var(--text-secondary)]' },
+  physical: { label: 'Physical',      color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+  service:  { label: 'Service',       color: 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300' },
+  external: { label: 'External Link', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
 };
 
 const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) => {
@@ -61,10 +61,10 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
       onClick={(event) => {
         if (!event.defaultPrevented) onProductView && onProductView(product);
       }}
-      className={`group relative flex flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden ${className}`}
+      className={`marketplace-product-card group relative flex flex-col rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden ${className}`}
     >
       {/* ── Thumbnail ─────────────────────────────────────────────────────── */}
-      <div className="relative aspect-[4/3] overflow-hidden bg-[var(--bg-secondary)]">
+      <div className="marketplace-product-card__media relative aspect-[4/3] overflow-hidden bg-[var(--bg-secondary)]">
         {product.thumbnail ? (
           <img
             src={product.thumbnail}
@@ -74,7 +74,7 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
-            <span className="text-4xl">🛍️</span>
+            <FaShoppingBag size={26} aria-hidden="true" />
           </div>
         )}
 
@@ -101,7 +101,7 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
         {user && (
           <button
             onClick={handleWishlist}
-            className="absolute bottom-2 right-2 p-1.5 rounded-full bg-white/90 dark:bg-gray-800/90 shadow hover:scale-110 transition-transform"
+            className="absolute bottom-2 right-2 p-1.5 rounded-full bg-[var(--surface-card)]/95 shadow hover:scale-110 transition-transform"
             title={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
           >
             {wishlisted
@@ -113,7 +113,7 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
       </div>
 
       {/* ── Content ───────────────────────────────────────────────────────── */}
-      <div className="flex flex-col flex-1 p-3 gap-1.5">
+      <div className="marketplace-product-card__content flex flex-col flex-1 p-3 gap-1.5">
         {/* Seller */}
         <div className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
           {product.sellerId?.profileImage && (
@@ -142,11 +142,11 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
             ) : (
               <>
                 <span className="font-bold text-sm text-[var(--text-primary)]">
-                  ₹{product.price.toLocaleString('en-IN')}
+                  Rs. {product.price.toLocaleString('en-IN')}
                 </span>
                 {product.compareAtPrice > product.price && (
                   <span className="text-xs text-[var(--text-muted)] line-through">
-                    ₹{product.compareAtPrice.toLocaleString('en-IN')}
+                    Rs. {product.compareAtPrice.toLocaleString('en-IN')}
                   </span>
                 )}
               </>
@@ -157,7 +157,7 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
           {product.type === 'external' ? (
             <button
               onClick={handleExternalClick}
-              className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-orange-500 hover:bg-orange-600 text-white font-medium transition-colors"
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-medium transition-colors"
             >
               <FaExternalLinkAlt size={10} /> Buy
             </button>
@@ -165,7 +165,7 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
             <button
               onClick={handleAddToCart}
               disabled={cartLoading}
-              className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 text-white font-medium transition-colors disabled:opacity-60"
+              className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg bg-[var(--brand-primary)] text-[#17130a] hover:opacity-90 dark:text-white font-medium transition-colors disabled:opacity-60"
             >
               <FaShoppingCart size={10} />
               {cartLoading ? '...' : 'Cart'}

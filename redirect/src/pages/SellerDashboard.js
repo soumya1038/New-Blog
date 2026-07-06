@@ -78,8 +78,8 @@ const tableScrollStyle = {
   msOverflowStyle: 'none',
 };
 
-const ScrollableTable = ({ children, minWidth = 760 }) => (
-  <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden">
+const ScrollableTable = ({ children, minWidth = 760, className = '' }) => (
+  <div className={`rounded-2xl border border-[var(--border-color)] overflow-hidden ${className}`.trim()}>
     <div className="overflow-x-auto" style={tableScrollStyle}>
       <div style={{ minWidth }}>
         {children}
@@ -293,9 +293,9 @@ const SellerDashboard = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)]">
+    <div className="lekhon-seller-page lekhon-seller-dashboard min-h-screen bg-[var(--bg-primary)]">
       {/* ── Top header ───────────────────────────────────────────────────────── */}
-      <div className="border-b border-[var(--border-color)] bg-[var(--bg-card)] px-4 py-4">
+      <div className="lekhon-seller-header border-b border-[var(--border-color)] bg-[var(--bg-card)] px-4 py-4">
         <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/30">
@@ -331,7 +331,7 @@ const SellerDashboard = () => {
       </div>
 
       {/* ── Tabs ─────────────────────────────────────────────────────────────── */}
-      <div className="border-b border-[var(--border-color)] bg-[var(--bg-card)] px-4">
+      <div className="lekhon-seller-tabs border-b border-[var(--border-color)] bg-[var(--bg-card)] px-4">
         <div className="max-w-6xl mx-auto flex gap-1 overflow-x-auto scrollbar-hide">
           {TABS.map(t => {
             const Icon = t.icon;
@@ -362,12 +362,12 @@ const SellerDashboard = () => {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-6">
+      <div className="lekhon-seller-content max-w-6xl mx-auto px-4 py-6">
 
         {/* ══ OVERVIEW ══════════════════════════════════════════════════════════ */}
         {tab === 'overview' && (
           <div className="space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="lekhon-seller-stat-grid grid grid-cols-2 md:grid-cols-4 gap-4">
               <StatCard label="Total Revenue"   value={`₹${(stats?.totalRevenue || 0).toLocaleString('en-IN')}`} icon={FaChartLine} color="bg-violet-500" />
               <StatCard label="Total Orders"    value={stats?.totalOrders    || 0} sub={`${stats?.pendingOrders || 0} pending`} icon={FaBoxOpen} color="bg-blue-500" />
               <StatCard label="Active Products" value={stats?.activeProducts || 0} sub={`${stats?.totalProducts || 0} total`}   icon={FaStore}   color="bg-green-500" />
@@ -377,7 +377,7 @@ const SellerDashboard = () => {
             {/* Recent orders */}
             <div>
               <h2 className="font-bold text-[var(--text-primary)] mb-3">Recent Orders</h2>
-              <ScrollableTable minWidth={680}>
+              <ScrollableTable minWidth={680} className="lekhon-seller-recent-orders">
                 <table className="w-full text-sm">
                   <thead className="bg-[var(--bg-secondary)]">
                     <tr>
@@ -389,9 +389,9 @@ const SellerDashboard = () => {
                   <tbody className="divide-y divide-[var(--border-color)]">
                     {orders.slice(0, 5).map(ord => (
                       <tr key={ord._id} className="hover:bg-[var(--bg-secondary)] transition-colors">
-                        <td className="px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">{ord.orderNumber}</td>
+                        <td data-label="Order" className="px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">{ord.orderNumber}</td>
                         <td className="px-4 py-3 text-[var(--text-primary)]">{ord.buyerId?.name || ord.buyerId?.username || '—'}</td>
-                        <td className="px-4 py-3 text-[var(--text-muted)]">{ord.items?.length || 0}</td>
+                        <td data-label="Items" className="px-4 py-3 text-[var(--text-muted)]">{ord.items?.length || 0}</td>
                         <td className="px-4 py-3 font-semibold text-[var(--text-primary)]">₹{ord.total?.toLocaleString('en-IN')}</td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${ORDER_STATUS_COLOR[ord.status] || 'bg-gray-100 text-gray-600'}`}>
@@ -404,7 +404,7 @@ const SellerDashboard = () => {
                       </tr>
                     ))}
                     {orders.length === 0 && (
-                      <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--text-muted)] text-sm">No orders yet</td></tr>
+                      <tr data-empty="true"><td colSpan={6} className="px-4 py-8 text-center text-[var(--text-muted)] text-sm">No orders yet</td></tr>
                     )}
                   </tbody>
                 </table>

@@ -45,10 +45,10 @@ const StorePage = () => {
   const totalSales  = products.reduce((s, p) => s + (p.stats?.sales || 0), 0);
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)]">
+    <div className="lekhon-store-page min-h-screen bg-[var(--bg-primary)]">
       {/* ── Banner ────────────────────────────────────────────────────────────── */}
       <div
-        className="relative h-40 sm:h-56 w-full bg-gradient-to-br from-violet-600 to-indigo-700 overflow-hidden"
+        className="lekhon-store-hero relative h-40 sm:h-56 w-full bg-gradient-to-br from-emerald-900 to-amber-700 overflow-hidden"
         style={settings?.bannerImage ? {
           backgroundImage: `url(${settings.bannerImage})`,
           backgroundSize: 'cover',
@@ -59,8 +59,8 @@ const StorePage = () => {
       </div>
 
       {/* ── Seller info ──────────────────────────────────────────────────────── */}
-      <div className="max-w-5xl mx-auto px-4">
-        <div className="relative -mt-12 flex flex-col sm:flex-row items-start sm:items-end gap-4 pb-5 border-b border-[var(--border-color)]">
+      <div className="lekhon-store-shell max-w-5xl mx-auto px-4">
+        <div className="lekhon-store-profile relative -mt-12 flex flex-col sm:flex-row items-start sm:items-end gap-4 pb-5 border-b border-[var(--border-color)]">
           <img
             src={seller.profileImage || ''}
             alt={seller.name}
@@ -109,7 +109,7 @@ const StorePage = () => {
         {featured.length > 0 && (
           <div className="py-6">
             <h2 className="font-bold text-[var(--text-primary)] mb-4">⭐ Featured</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            <div className="lekhon-market-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {featured.map(p => (
                 <ProductCard key={p._id || p} product={p} />
               ))}
@@ -128,7 +128,7 @@ const StorePage = () => {
               <p>No products listed yet.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="lekhon-market-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {products.map(p => (
                 <ProductCard key={p._id} product={p} />
               ))}

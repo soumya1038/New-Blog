@@ -1876,18 +1876,18 @@ const ProfileNew = () => {
   }
 
   return (
-    <div className="min-h-screen theme-page-bg py-8">
+    <div className="lekhon-profile-page min-h-screen theme-page-bg py-8">
       <ScrollToTop />
-      <div className="container mx-auto px-4 max-w-7xl" ref={profileRef}>
+      <div className="lekhon-profile-shell container mx-auto px-4 max-w-7xl" ref={profileRef}>
         <button onClick={() => navigate(-1)} className="flex items-center gap-2 mb-6 font-semibold text-[var(--brand-primary)] hover:opacity-80 transition">
           <FaArrowLeft /> {t('Back')}
         </button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lekhon-profile-grid grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* LEFT COLUMN */}
           <div className="lg:col-span-3 space-y-6">
             {/* Profile Card */}
-            <div className="theme-panel rounded-3xl shadow-xl p-6 transition-all duration-300">
+            <div className="lekhon-profile-card theme-panel rounded-3xl shadow-xl p-6 transition-all duration-300">
               <div className="flex flex-col md:flex-row md:items-center md:gap-6 lg:flex-col lg:items-center">
                 {/* Avatar Section */}
                 <div className="flex flex-col items-center md:items-start lg:items-center mb-4 md:mb-0 lg:mb-4">

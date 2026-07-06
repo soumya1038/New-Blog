@@ -11,6 +11,7 @@ import FloatingCallBanner from './components/FloatingCallBanner';
 import GlobalGroupCallListener from './components/GlobalGroupCallListener';
 import MinimizedGroupCall from './components/MinimizedGroupCall';
 import PublicFooter from './components/PublicFooter';
+import MobileAppNav from './components/MobileAppNav';
 import { CinematicIntro } from './components/intro/CinematicIntro';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
@@ -151,6 +152,8 @@ const RegisteredUserRoute = ({ children }) => {
 const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/', '/privacy', '/terms', '/auth/google/callback', '/auth/facebook/callback', '/auth/twitter/callback', '/auth/linkedin/callback']);
 const PUBLIC_FOOTER_ROUTES = new Set(['/about', '/privacy', '/terms']);
 const PUBLIC_FOOTER_PREFIXES = ['/help', '/policies', '/safety', '/contact', '/report', '/appeals'];
+const MOBILE_BOTTOM_NAV_FOCUS_ROUTES = new Set(['/checkout']);
+const MOBILE_BOTTOM_NAV_FOCUS_PREFIXES = ['/order'];
 
 function AppContent() {
   const { user, sessionExpired, guestExpired, setGuestExpired } = useContext(AuthContext);
@@ -168,6 +171,12 @@ function AppContent() {
     PUBLIC_FOOTER_PREFIXES.some(
       (prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)
     );
+  const hideMobileBottomNav =
+    MOBILE_BOTTOM_NAV_FOCUS_ROUTES.has(normalizedPath) ||
+    MOBILE_BOTTOM_NAV_FOCUS_PREFIXES.some(
+      (prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)
+    );
+  const showMobileBottomNav = Boolean(user) && !hideGlobalChrome && !hideMobileBottomNav;
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   const [globalCallState, setGlobalCallState] = useState(null);
@@ -481,7 +490,7 @@ function AppContent() {
         })
       }
     >
-      <div className="min-h-screen">
+      <div className={`min-h-screen lekhon-app-shell${showMobileBottomNav ? ' lekhon-app-shell--with-mobile-tabs' : ''}`}>
         {!hideGlobalChrome && <Navbar />}
         {user && <GlobalGroupCallListener />}
         {!hideGlobalChrome && location.pathname !== '/chat' && (
@@ -604,6 +613,7 @@ function AppContent() {
           </Routes>
         </Suspense>
         {showPublicFooter && <PublicFooter />}
+        {showMobileBottomNav && <MobileAppNav />}
       </div>
     </ErrorBoundary>
   );

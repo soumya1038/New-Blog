@@ -1619,23 +1619,23 @@ const CreateBlog = () => {
   };
 
   return (
-    <div className="min-h-screen py-8 relative overflow-hidden" style={{ background: isDark ? 'var(--background-primary)' : 'linear-gradient(180deg, var(--background-primary) 0%, var(--background-secondary) 100%)' }}>
+    <div className="lekhon-creator-page min-h-screen py-8 relative overflow-hidden" style={{ background: isDark ? 'var(--background-primary)' : 'linear-gradient(180deg, var(--background-primary) 0%, var(--background-secondary) 100%)' }}>
       {/* Animated Background */}
-      <div className="absolute inset-0 opacity-30">
+      <div className="lekhon-creator-ambient absolute inset-0 opacity-30">
         <div className="absolute top-20 left-10 w-72 h-72 rounded-full mix-blend-multiply filter blur-3xl animate-blob" style={{ background: isDark ? 'rgba(107,122,58,0.55)' : 'rgba(201,162,39,0.28)' }}></div>
         <div className="absolute top-40 right-10 w-72 h-72 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000" style={{ background: isDark ? 'rgba(201,166,90,0.38)' : 'rgba(232,216,176,0.52)' }}></div>
         <div className="absolute bottom-20 left-1/3 w-72 h-72 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000" style={{ background: isDark ? 'rgba(178,84,79,0.28)' : 'rgba(201,162,39,0.18)' }}></div>
       </div>
       
       <Toaster />
-      <div className="container mx-auto px-4 max-w-4xl relative z-10">
+      <div className="lekhon-creator-shell container mx-auto px-4 max-w-4xl relative z-10">
         <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 mb-4 font-semibold transition-colors" style={{ color: 'var(--brand-primary)' }}
         >
           <FaArrowLeft /> {t('Back')}
         </button>
-        <div className="backdrop-blur-xl rounded-2xl shadow-2xl p-4 sm:p-8 border" style={{ background: isDark ? 'rgba(24,32,24,0.84)' : 'rgba(255,255,255,0.9)', borderColor: 'var(--border-default)' }}>
+        <div className="lekhon-creator-card backdrop-blur-xl rounded-2xl shadow-2xl p-4 sm:p-8 border" style={{ background: isDark ? 'rgba(24,32,24,0.84)' : 'rgba(255,255,255,0.9)', borderColor: 'var(--border-default)' }}>
           <div className="flex justify-between items-center mb-6">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               <h1 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)]">

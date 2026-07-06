@@ -116,6 +116,648 @@
   );
 }
 
+.mobile-app-bottom-nav {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .lekhon-app-shell--with-mobile-tabs {
+    padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-app-bottom-nav {
+    position: fixed;
+    right: max(10px, env(safe-area-inset-right, 0px));
+    bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    left: max(10px, env(safe-area-inset-left, 0px));
+    z-index: 48;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    min-height: 68px;
+    padding: 7px;
+    border: 1px solid var(--border-default);
+    border-radius: 22px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 18px 42px rgba(28, 28, 28, 0.18);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  .dark .mobile-app-bottom-nav {
+    background: rgba(21, 27, 21, 0.94);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
+  }
+
+  .mobile-app-bottom-nav__item {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    min-height: 54px;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border-radius: 16px;
+    color: var(--text-muted);
+    font-family: var(--font-primary);
+    text-align: center;
+    text-decoration: none;
+    transition: background-color 180ms ease, color 180ms ease, transform 180ms ease;
+  }
+
+  .mobile-app-bottom-nav__item:focus-visible {
+    outline: 3px solid rgba(201, 162, 39, 0.35);
+    outline-offset: 2px;
+  }
+
+  .mobile-app-bottom-nav__item.is-active {
+    background: rgba(201, 162, 39, 0.14);
+    color: var(--brand-primary);
+  }
+
+  .mobile-app-bottom-nav__item.is-primary .mobile-app-bottom-nav__icon {
+    background: var(--brand-primary);
+    color: #17130a;
+    box-shadow: 0 10px 18px rgba(201, 162, 39, 0.26);
+  }
+
+  .dark .mobile-app-bottom-nav__item.is-primary .mobile-app-bottom-nav__icon {
+    color: #ffffff;
+  }
+
+  .mobile-app-bottom-nav__item.is-primary.is-active {
+    background: rgba(201, 162, 39, 0.18);
+  }
+
+  .mobile-app-bottom-nav__icon {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    font-size: 16px;
+  }
+
+  .mobile-app-bottom-nav__label {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.05;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 359px) {
+  .mobile-app-bottom-nav {
+    left: 6px;
+    right: 6px;
+    gap: 2px;
+    padding: 6px;
+  }
+
+  .mobile-app-bottom-nav__item {
+    min-height: 52px;
+    gap: 2px;
+  }
+
+  .mobile-app-bottom-nav__label {
+    font-size: 10px;
+  }
+}
+
+.lekhon-marketplace-page,
+.lekhon-store-page {
+  background:
+    linear-gradient(180deg, var(--background-primary) 0%, var(--background-secondary) 100%);
+}
+
+.lekhon-marketplace-page .text-violet-500,
+.lekhon-store-page .text-violet-500,
+.lekhon-marketplace-page .text-violet-600,
+.lekhon-store-page .text-violet-600 {
+  color: var(--brand-primary) !important;
+}
+
+.lekhon-marketplace-page .bg-violet-600,
+.lekhon-store-page .bg-violet-600 {
+  background-color: var(--brand-primary) !important;
+  color: #17130a !important;
+}
+
+.dark .lekhon-marketplace-page .bg-violet-600,
+.dark .lekhon-store-page .bg-violet-600 {
+  color: #ffffff !important;
+}
+
+.marketplace-product-card {
+  box-shadow: 0 8px 22px rgba(28, 28, 28, 0.07);
+}
+
+.dark .marketplace-product-card {
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26);
+}
+
+@media (max-width: 767px) {
+  .lekhon-marketplace-header {
+    top: 80px;
+  }
+
+  .lekhon-marketplace-header > div:first-child {
+    padding: 12px;
+  }
+
+  .lekhon-marketplace-header h1 {
+    font-size: 18px;
+    line-height: 1.2;
+  }
+
+  .lekhon-marketplace-content {
+    padding: 14px 12px 24px;
+  }
+
+  .lekhon-market-grid {
+    gap: 10px;
+  }
+
+  .marketplace-product-card {
+    border-radius: 14px;
+  }
+
+  .marketplace-product-card__media {
+    aspect-ratio: 1 / 1.05;
+  }
+
+  .marketplace-product-card__content {
+    padding: 10px;
+    gap: 5px;
+  }
+
+  .marketplace-product-card__content > div:first-child {
+    min-height: 18px;
+  }
+
+  .marketplace-product-card button {
+    min-height: 30px;
+  }
+
+  .lekhon-store-hero {
+    height: 190px;
+  }
+
+  .lekhon-store-shell {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .lekhon-store-profile {
+    margin-top: -48px;
+    padding: 14px;
+    border: 1px solid var(--border-default);
+    border-radius: 18px;
+    background: var(--surface-card);
+    box-shadow: 0 16px 36px rgba(28, 28, 28, 0.12);
+  }
+
+  .lekhon-store-profile > img {
+    width: 76px;
+    height: 76px;
+    border-radius: 18px;
+  }
+}
+
+@media (max-width: 767px) {
+  .lekhon-discover-page {
+    padding-top: 14px !important;
+    padding-bottom: 24px !important;
+  }
+
+  .lekhon-discover-shell {
+    padding-right: 12px !important;
+    padding-left: 12px !important;
+  }
+
+  .lekhon-discover-search {
+    max-width: none !important;
+    margin-bottom: 16px !important;
+  }
+
+  .lekhon-discover-tabs {
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    margin-bottom: 24px !important;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .lekhon-discover-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .lekhon-discover-tabs button {
+    flex: 0 0 auto;
+    min-height: 38px;
+    border-radius: 999px !important;
+    letter-spacing: 0 !important;
+  }
+
+  .lekhon-creator-page,
+  .lekhon-drafts-page,
+  .lekhon-profile-page {
+    padding-top: 14px;
+    padding-bottom: 24px;
+  }
+
+  .lekhon-creator-ambient {
+    display: none;
+  }
+
+  .lekhon-creator-shell,
+  .lekhon-drafts-shell,
+  .lekhon-profile-shell {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .lekhon-creator-card,
+  .lekhon-drafts-card,
+  .lekhon-profile-page .theme-panel {
+    border-radius: 18px !important;
+    box-shadow: 0 14px 34px rgba(28, 28, 28, 0.1);
+  }
+
+  .lekhon-creator-card,
+  .lekhon-drafts-card {
+    padding: 16px !important;
+  }
+
+  .lekhon-creator-card > .flex.justify-between,
+  .lekhon-drafts-card > .flex.justify-between {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .lekhon-creator-card h1,
+  .lekhon-drafts-card h1 {
+    font-size: 24px;
+    line-height: 1.15;
+  }
+
+  .lekhon-creator-card input,
+  .lekhon-creator-card textarea,
+  .lekhon-creator-card select,
+  .lekhon-drafts-card input,
+  .lekhon-drafts-card textarea,
+  .lekhon-drafts-card select {
+    min-height: 44px;
+  }
+
+  .lekhon-draft-item {
+    border-radius: 14px !important;
+    padding: 14px !important;
+  }
+
+  .lekhon-draft-item h3 {
+    padding-right: 34px;
+    font-size: 18px;
+    line-height: 1.25;
+  }
+
+  .lekhon-draft-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .lekhon-draft-actions button {
+    min-height: 42px;
+    justify-content: center;
+  }
+
+  .lekhon-chat-page {
+    height: calc(100dvh - 5rem - 92px) !important;
+    margin: 0 10px 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 18px;
+    box-shadow: 0 14px 34px rgba(28, 28, 28, 0.1);
+  }
+
+  .lekhon-profile-grid {
+    gap: 14px;
+  }
+
+  .lekhon-profile-card {
+    padding: 18px !important;
+  }
+
+  .lekhon-profile-page .rounded-3xl {
+    border-radius: 18px !important;
+  }
+
+  .blog-detail-mobile-actions,
+  .article-skeleton-mobile-actions {
+    bottom: calc(102px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+
+.lekhon-seller-page,
+.lekhon-checkout-page,
+.lekhon-orders-page,
+.lekhon-order-success-page {
+  background:
+    linear-gradient(180deg, var(--background-primary) 0%, var(--background-secondary) 100%);
+}
+
+.lekhon-seller-page .text-violet-500,
+.lekhon-seller-page .text-violet-600,
+.lekhon-checkout-page .text-violet-500,
+.lekhon-checkout-page .text-violet-600,
+.lekhon-orders-page .text-violet-500,
+.lekhon-orders-page .text-violet-600,
+.lekhon-order-success-page .text-violet-500,
+.lekhon-order-success-page .text-violet-600 {
+  color: var(--brand-primary) !important;
+}
+
+.lekhon-seller-page .bg-violet-600,
+.lekhon-checkout-page .bg-violet-600,
+.lekhon-orders-page .bg-violet-600,
+.lekhon-order-success-page .bg-violet-600 {
+  background-color: var(--brand-primary) !important;
+  color: #17130a !important;
+}
+
+.dark .lekhon-seller-page .bg-violet-600,
+.dark .lekhon-checkout-page .bg-violet-600,
+.dark .lekhon-orders-page .bg-violet-600,
+.dark .lekhon-order-success-page .bg-violet-600 {
+  color: #ffffff !important;
+}
+
+@media (max-width: 767px) {
+  .lekhon-seller-page,
+  .lekhon-checkout-page,
+  .lekhon-orders-page {
+    padding: 14px 12px 24px !important;
+  }
+
+  .lekhon-seller-dashboard {
+    padding: 0 !important;
+  }
+
+  .lekhon-seller-header {
+    padding: 12px !important;
+  }
+
+  .lekhon-seller-header > div {
+    align-items: flex-start;
+  }
+
+  .lekhon-seller-header .flex.flex-wrap.justify-end {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .lekhon-seller-header .flex.flex-wrap.justify-end a {
+    min-height: 40px;
+    justify-content: center;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .lekhon-seller-tabs {
+    position: sticky;
+    top: 80px;
+    z-index: 18;
+    padding-right: 12px !important;
+    padding-left: 12px !important;
+  }
+
+  .lekhon-seller-tabs > div {
+    gap: 8px;
+    padding: 10px 0;
+  }
+
+  .lekhon-seller-tabs a,
+  .lekhon-seller-tabs button {
+    min-height: 38px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    background: var(--surface-card);
+  }
+
+  .lekhon-seller-tabs button[class*="border-violet"],
+  .lekhon-seller-tabs a:hover {
+    background: var(--tag-bg);
+  }
+
+  .lekhon-seller-content,
+  .lekhon-checkout-shell,
+  .lekhon-orders-shell {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .lekhon-seller-stat-grid {
+    gap: 10px;
+  }
+
+  .lekhon-seller-stat-grid > div {
+    min-height: 116px;
+    padding: 14px !important;
+    border-radius: 14px !important;
+  }
+
+  .lekhon-seller-recent-orders {
+    border: 0;
+    overflow: visible;
+  }
+
+  .lekhon-seller-recent-orders > div {
+    overflow: visible;
+  }
+
+  .lekhon-seller-recent-orders > div > div {
+    min-width: 0 !important;
+  }
+
+  .lekhon-seller-recent-orders table,
+  .lekhon-seller-recent-orders tbody {
+    display: block;
+    width: 100%;
+  }
+
+  .lekhon-seller-recent-orders thead {
+    display: none;
+  }
+
+  .lekhon-seller-recent-orders tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .lekhon-seller-recent-orders tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 14px;
+    padding: 14px;
+    border: 1px solid var(--border-default);
+    border-radius: 16px;
+    background: var(--surface-card);
+    box-shadow: 0 10px 22px rgba(28, 28, 28, 0.06);
+  }
+
+  .lekhon-seller-recent-orders tr[data-empty="true"] {
+    display: block;
+  }
+
+  .lekhon-seller-recent-orders tr[data-empty="true"] td::before {
+    content: none;
+  }
+
+  .lekhon-seller-recent-orders td {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 !important;
+  }
+
+  .lekhon-seller-recent-orders td::before {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-family: var(--font-primary);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  .lekhon-seller-recent-orders td:nth-child(1)::before {
+    content: "Order";
+  }
+
+  .lekhon-seller-recent-orders td:nth-child(2)::before {
+    content: "Buyer";
+  }
+
+  .lekhon-seller-recent-orders td:nth-child(3)::before {
+    content: "Items";
+  }
+
+  .lekhon-seller-recent-orders td:nth-child(4)::before {
+    content: "Total";
+  }
+
+  .lekhon-seller-recent-orders td:nth-child(5)::before {
+    content: "Status";
+  }
+
+  .lekhon-seller-recent-orders td:nth-child(6)::before {
+    content: "Action";
+  }
+
+  .lekhon-seller-recent-orders td:nth-child(1),
+  .lekhon-seller-recent-orders td:nth-child(2),
+  .lekhon-seller-recent-orders td:nth-child(6) {
+    grid-column: 1 / -1;
+  }
+
+  .lekhon-seller-recent-orders td:nth-child(1) {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .lekhon-seller-recent-orders td:nth-child(6) {
+    justify-content: flex-start;
+  }
+
+  .lekhon-product-wizard .lekhon-seller-content > .flex.items-center.justify-between,
+  .lekhon-checkout-shell > .mb-6,
+  .lekhon-orders-shell > .flex.items-center.justify-between {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .lekhon-product-stepper {
+    position: sticky;
+    top: 80px;
+    z-index: 18;
+    padding: 10px !important;
+  }
+
+  .lekhon-product-stepper > div {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .lekhon-product-stepper > div::-webkit-scrollbar {
+    display: none;
+  }
+
+  .lekhon-product-stepper button {
+    min-height: 36px;
+    white-space: nowrap;
+  }
+
+  .lekhon-product-wizard-actions {
+    position: sticky;
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+    z-index: 16;
+    margin-right: -12px;
+    margin-left: -12px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border-default);
+    background: color-mix(in srgb, var(--surface-card) 94%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .lekhon-checkout-grid {
+    gap: 14px;
+  }
+
+  .lekhon-checkout-page .rounded-2xl,
+  .lekhon-orders-page .rounded-2xl,
+  .lekhon-order-success-card {
+    border-radius: 18px !important;
+  }
+
+  .lekhon-checkout-page input,
+  .lekhon-checkout-page button,
+  .lekhon-orders-page input,
+  .lekhon-orders-page button {
+    min-height: 40px;
+  }
+
+  .lekhon-orders-page .space-y-3 > div {
+    box-shadow: 0 12px 28px rgba(28, 28, 28, 0.08);
+  }
+
+  .lekhon-order-detail-page .flex.items-center {
+    min-width: 0;
+  }
+
+  .lekhon-order-success-page {
+    align-items: flex-start;
+    padding-top: 24px !important;
+  }
+
+  .lekhon-order-success-card {
+    padding: 22px !important;
+  }
+}
+
 /* Slide payment control */
 .lekhon-slide-pay {
   position: relative;

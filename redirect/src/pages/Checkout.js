@@ -295,8 +295,8 @@ const Checkout = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] py-8 px-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="lekhon-checkout-page min-h-screen bg-[var(--bg-primary)] py-8 px-4">
+      <div className="lekhon-checkout-shell max-w-4xl mx-auto">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <h1 className="m-0 text-2xl font-bold text-[var(--text-primary)]">Checkout</h1>
           <Link
@@ -306,7 +306,7 @@ const Checkout = () => {
             Payment and checkout help
           </Link>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="lekhon-checkout-grid grid grid-cols-1 lg:grid-cols-5 gap-6">
 
           {/* ── Left: Address + Coupon ──────────────────────────────────────── */}
           <div className="lg:col-span-3 space-y-5">

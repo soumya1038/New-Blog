@@ -56,13 +56,15 @@ Status: complete
 
 ### C1 Guardrails
 
-Status: in progress
+Status: complete
 
 - This guideline document exists.
 - The implementation must follow the selected image references.
 - Any major design deviation must be intentional and documented.
 
 ### C2 Mobile Shell
+
+Status: complete
 
 Goal:
 
@@ -80,6 +82,8 @@ Exit criteria:
 
 ### C3 Marketplace And Seller
 
+Status: complete
+
 Goal:
 
 - Implement the selected marketplace mobile layout.
@@ -92,6 +96,8 @@ Exit criteria:
 - Store pages feel like public storefronts, not admin screens.
 
 ### C4 Creator And Content
+
+Status: complete
 
 Goal:
 
@@ -106,6 +112,8 @@ Exit criteria:
 
 ### C5 Chat And Profile
 
+Status: complete
+
 Goal:
 
 - Make chat, profile, settings, privacy, support, and account management complete on mobile.
@@ -117,6 +125,8 @@ Exit criteria:
 - Privacy and sensitive account actions remain accessible.
 
 ### C6 Final QA
+
+Status: complete
 
 Goal:
 

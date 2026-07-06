@@ -156,8 +156,8 @@ const OrderDetail = () => {
   const canReview = isBuyer && ['completed', 'delivered'].includes(order.status);
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] py-8 px-4">
-      <div className="max-w-3xl mx-auto space-y-5">
+    <div className="lekhon-orders-page lekhon-order-detail-page min-h-screen bg-[var(--bg-primary)] py-8 px-4">
+      <div className="lekhon-orders-shell max-w-3xl mx-auto space-y-5">
 
         {/* ── Header ───────────────────────────────────────────────────────── */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

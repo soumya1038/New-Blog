@@ -8,8 +8,8 @@ export const OrderSuccess = () => {
   const orderNumber = location.state?.orderNumber || 'Your order';
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-4">
-      <div className="max-w-md w-full text-center space-y-5 p-8 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] shadow-xl">
+    <div className="lekhon-order-success-page min-h-screen bg-[var(--bg-primary)] flex items-center justify-center p-4">
+      <div className="lekhon-order-success-card max-w-md w-full text-center space-y-5 p-8 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] shadow-xl">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--tag-bg)] text-[var(--brand-primary)]">
           <FaCheckCircle size={30} />
         </div>

@@ -623,9 +623,9 @@ const Marketplace = () => {
     .every(key => String(addressDraft[key] || '').trim());
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)]">
+    <div className="lekhon-marketplace-page min-h-screen bg-[var(--bg-primary)]">
       {/* ── Top bar ──────────────────────────────────────────────────────────── */}
-      <div className="sticky top-0 z-20 border-b border-[var(--border-color)] bg-[var(--bg-card)]/95 backdrop-blur-sm">
+      <div className="lekhon-marketplace-header sticky top-0 z-20 border-b border-[var(--border-color)] bg-[var(--bg-card)]/95 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 flex flex-wrap items-center gap-2 md:flex-nowrap md:gap-3">
           <h1 className="order-1 mr-auto md:mr-0 text-lg font-bold text-[var(--text-primary)] shrink-0 flex items-center gap-2">
             <FaShoppingBag className="text-violet-500" /> Marketplace
@@ -1114,13 +1114,13 @@ const Marketplace = () => {
       {loading && <BarLoader width="100%" color="#7c3aed" />}
 
       {/* ── Product grid ──────────────────────────────────────────────────────── */}
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="lekhon-marketplace-content max-w-7xl mx-auto px-4 py-6">
         {personalization.recommendedProducts.length > 0 && showPersonalizedSections && (
           <section className="mb-8">
             <div className="mb-3">
               <h2 className="text-sm font-bold text-[var(--text-primary)]">For you</h2>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="lekhon-market-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {personalization.recommendedProducts.slice(0, 5).map(product => (
                 <ProductCard
                   key={`recommended-${product._id || product.id}`}
@@ -1192,7 +1192,7 @@ const Marketplace = () => {
                 {total.toLocaleString()} product{total !== 1 ? 's' : ''} found
               </p>
             )}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+            <div className="lekhon-market-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {products.map(p => (
                 <ProductCard key={p._id} product={p} onAddToCart={handleAddToCart} onProductView={handleProductView} />
               ))}
