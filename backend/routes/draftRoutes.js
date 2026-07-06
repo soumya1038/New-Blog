@@ -7,14 +7,48 @@ const Article = require('../models/Article');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
 
+const DRAFT_TTL_MS = 42 * 60 * 60 * 1000;
+
+const getDraftFilter = (req) => {
+  const isAdmin = req.user.role === 'admin';
+  return isAdmin ? { isDraft: true } : { author: req.user._id, isDraft: true };
+};
+
+const getFreshDraftFilter = (filter) => ({
+  ...filter,
+  $or: [
+    { isScheduled: true },
+    { updatedAt: { $gte: new Date(Date.now() - DRAFT_TTL_MS) } },
+  ],
+});
+
+// Get draft counts without mutating draft data.
+router.get('/summary', protect, async (req, res) => {
+  try {
+    const filter = getFreshDraftFilter(getDraftFilter(req));
+    const [blogs, shorts, articles] = await Promise.all([
+      Blog.countDocuments(filter),
+      Short.countDocuments(filter),
+      Article.countDocuments(filter),
+    ]);
+
+    res.json({
+      success: true,
+      counts: { blogs, shorts, articles },
+      total: blogs + shorts + articles,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Get all drafts (blogs + shorts + articles combined)
 router.get('/', protect, async (req, res) => {
   try {
-    const isAdmin = req.user.role === 'admin';
-    const filter = isAdmin ? { isDraft: true } : { author: req.user._id, isDraft: true };
+    const filter = getDraftFilter(req);
 
     // Auto-delete old drafts (42 hours)
-    const fortyTwoHoursAgo = new Date(Date.now() - 42 * 60 * 60 * 1000);
+    const fortyTwoHoursAgo = new Date(Date.now() - DRAFT_TTL_MS);
     const oldFilter = { ...filter, isScheduled: false, updatedAt: { $lt: fortyTwoHoursAgo } };
     
     const oldBlogs = await Blog.find(oldFilter);

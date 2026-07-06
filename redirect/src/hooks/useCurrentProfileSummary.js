@@ -30,6 +30,11 @@ const getWishlistItems = (data = {}) => getArray(data.products || data.items || 
 
 const getOrders = (data = {}) => getArray(data.orders);
 
+const getTotal = (data = {}, fallback = 0) => {
+  const total = Number(data.total ?? data.count ?? data.pagination?.total ?? fallback);
+  return Number.isFinite(total) ? total : fallback;
+};
+
 export const formatCompactCount = (value) => {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return '0';
@@ -44,8 +49,11 @@ const useCurrentProfileSummary = () => {
   const [blogs, setBlogs] = useState([]);
   const [articles, setArticles] = useState([]);
   const [shorts, setShorts] = useState([]);
+  const [draftCount, setDraftCount] = useState(null);
   const [wishlist, setWishlist] = useState([]);
+  const [wishlistTotal, setWishlistTotal] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [orderTotal, setOrderTotal] = useState(null);
   const [twoFactorStatus, setTwoFactorStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -65,6 +73,7 @@ const useCurrentProfileSummary = () => {
         blogsRes,
         articlesRes,
         shortsRes,
+        draftsRes,
         wishlistRes,
         ordersRes,
         twoFactorRes,
@@ -73,8 +82,9 @@ const useCurrentProfileSummary = () => {
         api.get(`/blogs?author=${user._id}`),
         api.get(`/articles?author=${user._id}`),
         api.get(`/shorts?author=${user._id}`),
+        api.get('/drafts/summary'),
         api.get('/marketplace/wishlist'),
-        api.get('/orders?limit=5'),
+        api.get('/orders?limit=1'),
         api.get('/users/2fa/status'),
       ]);
 
@@ -91,8 +101,17 @@ const useCurrentProfileSummary = () => {
       if (blogsRes.status === 'fulfilled') setBlogs(getArray(blogsRes.value.data?.blogs));
       if (articlesRes.status === 'fulfilled') setArticles(getArray(articlesRes.value.data?.articles));
       if (shortsRes.status === 'fulfilled') setShorts(getArray(shortsRes.value.data?.shorts));
-      if (wishlistRes.status === 'fulfilled') setWishlist(getWishlistItems(wishlistRes.value.data));
-      if (ordersRes.status === 'fulfilled') setOrders(getOrders(ordersRes.value.data));
+      if (draftsRes.status === 'fulfilled') setDraftCount(getTotal(draftsRes.value.data));
+      if (wishlistRes.status === 'fulfilled') {
+        const nextWishlist = getWishlistItems(wishlistRes.value.data);
+        setWishlist(nextWishlist);
+        setWishlistTotal(getTotal(wishlistRes.value.data, nextWishlist.length));
+      }
+      if (ordersRes.status === 'fulfilled') {
+        const nextOrders = getOrders(ordersRes.value.data);
+        setOrders(nextOrders);
+        setOrderTotal(getTotal(ordersRes.value.data, nextOrders.length));
+      }
       if (twoFactorRes.status === 'fulfilled') setTwoFactorStatus(twoFactorRes.value.data?.twoFactor || null);
 
       if (profileRes.status === 'rejected') {
@@ -169,9 +188,9 @@ const useCurrentProfileSummary = () => {
     blogs: publishedBlogs.length,
     articles: publishedArticles.length,
     shorts: publishedShorts.length,
-    drafts: contentDrafts.length,
-    saved: wishlist.length,
-    orders: orders.length,
+    drafts: draftCount ?? contentDrafts.length,
+    saved: wishlistTotal ?? wishlist.length,
+    orders: orderTotal ?? orders.length,
     followers: displayUser?.followerCount ?? getArray(displayUser?.followers).length,
     following: displayUser?.followingCount ?? getArray(displayUser?.following).length,
   }), [
@@ -180,11 +199,14 @@ const useCurrentProfileSummary = () => {
     displayUser?.followers,
     displayUser?.following,
     displayUser?.followingCount,
+    draftCount,
     orders.length,
+    orderTotal,
     publishedArticles.length,
     publishedBlogs.length,
     publishedShorts.length,
     wishlist.length,
+    wishlistTotal,
   ]);
 
   return {

@@ -1060,7 +1060,7 @@ exports.getWishlist = async (req, res) => {
       status: 'active',
     }).select('title slug thumbnail price compareAtPrice type averageRating reviewCount');
 
-    res.json({ success: true, products });
+    res.json({ success: true, products, total: products.length });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
