@@ -34,6 +34,22 @@ import {
 } from '../utils/twoFactorFlow';
 import './ShortBlogsViewer.css';
 
+const getSpeechSynthesis = () => {
+  if (typeof window === 'undefined') return null;
+  const synth = window.speechSynthesis;
+  if (!synth || typeof synth.cancel !== 'function' || typeof synth.speak !== 'function') {
+    return null;
+  }
+  return synth;
+};
+
+const getSpeechUtterance = () => {
+  if (typeof window === 'undefined' || typeof window.SpeechSynthesisUtterance !== 'function') {
+    return null;
+  }
+  return window.SpeechSynthesisUtterance;
+};
+
 const ShortBlogsViewer = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -120,15 +136,17 @@ const ShortBlogsViewer = () => {
   useEffect(() => {
     fetchShortBlogs();
     return () => {
-      if (window.speechSynthesis.speaking) {
-        window.speechSynthesis.cancel();
+      const synth = getSpeechSynthesis();
+      if (synth?.speaking) {
+        synth.cancel();
       }
     };
   }, []);
 
   useEffect(() => {
     if (blogs.length > 0 && blogs[currentIndex]) {
-      window.speechSynthesis.cancel();
+      const synth = getSpeechSynthesis();
+      synth?.cancel();
       setIsSpeaking(false);
       setIsPaused(false);
       setRepeatCount(0);
@@ -354,11 +372,14 @@ const ShortBlogsViewer = () => {
   };
 
   const handleCardClick = () => {
+    const synth = getSpeechSynthesis();
+    if (!synth) return;
+
     if (isSpeaking && !isPaused) {
-      window.speechSynthesis.pause();
+      synth.pause?.();
       setIsPaused(true);
     } else if (isPaused) {
-      window.speechSynthesis.resume();
+      synth.resume?.();
       setIsPaused(false);
     } else if (!isSpeaking) {
       handleTextToSpeech(true);
@@ -366,11 +387,14 @@ const ShortBlogsViewer = () => {
   };
 
   const handleTextToSpeech = (isAuto = false) => {
+    const synth = getSpeechSynthesis();
+    if (!synth) return;
+
     if (isSpeaking && !isPaused) {
-      window.speechSynthesis.pause();
+      synth.pause?.();
       setIsPaused(true);
     } else if (isPaused) {
-      window.speechSynthesis.resume();
+      synth.resume?.();
       setIsPaused(false);
     } else {
       speakFromSentence(0, isMuted ? 0 : volume, isAuto);
@@ -378,7 +402,7 @@ const ShortBlogsViewer = () => {
   };
 
   const handleStopSpeech = () => {
-    window.speechSynthesis.cancel();
+    getSpeechSynthesis()?.cancel();
     setIsSpeaking(false);
     setIsPaused(false);
   };
@@ -387,7 +411,7 @@ const ShortBlogsViewer = () => {
     const newMuted = !isMuted;
     setIsMuted(newMuted);
     if (isSpeaking && utteranceRef.current) {
-      window.speechSynthesis.cancel();
+      getSpeechSynthesis()?.cancel();
       const text = `${currentBlog.title}. ${currentBlog.content}`;
       const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
       let currentSentence = sentences.findIndex(s => highlightedText.includes(s.trim()));
@@ -400,7 +424,7 @@ const ShortBlogsViewer = () => {
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
     if (isSpeaking && !isMuted && utteranceRef.current) {
-      window.speechSynthesis.cancel();
+      getSpeechSynthesis()?.cancel();
       const text = `${currentBlog.title}. ${currentBlog.content}`;
       const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
       let currentSentence = sentences.findIndex(s => highlightedText.includes(s.trim()));
@@ -410,6 +434,12 @@ const ShortBlogsViewer = () => {
   };
 
   const speakFromSentence = (startIndex, vol, isAuto) => {
+    const synth = getSpeechSynthesis();
+    const SpeechUtterance = getSpeechUtterance();
+    if (!currentBlog || !synth || !SpeechUtterance) {
+      return;
+    }
+
     const text = `${currentBlog.title}. ${currentBlog.content}`;
     const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
     const uniqueSentences = [...new Set(sentences.map(s => s.trim()))];
@@ -417,7 +447,7 @@ const ShortBlogsViewer = () => {
 
     const speakNext = () => {
       if (currentSentence < uniqueSentences.length) {
-        const utterance = new SpeechSynthesisUtterance(uniqueSentences[currentSentence]);
+        const utterance = new SpeechUtterance(uniqueSentences[currentSentence]);
         utterance.rate = 1.0;
         utterance.pitch = 1.0;
         utterance.volume = vol;
@@ -447,7 +477,7 @@ const ShortBlogsViewer = () => {
         };
 
         utteranceRef.current = utterance;
-        window.speechSynthesis.speak(utterance);
+        synth.speak(utterance);
       }
     };
 
