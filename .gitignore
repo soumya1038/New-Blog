@@ -74,6 +74,7 @@ frontend/.env
 docs/*
 !docs/help-center-planning/
 !docs/help-center-planning/**
+!docs/mobile-app-implementation-guidelines.md
 scripts/
 !scripts/
 scripts/*
