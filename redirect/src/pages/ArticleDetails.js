@@ -26,6 +26,7 @@ import {
   FaRegFolderOpen,
   FaRegShareSquare,
   FaRegUser,
+  FaRetweet,
   FaShoppingBag,
   FaTimes,
   FaTrash,
@@ -967,6 +968,23 @@ const ArticleDetails = () => {
   }, [contentId, user?._id]);
 
   useEffect(() => {
+    if (!contentId) return;
+    const likeCount = Number(article?.likeCount ?? article?.likes?.length ?? 0);
+    const commentCount = comments.length || Number(article?.commentCount ?? 0);
+
+    const detail = {
+      contentId,
+      pathname: window.location.pathname,
+      type: 'article',
+      likeCount: Number.isFinite(likeCount) ? likeCount : 0,
+      commentCount: Number.isFinite(commentCount) ? commentCount : 0,
+      liked,
+    };
+    window.__lekhonContentStats = detail;
+    window.dispatchEvent(new CustomEvent('lekhon:content-stats', { detail }));
+  }, [article?.likeCount, article?.likes, article?.commentCount, comments.length, contentId, liked]);
+
+  useEffect(() => {
     // console.log('ArticleDetails mounted, id:', id);
     fetchArticle();
     fetchComments();
@@ -1078,7 +1096,7 @@ const ArticleDetails = () => {
     }
     try {
       const { data } = await api.post(`/articles/${contentId}/like`);
-      setArticle({ ...article, likes: data.likes, likeCount: data.likeCount });
+      setArticle((current) => ({ ...current, likes: data.likes, likeCount: data.likeCount }));
       setLiked(data.liked);
       if (data.liked) toast.success('Article liked!');
     } catch (error) {
@@ -1111,8 +1129,6 @@ const ArticleDetails = () => {
     }
   };
 
-  const handleCopyLink = () => copyTextToClipboard(shareUrl);
-
   const handleSaveArticle = () => {
     if (!contentId) return;
     const key = `lekhon:saved-article:${user?._id || 'guest'}:${contentId}`;
@@ -1125,6 +1141,25 @@ const ArticleDetails = () => {
       localStorage.removeItem(key);
       toast.success('Article removed from saved items.');
     }
+  };
+
+  const handleRepost = () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    if (!article) return;
+
+    navigate('/create', {
+      state: {
+        repostContent: article.content || '',
+        repostTitle: article.title || '',
+        repostTags: Array.isArray(article.tags) ? article.tags.join(', ') : article.tags || '',
+        repostMetaDescription: article.metaDescription || article.excerpt || '',
+        repostCategory: article.category,
+        repostCoverImage: article.coverImage || article.image || article.featuredImage,
+      },
+    });
   };
 
   const handleGiftArticle = () => {
@@ -1140,6 +1175,20 @@ const ArticleDetails = () => {
       if (input) input.focus({ preventScroll: true });
     }, 420);
   };
+
+  useEffect(() => {
+    const handleContentAction = (event) => {
+      const action = event.detail?.action;
+      if (action === 'like') handleLike();
+      if (action === 'comment') scrollToComments();
+      if (action === 'save') handleSaveArticle();
+      if (action === 'share') handleShare();
+      if (action === 'repost') handleRepost();
+    };
+
+    window.addEventListener('lekhon:content-action', handleContentAction);
+    return () => window.removeEventListener('lekhon:content-action', handleContentAction);
+  }, [handleLike, handleSaveArticle, handleRepost, handleShare, scrollToComments]);
 
   const handleFollowAuthor = async () => {
     const authorId = article?.author?._id;
@@ -1647,13 +1696,13 @@ const ArticleDetails = () => {
                   <FaRegBookmark />
                   <span>{t('Save')}</span>
                 </button>
+                <button type="button" onClick={handleRepost} aria-label={t('Repost')}>
+                  <FaRetweet />
+                  <span>{t('Repost')}</span>
+                </button>
                 <button type="button" onClick={handleGiftArticle} aria-label={t('Gift this article')}>
                   <FaGift />
                   <span>{t('Gift')}</span>
-                </button>
-                <button type="button" onClick={handleCopyLink} aria-label={t('Copy link')}>
-                  <FaLink />
-                  <span>{t('Copy link')}</span>
                 </button>
                 <button type="button" onClick={handleShare} aria-label={t('More')}>
                   <FaEllipsisH />
@@ -1696,6 +1745,9 @@ const ArticleDetails = () => {
                 aria-pressed={savedArticle}
               >
                 <FaRegBookmark />
+              </button>
+              <button type="button" onClick={handleRepost} aria-label={t('Repost')}>
+                <FaRetweet />
               </button>
               <button type="button" onClick={handleShare} aria-label={t('Share')}>
                 <FaRegShareSquare />

@@ -7,7 +7,7 @@ import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
 import ReactMarkdown from 'react-markdown';
-import { FaHeart, FaComment, FaClock, FaEdit, FaTrash, FaArrowLeft, FaShare, FaRetweet, FaTimes, FaFacebook, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink, FaUserPlus, FaUserCheck, FaChevronDown, FaChevronUp, FaEye, FaLock, FaExternalLinkAlt, FaRegCommentDots, FaFeatherAlt } from 'react-icons/fa';
+import { FaHeart, FaComment, FaClock, FaEdit, FaTrash, FaArrowLeft, FaShare, FaRetweet, FaTimes, FaFacebook, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink, FaUserPlus, FaUserCheck, FaChevronDown, FaChevronUp, FaEye, FaLock, FaExternalLinkAlt, FaRegBookmark, FaRegCommentDots, FaFeatherAlt } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified } from 'react-icons/go';
 import { BiMenuAltRight } from 'react-icons/bi';
@@ -617,6 +617,7 @@ const BlogDetail = () => {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [liked, setLiked] = useState(false);
+  const [savedBlog, setSavedBlog] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showShareModal, setShowShareModal] = useState(false);
   const [editLoading, setEditLoading] = useState(false);
@@ -647,6 +648,29 @@ const BlogDetail = () => {
   const readerScrollRef = useRef(null);
   const commentsRef = useRef(null);
   const contentId = blog?._id || id;
+
+  useEffect(() => {
+    if (!contentId) return;
+    const key = `lekhon:saved-blog:${user?._id || 'guest'}:${contentId}`;
+    setSavedBlog(localStorage.getItem(key) === '1');
+  }, [contentId, user?._id]);
+
+  useEffect(() => {
+    if (!contentId) return;
+    const likeCount = Number(blog?.likeCount ?? blog?.likes?.length ?? 0);
+    const commentCount = comments.length || Number(blog?.commentCount ?? 0);
+
+    const detail = {
+      contentId,
+      pathname: window.location.pathname,
+      type: 'blog',
+      likeCount: Number.isFinite(likeCount) ? likeCount : 0,
+      commentCount: Number.isFinite(commentCount) ? commentCount : 0,
+      liked,
+    };
+    window.__lekhonContentStats = detail;
+    window.dispatchEvent(new CustomEvent('lekhon:content-stats', { detail }));
+  }, [blog?.likeCount, blog?.likes, blog?.commentCount, comments.length, contentId, liked]);
 
   useEffect(() => {
     const update = () => {
@@ -838,7 +862,7 @@ const BlogDetail = () => {
     try {
       const { data } = await api.post(`/blogs/${contentId}/like`);
       setLiked(data.liked);
-      setBlog({ ...blog, likeCount: data.likeCount });
+      setBlog((current) => ({ ...current, likeCount: data.likeCount }));
 
       if (data.liked) {
         soundNotification.playLikeActionSound();
@@ -1102,6 +1126,20 @@ const BlogDetail = () => {
     setShowShareModal(true);
   };
 
+  const handleSaveBlog = () => {
+    if (!contentId) return;
+    const key = `lekhon:saved-blog:${user?._id || 'guest'}:${contentId}`;
+    const nextSaved = !savedBlog;
+    setSavedBlog(nextSaved);
+    if (nextSaved) {
+      localStorage.setItem(key, '1');
+      toast.success('Blog saved to your reading list.');
+    } else {
+      localStorage.removeItem(key);
+      toast.success('Blog removed from saved items.');
+    }
+  };
+
   const shareUrl = window.location.href;
   const shareTitle = blog?.title || 'Check out this blog';
 
@@ -1222,6 +1260,20 @@ const BlogDetail = () => {
       commentsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
+
+  useEffect(() => {
+    const handleContentAction = (event) => {
+      const action = event.detail?.action;
+      if (action === 'like') handleLike();
+      if (action === 'comment') scrollToComments();
+      if (action === 'save') handleSaveBlog();
+      if (action === 'share') handleShare();
+      if (action === 'repost') handleRepost();
+    };
+
+    window.addEventListener('lekhon:content-action', handleContentAction);
+    return () => window.removeEventListener('lekhon:content-action', handleContentAction);
+  }, [handleLike, handleSaveBlog, handleRepost, handleShare, scrollToComments]);
 
   const sortedComments = useMemo(() => {
     const sorted = [...comments].sort((a, b) => {
@@ -1453,6 +1505,16 @@ const BlogDetail = () => {
               <FaComment />
               <span>{blog.commentCount || comments.length || 0}</span>
             </button>
+            <button
+              type="button"
+              onClick={handleSaveBlog}
+              className={`blog-detail-rail-action ${savedBlog ? 'is-active' : ''}`}
+              aria-label={savedBlog ? t('Remove saved blog') : t('Save blog')}
+              aria-pressed={savedBlog}
+            >
+              <FaRegBookmark />
+              <span>{t('Save')}</span>
+            </button>
             {user?._id !== author?._id && (
               <button
                 type="button"
@@ -1554,6 +1616,14 @@ const BlogDetail = () => {
                 </button>
                 <button type="button" onClick={scrollToComments}>
                   <FaComment /> <span>{blog.commentCount || comments.length || 0}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveBlog}
+                  className={savedBlog ? 'is-active' : ''}
+                  aria-pressed={savedBlog}
+                >
+                  <FaRegBookmark /> <span>{t('Save')}</span>
                 </button>
                 <span>
                   <FaClock /> <span>{readingTimeLabel}</span>
@@ -1829,6 +1899,10 @@ const BlogDetail = () => {
           <button type="button" onClick={scrollToComments}>
             <FaComment />
             <span>{blog.commentCount || comments.length || 0}</span>
+          </button>
+          <button type="button" onClick={handleSaveBlog} className={savedBlog ? 'is-active' : ''} aria-pressed={savedBlog}>
+            <FaRegBookmark />
+            <span>{t('Save')}</span>
           </button>
           {user?._id !== author?._id && (
             <button type="button" onClick={handleRepost}>

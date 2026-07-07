@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useContext, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { FiX, FiChevronUp, FiChevronDown, FiEye, FiAlertTriangle } from 'react-icons/fi';
+import { FiChevronUp, FiChevronDown, FiEye, FiAlertTriangle } from 'react-icons/fi';
 import { AiOutlineLike, AiFillLike } from 'react-icons/ai';
 import { TfiCommentAlt } from 'react-icons/tfi';
 import { IoIosShareAlt } from 'react-icons/io';
@@ -50,6 +50,33 @@ const getSpeechUtterance = () => {
   return window.SpeechSynthesisUtterance;
 };
 
+const getAndroidTextToSpeech = () => {
+  if (typeof window === 'undefined') return null;
+  const tts = window.LekhonAndroidTts;
+  if (!tts || typeof tts.speak !== 'function' || typeof tts.stop !== 'function') {
+    return null;
+  }
+  return tts;
+};
+
+const stopActiveSpeech = () => {
+  getSpeechSynthesis()?.cancel();
+  getAndroidTextToSpeech()?.stop();
+};
+
+const getShortSpeechSentences = (blog) => {
+  if (!blog) return [];
+  const text = `${blog.title || ''}. ${blog.content || ''}`
+    .replace(/[#*_`~[\]()]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!text) return [];
+  return [...new Set((text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text]).map(s => s.trim()).filter(Boolean))];
+};
+
+const AUTO_SPEECH_START_GUARD_MS = 2200;
+
 const ShortBlogsViewer = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -86,6 +113,9 @@ const ShortBlogsViewer = () => {
   const utteranceRef = useRef(null);
   const volumeTimeoutRef = useRef(null);
   const contentRef = useRef(null);
+  const speechRunIdRef = useRef(0);
+  const pendingAutoSpeechRef = useRef(false);
+  const nativeSpeechCleanupRef = useRef(null);
   const [showOwnerShorts, setShowOwnerShorts] = useState(false);
   const [ownerShorts, setOwnerShorts] = useState([]);
   const [loadingOwnerShorts, setLoadingOwnerShorts] = useState(false);
@@ -96,6 +126,7 @@ const ShortBlogsViewer = () => {
 
   const containerRef = useRef(null);
   const scrollTimeoutRef = useRef(null);
+  const speechStartTimeoutRef = useRef(null);
   const touchStartY = useRef(0);
   const isUserScrolling = useRef(false);
   const isProgrammaticScroll = useRef(false);
@@ -136,25 +167,32 @@ const ShortBlogsViewer = () => {
   useEffect(() => {
     fetchShortBlogs();
     return () => {
-      const synth = getSpeechSynthesis();
-      if (synth?.speaking) {
-        synth.cancel();
-      }
+      nativeSpeechCleanupRef.current?.();
+      nativeSpeechCleanupRef.current = null;
+      stopActiveSpeech();
     };
   }, []);
 
   useEffect(() => {
     if (blogs.length > 0 && blogs[currentIndex]) {
-      const synth = getSpeechSynthesis();
-      synth?.cancel();
+      speechRunIdRef.current += 1;
+      nativeSpeechCleanupRef.current?.();
+      nativeSpeechCleanupRef.current = null;
+      stopActiveSpeech();
+      clearTimeout(speechStartTimeoutRef.current);
+      pendingAutoSpeechRef.current = true;
       setIsSpeaking(false);
       setIsPaused(false);
       setRepeatCount(0);
       setHighlightedText('');
-      setTimeout(() => {
+      speechStartTimeoutRef.current = setTimeout(() => {
         speakFromSentence(0, isMuted ? 0 : volume, true);
       }, 500);
     }
+
+    return () => {
+      clearTimeout(speechStartTimeoutRef.current);
+    };
   }, [currentIndex, blogs]);
 
   useEffect(() => {
@@ -373,47 +411,59 @@ const ShortBlogsViewer = () => {
 
   const handleCardClick = () => {
     const synth = getSpeechSynthesis();
-    if (!synth) return;
+    const nativeTts = getAndroidTextToSpeech();
+    if (!synth && !nativeTts) return;
 
-    if (isSpeaking && !isPaused) {
+    if (nativeTts && isSpeaking && !isPaused) {
+      handleStopSpeech();
+    } else if (isSpeaking && !isPaused) {
       synth.pause?.();
       setIsPaused(true);
-    } else if (isPaused) {
+    } else if (isPaused && synth) {
       synth.resume?.();
       setIsPaused(false);
     } else if (!isSpeaking) {
+      pendingAutoSpeechRef.current = false;
       handleTextToSpeech(true);
     }
   };
 
   const handleTextToSpeech = (isAuto = false) => {
     const synth = getSpeechSynthesis();
-    if (!synth) return;
+    const nativeTts = getAndroidTextToSpeech();
+    if (!synth && !nativeTts) return;
 
-    if (isSpeaking && !isPaused) {
+    if (nativeTts && isSpeaking && !isPaused) {
+      handleStopSpeech();
+    } else if (isSpeaking && !isPaused) {
       synth.pause?.();
       setIsPaused(true);
-    } else if (isPaused) {
+    } else if (isPaused && synth) {
       synth.resume?.();
       setIsPaused(false);
     } else {
+      pendingAutoSpeechRef.current = false;
       speakFromSentence(0, isMuted ? 0 : volume, isAuto);
     }
   };
 
   const handleStopSpeech = () => {
-    getSpeechSynthesis()?.cancel();
+    speechRunIdRef.current += 1;
+    pendingAutoSpeechRef.current = false;
+    nativeSpeechCleanupRef.current?.();
+    nativeSpeechCleanupRef.current = null;
+    stopActiveSpeech();
     setIsSpeaking(false);
     setIsPaused(false);
+    setHighlightedText('');
   };
 
   const handleMuteToggle = () => {
     const newMuted = !isMuted;
     setIsMuted(newMuted);
     if (isSpeaking && utteranceRef.current) {
-      getSpeechSynthesis()?.cancel();
-      const text = `${currentBlog.title}. ${currentBlog.content}`;
-      const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+      stopActiveSpeech();
+      const sentences = getShortSpeechSentences(currentBlog);
       let currentSentence = sentences.findIndex(s => highlightedText.includes(s.trim()));
       if (currentSentence === -1) currentSentence = 0;
       speakFromSentence(currentSentence, newMuted ? 0 : volume, false);
@@ -424,9 +474,8 @@ const ShortBlogsViewer = () => {
     const newVolume = parseFloat(e.target.value);
     setVolume(newVolume);
     if (isSpeaking && !isMuted && utteranceRef.current) {
-      getSpeechSynthesis()?.cancel();
-      const text = `${currentBlog.title}. ${currentBlog.content}`;
-      const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+      stopActiveSpeech();
+      const sentences = getShortSpeechSentences(currentBlog);
       let currentSentence = sentences.findIndex(s => highlightedText.includes(s.trim()));
       if (currentSentence === -1) currentSentence = 0;
       speakFromSentence(currentSentence, newVolume, false);
@@ -434,18 +483,132 @@ const ShortBlogsViewer = () => {
   };
 
   const speakFromSentence = (startIndex, vol, isAuto) => {
+    const uniqueSentences = getShortSpeechSentences(currentBlog);
+    const nativeTts = getAndroidTextToSpeech();
     const synth = getSpeechSynthesis();
     const SpeechUtterance = getSpeechUtterance();
-    if (!currentBlog || !synth || !SpeechUtterance) {
+
+    if (!currentBlog || uniqueSentences.length === 0 || (!nativeTts && (!synth || !SpeechUtterance))) {
+      pendingAutoSpeechRef.current = false;
       return;
     }
 
-    const text = `${currentBlog.title}. ${currentBlog.content}`;
-    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
-    const uniqueSentences = [...new Set(sentences.map(s => s.trim()))];
+    speechRunIdRef.current += 1;
+    const speechRunId = speechRunIdRef.current;
+    nativeSpeechCleanupRef.current?.();
+    nativeSpeechCleanupRef.current = null;
+    stopActiveSpeech();
+
     let currentSentence = startIndex;
+    let hasStarted = false;
+    let startGuard = null;
+
+    const isCurrentSpeechRun = () => speechRunIdRef.current === speechRunId;
+
+    const resetFailedSpeech = (shouldRetryOnGesture) => {
+      if (!isCurrentSpeechRun()) return;
+      if (startGuard) {
+        clearTimeout(startGuard);
+      }
+      pendingAutoSpeechRef.current = Boolean(shouldRetryOnGesture);
+      utteranceRef.current = null;
+      setHighlightedText('');
+      setIsSpeaking(false);
+      setIsPaused(false);
+    };
+
+    const handleSentenceStart = () => {
+      if (!isCurrentSpeechRun()) return;
+      hasStarted = true;
+      pendingAutoSpeechRef.current = false;
+      if (startGuard) {
+        clearTimeout(startGuard);
+        startGuard = null;
+      }
+      setIsSpeaking(true);
+      setIsPaused(false);
+      setHighlightedText(uniqueSentences[currentSentence]);
+      setTimeout(() => {
+        if (contentRef.current) {
+          const highlightedElement = contentRef.current.querySelector('.bg-white\\/30');
+          if (highlightedElement) {
+            highlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }
+      }, 100);
+    };
+
+    const handleSpeechComplete = () => {
+      pendingAutoSpeechRef.current = false;
+      utteranceRef.current = null;
+      setHighlightedText('');
+      setIsSpeaking(false);
+      setIsPaused(false);
+      setRepeatCount(0);
+    };
+
+    if (nativeTts) {
+      const nativeRunId = String(speechRunId);
+
+      const cleanupNativeSpeech = () => {
+        window.removeEventListener('lekhonAndroidTts', handleNativeSpeechEvent);
+        if (nativeSpeechCleanupRef.current === cleanupNativeSpeech) {
+          nativeSpeechCleanupRef.current = null;
+        }
+      };
+
+      const speakNativeSentence = () => {
+        if (!isCurrentSpeechRun()) return;
+        if (currentSentence >= uniqueSentences.length) {
+          cleanupNativeSpeech();
+          handleSpeechComplete();
+          return;
+        }
+
+        utteranceRef.current = { native: true, runId: nativeRunId };
+        try {
+          nativeTts.speak(uniqueSentences[currentSentence], currentSentence, nativeRunId, 1.0, 1.0, vol);
+        } catch {
+          cleanupNativeSpeech();
+          resetFailedSpeech(isAuto);
+        }
+      };
+
+      function handleNativeSpeechEvent(event) {
+        const detail = event.detail || {};
+        if (detail.runId !== nativeRunId || !isCurrentSpeechRun()) return;
+
+        if (detail.type === 'start') {
+          handleSentenceStart();
+          return;
+        }
+
+        if (detail.type === 'done') {
+          currentSentence++;
+          speakNativeSentence();
+          return;
+        }
+
+        if (detail.type === 'error') {
+          cleanupNativeSpeech();
+          const recoverableAutoStart = isAuto && !hasStarted;
+          resetFailedSpeech(recoverableAutoStart);
+        }
+      }
+
+      window.addEventListener('lekhonAndroidTts', handleNativeSpeechEvent);
+      nativeSpeechCleanupRef.current = cleanupNativeSpeech;
+      setIsSpeaking(false);
+      setIsPaused(false);
+      speakNativeSentence();
+      return;
+    }
+
+    synth.getVoices?.();
 
     const speakNext = () => {
+      if (!isCurrentSpeechRun()) return;
+
       if (currentSentence < uniqueSentences.length) {
         const utterance = new SpeechUtterance(uniqueSentences[currentSentence]);
         utterance.rate = 1.0;
@@ -453,38 +616,68 @@ const ShortBlogsViewer = () => {
         utterance.volume = vol;
 
         utterance.onstart = () => {
-          setHighlightedText(uniqueSentences[currentSentence]);
-          setTimeout(() => {
-            if (contentRef.current) {
-              const highlightedElement = contentRef.current.querySelector('.bg-white\\/30');
-              if (highlightedElement) {
-                highlightedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }
-            }
-          }, 100);
+          handleSentenceStart();
         };
 
         utterance.onend = () => {
+          if (!isCurrentSpeechRun()) return;
+          if (startGuard) {
+            clearTimeout(startGuard);
+            startGuard = null;
+          }
           currentSentence++;
           if (currentSentence < uniqueSentences.length) {
             speakNext();
           } else {
-            setHighlightedText('');
-            setIsSpeaking(false);
-            setIsPaused(false);
-            setRepeatCount(0);
+            handleSpeechComplete();
           }
         };
 
+        utterance.onerror = (event) => {
+          if (!isCurrentSpeechRun()) return;
+          const recoverableAutoStart = isAuto && !hasStarted && !['canceled', 'interrupted'].includes(event.error);
+          resetFailedSpeech(recoverableAutoStart);
+        };
+
         utteranceRef.current = utterance;
-        synth.speak(utterance);
+
+        startGuard = setTimeout(() => {
+          if (!isCurrentSpeechRun() || hasStarted || synth.speaking || synth.pending) return;
+          resetFailedSpeech(isAuto);
+        }, AUTO_SPEECH_START_GUARD_MS);
+
+        try {
+          synth.speak(utterance);
+        } catch {
+          resetFailedSpeech(isAuto);
+        }
       }
     };
 
-    setIsSpeaking(true);
+    setIsSpeaking(false);
     setIsPaused(false);
     speakNext();
   };
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const retrySpeechAfterGesture = () => {
+      if (!pendingAutoSpeechRef.current || isSpeaking || isPaused || !blogs[currentIndex]) return;
+      clearTimeout(speechStartTimeoutRef.current);
+      pendingAutoSpeechRef.current = false;
+      speakFromSentence(0, isMuted ? 0 : volume, true);
+    };
+
+    container.addEventListener('pointerdown', retrySpeechAfterGesture, { passive: true });
+    container.addEventListener('touchstart', retrySpeechAfterGesture, { passive: true });
+
+    return () => {
+      container.removeEventListener('pointerdown', retrySpeechAfterGesture);
+      container.removeEventListener('touchstart', retrySpeechAfterGesture);
+    };
+  }, [blogs, currentIndex, isMuted, isPaused, isSpeaking, volume]);
 
   const handleVolumeMouseEnter = () => {
     setShowVolumeBar(true);
@@ -1004,6 +1197,14 @@ const ShortBlogsViewer = () => {
   }
 
   const currentBlog = blogs[currentIndex];
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate('/home');
+  };
+
   const getSvgPattern = (index) => {
     const patterns = [
       `data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='10' cy='10' r='3' fill='white' opacity='0.5'/%3E%3Ccircle cx='40' cy='25' r='4' fill='white' opacity='0.4'/%3E%3Ccircle cx='25' cy='45' r='2' fill='white' opacity='0.6'/%3E%3Ccircle cx='50' cy='50' r='3' fill='white' opacity='0.5'/%3E%3C/svg%3E`,
@@ -1054,10 +1255,11 @@ const ShortBlogsViewer = () => {
         }}
       >
         <button
-          onClick={() => navigate('/home')}
+          onClick={handleBack}
+          aria-label="Go back"
           className="fixed top-2 left-2 z-50 p-2 md:p-3 bg-black/40 hover:bg-black/60 rounded-full transition backdrop-blur-sm"
         >
-          <FiX className="w-5 h-5 md:w-6 md:h-6 text-white" />
+          <FaChevronLeft className="w-5 h-5 md:w-6 md:h-6 text-white" />
         </button>
 
         {blogs.map((blog, index) => (

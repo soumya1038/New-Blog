@@ -1,13 +1,18 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   FaBoxOpen,
   FaChartLine,
   FaComments,
+  FaHeart,
   FaHome,
   FaPlusCircle,
+  FaRegBookmark,
+  FaRegCommentDots,
   FaShoppingCart,
+  FaShare,
   FaStore,
+  FaRetweet,
   FaUserCircle,
   FaWallet,
 } from 'react-icons/fa';
@@ -55,6 +60,15 @@ const tabs = [
 const pathMatches = (pathname, prefixes) =>
   prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
+const compactCount = (value) => {
+  const count = Number(value);
+  if (!Number.isFinite(count)) return null;
+  return new Intl.NumberFormat('en-US', {
+    notation: count >= 1000 ? 'compact' : 'standard',
+    maximumFractionDigits: 1,
+  }).format(count);
+};
+
 const isSellerUser = (user = {}) =>
   Boolean(
     user?.isSeller ||
@@ -65,6 +79,48 @@ const isSellerUser = (user = {}) =>
   );
 
 const isGuestUser = (user = {}) => Boolean(user?.isGuest || user?.role === 'guest');
+
+const dispatchContentAction = (action) => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('lekhon:content-action', { detail: { action } }));
+};
+
+const buildContentTabs = (pathname) => {
+  if (!pathMatches(pathname, ['/blog', '/article'])) return [];
+
+  return [
+    {
+      key: 'like',
+      label: 'Like',
+      ariaLabel: 'Like this content',
+      icon: FaHeart,
+    },
+    {
+      key: 'save',
+      label: 'Save',
+      ariaLabel: 'Save this content',
+      icon: FaRegBookmark,
+    },
+    {
+      key: 'share',
+      label: 'Share',
+      ariaLabel: 'Share this content',
+      icon: FaShare,
+    },
+    {
+      key: 'repost',
+      label: 'Repost',
+      ariaLabel: 'Repost this content',
+      icon: FaRetweet,
+    },
+    {
+      key: 'comment',
+      label: 'Comment',
+      ariaLabel: 'Open comments',
+      icon: FaRegCommentDots,
+    },
+  ];
+};
 
 const buildMarketplaceActions = (user) => {
   const username = user?.username ? encodeURIComponent(user.username) : '';
@@ -147,6 +203,37 @@ const MobileAppNav = () => {
   const pathname = (location.pathname || '/').replace(/\/+$/, '') || '/';
   const isMarketplaceContext = pathMatches(pathname, tabs[1].matches);
   const marketplaceActions = isMarketplaceContext ? buildMarketplaceActions(user) : [];
+  const contentTabs = buildContentTabs(pathname);
+  const isContentMode = contentTabs.length > 0;
+  const primaryTabs = isContentMode ? contentTabs : tabs;
+  const [contentStats, setContentStats] = useState({
+    likeCount: null,
+    commentCount: null,
+    liked: false,
+  });
+
+  useEffect(() => {
+    if (!isContentMode) {
+      setContentStats({ likeCount: null, commentCount: null, liked: false });
+      return undefined;
+    }
+
+    setContentStats({ likeCount: null, commentCount: null, liked: false });
+
+    const applyStatsUpdate = (detail = {}) => {
+      if (detail.pathname && detail.pathname !== pathname) return;
+      setContentStats((current) => ({
+        ...current,
+        ...detail,
+      }));
+    };
+
+    const handleStatsUpdate = (event) => applyStatsUpdate(event.detail);
+
+    window.addEventListener('lekhon:content-stats', handleStatsUpdate);
+    applyStatsUpdate(window.__lekhonContentStats);
+    return () => window.removeEventListener('lekhon:content-stats', handleStatsUpdate);
+  }, [isContentMode, pathname]);
 
   if (!user) {
     return null;
@@ -154,10 +241,10 @@ const MobileAppNav = () => {
 
   return (
     <nav
-      className={`mobile-app-bottom-nav${marketplaceActions.length > 0 ? ' mobile-app-bottom-nav--with-context' : ''}`}
-      aria-label="Primary mobile app navigation"
+      className={`mobile-app-bottom-nav${marketplaceActions.length > 0 && !isContentMode ? ' mobile-app-bottom-nav--with-context' : ''}${isContentMode ? ' mobile-app-bottom-nav--content-mode' : ''}`}
+      aria-label={isContentMode ? 'Content mobile actions' : 'Primary mobile app navigation'}
     >
-      {marketplaceActions.length > 0 && (
+      {!isContentMode && marketplaceActions.length > 0 && (
         <div className="mobile-app-market-context" aria-label="Marketplace shortcuts">
           {marketplaceActions.map((action) => {
             const Icon = action.icon;
@@ -180,9 +267,36 @@ const MobileAppNav = () => {
       )}
 
       <div className="mobile-app-bottom-nav__main">
-        {tabs.map((tab) => {
+        {primaryTabs.map((tab) => {
           const Icon = tab.icon;
-          const isActive = pathMatches(pathname, tab.matches);
+          const isActive = tab.matches ? pathMatches(pathname, tab.matches) : false;
+          const metric =
+            isContentMode && tab.key === 'like'
+              ? compactCount(contentStats.likeCount)
+              : isContentMode && tab.key === 'comment'
+              ? compactCount(contentStats.commentCount)
+              : null;
+          const isContentActionActive = isContentMode && tab.key === 'like' && contentStats.liked;
+
+          if (!tab.to) {
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                aria-label={metric ? `${tab.ariaLabel}, ${metric}` : tab.ariaLabel}
+                className={`mobile-app-bottom-nav__item${isContentActionActive ? ' is-active' : ''}`}
+                onClick={() => dispatchContentAction(tab.key)}
+              >
+                <span className="mobile-app-bottom-nav__icon" aria-hidden="true">
+                  <Icon />
+                </span>
+                {metric !== null && (
+                  <span className="mobile-app-bottom-nav__metric">{metric}</span>
+                )}
+                <span className="mobile-app-bottom-nav__label">{tab.label}</span>
+              </button>
+            );
+          }
 
           return (
             <Link

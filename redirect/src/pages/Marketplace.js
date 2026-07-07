@@ -183,6 +183,9 @@ const Marketplace = () => {
   const sortBoxRef = useRef(null);
   const marketProfileRef = useRef(null);
   const typeRailRef = useRef(null);
+  const loadMoreRef = useRef(null);
+  const productsRequestRef = useRef(0);
+  const fetchingProductsRef = useRef(false);
   const typeRailDragRef = useRef({
     isDown: false,
     moved: false,
@@ -194,6 +197,7 @@ const Marketplace = () => {
   const [total,       setTotal]       = useState(0);
   const [page,        setPage]        = useState(1);
   const [loading,     setLoading]     = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [marketplaceError, setMarketplaceError] = useState(null);
   const [cartOpen,    setCartOpen]    = useState(false);
   const [cartCount,   setCartCount]   = useState(0);
@@ -259,7 +263,20 @@ const Marketplace = () => {
   }, []);
 
   const fetchProducts = useCallback(async (pg = 1, reset = false) => {
-    setLoading(true);
+    const isFirstPage = reset || pg === 1;
+    if (fetchingProductsRef.current && !isFirstPage) return;
+
+    const requestId = productsRequestRef.current + 1;
+    productsRequestRef.current = requestId;
+    fetchingProductsRef.current = true;
+
+    if (isFirstPage) {
+      setLoading(true);
+      setLoadingMore(false);
+    } else {
+      setLoadingMore(true);
+    }
+
     try {
       const [sortField, sortOrder] = filters.sort === 'price_asc'
         ? ['price', 'asc']
@@ -283,20 +300,33 @@ const Marketplace = () => {
         params,
         timeout: MARKETPLACE_REQUEST_TIMEOUT_MS,
       });
-      setProducts(prev => reset || pg === 1 ? data.products : [...prev, ...data.products]);
+
+      if (productsRequestRef.current !== requestId) return;
+
+      setProducts(prev => isFirstPage ? data.products : [...prev, ...data.products]);
       setTotal(data.total);
       setPage(pg);
       setMarketplaceError(null);
     } catch (error) {
+      if (productsRequestRef.current !== requestId) return;
+
       const type = getMarketplaceErrorType(error);
       setMarketplaceError({ type, message: error?.response?.data?.message || error?.message || '' });
-      if (reset || pg === 1) {
+      if (isFirstPage) {
         setProducts([]);
         setTotal(0);
         setPage(1);
       }
+    } finally {
+      if (productsRequestRef.current === requestId) {
+        if (isFirstPage) {
+          setLoading(false);
+        } else {
+          setLoadingMore(false);
+        }
+        fetchingProductsRef.current = false;
+      }
     }
-    setLoading(false);
   }, [filters]);
 
   useEffect(() => { fetchProducts(1, true); }, [fetchProducts]);
@@ -618,9 +648,28 @@ const Marketplace = () => {
   const selectedTypeOption = TYPES.find(type => type.value === filters.type);
   const emptyStateType = marketplaceError?.type || (filters.search && !filters.type ? 'search' : filters.type || 'overall');
   const hasMarketplaceState = !loading && (Boolean(marketplaceError) || products.length === 0);
+  const hasMoreProducts = products.length < total;
   const showPersonalizedSections = !hasMarketplaceState && !filters.search;
   const addressDraftComplete = ['name', 'phone', 'addressLine1', 'city', 'state', 'pin', 'country']
     .every(key => String(addressDraft[key] || '').trim());
+
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node || loading || loadingMore || !hasMoreProducts || marketplaceError) return undefined;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        fetchProducts(page + 1);
+      }
+    }, {
+      root: null,
+      rootMargin: '420px 0px 520px',
+      threshold: 0.01,
+    });
+
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [fetchProducts, hasMoreProducts, loading, loadingMore, marketplaceError, page]);
 
   return (
     <div className="lekhon-marketplace-page min-h-screen bg-[var(--bg-primary)]">
@@ -1199,14 +1248,15 @@ const Marketplace = () => {
             </div>
 
             {/* Load more */}
-            {products.length < total && (
-              <div className="text-center mt-8">
+            {hasMoreProducts && (
+              <div ref={loadMoreRef} className="text-center mt-8 min-h-16">
                 <button
                   onClick={() => fetchProducts(page + 1)}
-                  disabled={loading}
-                  className="px-8 py-3 rounded-xl border border-[var(--border-color)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50"
+                  disabled={loading || loadingMore}
+                  className="inline-flex items-center justify-center gap-2 px-8 py-3 rounded-xl border border-[var(--border-color)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)] transition-colors disabled:opacity-50"
                 >
-                  {loading ? 'Loading...' : 'Load more'}
+                  {loadingMore && <FaSpinner className="animate-spin" size={12} />}
+                  {loadingMore ? 'Loading more...' : 'Load more'}
                 </button>
               </div>
             )}

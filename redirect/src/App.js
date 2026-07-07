@@ -155,6 +155,11 @@ const PUBLIC_FOOTER_ROUTES = new Set(['/about', '/privacy', '/terms']);
 const PUBLIC_FOOTER_PREFIXES = ['/help', '/policies', '/safety', '/contact', '/report', '/appeals'];
 const MOBILE_BOTTOM_NAV_FOCUS_ROUTES = new Set(['/checkout']);
 const MOBILE_BOTTOM_NAV_FOCUS_PREFIXES = ['/order'];
+const MOBILE_CONTENT_ACTION_PREFIXES = ['/blog', '/article'];
+const MOBILE_IMMERSIVE_PREFIXES = ['/shorts', '/short-blogs'];
+
+const routeMatchesAnyPrefix = (pathname, prefixes) =>
+  prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
 function AppContent() {
   const { user, sessionExpired, guestExpired, setGuestExpired } = useContext(AuthContext);
@@ -166,18 +171,29 @@ function AppContent() {
     return path || '/';
   }, [location.pathname]);
   const runningNativeApp = useMemo(() => isNativeApp(), []);
-  const hideGlobalChrome = ROUTES_WITHOUT_GLOBAL_CHROME.has(normalizedPath);
+  const isContentActionRoute = routeMatchesAnyPrefix(normalizedPath, MOBILE_CONTENT_ACTION_PREFIXES);
+  const isMobileImmersiveRoute = routeMatchesAnyPrefix(normalizedPath, MOBILE_IMMERSIVE_PREFIXES);
+  const hideNativeContentChrome = runningNativeApp && isContentActionRoute;
+  const hideGlobalChrome =
+    ROUTES_WITHOUT_GLOBAL_CHROME.has(normalizedPath) ||
+    hideNativeContentChrome ||
+    isMobileImmersiveRoute;
   const showPublicFooter =
     PUBLIC_FOOTER_ROUTES.has(normalizedPath) ||
     PUBLIC_FOOTER_PREFIXES.some(
       (prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)
     );
   const hideMobileBottomNav =
+    isMobileImmersiveRoute ||
     MOBILE_BOTTOM_NAV_FOCUS_ROUTES.has(normalizedPath) ||
     MOBILE_BOTTOM_NAV_FOCUS_PREFIXES.some(
       (prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)
     );
-  const showMobileBottomNav = Boolean(user) && !hideGlobalChrome && !hideMobileBottomNav;
+  const showMobileBottomNav =
+    Boolean(user) &&
+    !hideMobileBottomNav &&
+    !ROUTES_WITHOUT_GLOBAL_CHROME.has(normalizedPath) &&
+    !isMobileImmersiveRoute;
   const [globalIncomingCall, setGlobalIncomingCall] = useState(null);
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
   const [globalCallState, setGlobalCallState] = useState(null);
@@ -491,7 +507,9 @@ function AppContent() {
         })
       }
     >
-      <div className={`min-h-screen lekhon-app-shell${showMobileBottomNav ? ' lekhon-app-shell--with-mobile-tabs' : ''}`}>
+      <div
+        className={`min-h-screen lekhon-app-shell${showMobileBottomNav ? ' lekhon-app-shell--with-mobile-tabs' : ''}${isContentActionRoute ? ' lekhon-app-shell--content-actions' : ''}${isMobileImmersiveRoute ? ' lekhon-app-shell--immersive-view' : ''}`}
+      >
         {!hideGlobalChrome && <Navbar />}
         {user && <GlobalGroupCallListener />}
         {!hideGlobalChrome && location.pathname !== '/chat' && (
