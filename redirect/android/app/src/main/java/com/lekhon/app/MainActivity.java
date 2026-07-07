@@ -62,7 +62,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onDestroy() {
+    public void onDestroy() {
         if (textToSpeech != null) {
             textToSpeech.stop();
             textToSpeech.shutdown();
