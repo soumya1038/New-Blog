@@ -9,9 +9,10 @@ const DEPLOYED_TELEGRAM_ORIGIN = String(
   process.env.REACT_APP_TELEGRAM_AUTH_ORIGIN || 'https://lekhon-development.netlify.app'
 ).replace(/\/+$/, '');
 
-const TelegramLoginButton = ({ rememberMe = false, onError }) => {
+const TelegramLoginButton = ({ rememberMe = false, onError, C }) => {
   const [botId, setBotId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -79,29 +80,35 @@ const TelegramLoginButton = ({ rememberMe = false, onError }) => {
 
   const available = window.location.origin !== DEPLOYED_TELEGRAM_ORIGIN || Boolean(botId);
   if (!available) return null;
+  const active = hovered && !loading;
 
   return (
     <button
       type="button"
       onClick={handleClick}
       disabled={loading}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       aria-label="Continue with Telegram"
       title="Continue with Telegram"
       style={{
-        width: 58,
-        height: 58,
-        borderRadius: 14,
-        border: '1px solid var(--border-default)',
-        background: 'var(--surface-card)',
-        color: '#229ED9',
+        width: 46,
+        height: 46,
+        borderRadius: 11,
+        border: `1px solid ${active ? C.brand : C.inputBorder}`,
+        background: active ? C.brandDimBg : C.inputBg,
+        color: active ? C.brand : C.muted,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
         cursor: loading ? 'wait' : 'pointer',
         opacity: loading ? 0.65 : 1,
+        transition: 'all 0.22s',
+        transform: active ? 'translateY(-2px)' : 'none',
+        boxShadow: active ? `0 4px 12px ${C.brandGlow}` : 'none',
       }}
     >
-      <FaTelegramPlane size={25} aria-hidden="true" />
+      <FaTelegramPlane size={19} aria-hidden="true" />
     </button>
   );
 };

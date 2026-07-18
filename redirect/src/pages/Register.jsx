@@ -1125,7 +1125,7 @@ const Register = () => {
                     <SocialBtn label="Twitter / X" icon={SOCIAL_ICONS[2].icon} C={C} onClick={handleTwitterLoginRedirect} disabled={!!socialAuthLoading} loading={socialAuthLoading==='twitter'}/>
                     {/* LinkedIn real OAuth */}
                     <SocialBtn label="LinkedIn"   icon={SOCIAL_ICONS[3].icon} C={C} onClick={handleLinkedInLoginRedirect} disabled={!!socialAuthLoading} loading={socialAuthLoading==='linkedin'}/>
-                    <TelegramLoginButton rememberMe={rememberMe} onError={setError}/>
+                    <TelegramLoginButton rememberMe={rememberMe} onError={setError} C={C}/>
                   </div>
                   <button onClick={handleGuestEntryClick}
                     style={{width:'100%',padding:'13px',borderRadius:13,

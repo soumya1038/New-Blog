@@ -21,6 +21,7 @@ import {
   FaPaperPlane,
   FaStore,
   FaSun,
+  FaTelegramPlane,
   FaTimes,
 } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
@@ -952,6 +953,7 @@ const LandingPage = () => {
             <a href="https://www.instagram.com/lekhonofficial/" aria-label="Lekhon on Instagram"><FaInstagram /></a>
             <a href="https://www.facebook.com/lekhonofficial/" aria-label="Lekhon on Facebook"><FaFacebookF /></a>
             <a href="https://www.linkedin.com/company/lekhon/" aria-label="Lekhon on LinkedIn"><FaLinkedinIn /></a>
+            <a href="https://t.me/LekhonOfficial" aria-label="Lekhon on Telegram"><FaTelegramPlane /></a>
           </div>
         </div>
       </footer>
