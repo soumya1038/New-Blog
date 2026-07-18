@@ -32,6 +32,7 @@ const {
 } = require('../utils/passwordPolicy');
 const { sanitizeOwnerProfile } = require('../utils/userSanitizer');
 const { logError } = require('../utils/safeErrorLog');
+const { sendTelegramMessage } = require('../utils/telegramMessages');
 const { getOAuthProviderTimeoutMs } = require('../utils/providerTimeouts');
 
 const GOOGLE_AUTH_BASE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -349,6 +350,23 @@ const buildTelegramProfileUrl = (telegramHandle) => {
   return handle ? `https://t.me/${encodeURIComponent(handle)}` : '';
 };
 
+const sendTelegramTemporaryPassword = async ({ telegramUserId, username, temporaryPassword }) => {
+  if (!telegramUserId || !temporaryPassword) return false;
+  const text = [
+    `Welcome to Lekhon, ${username || 'writer'}!`,
+    '',
+    'Your temporary Lekhon password is:',
+    temporaryPassword,
+    '',
+    'For your safety, open Profile > Password & Security and replace it immediately. Never share this password with anyone.',
+  ].join('\n');
+  return sendTelegramMessage({
+    telegramUserId,
+    text,
+    errorContext: 'Telegram onboarding password',
+  });
+};
+
 const ensureSocialLink = (user, name, matcher, url) => {
   if (!user || !url) return false;
   const currentSocial = Array.isArray(user.socialMedia) ? user.socialMedia : [];
@@ -395,6 +413,7 @@ const getLinkedProvidersSummary = (user) => ({
   facebook: Boolean(user?.oauthProviders?.facebook?.id),
   twitter: Boolean(user?.oauthProviders?.twitter?.id),
   linkedin: Boolean(user?.oauthProviders?.linkedin?.id),
+  telegram: Boolean(user?.oauthProviders?.telegram?.id),
 });
 
 const findUserByProviderOrEmail = async ({ provider = '', providerId = '', email = '' }) => {
@@ -424,6 +443,7 @@ const linkProviderToExistingUser = async ({
   twitterHandle = '',
   twitterUserId = '',
   linkedInUserId = '',
+  telegramHandle = '',
 }) => {
   const providerName = String(provider || '').trim().toLowerCase();
   const normalizedProviderId = String(providerId || '').trim();
@@ -433,7 +453,7 @@ const linkProviderToExistingUser = async ({
     return { ok: false, status: 404, message: 'Current user not found' };
   }
 
-  if (!['google', 'facebook', 'twitter', 'linkedin'].includes(providerName)) {
+  if (!['google', 'facebook', 'twitter', 'linkedin', 'telegram'].includes(providerName)) {
     return { ok: false, status: 400, message: 'Unsupported provider' };
   }
 
@@ -471,6 +491,7 @@ const linkProviderToExistingUser = async ({
       facebook: { id: providerName === 'facebook' ? normalizedProviderId : currentUser?.oauthProviders?.facebook?.id || '' },
       twitter: { id: providerName === 'twitter' ? normalizedProviderId : currentUser?.oauthProviders?.twitter?.id || '' },
       linkedin: { id: providerName === 'linkedin' ? normalizedProviderId : currentUser?.oauthProviders?.linkedin?.id || '' },
+      telegram: { id: providerName === 'telegram' ? normalizedProviderId : currentUser?.oauthProviders?.telegram?.id || '' },
     };
     shouldSave = true;
   }
@@ -503,6 +524,15 @@ const linkProviderToExistingUser = async ({
   }
   if (providerName === 'linkedin' && ensureLinkedInSocialLink(currentUser, linkedInUserId || normalizedProviderId)) {
     shouldSave = true;
+  }
+  if (providerName === 'telegram') {
+    const telegramUrl = buildTelegramProfileUrl(telegramHandle);
+    if (telegramUrl && ensureSocialLink(
+      currentUser,
+      'Telegram',
+      (name, url) => name.includes('telegram') || url.includes('t.me/'),
+      telegramUrl
+    )) shouldSave = true;
   }
 
   if (shouldSave) {
@@ -958,6 +988,7 @@ exports.exchangeGoogleCode = async (req, res) => {
           facebook: { id: user?.oauthProviders?.facebook?.id || '' },
           twitter: { id: user?.oauthProviders?.twitter?.id || '' },
           linkedin: { id: user?.oauthProviders?.linkedin?.id || '' },
+          telegram: { id: user?.oauthProviders?.telegram?.id || '' },
         };
         shouldSave = true;
       }
@@ -1278,6 +1309,7 @@ exports.exchangeFacebookCode = async (req, res) => {
           facebook: { id: facebookUserId },
           twitter: { id: user?.oauthProviders?.twitter?.id || '' },
           linkedin: { id: user?.oauthProviders?.linkedin?.id || '' },
+          telegram: { id: user?.oauthProviders?.telegram?.id || '' },
         };
         shouldSave = true;
       }
@@ -1487,6 +1519,7 @@ exports.exchangeLinkedInCode = async (req, res) => {
           facebook: { id: user?.oauthProviders?.facebook?.id || '' },
           twitter: { id: user?.oauthProviders?.twitter?.id || '' },
           linkedin: { id: linkedInUserId },
+          telegram: { id: user?.oauthProviders?.telegram?.id || '' },
         };
         shouldSave = true;
       }
@@ -1714,6 +1747,7 @@ exports.exchangeTwitterCode = async (req, res) => {
           facebook: { id: user?.oauthProviders?.facebook?.id || '' },
           twitter: { id: twitterUserId },
           linkedin: { id: user?.oauthProviders?.linkedin?.id || '' },
+          telegram: { id: user?.oauthProviders?.telegram?.id || '' },
         };
         shouldSave = true;
       }
@@ -2985,11 +3019,13 @@ exports.exchangeTelegramLogin = async (req, res) => {
     const picture = String(telegram.photo_url || '').trim();
 
     let user = await User.findOne({ 'oauthProviders.telegram.id': telegramUserId });
+    let telegramPasswordDelivered = false;
     if (!user) {
       const username = await makeUniqueUsername(telegramHandle || displayName || `telegram_${telegramUserId.slice(-8)}`);
+      const temporaryPassword = generateTemporaryPassword();
       user = await User.create({
         username,
-        password: generateTemporaryPassword(),
+        password: temporaryPassword,
         fullName: displayName,
         name: displayName,
         profileImage: picture,
@@ -3000,6 +3036,11 @@ exports.exchangeTelegramLogin = async (req, res) => {
           : [],
         oauthProviders: { telegram: { id: telegramUserId } },
       });
+      telegramPasswordDelivered = await sendTelegramTemporaryPassword({
+        telegramUserId,
+        username,
+        temporaryPassword,
+      });
     } else {
       let changed = false;
       if (!user.fullName && displayName) { user.fullName = displayName; changed = true; }
@@ -3007,6 +3048,18 @@ exports.exchangeTelegramLogin = async (req, res) => {
       if (!user.profileImage && picture) { user.profileImage = picture; changed = true; }
       const telegramUrl = buildTelegramProfileUrl(telegramHandle);
       if (telegramUrl && ensureSocialLink(user, 'Telegram', (name, url) => name.includes('telegram') || url.includes('t.me/'), telegramUrl)) changed = true;
+      if (user.mustChangePasswordAfterGoogle && !user.email) {
+        const temporaryPassword = generateTemporaryPassword();
+        telegramPasswordDelivered = await sendTelegramTemporaryPassword({
+          telegramUserId,
+          username: user.username,
+          temporaryPassword,
+        });
+        if (telegramPasswordDelivered) {
+          user.password = temporaryPassword;
+          changed = true;
+        }
+      }
       if (changed) await user.save();
     }
 
@@ -3029,6 +3082,8 @@ exports.exchangeTelegramLogin = async (req, res) => {
       },
       passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
       missingEmailForWelcome: !user.email,
+      passwordDeliveryChannel: telegramPasswordDelivered ? 'telegram' : '',
+      telegramPasswordDelivered,
       rememberMe: false,
     });
   } catch (error) {
@@ -3036,5 +3091,48 @@ exports.exchangeTelegramLogin = async (req, res) => {
       return res.status(409).json({ success: false, message: duplicateAccountMessage(error) });
     }
     return sendOAuthError(res, 500, 'Telegram authentication failed', error);
+  }
+};
+
+exports.exchangeTelegramConnect = async (req, res) => {
+  try {
+    const botToken = getTelegramBotToken();
+    if (!botToken) {
+      return res.status(503).json({ success: false, message: 'Telegram login is not configured' });
+    }
+    const telegram = req.body || {};
+    if (!verifyTelegramLoginPayload(telegram, botToken)) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired Telegram login' });
+    }
+    const telegramUserId = String(telegram.id || '').trim();
+    if (!/^\d{1,24}$/.test(telegramUserId)) {
+      return res.status(400).json({ success: false, message: 'Telegram user id is unavailable' });
+    }
+    const displayName = `${String(telegram.first_name || '').trim()} ${String(telegram.last_name || '').trim()}`.trim();
+    const telegramHandle = String(telegram.username || '').trim().replace(/^@+/, '').slice(0, 64);
+    const picture = String(telegram.photo_url || '').trim();
+    const currentUser = await User.findById(req.user._id);
+    const linkResult = await linkProviderToExistingUser({
+      currentUser,
+      provider: 'telegram',
+      providerId: telegramUserId,
+      displayName,
+      picture,
+      telegramHandle,
+    });
+    if (!linkResult.ok) {
+      return res.status(linkResult.status).json({ success: false, message: linkResult.message });
+    }
+    return res.json({
+      success: true,
+      message: 'Telegram account connected successfully',
+      linkedProviders: linkResult.linkedProviders,
+      user: sanitizeOwnerProfile(linkResult.user.toObject()),
+    });
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      return res.status(409).json({ success: false, message: duplicateAccountMessage(error) });
+    }
+    return sendOAuthError(res, 500, 'Telegram account connection failed', error);
   }
 };

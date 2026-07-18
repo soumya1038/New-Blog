@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaCalendar, FaUsers, FaFileAlt, FaFacebook, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaEnvelope, FaUserPlus, FaUserMinus, FaShare, FaEye, FaComment, FaWhatsapp, FaHeart, FaLock, FaTimesCircle, FaExclamationTriangle, FaTimes, FaBoxOpen } from 'react-icons/fa';
+import { FaCalendar, FaUsers, FaFileAlt, FaFacebook, FaInstagram, FaYoutube, FaGithub, FaLinkedin, FaGlobe, FaArrowLeft, FaEnvelope, FaUserPlus, FaUserMinus, FaShare, FaEye, FaComment, FaWhatsapp, FaHeart, FaLock, FaTimesCircle, FaExclamationTriangle, FaTimes, FaBoxOpen, FaTelegramPlane } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified, GoUnverified } from 'react-icons/go';
 import { UserProfileSkeleton } from '../components/SkeletonLoader';
@@ -328,6 +328,7 @@ const UserProfile = () => {
     if (lowerName.includes('youtube')) return <FaYoutube className="text-red-600" />;
     if (lowerName.includes('github')) return <FaGithub className="text-[var(--text-primary)]" />;
     if (lowerName.includes('linkedin')) return <FaLinkedin className="text-blue-700" />;
+    if (lowerName.includes('telegram') || lowerName.includes('t.me')) return <FaTelegramPlane className="text-sky-500" />;
     return <FaGlobe className="text-[var(--text-secondary)]" />;
   };
 
@@ -359,6 +360,7 @@ const UserProfile = () => {
     if (value.includes('linkedin')) return 'linkedin';
     if (value.includes('github')) return 'github';
     if (value.includes('google') || value.includes('accounts.google.com')) return 'google';
+    if (value.includes('telegram') || value.includes('t.me')) return 'telegram';
     return 'other';
   };
 

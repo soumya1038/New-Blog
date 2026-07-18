@@ -35,6 +35,7 @@ const {
   verifyVerificationCode,
 } = require('../utils/verificationCodes');
 const { logError } = require('../utils/safeErrorLog');
+const { sendTelegramMessage } = require('../utils/telegramMessages');
 const {
   getPasswordValidationError,
   isPasswordComparable,
@@ -59,9 +60,10 @@ const SOCIAL_PROVIDER_DOMAIN_MATCHERS = {
   twitter: ['twitter.com', 'x.com'],
   linkedin: ['linkedin.com'],
   github: ['github.com'],
+  telegram: ['telegram', 't.me'],
 };
 
-const SOCIAL_OAUTH_PROVIDERS = new Set(['google', 'facebook', 'twitter', 'linkedin']);
+const SOCIAL_OAUTH_PROVIDERS = new Set(['google', 'facebook', 'twitter', 'linkedin', 'telegram']);
 const PROFILE_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
 const STATUS_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
 const USER_SERVER_ERROR_MESSAGE = 'Unable to process user request';
@@ -283,6 +285,7 @@ exports.disconnectSocialProvider = async (req, res) => {
           facebook: { id: provider === 'facebook' ? '' : user?.oauthProviders?.facebook?.id || '' },
           twitter: { id: provider === 'twitter' ? '' : user?.oauthProviders?.twitter?.id || '' },
           linkedin: { id: provider === 'linkedin' ? '' : user?.oauthProviders?.linkedin?.id || '' },
+          telegram: { id: provider === 'telegram' ? '' : user?.oauthProviders?.telegram?.id || '' },
         };
         changed = true;
       }
@@ -577,14 +580,28 @@ exports.requestPasswordChange = async (req, res) => {
       },
     });
 
-    await enqueueEmailJob('password-change-confirmation', {
-      email: user.email,
-      username: user.username,
-      code: confirmationCode,
-      expiresAt: passwordChangeExpiresAt
-    });
+    let deliveryChannel = 'email';
+    if (user.email) {
+      await enqueueEmailJob('password-change-confirmation', {
+        email: user.email,
+        username: user.username,
+        code: confirmationCode,
+        expiresAt: passwordChangeExpiresAt
+      });
+    } else {
+      const telegramUserId = user?.oauthProviders?.telegram?.id;
+      const delivered = await sendTelegramMessage({
+        telegramUserId,
+        text: `Lekhon password change confirmation code: ${confirmationCode}\n\nThis code expires soon. Never share it with anyone.`,
+        errorContext: 'Telegram password change code',
+      });
+      if (!delivered) {
+        return res.status(503).json({ success: false, message: 'We could not send the confirmation code to Telegram. Open the Lekhon bot, tap Start, and try again.' });
+      }
+      deliveryChannel = 'telegram';
+    }
 
-    res.json({ success: true, message: 'Confirmation code sent to your email' });
+    res.json({ success: true, deliveryChannel, message: `Confirmation code sent to your ${deliveryChannel}` });
   } catch (error) {
     return sendUserError(res, error);
   }
@@ -634,11 +651,13 @@ exports.confirmPasswordChange = async (req, res) => {
 
     // Send success email
     try {
-      await enqueueEmailJob('password-changed-success', {
-        email: user.email,
-        username: user.username,
-        changedAt: Date.now()
-      });
+      if (user.email) {
+        await enqueueEmailJob('password-changed-success', {
+          email: user.email,
+          username: user.username,
+          changedAt: Date.now()
+        });
+      }
     } catch (error) {
       logError('Failed to send success email:', error);
     }
@@ -702,14 +721,28 @@ exports.requestAccountDeletion = async (req, res) => {
       metadata: { userId: user._id.toString() },
     });
 
-    await enqueueEmailJob('account-deletion-confirmation', {
-      email: user.email,
-      username: user.username,
-      code: confirmationCode,
-      expiresAt: accountDeletionExpiresAt
-    });
+    let deliveryChannel = 'email';
+    if (user.email) {
+      await enqueueEmailJob('account-deletion-confirmation', {
+        email: user.email,
+        username: user.username,
+        code: confirmationCode,
+        expiresAt: accountDeletionExpiresAt
+      });
+    } else {
+      const telegramUserId = user?.oauthProviders?.telegram?.id;
+      const delivered = await sendTelegramMessage({
+        telegramUserId,
+        text: `Lekhon account deletion confirmation code: ${confirmationCode}\n\nThis action permanently deletes your account. Never share this code.`,
+        errorContext: 'Telegram account deletion code',
+      });
+      if (!delivered) {
+        return res.status(503).json({ success: false, message: 'We could not send the deletion code to Telegram. Open the Lekhon bot, tap Start, and try again.' });
+      }
+      deliveryChannel = 'telegram';
+    }
 
-    res.json({ success: true, message: 'Confirmation code sent to your email' });
+    res.json({ success: true, deliveryChannel, message: `Confirmation code sent to your ${deliveryChannel}` });
   } catch (error) {
     return sendUserError(res, error);
   }
@@ -754,10 +787,12 @@ exports.confirmAccountDeletion = async (req, res) => {
 
     // Send success email
     try {
-      await enqueueEmailJob('account-deleted-success', {
-        email: userEmail,
-        username: userName
-      });
+      if (userEmail) {
+        await enqueueEmailJob('account-deleted-success', {
+          email: userEmail,
+          username: userName
+        });
+      }
     } catch (error) {
       logError('Failed to send success email:', error);
     }

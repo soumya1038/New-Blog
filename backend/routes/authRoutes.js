@@ -36,6 +36,7 @@ const {
   exchangeTwitterConnectCode,
   getTelegramLoginConfig,
   exchangeTelegramLogin,
+  exchangeTelegramConnect,
   facebookDeauthorizeCallback,
   facebookDataDeletionRequest,
   facebookDataDeletionStatus
@@ -173,6 +174,7 @@ router.get('/twitter/connect/start', protect, startTwitterConnectAuth);
 router.post('/twitter/connect/exchange', protect, exchangeTwitterConnectCode);
 router.get('/telegram/config', getTelegramLoginConfig);
 router.post('/telegram/exchange', exchangeTelegramLogin);
+router.post('/telegram/connect/exchange', protect, exchangeTelegramConnect);
 router.post('/facebook/deauthorize', facebookDeauthorizeCallback);
 router.post('/facebook/data-deletion', facebookDataDeletionRequest);
 router.get('/facebook/data-deletion-status/:code', facebookDataDeletionStatus);

@@ -3,6 +3,13 @@ const { normalizeHttpUrl } = require('./safeUrls');
 
 const sanitizeOwnerProfile = (userObject = {}) => {
   const safeUser = { ...userObject };
+  safeUser.linkedProviders = {
+    google: Boolean(userObject?.oauthProviders?.google?.id),
+    facebook: Boolean(userObject?.oauthProviders?.facebook?.id),
+    twitter: Boolean(userObject?.oauthProviders?.twitter?.id),
+    linkedin: Boolean(userObject?.oauthProviders?.linkedin?.id),
+    telegram: Boolean(userObject?.oauthProviders?.telegram?.id),
+  };
   delete safeUser.password;
   delete safeUser.verificationToken;
   delete safeUser.oauthProviders;

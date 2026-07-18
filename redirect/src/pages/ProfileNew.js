@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
-import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaTimes, FaArrowLeft, FaArrowRight, FaShare, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaFacebookF, FaGoogle, FaLinkedinIn, FaGithub, FaGlobe, FaVideo, FaMusic, FaRegSmile, FaShieldAlt, FaMobileAlt } from 'react-icons/fa';
+import { FaCamera, FaKey, FaTrash, FaEye, FaEyeSlash, FaCopy, FaPlus, FaEdit, FaTimes, FaArrowLeft, FaArrowRight, FaShare, FaCheckCircle, FaTimesCircle, FaExclamationCircle, FaFacebookF, FaGoogle, FaLinkedinIn, FaGithub, FaGlobe, FaVideo, FaMusic, FaRegSmile, FaShieldAlt, FaMobileAlt, FaTelegramPlane } from 'react-icons/fa';
 import { PiBookOpenTextThin } from 'react-icons/pi';
 import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified, GoUnverified } from 'react-icons/go';
@@ -37,6 +37,7 @@ import {
 import useCompactProfileLayout from '../hooks/useCompactProfileLayout';
 import useSavedItemsLibrary from '../hooks/useSavedItemsLibrary';
 import ProfileOverviewMobile from './ProfileOverviewMobile';
+import { authorizeWithTelegram, isTelegramAuthOrigin, TELEGRAM_AUTH_ORIGIN } from '../utils/telegramAuth';
 
 const STORY_STYLE_PRESETS = [
   {
@@ -232,13 +233,17 @@ export const ProfileLegacy = () => {
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showPasswordSetupNotice, setShowPasswordSetupNotice] = useState(false);
+  const [passwordDeliveryChannel, setPasswordDeliveryChannel] = useState('email');
+  const [showTelegramDeliveryFailure, setShowTelegramDeliveryFailure] = useState(false);
   const [showSocialEmailNotice, setShowSocialEmailNotice] = useState(false);
+  const [socialEmailSource, setSocialEmailSource] = useState('');
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '' });
   const [sendingPasswordCode, setSendingPasswordCode] = useState(false);
   const [showPasswordCodeModal, setShowPasswordCodeModal] = useState(false);
   const [passwordCode, setPasswordCode] = useState('');
+  const [passwordCodeDelivery, setPasswordCodeDelivery] = useState('email');
   const [forgotPasswordValues, setForgotPasswordValues] = useState({ newPassword: '', confirmPassword: '' });
   const [sendingForgotPasswordCode, setSendingForgotPasswordCode] = useState(false);
   const [showForgotPasswordCodeModal, setShowForgotPasswordCodeModal] = useState(false);
@@ -267,6 +272,7 @@ export const ProfileLegacy = () => {
   const [sendingDeleteCode, setSendingDeleteCode] = useState(false);
   const [showDeleteCodeModal, setShowDeleteCodeModal] = useState(false);
   const [deleteCode, setDeleteCode] = useState('');
+  const [deleteCodeDelivery, setDeleteCodeDelivery] = useState('email');
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [usernameLoading, setUsernameLoading] = useState(false);
@@ -401,6 +407,7 @@ export const ProfileLegacy = () => {
 
     if (!forcePasswordChange && !fromGoogleSession) return;
 
+    setPasswordDeliveryChannel(sessionStorage.getItem('passwordDeliveryChannel') || 'email');
     setExpandedCard(null);
     setShowForgotPassword(false);
     setShowPasswordForm(true);
@@ -477,8 +484,15 @@ export const ProfileLegacy = () => {
     const onboardingSource = sessionStorage.getItem('socialEmailSetupRequired');
     if (!onboardingSource) return;
 
+    setSocialEmailSource(onboardingSource);
     setShowSocialEmailNotice(true);
     sessionStorage.removeItem('socialEmailSetupRequired');
+  }, []);
+
+  useEffect(() => {
+    if (sessionStorage.getItem('telegramPasswordDeliveryFailed') !== 'true') return;
+    setShowTelegramDeliveryFailure(true);
+    sessionStorage.removeItem('telegramPasswordDeliveryFailed');
   }, []);
 
   useEffect(() => {
@@ -570,6 +584,13 @@ export const ProfileLegacy = () => {
       suggestedUrl: 'https://github.com/',
       matches: ['github.com'],
     },
+    {
+      key: 'telegram',
+      label: 'Telegram',
+      icon: <FaTelegramPlane size={16} className="text-sky-500" />,
+      connectMode: 'telegram',
+      matches: ['telegram', 't.me'],
+    },
   ];
 
   const normalizeSocialUrl = (value = '') => String(value).trim().toLowerCase();
@@ -607,7 +628,7 @@ export const ProfileLegacy = () => {
 
   const linkedProviders = socialProviderOptions.reduce((acc, provider) => {
     const linkedByOauth =
-      provider.connectMode === 'oauth' && Boolean(profile?.oauthProviders?.[provider.key]?.id);
+      provider.connectMode !== 'manual' && Boolean(profile?.linkedProviders?.[provider.key]);
     const linkedByUrl = Array.isArray(profile?.socialMedia)
       ? profile.socialMedia.some((entry) => isUrlForProvider(entry?.url, provider))
       : false;
@@ -659,8 +680,8 @@ export const ProfileLegacy = () => {
     });
 
     socialProviderOptions.forEach((provider) => {
-      if (provider.connectMode !== 'oauth') return;
-      const linkedByOauth = Boolean(String(profile?.oauthProviders?.[provider.key]?.id || '').trim());
+      if (provider.connectMode === 'manual') return;
+      const linkedByOauth = Boolean(profile?.linkedProviders?.[provider.key]);
       if (!linkedByOauth || knownProvidersAdded.has(provider.key)) return;
 
       accounts.push({
@@ -674,7 +695,7 @@ export const ProfileLegacy = () => {
     });
 
     return accounts;
-  }, [profile?.socialMedia, profile?.oauthProviders]);
+  }, [profile?.socialMedia, profile?.linkedProviders]);
 
   const closeModal = () => {
     setModal({ show: false, type: '', title: '', message: '', onConfirm: null });
@@ -1546,9 +1567,11 @@ export const ProfileLegacy = () => {
     e.preventDefault();
     setSendingPasswordCode(true);
     try {
-      await api.post('/users/password/request', passwords);
+      const { data } = await api.post('/users/password/request', passwords);
+      setPasswordCodeDelivery(data?.deliveryChannel || 'email');
       setShowPasswordForm(false);
       setShowPasswordCodeModal(true);
+      showModal('success', 'Code Sent', data?.message || 'Confirmation code sent.');
     } catch (error) {
       showModal('error', 'Error', error.response?.data?.message || 'Failed');
     } finally {
@@ -1566,6 +1589,7 @@ export const ProfileLegacy = () => {
       setPasswords({ currentPassword: '', newPassword: '' });
       setShowPasswordSetupNotice(false);
       sessionStorage.removeItem('googlePasswordSetupRequired');
+      sessionStorage.removeItem('passwordDeliveryChannel');
     } catch (error) {
       const requirement = getTwoFactorRequirement(error);
       if (requirement) {
@@ -1581,6 +1605,7 @@ export const ProfileLegacy = () => {
             setPasswords({ currentPassword: '', newPassword: '' });
             setShowPasswordSetupNotice(false);
             sessionStorage.removeItem('googlePasswordSetupRequired');
+            sessionStorage.removeItem('passwordDeliveryChannel');
           },
         });
         return;
@@ -1896,10 +1921,36 @@ export const ProfileLegacy = () => {
     }
   };
 
+  const handleStartTelegramConnect = async () => {
+    if (!isTelegramAuthOrigin()) {
+      window.location.assign(`${TELEGRAM_AUTH_ORIGIN}/profile/manage`);
+      return;
+    }
+
+    setSocialConnectLoading('telegram');
+    try {
+      const telegramUser = await authorizeWithTelegram();
+      const { data } = await api.post('/auth/telegram/connect/exchange', telegramUser);
+      if (data?.user) {
+        setProfile(data.user);
+        setUser((currentUser) => ({ ...(currentUser || {}), ...data.user }));
+      }
+      showModal('success', 'Connected', 'Telegram account connected successfully. You can now use it to sign in.');
+    } catch (error) {
+      showModal('error', 'Connection Failed', error.response?.data?.message || 'Telegram could not be connected. Please try again.');
+    } finally {
+      setSocialConnectLoading('');
+    }
+  };
+
   const handleSocialProviderAction = (provider) => {
     if (!provider) return;
     if (provider.connectMode === 'oauth') {
       handleStartSocialConnect(provider.key);
+      return;
+    }
+    if (provider.connectMode === 'telegram') {
+      handleStartTelegramConnect();
       return;
     }
     handlePrepareManualSocialLink(provider);
@@ -1975,9 +2026,11 @@ export const ProfileLegacy = () => {
     if (!deletePassword) return;
     setSendingDeleteCode(true);
     try {
-      await api.post('/users/account/delete-request', { password: deletePassword });
+      const { data } = await api.post('/users/account/delete-request', { password: deletePassword });
+      setDeleteCodeDelivery(data?.deliveryChannel || 'email');
       setShowDeleteModal(false);
       setShowDeleteCodeModal(true);
+      showModal('success', 'Code Sent', data?.message || 'Confirmation code sent.');
     } catch (error) {
       showModal('error', 'Error', error.response?.data?.message || 'Failed');
     } finally {
@@ -2498,16 +2551,16 @@ export const ProfileLegacy = () => {
                               key={provider.key}
                               type="button"
                               onClick={() => handleSocialProviderAction(provider)}
-                              disabled={provider.connectMode === 'oauth' && socialConnectLoading === provider.key}
+                              disabled={provider.connectMode !== 'manual' && socialConnectLoading === provider.key}
                               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)] text-[var(--text-primary)] hover:opacity-90 disabled:opacity-60"
                             >
-                              {provider.connectMode === 'oauth' && socialConnectLoading === provider.key ? (
+                              {provider.connectMode !== 'manual' && socialConnectLoading === provider.key ? (
                                 <SyncLoader color="var(--brand-primary)" size={6} />
                               ) : (
                                 provider.icon
                               )}
                               <span className="text-sm">
-                                {provider.connectMode === 'oauth' ? `Connect ${provider.label}` : `Add ${provider.label}`}
+                                {provider.connectMode !== 'manual' ? `Connect ${provider.label}` : `Add ${provider.label}`}
                               </span>
                             </button>
                           ))}
@@ -2857,7 +2910,19 @@ export const ProfileLegacy = () => {
                     {t('For security, please change your temporary password now.')}
                   </p>
                   <p className="text-xs mt-1 text-amber-700 dark:text-amber-400">
-                    {t('Use the temporary password from your welcome email as the current password, then set a new one.')}
+                    {passwordDeliveryChannel === 'telegram'
+                      ? t('We sent the temporary password in a private message from the Lekhon Telegram bot. Use it as the current password, then set a new one.')
+                      : t('Use the temporary password from your welcome email as the current password, then set a new one.')}
+                  </p>
+                </div>
+              )}
+              {showTelegramDeliveryFailure && (
+                <div className="mb-4 rounded-lg border border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-700 p-3">
+                  <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+                    {t('We could not deliver your temporary password on Telegram.')}
+                  </p>
+                  <p className="text-xs mt-1 text-red-700 dark:text-red-400">
+                    {t('Open the Lekhon Telegram bot, tap Start, then sign in with Telegram again so we can send a private message.')}
                   </p>
                 </div>
               )}
@@ -2867,7 +2932,9 @@ export const ProfileLegacy = () => {
                     {t('Add an email to complete onboarding')}
                   </p>
                   <p className="text-xs mt-1 text-blue-700 dark:text-blue-400">
-                    {t('Your social sign-in account did not provide an email. Add your email in profile details to receive welcome and security notifications.')}
+                    {socialEmailSource === 'telegram'
+                      ? t('Telegram does not provide your email. Add one in profile details for account recovery and security notifications; Telegram will remain available for sign-in.')
+                      : t('Your social sign-in account did not provide an email. Add your email in profile details to receive welcome and security notifications.')}
                   </p>
                   <button
                     type="button"
@@ -3304,7 +3371,11 @@ export const ProfileLegacy = () => {
         <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4">
           <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-blue-600 mb-4">{t('Enter Code')}</h3>
-            <p className="text-gray-700 dark:text-gray-300 mb-4">{t('6-digit code sent to email')}</p>
+            <p className="text-gray-700 dark:text-gray-300 mb-4">
+              {passwordCodeDelivery === 'telegram'
+                ? t('Enter the 6-digit code sent privately by the Lekhon Telegram bot')
+                : t('6-digit code sent to email')}
+            </p>
             <form onSubmit={handleConfirmPasswordChange}>
               <input type="text" value={passwordCode} onChange={(e) => setPasswordCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 mb-4 text-center text-2xl tracking-widest dark:bg-gray-700 dark:border-gray-600 dark:text-white" maxLength={6} required />
               <div className="flex gap-3">
@@ -3368,7 +3439,11 @@ export const ProfileLegacy = () => {
         <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4">
           <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-red-600 mb-4">{t('Enter Code')}</h3>
-            <p className="text-gray-700 dark:text-gray-300 mb-2">{t('6-digit code sent to email')}</p>
+            <p className="text-gray-700 dark:text-gray-300 mb-2">
+              {deleteCodeDelivery === 'telegram'
+                ? t('Enter the 6-digit deletion code sent privately by the Lekhon Telegram bot')
+                : t('6-digit code sent to email')}
+            </p>
             <p className="text-red-600 font-semibold mb-4 flex items-center gap-1"><FaExclamationCircle className="text-red-500" /> {t('Permanent!')}</p>
             <form onSubmit={handleConfirmDeleteAccount}>
               <input type="text" value={deleteCode} onChange={(e) => setDeleteCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 mb-4 text-center text-2xl tracking-widest dark:bg-gray-700 dark:border-gray-600 dark:text-white" maxLength={6} required />

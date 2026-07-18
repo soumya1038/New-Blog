@@ -8,6 +8,7 @@ const KNOWN_SOCIAL_PROVIDERS = [
   { key: 'twitter', label: 'Twitter', aliases: ['twitter.com', 'x.com', 'twitter', 'x'] },
   { key: 'linkedin', label: 'LinkedIn', aliases: ['linkedin.com', 'linkedin'] },
   { key: 'github', label: 'GitHub', aliases: ['github.com', 'github'] },
+  { key: 'telegram', label: 'Telegram', aliases: ['telegram', 't.me'] },
 ];
 
 const DEFAULT_PRIVACY = {
@@ -76,9 +77,9 @@ const buildPrivacyOptions = (profile = {}) => {
     optionsMap.set(option.key, option);
   });
 
-  const oauthProviders = profile?.oauthProviders || {};
+  const linkedProviders = profile?.linkedProviders || {};
   KNOWN_SOCIAL_PROVIDERS.forEach((provider) => {
-    const isLinkedByOauth = Boolean(String(oauthProviders?.[provider.key]?.id || '').trim());
+    const isLinkedByOauth = Boolean(linkedProviders?.[provider.key]);
     if (!isLinkedByOauth) return;
     optionsMap.set(provider.key, { key: provider.key, label: `${provider.label} links` });
   });

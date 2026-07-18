@@ -35,7 +35,11 @@ const createVerificationCode = async ({
   const code = generateNumericCode();
   const expiresAt = new Date(Date.now() + Math.max(30 * 1000, Number(ttlMs) || DEFAULT_CODE_TTL_MS));
 
-  await VerificationCode.deleteMany({ email: normalizedEmail, type });
+  await VerificationCode.deleteMany({
+    email: normalizedEmail,
+    type,
+    ...(username ? { username } : {}),
+  });
   await VerificationCode.create({
     email: normalizedEmail,
     type,

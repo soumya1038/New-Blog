@@ -4,34 +4,19 @@ import { FaTelegramPlane } from 'react-icons/fa';
 import { API_BASE_URL } from '../utils/apiBaseUrl';
 import { storeAuthSession } from '../utils/authSession';
 import { clearRedirectAfterLogin } from '../utils/authRedirects';
-
-const DEPLOYED_TELEGRAM_ORIGIN = String(
-  process.env.REACT_APP_TELEGRAM_AUTH_ORIGIN || 'https://lekhon-development.netlify.app'
-).replace(/\/+$/, '');
+import { authorizeWithTelegram, isTelegramAuthOrigin, prepareTelegramAuth, TELEGRAM_AUTH_ORIGIN } from '../utils/telegramAuth';
 
 const TelegramLoginButton = ({ rememberMe = false, onError, C }) => {
-  const [botId, setBotId] = useState('');
+  const [available, setAvailable] = useState(!isTelegramAuthOrigin());
   const [loading, setLoading] = useState(false);
   const [hovered, setHovered] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
     mountedRef.current = true;
-    if (window.location.origin !== DEPLOYED_TELEGRAM_ORIGIN) return () => { mountedRef.current = false; };
-
-    let script = document.querySelector('script[data-lekhon-telegram-login]');
-    if (!script) {
-      script = document.createElement('script');
-      script.async = true;
-      script.src = 'https://telegram.org/js/telegram-widget.js?22';
-      script.dataset.lekhonTelegramLogin = 'true';
-      document.head.appendChild(script);
-    }
-
-    axios.get(`${API_BASE_URL}/api/auth/telegram/config`)
-      .then((response) => {
-        if (mountedRef.current) setBotId(String(response?.data?.botId || '').trim());
-      })
+    if (!isTelegramAuthOrigin()) return () => { mountedRef.current = false; };
+    prepareTelegramAuth()
+      .then(() => { if (mountedRef.current) setAvailable(true); })
       .catch(() => {
         // Keep provider configuration failures private; the option simply stays unavailable.
       });
@@ -49,14 +34,22 @@ const TelegramLoginButton = ({ rememberMe = false, onError, C }) => {
       sessionStorage.setItem('showLoginIntro', 'true');
       if (response?.data?.missingEmailForWelcome) {
         sessionStorage.setItem('socialEmailSetupRequired', 'telegram');
-        sessionStorage.removeItem('googlePasswordSetupRequired');
-        window.location.href = '/profile';
-        return;
       }
       if (response?.data?.passwordSetupRequired) {
-        sessionStorage.setItem('googlePasswordSetupRequired', 'true');
+        if (response?.data?.telegramPasswordDelivered) {
+          sessionStorage.setItem('googlePasswordSetupRequired', 'true');
+          sessionStorage.setItem('passwordDeliveryChannel', 'telegram');
+        } else {
+          sessionStorage.setItem('telegramPasswordDeliveryFailed', 'true');
+        }
         clearRedirectAfterLogin();
-        window.location.href = '/profile?forcePasswordChange=1';
+        window.location.href = response?.data?.telegramPasswordDelivered
+          ? '/profile?forcePasswordChange=1'
+          : '/profile';
+        return;
+      }
+      if (response?.data?.missingEmailForWelcome) {
+        window.location.href = '/profile';
         return;
       }
       window.location.href = '/home';
@@ -66,19 +59,20 @@ const TelegramLoginButton = ({ rememberMe = false, onError, C }) => {
     }
   };
 
-  const handleClick = () => {
+  const handleClick = async () => {
     onError?.('');
-    if (window.location.origin !== DEPLOYED_TELEGRAM_ORIGIN) {
-      window.location.assign(`${DEPLOYED_TELEGRAM_ORIGIN}${window.location.pathname}`);
+    if (!isTelegramAuthOrigin()) {
+      window.location.assign(`${TELEGRAM_AUTH_ORIGIN}${window.location.pathname}`);
       return;
     }
-    if (!botId || !window.Telegram?.Login?.auth) return;
-    window.Telegram.Login.auth({ bot_id: Number(botId), request_access: true }, (user) => {
-      if (user) finishLogin(user);
-    });
+    try {
+      const telegramUser = await authorizeWithTelegram();
+      await finishLogin(telegramUser);
+    } catch (error) {
+      onError?.('Telegram sign-in could not be completed. Please try again.');
+    }
   };
 
-  const available = window.location.origin !== DEPLOYED_TELEGRAM_ORIGIN || Boolean(botId);
   if (!available) return null;
   const active = hovered && !loading;
 
