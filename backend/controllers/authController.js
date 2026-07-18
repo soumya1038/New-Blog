@@ -304,6 +304,18 @@ const createOAuthState = (payload = {}, expiresIn = '10m') => {
   );
 };
 
+// X limits OAuth state to 500 characters. Keep Twitter's signed state compact,
+// especially for account connections where a user id and PKCE verifier are needed.
+const createTwitterOAuthState = ({ mode, userId, redirectUri, codeVerifier, returnToNativeApp }) =>
+  createOAuthState({
+    p: 'twitter',
+    m: mode,
+    ...(userId ? { u: String(userId) } : {}),
+    r: redirectUri,
+    c: codeVerifier,
+    ...(returnToNativeApp ? { n: true } : {}),
+  });
+
 const readOAuthState = (stateToken) => {
   if (!stateToken || !process.env.JWT_SECRET) return null;
   try {
@@ -752,6 +764,22 @@ exports.register = async (req, res) => {
     }
     res.status(500).json({ success: false, message: 'Registration failed' });
   }
+};
+
+const readTwitterOAuthState = (stateToken) => {
+  const payload = readOAuthState(stateToken);
+  if (!payload) return null;
+  if (payload.provider === 'twitter') return payload;
+  if (payload.p !== 'twitter') return null;
+
+  return {
+    provider: payload.p,
+    mode: payload.m,
+    userId: payload.u,
+    redirectUri: payload.r,
+    codeVerifier: payload.c,
+    returnToNativeApp: Boolean(payload.n),
+  };
 };
 
 // Login user
@@ -1587,8 +1615,7 @@ exports.startTwitterAuth = async (req, res) => {
     }
 
     const { codeVerifier, codeChallenge } = generateTwitterPkcePair();
-    const state = createOAuthState({
-      provider: 'twitter',
+    const state = createTwitterOAuthState({
       mode: 'login',
       redirectUri,
       codeVerifier,
@@ -1629,7 +1656,7 @@ exports.exchangeTwitterCode = async (req, res) => {
       return res.status(400).json(buildRedirectUriError('redirectUri is not allowed', getAllowedTwitterRedirectUris));
     }
 
-    const statePayload = readOAuthState(state);
+    const statePayload = readTwitterOAuthState(state);
     if (
       !statePayload ||
       statePayload.provider !== 'twitter' ||
@@ -2239,8 +2266,7 @@ exports.startTwitterConnectAuth = async (req, res) => {
     }
 
     const { codeVerifier, codeChallenge } = generateTwitterPkcePair();
-    const state = createOAuthState({
-      provider: 'twitter',
+    const state = createTwitterOAuthState({
       mode: 'connect',
       userId: req.user?._id,
       redirectUri,
@@ -2284,7 +2310,7 @@ exports.exchangeTwitterConnectCode = async (req, res) => {
       return res.status(400).json(buildRedirectUriError('redirectUri is not allowed', getAllowedTwitterRedirectUris));
     }
 
-    const statePayload = readOAuthState(state);
+    const statePayload = readTwitterOAuthState(state);
     if (
       !statePayload ||
       statePayload.provider !== 'twitter' ||

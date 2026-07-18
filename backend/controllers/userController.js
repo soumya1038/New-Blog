@@ -276,6 +276,7 @@ exports.disconnectSocialProvider = async (req, res) => {
     const originalSocial = Array.isArray(user.socialMedia) ? user.socialMedia : [];
     const nextSocial = originalSocial.filter((entry) => !doesSocialEntryMatchProvider(entry, provider));
     let changed = nextSocial.length !== originalSocial.length;
+    const update = { socialMedia: nextSocial };
 
     if (SOCIAL_OAUTH_PROVIDERS.has(provider)) {
       const currentProviderId = String(user?.oauthProviders?.[provider]?.id || '').trim();
@@ -289,14 +290,7 @@ exports.disconnectSocialProvider = async (req, res) => {
             message: 'Set a permanent password or connect another sign-in method before removing this connection.',
           });
         }
-        user.oauthProviders = {
-          ...(user.oauthProviders || {}),
-          google: { id: provider === 'google' ? '' : user?.oauthProviders?.google?.id || '' },
-          facebook: { id: provider === 'facebook' ? '' : user?.oauthProviders?.facebook?.id || '' },
-          twitter: { id: provider === 'twitter' ? '' : user?.oauthProviders?.twitter?.id || '' },
-          linkedin: { id: provider === 'linkedin' ? '' : user?.oauthProviders?.linkedin?.id || '' },
-          telegram: { id: provider === 'telegram' ? '' : user?.oauthProviders?.telegram?.id || '' },
-        };
+        update[`oauthProviders.${provider}.id`] = '';
         changed = true;
       }
     }
@@ -305,13 +299,21 @@ exports.disconnectSocialProvider = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Provider is not connected' });
     }
 
-    user.socialMedia = nextSocial;
-    await user.save();
+    // Only mutate connection fields. A full document save can fail because of
+    // unrelated legacy profile data and must not block a valid disconnect.
+    const updatedUser = await User.findByIdAndUpdate(
+      user._id,
+      { $set: update },
+      { new: true }
+    );
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
     return res.json({
       success: true,
       message: `${provider} disconnected successfully`,
-      user: sanitizeOwnerProfile(user.toObject()),
+      user: sanitizeOwnerProfile(updatedUser.toObject()),
     });
   } catch (error) {
     return sendUserError(res, error);
