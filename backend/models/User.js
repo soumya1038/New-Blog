@@ -46,6 +46,9 @@ const userSchema = new mongoose.Schema({
     linkedin: {
       id: { type: String, default: '' },
     },
+    telegram: {
+      id: { type: String, default: '' },
+    },
   },
   privacy: {
     profileVisibility: {

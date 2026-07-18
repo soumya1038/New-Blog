@@ -8,6 +8,7 @@ const SOCIAL_LINKS = {
   instagram: 'https://www.instagram.com/lekhonofficial/',
   linkedin: 'https://www.linkedin.com/company/lekhonofficial/?viewAsMember=true',
   facebook: 'https://www.facebook.com/lekhonofficial/',
+  telegram: 'https://t.me/LekhonOfficial',
 };
 const SOCIAL_ICON_PATHS = {
   twitter: {
@@ -25,6 +26,10 @@ const SOCIAL_ICON_PATHS = {
   facebook: {
     viewBox: '0 0 320 512',
     path: 'M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z',
+  },
+  telegram: {
+    viewBox: '0 0 496 512',
+    path: 'M248 8C111.1 8 0 119.1 0 256s111.1 248 248 248 248-111.1 248-248S384.9 8 248 8zm114.7 169.1-40.7 191.8c-3 13.6-11.1 16.9-22.4 10.5l-62-45.7-29.9 28.8c-3.3 3.3-6.1 6.1-12.5 6.1l4.4-63.1 114.9-103.8c5-4.4-1.1-6.9-7.7-2.5L164.8 288.7l-61.2-19.1c-13.3-4.2-13.6-13.3 2.8-19.7l239.1-92.2c11.1-4.1 20.8 2.7 17.2 19.4z',
   },
 };
 
@@ -202,6 +207,7 @@ const footer = ({ siteUrl, supportEmail }) => `
         ${socialIconLink('instagram', 'Lekhon on Instagram')}
         ${socialIconLink('linkedin', 'Lekhon on LinkedIn')}
         ${socialIconLink('facebook', 'Lekhon on Facebook')}
+        ${socialIconLink('telegram', 'Lekhon on Telegram')}
       </tr>
     </table>
     <p style="margin:0 0 5px;font-family:Georgia,'Times New Roman',serif;font-size:10px;color:#c9a227;letter-spacing:2.5px;text-transform:uppercase;">Write. Connect. Inspire.</p>

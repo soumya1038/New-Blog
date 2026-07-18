@@ -10,6 +10,7 @@ import GuestUsernameModal from '../components/GuestUsernameModal';
 import GuestInfoModal from '../components/GuestInfoModal';
 import { requestSocialAuthUrl } from '../utils/socialAuth';
 import TwoFactorVerificationModal from '../components/TwoFactorVerificationModal';
+import TelegramLoginButton from '../components/TelegramLoginButton';
 import { consumeRedirectAfterLogin } from '../utils/authRedirects';
 
 const API = API_BASE_URL;
@@ -902,6 +903,7 @@ const Login = () => {
                     <SocialBtn label="Twitter / X" icon={SOCIAL_ICONS[2].icon} C={C} onClick={handleTwitterLoginRedirect} disabled={!!socialAuthLoading} loading={socialAuthLoading==='twitter'}/>
                     {/* LinkedIn real OAuth */}
                     <SocialBtn label="LinkedIn" icon={SOCIAL_ICONS[3].icon} C={C} onClick={handleLinkedInLoginRedirect} disabled={!!socialAuthLoading} loading={socialAuthLoading==='linkedin'}/>
+                    <TelegramLoginButton rememberMe={rememberMe} onError={setError}/>
                   </div>
                   <button onClick={handleGuestEntryClick}
                     style={{width:'100%',padding:'13px',borderRadius:13,

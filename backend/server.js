@@ -151,7 +151,7 @@ const cspDirectives = {
   objectSrc: ["'none'"],
   frameAncestors: ["'none'"],
   formAction: ["'self'"],
-  scriptSrc: ["'self'", ...allowedOrigins, 'https://checkout.razorpay.com'],
+  scriptSrc: ["'self'", ...allowedOrigins, 'https://checkout.razorpay.com', 'https://telegram.org'],
   scriptSrcAttr: ["'none'"],
   styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
   fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
@@ -164,6 +164,8 @@ const cspDirectives = {
     'https://www.youtube.com',
     'https://www.youtube-nocookie.com',
     'https://player.vimeo.com',
+    'https://oauth.telegram.org',
+    'https://telegram.org',
   ],
   connectSrc: [
     "'self'",

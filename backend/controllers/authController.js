@@ -46,6 +46,8 @@ const LINKEDIN_USERINFO_URL = 'https://api.linkedin.com/v2/userinfo';
 const TWITTER_AUTH_BASE_URL = 'https://x.com/i/oauth2/authorize';
 const TWITTER_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token';
 const TWITTER_USERINFO_URL = 'https://api.twitter.com/2/users/me';
+const TELEGRAM_API_BASE_URL = 'https://api.telegram.org';
+const TELEGRAM_AUTH_MAX_AGE_SECONDS = 10 * 60;
 
 const withOAuthTimeout = (config = {}) => ({
   ...config,
@@ -103,6 +105,8 @@ const getTwitterClientId = () =>
 
 const getTwitterClientSecret = () =>
   (process.env.TWITTER_CLIENT_SECRET || process.env.twitter_client_secret || '').trim();
+
+const getTelegramBotToken = () => String(process.env.TELEGRAM_BOT_TOKEN || '').trim();
 
 const getTwitterOauthScopes = () => {
   const raw = String(process.env.TWITTER_OAUTH_SCOPES || '').trim();
@@ -339,6 +343,11 @@ const buildTwitterProfileUrl = (twitterHandle, twitterUserId) => {
 };
 
 const buildLinkedInProfileUrl = () => 'https://www.linkedin.com';
+
+const buildTelegramProfileUrl = (telegramHandle) => {
+  const handle = String(telegramHandle || '').trim().replace(/^@+/, '');
+  return handle ? `https://t.me/${encodeURIComponent(handle)}` : '';
+};
 
 const ensureSocialLink = (user, name, matcher, url) => {
   if (!user || !url) return false;
@@ -2910,5 +2919,122 @@ exports.guestLogin = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Guest login failed' });
+  }
+};
+
+let telegramBotUsernameCache = '';
+
+exports.getTelegramLoginConfig = async (req, res) => {
+  try {
+    const botToken = getTelegramBotToken();
+    if (!botToken) {
+      return res.status(503).json({ success: false, message: 'Telegram login is not configured' });
+    }
+    if (!telegramBotUsernameCache) {
+      const response = await axios.get(`${TELEGRAM_API_BASE_URL}/bot${botToken}/getMe`, withOAuthTimeout());
+      telegramBotUsernameCache = String(response?.data?.result?.username || '').trim();
+    }
+    if (!telegramBotUsernameCache) {
+      return res.status(503).json({ success: false, message: 'Telegram bot username is unavailable' });
+    }
+    const botId = botToken.split(':')[0];
+    return res.json({ success: true, botId, botUsername: telegramBotUsernameCache });
+  } catch (error) {
+    return sendOAuthError(res, 503, 'Telegram login is temporarily unavailable', error);
+  }
+};
+
+const verifyTelegramLoginPayload = (payload, botToken) => {
+  const providedHash = String(payload?.hash || '').trim().toLowerCase();
+  const authDate = Number(payload?.auth_date);
+  if (!providedHash || !Number.isInteger(authDate)) return false;
+  const age = Math.floor(Date.now() / 1000) - authDate;
+  if (age < -30 || age > TELEGRAM_AUTH_MAX_AGE_SECONDS) return false;
+
+  const dataCheckString = Object.entries(payload)
+    .filter(([key, value]) => key !== 'hash' && value !== undefined && value !== null && value !== '')
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${String(value)}`)
+    .join('\n');
+  const secretKey = crypto.createHash('sha256').update(botToken).digest();
+  const expectedHash = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest('hex');
+  const expectedBuffer = Buffer.from(expectedHash, 'hex');
+  const providedBuffer = Buffer.from(providedHash, 'hex');
+  return expectedBuffer.length === providedBuffer.length && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+};
+
+exports.exchangeTelegramLogin = async (req, res) => {
+  try {
+    const botToken = getTelegramBotToken();
+    if (!botToken) {
+      return res.status(503).json({ success: false, message: 'Telegram login is not configured' });
+    }
+    const telegram = req.body || {};
+    if (!verifyTelegramLoginPayload(telegram, botToken)) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired Telegram login' });
+    }
+
+    const telegramUserId = String(telegram.id || '').trim();
+    if (!/^\d{1,24}$/.test(telegramUserId)) {
+      return res.status(400).json({ success: false, message: 'Telegram user id is unavailable' });
+    }
+    const firstName = String(telegram.first_name || '').trim().slice(0, 100);
+    const lastName = String(telegram.last_name || '').trim().slice(0, 100);
+    const displayName = `${firstName} ${lastName}`.trim();
+    const telegramHandle = String(telegram.username || '').trim().replace(/^@+/, '').slice(0, 64);
+    const picture = String(telegram.photo_url || '').trim();
+
+    let user = await User.findOne({ 'oauthProviders.telegram.id': telegramUserId });
+    if (!user) {
+      const username = await makeUniqueUsername(telegramHandle || displayName || `telegram_${telegramUserId.slice(-8)}`);
+      user = await User.create({
+        username,
+        password: generateTemporaryPassword(),
+        fullName: displayName,
+        name: displayName,
+        profileImage: picture,
+        isVerified: false,
+        mustChangePasswordAfterGoogle: true,
+        socialMedia: buildTelegramProfileUrl(telegramHandle)
+          ? [{ name: 'Telegram', url: buildTelegramProfileUrl(telegramHandle) }]
+          : [],
+        oauthProviders: { telegram: { id: telegramUserId } },
+      });
+    } else {
+      let changed = false;
+      if (!user.fullName && displayName) { user.fullName = displayName; changed = true; }
+      if (!user.name && displayName) { user.name = displayName; changed = true; }
+      if (!user.profileImage && picture) { user.profileImage = picture; changed = true; }
+      const telegramUrl = buildTelegramProfileUrl(telegramHandle);
+      if (telegramUrl && ensureSocialLink(user, 'Telegram', (name, url) => name.includes('telegram') || url.includes('t.me/'), telegramUrl)) changed = true;
+      if (changed) await user.save();
+    }
+
+    const guardFailure = await ensureUserCanLogin(user);
+    if (guardFailure) return res.status(guardFailure.status).json(guardFailure.body);
+    user.lastActive = new Date();
+    await user.save();
+
+    return res.json({
+      success: true,
+      token: generateToken(user),
+      user: {
+        id: user._id,
+        username: user.username,
+        profileImage: user.profileImage,
+        role: user.role,
+        name: user.name || '',
+        isVerified: user.isVerified || false,
+        isSeller: user.isSeller || false,
+      },
+      passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
+      missingEmailForWelcome: !user.email,
+      rememberMe: false,
+    });
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      return res.status(409).json({ success: false, message: duplicateAccountMessage(error) });
+    }
+    return sendOAuthError(res, 500, 'Telegram authentication failed', error);
   }
 };

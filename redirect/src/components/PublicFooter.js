@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FaFacebookF, FaInstagram, FaLinkedinIn } from 'react-icons/fa';
+import { FaFacebookF, FaInstagram, FaLinkedinIn, FaTelegramPlane } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
 import './PublicFooter.css';
 
@@ -27,6 +27,11 @@ const socialLinks = [
     label: 'Instagram',
     href: 'https://www.instagram.com/lekhonofficial/',
     icon: FaInstagram,
+  },
+  {
+    label: 'Telegram',
+    href: 'https://t.me/LekhonOfficial',
+    icon: FaTelegramPlane,
   },
 ];
 
