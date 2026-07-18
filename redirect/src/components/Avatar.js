@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import md5 from 'crypto-js/md5';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const Avatar = ({ user, size = 'md', className = '', showStatusRing = false }) => {
   const [imageError, setImageError] = useState(false);
@@ -35,14 +36,16 @@ const Avatar = ({ user, size = 'md', className = '', showStatusRing = false }) =
 
   const hasActiveStatus = showStatusRing && user?.hasActiveStatus;
   const ringClass = hasActiveStatus ? 'ring-2 ring-green-500 ring-offset-2' : '';
+  const profileImage = getSafeImageUrl(user?.profileImage);
 
   // Priority 1: User uploaded profileImage
-  if (user?.profileImage && !imageError) {
+  if (profileImage && !imageError) {
     return (
       <img
-        src={user.profileImage}
+        src={profileImage}
         alt={user.username}
         className={`${sizes[size]} rounded-full object-cover ${ringClass} ${className}`}
+        referrerPolicy="no-referrer"
         onError={() => setImageError(true)}
       />
     );
@@ -66,6 +69,7 @@ const Avatar = ({ user, size = 'md', className = '', showStatusRing = false }) =
         src={gravatarUrl}
         alt={user?.username}
         className={`${sizes[size]} rounded-full object-cover ${ringClass} ${className}`}
+        referrerPolicy="no-referrer"
         onError={() => setGravatarError(true)}
       />
     );

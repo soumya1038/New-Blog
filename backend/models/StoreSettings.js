@@ -22,6 +22,7 @@ const storeSettingsSchema = new mongoose.Schema({
     totalSales:   { type: Number, default: 0 },
     totalRevenue: { type: Number, default: 0 },
     averageRating:{ type: Number, default: 0 },
+    ratingCount:  { type: Number, default: 0 },
   },
 }, { timestamps: true });
 

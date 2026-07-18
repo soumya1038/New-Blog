@@ -4,9 +4,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
+import { clearAuthSession } from '../utils/authSession';
 import SimpleMDE from 'react-simplemde-editor';
 import 'easymde/dist/easymde.min.css';
-import ReactMarkdown from 'react-markdown';
 import toast, { Toaster } from 'react-hot-toast';
 import AIBlogGenerator from '../components/AIBlogGenerator';
 import AIContentTools from '../components/AIContentTools';
@@ -14,6 +14,7 @@ import UnauthorizedModal from '../components/UnauthorizedModal';
 import TemplatePreview from '../components/TemplatePreview';
 import ContentProductTagsEditor from '../components/ContentProductTagsEditor';
 import ProductTagPlacementEditor from '../components/ProductTagPlacementEditor';
+import SafeMarkdown from '../components/SafeMarkdown';
 import {
   getArticleTemplateById,
   CUSTOM_ARTICLE_TEMPLATE_ID,
@@ -33,6 +34,7 @@ import { HiStop } from 'react-icons/hi';
 import { GridLoader } from 'react-spinners';
 import { RotatingLines } from 'react-loader-spinner';
 import soundManager from '../utils/soundManager';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const VOICE_FLOW_STATE = {
   IDLE: 'idle',
@@ -157,6 +159,7 @@ const CreateBlog = () => {
   const FORCED_TEMPLATE_THEME_MODE = 'auto';
 
   const isBlobUrl = (url = '') => typeof url === 'string' && url.startsWith('blob:');
+  const getSafeEditorImageUrl = (url = '') => (isBlobUrl(url) ? url : getSafeImageUrl(url));
 
   const getPersistedGalleryPayload = () => {
     const persisted = galleryItems.filter((item) => !item.local && item.url && !isBlobUrl(item.url));
@@ -1336,7 +1339,7 @@ const CreateBlog = () => {
       console.error('Save draft error:', err);
       if (err.response?.status === 401) {
         toast.error('Session expired. Please login again.');
-        localStorage.removeItem('token');
+        clearAuthSession();
         navigate('/login');
       } else {
         toast.error(err.response?.data?.message || 'Failed to save draft');
@@ -1781,9 +1784,9 @@ const CreateBlog = () => {
                   className="w-full px-4 py-3 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
                 />
                 {uploadingImage && <p className="text-xs mt-1" style={{ color: 'var(--brand-primary)' }}>{t('Uploading...')}</p>}
-                {coverImage && (
+                {getSafeEditorImageUrl(coverImage) && (
                   <div className="mt-2 relative">
-                    <img src={coverImage} alt="Cover" className="w-full h-32 object-cover rounded-lg" />
+                    <img src={getSafeEditorImageUrl(coverImage)} alt="Cover" className="w-full h-32 object-cover rounded-lg" referrerPolicy="no-referrer" />
                     <button
                       type="button"
                       onClick={handleRemoveImage}
@@ -1810,23 +1813,33 @@ const CreateBlog = () => {
 
                 {galleryItems.length > 0 && (
                   <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {galleryItems.map((item) => (
-                      <div key={item.id} className="relative rounded-lg overflow-hidden border border-[var(--border-default)] bg-[var(--surface-elevated)]">
-                        <img
-                          src={item.url}
-                          alt="Gallery image"
-                          className="w-full h-24 object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveGalleryImage(item.id)}
-                          className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition"
-                          aria-label="Remove gallery image"
-                        >
-                          <FaTimes size={12} />
-                        </button>
-                      </div>
-                    ))}
+                    {galleryItems.map((item) => {
+                      const safeGalleryUrl = getSafeEditorImageUrl(item.url);
+                      return (
+                        <div key={item.id} className="relative rounded-lg overflow-hidden border border-[var(--border-default)] bg-[var(--surface-elevated)]">
+                          {safeGalleryUrl ? (
+                            <img
+                              src={safeGalleryUrl}
+                              alt="Gallery image"
+                              className="w-full h-24 object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-full h-24 flex items-center justify-center text-[var(--text-muted)]">
+                              <MdStorefront size={18} />
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveGalleryImage(item.id)}
+                            className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition"
+                            aria-label="Remove gallery image"
+                          >
+                            <FaTimes size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1937,7 +1950,7 @@ const CreateBlog = () => {
               
               {previewMode ? (
                 <div className="border border-[var(--border-default)] rounded-lg p-4 min-h-[300px] prose dark:prose-invert max-w-none bg-[var(--surface-card)] text-[var(--text-primary)]">
-                  <ReactMarkdown>{content || `*${t('No content to preview')}*`}</ReactMarkdown>
+                  <SafeMarkdown>{content || `*${t('No content to preview')}*`}</SafeMarkdown>
                 </div>
               ) : isShortMode ? (
                 <textarea
@@ -2109,20 +2122,29 @@ const CreateBlog = () => {
                       className="w-full px-3 py-2 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
                     />
                     {searchingProducts && <p className="text-xs text-[var(--text-muted)]">Searching...</p>}
-                    {productResults.map(p => (
-                      <button
-                        key={p._id}
-                        type="button"
-                        onClick={() => addLinkedProduct(p)}
-                        className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-[var(--border-color)] hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition-colors text-left"
-                      >
-                        <img src={p.thumbnail || ''} alt="" className="w-10 h-10 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium text-[var(--text-primary)] truncate">{p.title}</p>
-                          <p className="text-xs text-[var(--text-muted)]">Rs. {p.price?.toLocaleString('en-IN')}</p>
-                        </div>
-                      </button>
-                    ))}
+                    {productResults.map(p => {
+                      const safeThumbnail = getSafeImageUrl(p.thumbnail);
+                      return (
+                        <button
+                          key={p._id}
+                          type="button"
+                          onClick={() => addLinkedProduct(p)}
+                          className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-[var(--border-color)] hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition-colors text-left"
+                        >
+                          {safeThumbnail ? (
+                            <img src={safeThumbnail} alt="" className="w-10 h-10 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" referrerPolicy="no-referrer" />
+                          ) : (
+                            <span className="flex w-10 h-10 items-center justify-center rounded-lg bg-[var(--bg-secondary)] text-violet-500 shrink-0">
+                              <MdStorefront size={16} />
+                            </span>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-[var(--text-primary)] truncate">{p.title}</p>
+                            <p className="text-xs text-[var(--text-muted)]">Rs. {p.price?.toLocaleString('en-IN')}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
                     {productSearch && productResults.length === 0 && !searchingProducts && (
                       <p className="text-xs text-[var(--text-muted)]">No products match "{productSearch}"</p>
                     )}
@@ -2131,22 +2153,31 @@ const CreateBlog = () => {
 
                 {linkedProducts.length > 0 && (
                   <div className="space-y-2">
-                    {linkedProducts.map(product => (
-                      <div key={product._id} className="flex items-center gap-3 p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
-                        <img src={product.thumbnail || ''} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{product.title}</p>
-                          <p className="text-xs text-violet-600 dark:text-violet-400">Marketplace product</p>
+                    {linkedProducts.map(product => {
+                      const safeThumbnail = getSafeImageUrl(product.thumbnail);
+                      return (
+                        <div key={product._id} className="flex items-center gap-3 p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
+                          {safeThumbnail ? (
+                            <img src={safeThumbnail} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" referrerPolicy="no-referrer" />
+                          ) : (
+                            <span className="flex w-10 h-10 items-center justify-center rounded-lg bg-[var(--bg-secondary)] text-violet-500 shrink-0">
+                              <MdStorefront size={16} />
+                            </span>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{product.title}</p>
+                            <p className="text-xs text-violet-600 dark:text-violet-400">Marketplace product</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeLinkedProduct(product._id)}
+                            className="text-[var(--text-muted)] hover:text-red-500"
+                          >
+                            <FaTimes size={12} />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeLinkedProduct(product._id)}
-                          className="text-[var(--text-muted)] hover:text-red-500"
-                        >
-                          <FaTimes size={12} />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 

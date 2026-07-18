@@ -6,6 +6,14 @@ const SLIDE_KNOB_SIZE = 48;
 const SLIDE_TRACK_PADDING = 5;
 const SLIDE_COMPLETE_THRESHOLD = 0.86;
 
+const createCheckoutIdempotencyKey = () => {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  const random = window.crypto?.getRandomValues
+    ? Array.from(window.crypto.getRandomValues(new Uint32Array(4)), value => value.toString(16)).join('')
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `checkout-${random}`;
+};
+
 const RazorpayButton = ({
   items,
   shippingAddress,
@@ -20,6 +28,7 @@ const RazorpayButton = ({
   const sliderRef = useRef(null);
   const slideProgressRef = useRef(0);
   const activePointerRef = useRef(null);
+  const idempotencyKeyRef = useRef('');
 
   useEffect(() => {
     slideProgressRef.current = slideState.progress;
@@ -54,21 +63,44 @@ const RazorpayButton = ({
         return;
       }
 
-      const { data } = await api.post('/payments/create-order', {
-        items: items.map(i => ({ productId: i.productId || i._id, qty: i.qty || 1 })),
-        shippingAddress: shippingAddress || {},
-        couponCode: couponCode || '',
-        currency: 'INR',
-      });
+      if (!idempotencyKeyRef.current) {
+        idempotencyKeyRef.current = createCheckoutIdempotencyKey();
+      }
+      const { data } = await api.post(
+        '/payments/create-order',
+        {
+          items: items.map(i => ({ productId: i.productId || i._id, qty: i.qty || 1 })),
+          shippingAddress: shippingAddress || {},
+          couponCode: couponCode || '',
+          currency: 'INR',
+        },
+        {
+          headers: { 'Idempotency-Key': idempotencyKeyRef.current },
+        }
+      );
 
-      if (data.free) {
+      if (data.alreadyProcessed) {
+        idempotencyKeyRef.current = '';
         onSuccess && onSuccess(data.orderNumber, data.orderId);
         setLoading(false);
         return;
       }
 
+      if (data.free) {
+        idempotencyKeyRef.current = '';
+        onSuccess && onSuccess(data.orderNumber, data.orderId);
+        setLoading(false);
+        return;
+      }
+
+      if (!data.keyId) {
+        onFailure && onFailure('Payment gateway is not configured. Please contact support.');
+        setLoading(false);
+        return;
+      }
+
       const options = {
-        key: data.keyId || process.env.REACT_APP_RAZORPAY_KEY_ID,
+        key: data.keyId,
         amount: data.amount,
         currency: data.currency || 'INR',
         name: 'Lekhon Marketplace',
@@ -83,6 +115,7 @@ const RazorpayButton = ({
               razorpay_signature: response.razorpay_signature,
             });
             if (verifyRes.data.success) {
+              idempotencyKeyRef.current = '';
               onSuccess && onSuccess(verifyRes.data.orderNumber, verifyRes.data.orderId);
             } else {
               onFailure && onFailure('Payment verification failed. Please contact support.');
@@ -113,6 +146,9 @@ const RazorpayButton = ({
       });
       rzp.open();
     } catch (err) {
+      if (err.response?.status === 409 && !err.response?.data?.retryAfterSeconds) {
+        idempotencyKeyRef.current = '';
+      }
       onFailure && onFailure(err.response?.data?.message || 'Could not initiate payment');
       setLoading(false);
     }

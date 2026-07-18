@@ -12,6 +12,17 @@ export const getTwoFactorRequirement = (error) => {
   };
 };
 
+export const getSensitiveActionRequirement = (error) => {
+  const data = error?.response?.data;
+  if (!data?.requiresPassword) return null;
+
+  return {
+    action: data.action,
+    actionLabel: data.actionLabel,
+    message: data.message,
+  };
+};
+
 export const requestAuthenticatedTwoFactorChallenge = async ({ action, method }) => {
   const { data } = await api.post('/users/2fa/challenge', { action, method });
   return data;

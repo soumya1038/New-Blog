@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { FaCheck, FaTimes, FaUser, FaStore, FaClock, FaHistory, FaShieldAlt } from 'react-icons/fa';
 import { MdVerified } from 'react-icons/md';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const STATUS_STYLES = {
   pending:  'bg-amber-100  text-amber-700  dark:bg-amber-900/30  dark:text-amber-400',
@@ -30,7 +31,7 @@ const formatCheckStatus = (status = 'not_started') => status
   .map(part => part.charAt(0).toUpperCase() + part.slice(1))
   .join(' ');
 
-const AdminSellerApplications = () => {
+const AdminSellerApplications = ({ runAdminProtectedAction, adminStepUpConfig = () => ({}) }) => {
   const { t } = useTranslation();
   const [applications, setApplications] = useState([]);
   const [total,        setTotal]        = useState(0);
@@ -40,6 +41,7 @@ const AdminSellerApplications = () => {
   const [actionLoading,setActionLoading]= useState(null);
   const [rejectNote,   setRejectNote]   = useState('');
   const [rejectModal,  setRejectModal]  = useState(null); // applicationId
+  const runProtectedAction = runAdminProtectedAction || (async ({ request }) => request({}));
 
   const fetchApplications = async (status = filter) => {
     setLoading(true);
@@ -55,26 +57,50 @@ const AdminSellerApplications = () => {
 
   const approve = async (id) => {
     setActionLoading(id + '_approve');
-    try {
-      const { data } = await api.put(`/seller/admin/seller-applications/${id}/approve`, { reviewNote: '' });
-      setApplications(prev => prev.map(a => a._id === id ? { ...a, ...(data.application || {}), status: 'approved' } : a));
-    } catch (e) {
-      alert(e.response?.data?.message || 'Error approving application');
-    }
-    setActionLoading(null);
+    await runProtectedAction({
+      title: 'Verify seller approval',
+      description: 'Confirm your password before approving this seller application.',
+      onStepUp: () => setActionLoading(null),
+      request: async (tokens) => {
+        setActionLoading(id + '_approve');
+        const { data } = await api.put(
+          `/seller/admin/seller-applications/${id}/approve`,
+          { reviewNote: '' },
+          adminStepUpConfig(tokens)
+        );
+        setApplications(prev => prev.map(a => a._id === id ? { ...a, ...(data.application || {}), status: 'approved' } : a));
+        setActionLoading(null);
+      },
+      onFailure: (e) => {
+        alert(e.response?.data?.message || 'Error approving application');
+        setActionLoading(null);
+      },
+    });
   };
 
   const reject = async (id) => {
     setActionLoading(id + '_reject');
-    try {
-      const { data } = await api.put(`/seller/admin/seller-applications/${id}/reject`, { reviewNote: rejectNote });
-      setApplications(prev => prev.map(a => a._id === id ? { ...a, ...(data.application || {}), status: 'rejected' } : a));
-      setRejectModal(null);
-      setRejectNote('');
-    } catch (e) {
-      alert(e.response?.data?.message || 'Error rejecting application');
-    }
-    setActionLoading(null);
+    await runProtectedAction({
+      title: 'Verify seller rejection',
+      description: 'Confirm your password before rejecting this seller application.',
+      onStepUp: () => setActionLoading(null),
+      request: async (tokens) => {
+        setActionLoading(id + '_reject');
+        const { data } = await api.put(
+          `/seller/admin/seller-applications/${id}/reject`,
+          { reviewNote: rejectNote },
+          adminStepUpConfig(tokens)
+        );
+        setApplications(prev => prev.map(a => a._id === id ? { ...a, ...(data.application || {}), status: 'rejected' } : a));
+        setRejectModal(null);
+        setRejectNote('');
+        setActionLoading(null);
+      },
+      onFailure: (e) => {
+        alert(e.response?.data?.message || 'Error rejecting application');
+        setActionLoading(null);
+      },
+    });
   };
 
   const pendingCount = applications.filter(a => a.status === 'pending').length;
@@ -122,7 +148,9 @@ const AdminSellerApplications = () => {
         </div>
       ) : (
         <div className="space-y-3">
-          {applications.map(app => (
+          {applications.map(app => {
+            const safeProfileImage = getSafeImageUrl(app.userId?.profileImage);
+            return (
             <div
               key={app._id}
               className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] overflow-hidden"
@@ -134,8 +162,8 @@ const AdminSellerApplications = () => {
               >
                 {/* Avatar */}
                 <div className="relative shrink-0">
-                  {app.userId?.profileImage
-                    ? <img src={app.userId.profileImage} alt="" className="w-11 h-11 rounded-xl object-cover" />
+                  {safeProfileImage
+                    ? <img src={safeProfileImage} alt="" className="w-11 h-11 rounded-xl object-cover" referrerPolicy="no-referrer" />
                     : <div className="w-11 h-11 rounded-xl bg-[var(--surface-elevated)] flex items-center justify-center"><FaUser className="text-[var(--text-muted)]" /></div>
                   }
                   {app.userId?.isVerified && (
@@ -198,17 +226,32 @@ const AdminSellerApplications = () => {
                     <button
                       onClick={async () => {
                         if (!window.confirm(`Revoke seller badge from @${app.userId?.username}? This will pause all their products.`)) return;
-                        try {
-                          await api.patch(`/orders/admin/seller-revoke/${app.userId?._id}`);
-                          setApplications(prev => prev.map(a => a._id === app._id ? { ...a, status: 'rejected' } : a));
-                          alert('Seller badge revoked. All products paused.');
-                        } catch (e) {
-                          alert(e.response?.data?.message || 'Error revoking seller.');
-                        }
+                        setActionLoading(app._id + '_revoke');
+                        await runProtectedAction({
+                          title: 'Verify seller revocation',
+                          description: 'Confirm your password before revoking this seller badge.',
+                          onStepUp: () => setActionLoading(null),
+                          request: async (tokens) => {
+                            setActionLoading(app._id + '_revoke');
+                            await api.patch(
+                              `/orders/admin/seller-revoke/${app.userId?._id}`,
+                              {},
+                              adminStepUpConfig(tokens)
+                            );
+                            setApplications(prev => prev.map(a => a._id === app._id ? { ...a, status: 'rejected' } : a));
+                            setActionLoading(null);
+                            alert('Seller badge revoked. All products paused.');
+                          },
+                          onFailure: (e) => {
+                            alert(e.response?.data?.message || 'Error revoking seller.');
+                            setActionLoading(null);
+                          },
+                        });
                       }}
+                      disabled={actionLoading === app._id + '_revoke'}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition-colors"
                     >
-                      Revoke Badge
+                      {actionLoading === app._id + '_revoke' ? 'Revoking...' : 'Revoke Badge'}
                     </button>
                   </div>
                 )}
@@ -298,7 +341,8 @@ const AdminSellerApplications = () => {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

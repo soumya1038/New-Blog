@@ -2,21 +2,30 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { FaExternalLinkAlt, FaShoppingBag, FaShoppingCart, FaStar } from 'react-icons/fa';
 import { MdStorefront } from 'react-icons/md';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const ProductPromoCard = ({ product, externalLink }) => {
   const isExternalLink = !!externalLink;
-  const item = product || externalLink;
+  const item = isExternalLink
+    ? {
+      ...externalLink,
+      url: getSafeHttpUrl(externalLink.url),
+      thumbnail: getSafeImageUrl(externalLink.thumbnail),
+    }
+    : product;
   if (!item) return null;
+  if (isExternalLink && !item.url) return null;
 
   const discount = !isExternalLink && item.compareAtPrice && item.compareAtPrice > item.price
     ? Math.round(((item.compareAtPrice - item.price) / item.compareAtPrice) * 100)
     : 0;
+  const safeThumbnail = getSafeImageUrl(item.thumbnail);
 
   const content = (
     <>
       <div className="w-14 h-14 rounded-lg overflow-hidden bg-[var(--bg-secondary)] shrink-0 border border-[var(--border-color)]">
-        {item.thumbnail ? (
-          <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+        {safeThumbnail ? (
+          <img src={safeThumbnail} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" referrerPolicy="no-referrer" />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-violet-500">
             <FaShoppingBag size={20} />

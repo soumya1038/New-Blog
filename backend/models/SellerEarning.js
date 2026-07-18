@@ -41,6 +41,9 @@ const sellerEarningSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 sellerEarningSchema.index({ sellerId: 1, status: 1 });
+sellerEarningSchema.index({ sellerId: 1, status: 1, createdAt: -1, _id: 1 });
 sellerEarningSchema.index({ orderId: 1, sellerId: 1 }, { unique: true });
+sellerEarningSchema.index({ status: 1, holdUntil: 1, _id: 1 });
+sellerEarningSchema.index({ payoutId: 1, status: 1 });
 
 module.exports = mongoose.model('SellerEarning', sellerEarningSchema);

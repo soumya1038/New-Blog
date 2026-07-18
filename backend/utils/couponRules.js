@@ -1,4 +1,21 @@
-const normalizeCouponCode = (code) => String(code || '').trim().toUpperCase();
+const COUPON_CODE_MIN_LENGTH = 3;
+const COUPON_CODE_MAX_LENGTH = Math.min(
+  Math.max(COUPON_CODE_MIN_LENGTH, Number(process.env.COUPON_CODE_MAX_LENGTH) || 40),
+  80
+);
+const COUPON_CODE_PATTERN = /^[A-Z0-9][A-Z0-9_-]*$/;
+
+const normalizeCouponCode = (code) => {
+  const normalized = String(code || '').trim().toUpperCase();
+  if (
+    normalized.length < COUPON_CODE_MIN_LENGTH ||
+    normalized.length > COUPON_CODE_MAX_LENGTH ||
+    !COUPON_CODE_PATTERN.test(normalized)
+  ) {
+    return '';
+  }
+  return normalized;
+};
 
 const toId = (value) => value?.toString?.() || String(value || '');
 
@@ -199,6 +216,8 @@ const calculateCouponApplication = ({
 
 const serializeCouponWithStatus = (coupon, now = new Date()) => {
   const plain = typeof coupon.toObject === 'function' ? coupon.toObject() : { ...coupon };
+  delete plain.usedBy;
+  delete plain.__v;
   const effectiveStatus = getCouponEffectiveStatus(coupon, now);
   return {
     ...plain,
@@ -209,6 +228,8 @@ const serializeCouponWithStatus = (coupon, now = new Date()) => {
 };
 
 module.exports = {
+  COUPON_CODE_MAX_LENGTH,
+  COUPON_CODE_MIN_LENGTH,
   normalizeCouponCode,
   getCouponEffectiveStatus,
   calculateCouponApplication,

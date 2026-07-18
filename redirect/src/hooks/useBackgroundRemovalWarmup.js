@@ -2,9 +2,11 @@ import { useEffect } from 'react';
 import api from '../services/api';
 
 const WARMUP_INTERVAL_MS = 10 * 60 * 1000;
+const ENABLE_WARMUP = process.env.REACT_APP_ENABLE_BG_REMOVER_WARMUP === 'true';
 
 const useBackgroundRemovalWarmup = () => {
   useEffect(() => {
+    if (!ENABLE_WARMUP) return undefined;
     if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
 
     let timeoutId;

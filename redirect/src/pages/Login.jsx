@@ -1,16 +1,18 @@
-import { useState, useContext, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useContext, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { TbBrandAmongUs } from 'react-icons/tb';
 import axios from 'axios';
+import { API_BASE_URL } from '../utils/apiBaseUrl';
 import GuestUsernameModal from '../components/GuestUsernameModal';
 import GuestInfoModal from '../components/GuestInfoModal';
 import { requestSocialAuthUrl } from '../utils/socialAuth';
 import TwoFactorVerificationModal from '../components/TwoFactorVerificationModal';
+import { consumeRedirectAfterLogin } from '../utils/authRedirects';
 
-const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+const API = API_BASE_URL;
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
 const LIGHT = {
@@ -287,7 +289,7 @@ const Login = () => {
   const [username, setUsername]     = useState('');
   const [password, setPassword]     = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
   const [error, setError]           = useState('');
   const [focused, setFocused]       = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -340,7 +342,7 @@ const Login = () => {
   const inputRef = useRef(null);
   const fmtTime  = s => `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`;
 
-  // ── Lockout check on mount + load saved credentials ───────────────────────
+  // ── Lockout check on mount + purge legacy saved credentials ───────────────
   useEffect(() => {
     const lockoutEnd = localStorage.getItem('loginLockoutEnd');
     if (lockoutEnd) {
@@ -348,11 +350,7 @@ const Login = () => {
       if (remaining > 0) { setIsLocked(true); setLockoutTime(Math.ceil(remaining/1000)); }
       else localStorage.removeItem('loginLockoutEnd');
     }
-    const saved = localStorage.getItem('credentials');
-    if (saved) {
-      const { username:u, password:p } = JSON.parse(saved);
-      setUsername(u); setPassword(p); setRememberMe(true);
-    }
+    localStorage.removeItem('credentials');
   }, []);
 
   // ── Lockout countdown ─────────────────────────────────────────────────────
@@ -429,8 +427,8 @@ const Login = () => {
       setFailedAttempts(0); localStorage.removeItem('loginLockoutEnd');
       setIsLoggingIn(false);
       sessionStorage.setItem('showLoginIntro','true');
-      const redirect = sessionStorage.getItem('redirectAfterLogin');
-      if (redirect) { sessionStorage.removeItem('redirectAfterLogin'); navigate(redirect); }
+      const redirect = consumeRedirectAfterLogin();
+      if (redirect) { navigate(redirect); }
       else navigate('/home');
     } catch (err) {
       const na = failedAttempts + 1;
@@ -457,7 +455,7 @@ const Login = () => {
     setSocialAuthLoading(provider);
     sessionStorage.removeItem('socialConnectIntent');
     try {
-      const authUrl = await requestSocialAuthUrl(provider);
+      const authUrl = await requestSocialAuthUrl(provider, { rememberMe });
       window.location.assign(authUrl);
     } catch (err) {
       setSocialAuthLoading('');
@@ -629,7 +627,7 @@ const Login = () => {
   const handleGuestLogin = async () => {
     try {
       const { data } = await axios.post(`${API}/api/auth/guest-login`, { username:guestUsername });
-      completeLogin(data, true);
+      completeLogin(data, false);
       sessionStorage.setItem('showLoginIntro','true');
       setShowGuestInfoModal(false); navigate('/home', { replace: true });
     } catch(err){
@@ -705,7 +703,7 @@ const Login = () => {
       )}
 
       {/* Page — no custom header; Navbar renders via App.js */}
-      <div style={{minHeight:'100dvh',background:C.bg,display:'flex',flexDirection:'column',
+      <div className="auth-flow-page" style={{minHeight:'100dvh',background:C.bg,display:'flex',flexDirection:'column',
         paddingTop:0,transition:'background 0.35s'}}>
         <AnimatedBg C={C}/>
 
@@ -1158,27 +1156,6 @@ const Login = () => {
       {showGuestModal&&<GuestUsernameModal onClose={()=>setShowGuestModal(false)} onContinue={handleGuestContinue}/>}
       {showGuestInfoModal&&<GuestInfoModal onContinue={handleGuestLogin} onClose={()=>setShowGuestInfoModal(false)}/>}
 
-      <style>{`
-        @keyframes stepIn       {from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes popIn        {from{opacity:0;transform:scale(0.82)}to{opacity:1;transform:scale(1)}}
-        @keyframes spin         {to{transform:rotate(360deg)}}
-        @keyframes shake        {0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
-        @keyframes orbFloat     {0%,100%{transform:translateY(0)}50%{transform:translateY(-22px)}}
-        @keyframes particleFloat{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-18px) scale(1.15)}}
-        @keyframes glyphPulse   {0%,100%{opacity:0.28}50%{opacity:0.40}}
-        @keyframes dotPulse     {0%,100%{opacity:0.35;transform:scale(1)}50%{opacity:0.6;transform:scale(1.4)}}
-        @keyframes drawLine     {to{stroke-dashoffset:0}}
-        @keyframes iconPulse    {0%,100%{transform:scale(1);opacity:0.12}50%{transform:scale(1.12);opacity:0.2}}
-        @keyframes drawCheck    {to{stroke-dashoffset:0}}
-        @keyframes waveHand     {0%,100%{transform:rotate(0deg)}25%{transform:rotate(-12deg)}75%{transform:rotate(12deg)}}
-        @keyframes keyRotate    {0%,100%{transform:rotate(0deg)}50%{transform:rotate(25deg)}}
-        @keyframes letterSlide  {0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
-        @keyframes shieldGlow   {0%,100%{opacity:0.7}50%{opacity:1}}
-        @keyframes shackleClose {0%{transform:translateY(-4px)}40%,100%{transform:translateY(0)}}
-        *{box-sizing:border-box}
-        input:-webkit-autofill,input:-webkit-autofill:focus{transition:background-color 600000s 0s,color 600000s 0s}
-        @media(max-width:480px){main>div{border-radius:18px!important}main>div>div:last-child{padding:24px 20px 20px!important}}
-      `}</style>
     </>
   );
 };

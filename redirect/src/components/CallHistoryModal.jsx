@@ -93,6 +93,7 @@ const CallHistoryModal = ({ callLogs, onClose, onCallBack, getUserDisplayName, g
                     src={getUserAvatar(otherUser)}
                     alt={getUserDisplayName(otherUser)}
                     className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                    referrerPolicy="no-referrer"
                   />
 
                   {/* Call Icon */}

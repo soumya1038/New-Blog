@@ -8,6 +8,8 @@ import GamesWidget from '../components/widgets/GamesWidget';
 import NewsCard from '../components/NewsCard';
 import NewsModal from '../components/NewsModal';
 import ScrollToTop from '../components/ScrollToTop';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
+import api from '../services/api';
 
 const News = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -20,6 +22,7 @@ const News = () => {
   const [showModal, setShowModal] = useState(false);
   const [showWidgets, setShowWidgets] = useState(false);
   const [showRefresh, setShowRefresh] = useState(false);
+  const [newsError, setNewsError] = useState('');
   const [lastRefresh, setLastRefresh] = useState(Date.now());
   const [currentChunk, setCurrentChunk] = useState(0);
   const [carouselIndex, setCarouselIndex] = useState(0);
@@ -62,46 +65,27 @@ const News = () => {
 
   const fetchNews = async () => {
     setLoading(true);
+    setNewsError('');
     try {
-      const NEWSDATA_KEY = process.env.REACT_APP_CRICKET_API_KEY || 'pub_c9ede6d5b52347699fad876627f4fa80';
-      const categoryMap = {
-        'All': '',
-        'India': '&country=in',
-        'World': '&country=us,gb',
-        'Business': '&category=business',
-        'Sports': '&category=sports',
-        'Technology': '&category=technology',
-        'Entertainment': '&category=entertainment',
-        'Health': '&category=health',
-        'Esports': '&category=sports&q=esports'
-      };
+      const { data } = await api.get('/widgets/news', {
+        params: {
+          category: activeCategory,
+          limit: 50
+        }
+      });
       
-      const categoryParam = categoryMap[activeCategory] || '';
-      const url = `https://newsdata.io/api/1/latest?apikey=${NEWSDATA_KEY}&language=en${categoryParam}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      
-      if (data.status === 'success' && data.results?.length > 0) {
-        const articles = data.results.map((article, index) => ({
-          id: `${article.article_id || index}`,
-          title: article.title || 'Untitled',
-          description: article.description || 'No description available',
-          image: article.image_url || 'https://via.placeholder.com/400x250?text=News',
-          source: article.source_name || article.source_id || 'News Source',
-          publishedAt: article.pubDate || new Date().toISOString(),
-          url: article.link || '#',
-          content: article.content || article.description,
-          isExternal: true
-        }));
-        
+      if (data?.success && data.articles?.length > 0) {
+        const articles = data.articles;
         setCarouselNews(articles.slice(0, 5));
         setAllNews(articles);
         setDisplayedNews(articles.slice(0, CHUNK_SIZE));
         setCurrentChunk(1);
+      } else {
+        setNewsError('No news articles are available right now.');
       }
     } catch (error) {
       console.error('Error fetching news:', error);
+      setNewsError('News could not be loaded right now.');
     } finally {
       setLoading(false);
     }
@@ -118,8 +102,9 @@ const News = () => {
   };
 
 const handleNewsClick = (newsItem) => {
-    if (newsItem.isExternal && newsItem.url !== '#') {
-      window.open(newsItem.url, '_blank');
+    const safeUrl = getSafeHttpUrl(newsItem.url);
+    if (newsItem.isExternal && safeUrl) {
+      window.open(safeUrl, '_blank', 'noopener,noreferrer');
     } else {
       setSelectedNews(newsItem);
       setShowModal(true);
@@ -262,7 +247,11 @@ const handleNewsClick = (newsItem) => {
                       className={`absolute inset-0 transition-opacity duration-1000 cursor-pointer ${
                         idx === carouselIndex ? 'opacity-100' : 'opacity-0'
                       }`}>
-                      <img src={item.image} alt={item.title} className="w-full h-full object-cover" />
+                      {getSafeImageUrl(item.image) ? (
+                        <img src={getSafeImageUrl(item.image)} alt={item.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-blue-700 to-slate-900" />
+                      )}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
                       <div className="absolute bottom-0 left-0 right-0 p-6">
                         <h2 className="text-2xl md:text-3xl font-bold text-white mb-2 line-clamp-2">{item.title}</h2>
@@ -298,7 +287,9 @@ const handleNewsClick = (newsItem) => {
 
             {filteredNews.length === 0 && (
               <div className="text-center py-20">
-                <p className="text-xl text-gray-600 dark:text-gray-400">No news found matching your search.</p>
+                <p className="text-xl text-gray-600 dark:text-gray-400">
+                  {newsError || 'No news found matching your search.'}
+                </p>
               </div>
             )}
           </div>

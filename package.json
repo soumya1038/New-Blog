@@ -3,14 +3,19 @@
   "version": "1.1.14",
   "private": true,
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "backend",
+    "redirect"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "dev": "npm --prefix backend run dev",
+    "build": "npm --prefix redirect run build",
+    "backend:start": "npm --prefix backend start",
+    "backend:dev": "npm --prefix backend run dev",
+    "frontend:start": "npm --prefix redirect start",
+    "frontend:build": "npm --prefix redirect run build",
+    "scan:secrets": "node scripts/scan-tracked-secrets.js",
+    "lint": "npm --prefix backend run lint --if-present && npm --prefix redirect run lint --if-present",
+    "test": "npm --prefix backend test --if-present && npm --prefix redirect test -- --watchAll=false",
     "test:help": "npm --prefix redirect run test:help --",
     "clean": "npm run clean --workspaces --if-present",
     "help:accessibility-environment": "node scripts/report-help-accessibility-environment.js",
@@ -52,15 +57,17 @@
     "version:release": "node scripts/bump-push-version.js --include-overall --require-main --promote-minor"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^6.21.0",
-    "@typescript-eslint/parser": "^6.21.0",
+    "@typescript-eslint/eslint-plugin": "^8.64.0",
+    "@typescript-eslint/parser": "^8.64.0",
+    "ajv": "^8.20.0",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
     "prettier": "^3.2.5",
     "turbo": "^1.12.4",
     "typescript": "^5.3.3"
   },
-  "dependencies": {
-    "docker": "^1.0.0"
+  "overrides": {
+    "underscore": "1.13.8",
+    "websocket-driver": "0.7.5"
   }
 }

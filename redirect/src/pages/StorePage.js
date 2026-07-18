@@ -7,6 +7,7 @@ import { AuthContext }      from '../context/AuthContext';
 import ProductCard          from '../components/ProductCard';
 import SellerBadge          from '../components/SellerBadge';
 import StarRating           from '../components/StarRating';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const getComparableId = (value) => {
   if (!value) return '';
@@ -50,7 +51,20 @@ const StorePage = () => {
     </div>
   );
 
-  const social = settings?.socialLinks || {};
+  const rawSocial = settings?.socialLinks || {};
+  const social = {
+    instagram: getSafeHttpUrl(rawSocial.instagram, { allowBareDomain: true }),
+    twitter: getSafeHttpUrl(rawSocial.twitter, { allowBareDomain: true }),
+    website: getSafeHttpUrl(rawSocial.website, { allowBareDomain: true }),
+    youtube: getSafeHttpUrl(rawSocial.youtube, { allowBareDomain: true }),
+  };
+  const safeBannerImage = getSafeImageUrl(settings?.bannerImage);
+  const safeSellerProfileImage = getSafeImageUrl(seller.profileImage);
+  const bannerBackgroundStyle = safeBannerImage ? {
+    backgroundImage: `url("${safeBannerImage}")`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  } : {};
   const featured = settings?.featuredProducts || [];
   const nonFeatured = products.filter(p => !featured.some(f => (f._id || f) === p._id));
   const totalSales  = products.reduce((s, p) => s + (p.stats?.sales || 0), 0);
@@ -101,11 +115,7 @@ const StorePage = () => {
       {/* ── Banner ────────────────────────────────────────────────────────────── */}
       <div
         className="lekhon-store-hero relative h-40 sm:h-56 w-full bg-gradient-to-br from-emerald-900 to-amber-700 overflow-hidden"
-        style={settings?.bannerImage ? {
-          backgroundImage: `url(${settings.bannerImage})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        } : {}}
+        style={bannerBackgroundStyle}
       >
         <div className="absolute inset-0 bg-black/30" />
         {isStoreOwner && (
@@ -125,7 +135,7 @@ const StorePage = () => {
                 className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/25 bg-black/45 px-4 text-sm font-bold text-white shadow-lg backdrop-blur-md transition hover:bg-black/60 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {bannerUploading ? <FaSpinner className="animate-spin" /> : <FaImage />}
-                {settings?.bannerImage ? 'Change banner' : 'Add banner'}
+                {safeBannerImage ? 'Change banner' : 'Add banner'}
               </button>
               <button
                 type="button"
@@ -161,9 +171,10 @@ const StorePage = () => {
       <div className="lekhon-store-shell max-w-5xl mx-auto px-4">
         <div className="lekhon-store-profile relative -mt-12 flex flex-col sm:flex-row items-start sm:items-end gap-4 pb-5 border-b border-[var(--border-color)]">
           <img
-            src={seller.profileImage || ''}
+            src={safeSellerProfileImage || ''}
             alt={seller.name}
             className="w-24 h-24 rounded-2xl object-cover border-4 border-[var(--bg-primary)] bg-[var(--bg-secondary)] shadow-lg"
+            referrerPolicy="no-referrer"
           />
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2">

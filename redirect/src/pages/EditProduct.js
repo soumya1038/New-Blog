@@ -3,6 +3,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useTranslation }   from 'react-i18next';
 import { AuthContext }      from '../context/AuthContext';
 import api                  from '../services/api';
+import { getSafeImageUrl }  from '../utils/safeMediaUrls';
 import {
   FaUpload, FaTimes, FaImage, FaFilePdf,
   FaBoxOpen, FaCheckCircle, FaLink, FaWrench, FaSave,
@@ -17,6 +18,12 @@ const inputCls  = "w-full px-3 py-2.5 text-sm rounded-xl border border-[var(--bo
 const sectionCls= "p-5 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] space-y-4";
 const BADGE_OPTIONS = ['Bestseller', 'New', 'Limited Edition', 'Top Rated', 'Staff Pick'];
 const MAX_PRODUCT_IMAGE_SIZE_BYTES = 4 * 1024 * 1024;
+
+const getSafeProductImageUrl = (image) => {
+  const preview = String(image?.preview || '');
+  if (preview.startsWith('blob:')) return preview;
+  return getSafeImageUrl(preview || image?.url);
+};
 
 const InputField = ({ label, required, children, hint }) => (
   <div>
@@ -266,15 +273,24 @@ const EditProduct = () => {
           <h2 className="font-bold text-[var(--text-primary)]">Images</h2>
           <p className="text-xs text-[var(--text-muted)]">Existing images shown. Add new ones up to 4MB each or remove to update.</p>
           <div className="grid grid-cols-4 gap-3">
-            {images.map((img, idx) => (
-              <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-[var(--border-color)] group">
-                <img src={img.preview || img.url} alt="" className="w-full h-full object-cover" />
-                {idx === 0 && <span className="absolute top-1 left-1 text-[9px] bg-violet-600 text-white px-1.5 py-0.5 rounded font-semibold">Cover</span>}
-                <button onClick={() => removeImage(idx)} className="absolute top-1 right-1 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                  <FaTimes size={8} />
-                </button>
-              </div>
-            ))}
+            {images.map((img, idx) => {
+              const safeImage = getSafeProductImageUrl(img);
+              return (
+                <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-[var(--border-color)] group">
+                  {safeImage ? (
+                    <img src={safeImage} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)] bg-[var(--bg-secondary)]">
+                      <FaImage size={20} />
+                    </div>
+                  )}
+                  {idx === 0 && <span className="absolute top-1 left-1 text-[9px] bg-violet-600 text-white px-1.5 py-0.5 rounded font-semibold">Cover</span>}
+                  <button onClick={() => removeImage(idx)} className="absolute top-1 right-1 p-1 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                    <FaTimes size={8} />
+                  </button>
+                </div>
+              );
+            })}
             {images.length < 8 && (
               <button onClick={() => fileRef.current?.click()}
                 className="aspect-square rounded-xl border-2 border-dashed border-[var(--border-color)] flex flex-col items-center justify-center gap-1.5 text-[var(--text-muted)] hover:border-violet-400 hover:text-violet-500 transition-colors">

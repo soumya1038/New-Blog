@@ -7,6 +7,7 @@ const commentSchema = new mongoose.Schema({
   article: { type: mongoose.Schema.Types.ObjectId, ref: 'Article' },
   short: { type: mongoose.Schema.Types.ObjectId, ref: 'Short' },
   parentComment: { type: mongoose.Schema.Types.ObjectId, ref: 'Comment' },
+  depth: { type: Number, default: 0, min: 0, select: false },
   replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   dislikes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
@@ -30,5 +31,6 @@ commentSchema.index({ blog: 1, parentComment: 1, createdAt: -1 });
 commentSchema.index({ article: 1, parentComment: 1, createdAt: -1 });
 commentSchema.index({ short: 1, parentComment: 1, createdAt: -1 });
 commentSchema.index({ parentComment: 1, createdAt: 1, _id: 1 });
+commentSchema.index({ createdAt: -1 });
 
 module.exports = mongoose.model('Comment', commentSchema);

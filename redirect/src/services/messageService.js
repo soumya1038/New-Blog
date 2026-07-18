@@ -1,12 +1,12 @@
 import axios from 'axios';
+import { getAuthToken } from '../utils/authSession';
+import { buildApiUrl } from '../utils/apiBaseUrl';
 
-const API_URL = process.env.REACT_APP_API_URL
-  ? `${process.env.REACT_APP_API_URL.replace(/\/$/, '')}/api/messages`
-  : 'http://localhost:5000/api/messages';
+const API_URL = buildApiUrl('/api/messages');
 
 const getAuthHeader = () => {
-  const token = localStorage.getItem('token');
-  return { Authorization: `Bearer ${token}` };
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
 export const sendMessage = async (receiverId, content) => {

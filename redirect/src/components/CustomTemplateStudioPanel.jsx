@@ -1286,7 +1286,7 @@ const CustomTemplateStudioPanel = ({
                 onClick={copyDesktopToActiveDevice}
                 className="rounded-md border border-cyan-400/60 bg-cyan-500/10 px-2 py-1 text-[10px] text-cyan-100 hover:bg-cyan-500/20"
               >
-                Copy Desktop -> {activeDevice}
+                Copy Desktop {'->'} {activeDevice}
               </button>
             )}
           </div>

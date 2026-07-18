@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FaExternalLinkAlt, FaMapMarkerAlt, FaTimes } from 'react-icons/fa';
 import { MdStorefront } from 'react-icons/md';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const clampPercent = (value, fallback = 50) => {
   const parsed = Number(value);
@@ -14,10 +15,16 @@ const productKeyForMarketplace = (product) =>
 const productKeyForExternal = (link, index) =>
   `external:${link?.url || link?.title || index}`;
 
+const getSafeEditorImageUrl = (value) => {
+  const raw = String(value || '').trim();
+  if (/^blob:(?:https?:\/\/|null\/)[^\s"'<>\\]+$/i.test(raw)) return raw;
+  return getSafeImageUrl(raw);
+};
+
 const normalizeImageSources = ({ coverImage, galleryImages }) => [
   coverImage,
   ...(Array.isArray(galleryImages) ? galleryImages : []),
-].map((url) => String(url || '').trim()).filter(Boolean);
+].map(getSafeEditorImageUrl).filter(Boolean);
 
 const ProductTagPlacementEditor = ({
   coverImage,
@@ -39,7 +46,7 @@ const ProductTagPlacementEditor = ({
         key: productKeyForMarketplace(product),
         source: 'marketplace',
         title: product.title || 'Marketplace product',
-        image: product.transparentThumbnail || product.thumbnail || '',
+        image: getSafeImageUrl(product.transparentThumbnail || product.thumbnail),
         meta: product.isFree ? 'Free' : product.price !== undefined && product.price !== null ? `INR ${Number(product.price).toLocaleString('en-IN')}` : 'Marketplace product',
       }))
       .filter(option => option.key !== 'product:');
@@ -50,7 +57,7 @@ const ProductTagPlacementEditor = ({
         key: productKeyForExternal(link, index),
         source: 'external',
         title: link.title || 'External product',
-        image: link.thumbnail || '',
+        image: getSafeImageUrl(link.thumbnail),
         meta: link.priceLabel || link.platform || 'External product',
       }));
 
@@ -171,7 +178,7 @@ const ProductTagPlacementEditor = ({
             className="relative overflow-hidden rounded-xl border border-[var(--border-default)] bg-[var(--surface-elevated)] cursor-crosshair"
             aria-label="Click image to place selected product"
           >
-            <img src={activeImage} alt="Selected article visual" className="h-72 w-full object-cover" />
+            <img src={activeImage} alt="Selected article visual" className="h-72 w-full object-cover" referrerPolicy="no-referrer" />
             {activeImagePlacements.map((placement) => {
               const product = productOptions.find(option => option.key === placement.productKey);
               if (!product) return null;
@@ -203,7 +210,7 @@ const ProductTagPlacementEditor = ({
                 }`}
                 aria-label={`Select image ${index + 1}`}
               >
-                <img src={url} alt="" className="h-full w-full object-cover" />
+                <img src={url} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
               </button>
             ))}
           </div>
@@ -227,7 +234,7 @@ const ProductTagPlacementEditor = ({
                 }`}
               >
                 {product.image ? (
-                  <img src={product.image} alt="" className="h-10 w-10 rounded-lg object-cover bg-[var(--surface-elevated)]" />
+                  <img src={product.image} alt="" className="h-10 w-10 rounded-lg object-cover bg-[var(--surface-elevated)]" referrerPolicy="no-referrer" />
                 ) : (
                   <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-elevated)] text-[var(--text-muted)]">
                     {product.source === 'external' ? <FaExternalLinkAlt /> : <MdStorefront />}

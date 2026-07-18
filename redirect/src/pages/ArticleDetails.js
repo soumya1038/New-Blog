@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import ReactMarkdown from 'react-markdown';
 import api from '../services/api';
 import socketService from '../services/socket';
 import { AuthContext } from '../context/AuthContext';
+import SafeMarkdown from '../components/SafeMarkdown';
 import {
   FaArrowLeft,
   FaComment,
@@ -49,11 +49,25 @@ import { bumpReplyCount, removeCommentFromReplyMap, updateCommentsById, updateRe
 import TwoFactorVerificationModal from '../components/TwoFactorVerificationModal';
 import SensitiveActionAuthModal from '../components/SensitiveActionAuthModal';
 import {
+  getSavedUserKey,
+  isSavedContentMeta,
+  removeSavedContentMeta,
+  saveSavedContentMeta,
+} from '../utils/savedItemsStorage';
+import {
   buildSensitiveActionHeaders,
   getTwoFactorRequirement,
   requestAuthenticatedTwoFactorChallenge,
   verifyAuthenticatedTwoFactorChallenge,
 } from '../utils/twoFactorFlow';
+import {
+  SAFE_EMBED_IFRAME_ALLOW,
+  SAFE_EMBED_IFRAME_SANDBOX,
+  SAFE_EMBED_REFERRER_POLICY,
+  getSafeHttpUrl,
+  getSafeDirectVideoUrl,
+  getSafeVideoRenderInfo,
+} from '../utils/safeMediaUrls';
 
 const formatArticleDate = (value) => {
   if (!value) return 'Draft';
@@ -165,44 +179,7 @@ const normalizeArticleVideoUrls = (article) => {
     });
 };
 
-const getYouTubeId = (url) => {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.includes('youtu.be')) {
-      return parsed.pathname.split('/').filter(Boolean)[0] || '';
-    }
-    if (parsed.hostname.includes('youtube.com')) {
-      if (parsed.pathname.startsWith('/embed/')) return parsed.pathname.split('/')[2] || '';
-      if (parsed.pathname.startsWith('/shorts/')) return parsed.pathname.split('/')[2] || '';
-      return parsed.searchParams.get('v') || '';
-    }
-  } catch {
-    return '';
-  }
-  return '';
-};
-
-const getVideoEmbedUrl = (url) => {
-  const trimmedUrl = String(url || '').trim();
-  if (!trimmedUrl) return '';
-
-  const youtubeId = getYouTubeId(trimmedUrl);
-  if (youtubeId) return `https://www.youtube.com/embed/${youtubeId}`;
-
-  try {
-    const parsed = new URL(trimmedUrl);
-    if (parsed.hostname.includes('vimeo.com')) {
-      const videoId = parsed.pathname.split('/').filter(Boolean).find(part => /^\d+$/.test(part));
-      if (videoId) return `https://player.vimeo.com/video/${videoId}`;
-    }
-  } catch {
-    return trimmedUrl;
-  }
-
-  return trimmedUrl;
-};
-
-const isDirectVideoUrl = (url) => /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(String(url || ''));
+const isDirectVideoUrl = (url) => Boolean(getSafeDirectVideoUrl(url));
 
 const normalizeArticleGalleryMedia = (article, fallbackImage) => [
   ...normalizeArticleImages(article, fallbackImage).map((src, index) => ({
@@ -210,12 +187,19 @@ const normalizeArticleGalleryMedia = (article, fallbackImage) => [
     type: 'image',
     src,
   })),
-  ...normalizeArticleVideoUrls(article).map((src, index) => ({
-    id: `video-${index}-${src}`,
-    type: 'video',
-    src,
-    embedSrc: getVideoEmbedUrl(src),
-  })),
+  ...normalizeArticleVideoUrls(article)
+    .map((src, index) => {
+      const renderInfo = getSafeVideoRenderInfo(src);
+      if (!renderInfo) return null;
+
+      return {
+        id: `video-${index}-${renderInfo.src}`,
+        type: 'video',
+        src: renderInfo.src,
+        embedSrc: renderInfo.type === 'embed' ? renderInfo.src : '',
+      };
+    })
+    .filter(Boolean),
 ];
 
 const normalizeArticleProductTags = (article) => {
@@ -240,15 +224,20 @@ const normalizeArticleProductTags = (article) => {
 
   const externalTags = (Array.isArray(article?.externalProductLinks) ? article.externalProductLinks : [])
     .filter(link => link && typeof link === 'object' && link.url)
-    .map((link, index) => ({
-      key: getExternalProductKey(link, index),
-      source: 'external',
-      title: link.title || 'External product',
-      image: link.thumbnail || '/image/lekhon_url.png',
-      meta: link.priceLabel || link.platform || 'External',
-      href: link.url,
-      external: true,
-    }));
+    .map((link, index) => {
+      const href = getSafeHttpUrl(link.url);
+      if (!href) return null;
+      return {
+        key: getExternalProductKey(link, index),
+        source: 'external',
+        title: link.title || 'External product',
+        image: getSafeHttpUrl(link.thumbnail) || '/image/lekhon_url.png',
+        meta: link.priceLabel || link.platform || 'External',
+        href,
+        external: true,
+      };
+    })
+    .filter(Boolean);
 
   return [...productMap.values(), ...externalTags];
 };
@@ -552,9 +541,12 @@ const ArticleGalleryDock = ({
                   />
                 ) : (
                   <iframe
-                    src={activeMedia.embedSrc || activeMedia.src}
+                    src={activeMedia.embedSrc}
                     title={`${title} video ${activeIndex + 1}`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allow={SAFE_EMBED_IFRAME_ALLOW}
+                    sandbox={SAFE_EMBED_IFRAME_SANDBOX}
+                    referrerPolicy={SAFE_EMBED_REFERRER_POLICY}
+                    loading="lazy"
                     allowFullScreen
                   />
                 )}
@@ -678,9 +670,12 @@ const ArticleGalleryDock = ({
                   <video src={lightboxMedia.src} controls playsInline autoPlay />
                 ) : (
                   <iframe
-                    src={lightboxMedia.embedSrc || lightboxMedia.src}
+                    src={lightboxMedia.embedSrc}
                     title={`${title} video ${lightboxIndex + 1}`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allow={SAFE_EMBED_IFRAME_ALLOW}
+                    sandbox={SAFE_EMBED_IFRAME_SANDBOX}
+                    referrerPolicy={SAFE_EMBED_REFERRER_POLICY}
+                    loading="lazy"
                     allowFullScreen
                   />
                 )}
@@ -963,8 +958,11 @@ const ArticleDetails = () => {
 
   useEffect(() => {
     if (!contentId) return;
-    const key = `lekhon:saved-article:${user?._id || 'guest'}:${contentId}`;
-    setSavedArticle(localStorage.getItem(key) === '1');
+    setSavedArticle(isSavedContentMeta({
+      type: 'article',
+      userKey: getSavedUserKey(user),
+      id: contentId,
+    }));
   }, [contentId, user?._id]);
 
   useEffect(() => {
@@ -1061,11 +1059,10 @@ const ArticleDetails = () => {
   const fetchComments = async () => {
     try {
       const { data } = await api.get(`/comments/${contentId}?isArticle=true`);
-      const commentsWithReplies = await Promise.all(data.comments.map(async (comment) => {
-        const replyCount = await api.get(`/comments/${comment._id}/replies`).then(res => res.data.replies.length).catch(() => 0);
-        return { ...comment, replyCount };
-      }));
-      setComments(commentsWithReplies);
+      setComments((data.comments || []).map((comment) => ({
+        ...comment,
+        replyCount: comment.replyCount || 0
+      })));
     } catch (error) {
       console.error('Error fetching comments:', error);
     }
@@ -1131,14 +1128,22 @@ const ArticleDetails = () => {
 
   const handleSaveArticle = () => {
     if (!contentId) return;
-    const key = `lekhon:saved-article:${user?._id || 'guest'}:${contentId}`;
+    const savedUserKey = getSavedUserKey(user);
     const nextSaved = !savedArticle;
     setSavedArticle(nextSaved);
     if (nextSaved) {
-      localStorage.setItem(key, '1');
+      saveSavedContentMeta({
+        type: 'article',
+        userKey: savedUserKey,
+        id: contentId,
+        title: article?.title || 'Saved article',
+        image: article?.coverImage || article?.image || article?.featuredImage || '',
+        subtitle: article?.author?.username || article?.author?.fullName || '',
+        path: `/article/${article?.slug || contentId}`,
+      });
       toast.success('Article saved to your reading list.');
     } else {
-      localStorage.removeItem(key);
+      removeSavedContentMeta({ type: 'article', userKey: savedUserKey, id: contentId });
       toast.success('Article removed from saved items.');
     }
   };
@@ -1422,25 +1427,25 @@ const ArticleDetails = () => {
       key: 'facebook',
       name: 'Facebook',
       icon: <FaFacebook />,
-      action: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
+      action: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer')
     },
     {
       key: 'twitter',
       name: 'Twitter',
       icon: <FaXTwitter />,
-      action: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')
+      action: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank', 'noopener,noreferrer')
     },
     {
       key: 'linkedin',
       name: 'LinkedIn',
       icon: <FaLinkedin />,
-      action: () => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank')
+      action: () => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer')
     },
     {
       key: 'whatsapp',
       name: 'WhatsApp',
       icon: <FaWhatsapp />,
-      action: () => window.open(`https://wa.me/?text=${encodeURIComponent(shareTitle + ' ' + shareUrl)}`, '_blank')
+      action: () => window.open(`https://wa.me/?text=${encodeURIComponent(shareTitle + ' ' + shareUrl)}`, '_blank', 'noopener,noreferrer')
     },
     {
       key: 'email',
@@ -1756,7 +1761,7 @@ const ArticleDetails = () => {
 
             <section className="article-editorial-body">
               {articleLead && <p className="article-editorial-lead">{articleLead}</p>}
-              {articleRest && <ReactMarkdown>{articleRest}</ReactMarkdown>}
+              {articleRest && <SafeMarkdown>{articleRest}</SafeMarkdown>}
             </section>
 
             <aside className="article-editorial-author-panel" aria-label={t('About the Author')}>

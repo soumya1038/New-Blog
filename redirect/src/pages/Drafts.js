@@ -63,7 +63,7 @@ const Drafts = () => {
       setRefreshing(true);
       
       // Single API call for all drafts
-      const { data } = await api.get('/drafts');
+      const { data } = await api.get('/drafts?limit=100');
       
       if (data.success) {
         setDrafts(data.drafts || []);

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaStar, FaRegStar, FaStarHalfAlt } from 'react-icons/fa';
+import { FaStar, FaRegStar } from 'react-icons/fa';
 
 // Display-only:  <StarRating value={4.5} count={23} />
 // Interactive:   <StarRating value={rating} onChange={setRating} interactive />
@@ -15,20 +15,27 @@ const StarRating = ({
   const display = interactive ? (hovered || value) : value;
 
   const renderStar = (i) => {
-    const filled = display >= i;
-    const half   = !filled && display >= i - 0.5;
-    const Icon   = filled ? FaStar : half ? FaStarHalfAlt : FaRegStar;
-    const color  = filled || half ? 'text-amber-400' : 'text-gray-300 dark:text-gray-600';
+    const fillPercent = Math.max(0, Math.min(100, (display - (i - 1)) * 100));
 
     return (
       <span
         key={i}
-        className={`${color} ${interactive ? 'cursor-pointer transition-colors' : ''}`}
+        className={`relative inline-block text-gray-300 dark:text-gray-600 ${interactive ? 'cursor-pointer transition-colors' : ''}`}
+        style={{ width: size, height: size, lineHeight: 0 }}
         onMouseEnter={() => interactive && setHovered(i)}
         onMouseLeave={() => interactive && setHovered(0)}
         onClick={()     => interactive && onChange && onChange(i)}
       >
-        <Icon size={size} />
+        <FaRegStar size={size} />
+        {fillPercent > 0 && (
+          <span
+            className="absolute inset-0 overflow-hidden text-amber-400"
+            style={{ width: `${fillPercent}%` }}
+            aria-hidden="true"
+          >
+            <FaStar size={size} />
+          </span>
+        )}
       </span>
     );
   };

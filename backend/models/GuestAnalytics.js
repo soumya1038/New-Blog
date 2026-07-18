@@ -2,7 +2,8 @@ const mongoose = require('mongoose');
 
 const guestAnalyticsSchema = new mongoose.Schema({
   sessionId: { type: String, required: true, index: true },
-  ipAddress: { type: String, required: true },
+  ipHash: { type: String, index: true },
+  ipAddress: { type: String, select: false }, // legacy raw IP field; new writes store ipHash instead
   userAgent: String,
   pages: [{
     path: String,
@@ -20,6 +21,8 @@ const guestAnalyticsSchema = new mongoose.Schema({
 
 // Index for efficient queries
 guestAnalyticsSchema.index({ createdAt: 1 });
-guestAnalyticsSchema.index({ sessionId: 1, ipAddress: 1 });
+guestAnalyticsSchema.index({ createdAt: -1, ipHash: 1 });
+guestAnalyticsSchema.index({ 'pages.timestamp': 1 });
+guestAnalyticsSchema.index({ sessionId: 1, ipHash: 1 });
 
 module.exports = mongoose.model('GuestAnalytics', guestAnalyticsSchema);

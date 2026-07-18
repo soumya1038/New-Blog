@@ -22,15 +22,20 @@ import Achievements from '../components/Achievements';
 import QRCodeModal from '../components/QRCodeModal';
 import StatusViewer from '../components/StatusViewer';
 import TwoFactorVerificationModal from '../components/TwoFactorVerificationModal';
+import SensitiveActionAuthModal from '../components/SensitiveActionAuthModal';
+import SavedItemsModal from '../components/SavedItemsModal';
 import { getOAuthRedirectUri } from '../utils/oauthRedirects';
 import { isNativeApp } from '../utils/nativeApp';
 import {
+  buildSensitiveActionHeaders,
   buildTwoFactorHeaders,
+  getSensitiveActionRequirement,
   getTwoFactorRequirement,
   requestAuthenticatedTwoFactorChallenge,
   verifyAuthenticatedTwoFactorChallenge,
 } from '../utils/twoFactorFlow';
 import useCompactProfileLayout from '../hooks/useCompactProfileLayout';
+import useSavedItemsLibrary from '../hooks/useSavedItemsLibrary';
 import ProfileOverviewMobile from './ProfileOverviewMobile';
 
 const STORY_STYLE_PRESETS = [
@@ -131,6 +136,9 @@ const STORY_MUSIC_PRESETS = [
   },
 ];
 
+const getProfileArray = (value) => (Array.isArray(value) ? value : []);
+const getProfileWishlistItems = (data = {}) => getProfileArray(data.products || data.items || data.wishlist);
+
 const PROFILE_SECTION_ICON_CLASS = 'flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-[var(--border-default)] bg-[var(--background-secondary)] text-[var(--brand-primary)]';
 
 const clampStatusStickerSize = (value) => {
@@ -212,6 +220,7 @@ export const ProfileLegacy = () => {
   const [blogs, setBlogs] = useState([]);
   const [articles, setArticles] = useState([]);
   const [shorts, setShorts] = useState([]);
+  const [wishlist, setWishlist] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [heatmapYear, setHeatmapYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
@@ -246,6 +255,7 @@ export const ProfileLegacy = () => {
   const [showTwoFactorSetupOptions, setShowTwoFactorSetupOptions] = useState(false);
   const [isTwoFactorExpanded, setIsTwoFactorExpanded] = useState(false);
   const [twoFactorPrompt, setTwoFactorPrompt] = useState(null);
+  const [sensitiveAuthPrompt, setSensitiveAuthPrompt] = useState(null);
   const [showApiKeyForm, setShowApiKeyForm] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [visibleKeys, setVisibleKeys] = useState({});
@@ -269,6 +279,7 @@ export const ProfileLegacy = () => {
   const [modal, setModal] = useState({ show: false, type: '', title: '', message: '', onConfirm: null });
   const [showQRModal, setShowQRModal] = useState(false);
   const [showProfileShareModal, setShowProfileShareModal] = useState(false);
+  const [showSavedItemsModal, setShowSavedItemsModal] = useState(false);
   const [statuses, setStatuses] = useState([]);
   const [showStatusComposer, setShowStatusComposer] = useState(false);
   const [showStatusViewer, setShowStatusViewer] = useState(false);
@@ -303,6 +314,7 @@ export const ProfileLegacy = () => {
   const [statusStickerTab, setStatusStickerTab] = useState('popular');
   const [recentStatusStickers, setRecentStatusStickers] = useState([]);
   const [statusVideoDurationSec, setStatusVideoDurationSec] = useState(0);
+  const savedLibrary = useSavedItemsLibrary({ user, wishlist, blogs, articles, shorts });
 
   // Fetch data
   useEffect(() => {
@@ -329,20 +341,22 @@ export const ProfileLegacy = () => {
           api.get(`/blogs?author=${user._id}`),
           api.get(`/articles?author=${user._id}`),
           api.get(`/shorts?author=${user._id}`),
+          api.get('/marketplace/wishlist'),
           api.get('/users/2fa/status')
         ]);
         if (!isMounted) return;
 
-        const [keysRes, blogsRes, articlesRes, shortsRes, twoFactorRes] = optionalRequests;
+        const [keysRes, blogsRes, articlesRes, shortsRes, wishlistRes, twoFactorRes] = optionalRequests;
         if (keysRes.status === 'fulfilled') setApiKeys(keysRes.value.data.apiKeys || []);
         if (blogsRes.status === 'fulfilled') setBlogs(blogsRes.value.data.blogs || []);
         if (articlesRes.status === 'fulfilled') setArticles(articlesRes.value.data.articles || []);
         if (shortsRes.status === 'fulfilled') setShorts(shortsRes.value.data.shorts || []);
+        if (wishlistRes.status === 'fulfilled') setWishlist(getProfileWishlistItems(wishlistRes.value.data));
         if (twoFactorRes.status === 'fulfilled') setTwoFactorStatus(twoFactorRes.value.data.twoFactor || null);
 
         optionalRequests.forEach((result, index) => {
           if (result.status === 'rejected') {
-            const labels = ['api keys', 'blogs', 'articles', 'shorts', 'two-factor status'];
+            const labels = ['api keys', 'blogs', 'articles', 'shorts', 'wishlist', 'two-factor status'];
             console.warn(`Unable to load profile ${labels[index]}`, result.reason);
           }
         });
@@ -1218,10 +1232,55 @@ export const ProfileLegacy = () => {
     });
   };
 
-  const completeProfileUpdate = async (twoFactorToken) => {
-    const payload = twoFactorToken ? { ...profile, twoFactorToken } : profile;
+  const openSensitiveAuthPrompt = ({ requirement, onVerified, title, description }) => {
+    setSensitiveAuthPrompt({
+      action: requirement.action,
+      actionLabel: requirement.actionLabel,
+      title,
+      description,
+      onVerified,
+    });
+  };
+
+  const handleSensitiveAuthVerified = async (result) => {
+    const prompt = sensitiveAuthPrompt;
+    setSensitiveAuthPrompt(null);
+    if (!prompt?.onVerified) return;
+    await prompt.onVerified(result);
+  };
+
+  const handleSensitiveAuthForgotPassword = () => {
+    setSensitiveAuthPrompt(null);
+    navigate('/profile?forgotPassword=1');
+  };
+
+  const runAfterSensitiveAuth = ({ result, fallbackAction, fallbackActionLabel, runWithTokens }) => {
+    const sensitiveActionToken = result?.sensitiveActionToken || '';
+    if (result?.requiresTwoFactor) {
+      openTwoFactorPrompt({
+        requirement: {
+          action: result.action || fallbackAction,
+          actionLabel: result.actionLabel || fallbackActionLabel,
+          twoFactor: result.twoFactor,
+        },
+        onVerified: async (twoFactorToken) => runWithTokens({ sensitiveActionToken, twoFactorToken }),
+      });
+      return;
+    }
+
+    return runWithTokens({ sensitiveActionToken });
+  };
+
+  const completeProfileUpdate = async (actionTokens = {}) => {
+    const twoFactorToken = typeof actionTokens === 'string' ? actionTokens : actionTokens.twoFactorToken || '';
+    const sensitiveActionToken = typeof actionTokens === 'object' ? actionTokens.sensitiveActionToken || '' : '';
+    const payload = {
+      ...profile,
+      ...(twoFactorToken ? { twoFactorToken } : {}),
+      ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+    };
     const { data } = await api.put('/users/profile', payload, {
-      headers: buildTwoFactorHeaders(twoFactorToken),
+      headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
     });
     if (data?.user) {
       setProfile(data.user);
@@ -1238,11 +1297,26 @@ export const ProfileLegacy = () => {
     try {
       await completeProfileUpdate();
     } catch (error) {
+      const passwordRequirement = getSensitiveActionRequirement(error);
+      if (passwordRequirement) {
+        openSensitiveAuthPrompt({
+          requirement: passwordRequirement,
+          title: 'Verify before changing email',
+          description: 'Confirm your password before your account email is changed.',
+          onVerified: async (result) => runAfterSensitiveAuth({
+            result,
+            fallbackAction: 'change_email',
+            fallbackActionLabel: 'change your email',
+            runWithTokens: completeProfileUpdate,
+          }),
+        });
+        return;
+      }
       const requirement = getTwoFactorRequirement(error);
       if (requirement) {
         openTwoFactorPrompt({
           requirement,
-          onVerified: async (token) => completeProfileUpdate(token),
+          onVerified: async (twoFactorToken) => completeProfileUpdate({ twoFactorToken }),
         });
         return;
       }
@@ -1250,12 +1324,16 @@ export const ProfileLegacy = () => {
     }
   };
 
-  const startAuthenticatorSetup = async (twoFactorToken) => {
+  const startAuthenticatorSetup = async (actionTokens = {}) => {
     setTwoFactorLoading(true);
     try {
-      const token = typeof twoFactorToken === 'string' ? twoFactorToken : '';
-      const { data } = await api.post('/users/2fa/authenticator/setup', token ? { twoFactorToken: token } : {}, {
-        headers: buildTwoFactorHeaders(token),
+      const twoFactorToken = typeof actionTokens === 'string' ? actionTokens : actionTokens.twoFactorToken || '';
+      const sensitiveActionToken = typeof actionTokens === 'object' ? actionTokens.sensitiveActionToken || '' : '';
+      const { data } = await api.post('/users/2fa/authenticator/setup', {
+        ...(twoFactorToken ? { twoFactorToken } : {}),
+        ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+      }, {
+        headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
       });
       setAuthenticatorSetup(data);
       if (data.twoFactor) setTwoFactorStatus(data.twoFactor);
@@ -1263,11 +1341,26 @@ export const ProfileLegacy = () => {
       setIsTwoFactorExpanded(true);
       setAuthenticatorCode('');
     } catch (error) {
+      const passwordRequirement = getSensitiveActionRequirement(error);
+      if (passwordRequirement) {
+        openSensitiveAuthPrompt({
+          requirement: passwordRequirement,
+          title: 'Verify before managing 2FA',
+          description: 'Confirm your password before changing two-factor authentication.',
+          onVerified: async (result) => runAfterSensitiveAuth({
+            result,
+            fallbackAction: 'manage_2fa',
+            fallbackActionLabel: 'manage two-factor authentication',
+            runWithTokens: startAuthenticatorSetup,
+          }),
+        });
+        return;
+      }
       const requirement = getTwoFactorRequirement(error);
       if (requirement) {
         openTwoFactorPrompt({
           requirement,
-          onVerified: async (token) => startAuthenticatorSetup(token),
+          onVerified: async (twoFactorToken) => startAuthenticatorSetup({ twoFactorToken }),
         });
         return;
       }
@@ -1296,13 +1389,18 @@ export const ProfileLegacy = () => {
     }
   };
 
-  const submitSmsSetup = async (twoFactorToken) => {
+  const submitSmsSetup = async (actionTokens = {}) => {
     if (!smsPhone.trim()) return;
     setTwoFactorLoading(true);
     try {
-      const token = typeof twoFactorToken === 'string' ? twoFactorToken : '';
-      const { data } = await api.post('/users/2fa/sms/setup', { phone: smsPhone, ...(token ? { twoFactorToken: token } : {}) }, {
-        headers: buildTwoFactorHeaders(token),
+      const twoFactorToken = typeof actionTokens === 'string' ? actionTokens : actionTokens.twoFactorToken || '';
+      const sensitiveActionToken = typeof actionTokens === 'object' ? actionTokens.sensitiveActionToken || '' : '';
+      const { data } = await api.post('/users/2fa/sms/setup', {
+        phone: smsPhone,
+        ...(twoFactorToken ? { twoFactorToken } : {}),
+        ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+      }, {
+        headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
       });
       setSmsSetupChallenge(data.challengeId);
       setShowTwoFactorSetupOptions(true);
@@ -1310,11 +1408,26 @@ export const ProfileLegacy = () => {
       setSmsCode('');
       showModal('success', 'Code Sent', 'SMS verification code sent.');
     } catch (error) {
+      const passwordRequirement = getSensitiveActionRequirement(error);
+      if (passwordRequirement) {
+        openSensitiveAuthPrompt({
+          requirement: passwordRequirement,
+          title: 'Verify before managing 2FA',
+          description: 'Confirm your password before changing two-factor authentication.',
+          onVerified: async (result) => runAfterSensitiveAuth({
+            result,
+            fallbackAction: 'manage_2fa',
+            fallbackActionLabel: 'manage two-factor authentication',
+            runWithTokens: submitSmsSetup,
+          }),
+        });
+        return;
+      }
       const requirement = getTwoFactorRequirement(error);
       if (requirement) {
         openTwoFactorPrompt({
           requirement,
-          onVerified: async (token) => submitSmsSetup(token),
+          onVerified: async (twoFactorToken) => submitSmsSetup({ twoFactorToken }),
         });
         return;
       }
@@ -1367,24 +1480,33 @@ export const ProfileLegacy = () => {
 
   const disableTwoFactor = () => {
     if (!twoFactorStatus?.enabled) return;
-    openTwoFactorPrompt({
+    openSensitiveAuthPrompt({
       requirement: {
         action: 'disable_2fa',
         actionLabel: 'turn off two-factor authentication',
-        twoFactor: twoFactorStatus,
       },
-      onVerified: async (token) => {
-        const { data } = await api.post('/users/2fa/disable', { twoFactorToken: token }, {
-          headers: buildTwoFactorHeaders(token),
-        });
-        setTwoFactorStatus(data.twoFactor);
-        setAuthenticatorSetup(null);
-        setSmsSetupChallenge(null);
-        setShowSmsSetup(false);
-        setShowTwoFactorSetupOptions(false);
-        setIsTwoFactorExpanded(false);
-        showModal('success', 'Success', 'Two-factor authentication turned off.');
-      },
+      title: 'Verify before disabling 2FA',
+      description: 'Confirm your password before two-factor authentication is turned off.',
+      onVerified: async (result) => runAfterSensitiveAuth({
+        result,
+        fallbackAction: 'disable_2fa',
+        fallbackActionLabel: 'turn off two-factor authentication',
+        runWithTokens: async ({ sensitiveActionToken, twoFactorToken }) => {
+          const { data } = await api.post('/users/2fa/disable', {
+            ...(twoFactorToken ? { twoFactorToken } : {}),
+            ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+          }, {
+            headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
+          });
+          setTwoFactorStatus(data.twoFactor);
+          setAuthenticatorSetup(null);
+          setSmsSetupChallenge(null);
+          setShowSmsSetup(false);
+          setShowTwoFactorSetupOptions(false);
+          setIsTwoFactorExpanded(false);
+          showModal('success', 'Success', 'Two-factor authentication turned off.');
+        },
+      }),
     });
   };
 
@@ -1527,12 +1649,19 @@ export const ProfileLegacy = () => {
     }
   };
 
-  const completeGenerateApiKey = async ({ keyName, twoFactorToken = '' }) => {
-    await api.post('/users/api-keys', { name: keyName }, {
-      headers: buildTwoFactorHeaders(twoFactorToken),
+  const completeGenerateApiKey = async ({ keyName, sensitiveActionToken = '', twoFactorToken = '' }) => {
+    const createRes = await api.post('/users/api-keys', {
+      name: keyName,
+      ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+      ...(twoFactorToken ? { twoFactorToken } : {}),
+    }, {
+      headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
     });
     const { data } = await api.get('/users/api-keys');
-    setApiKeys(data.apiKeys);
+    const createdKey = createRes.data?.apiKey;
+    setApiKeys((data.apiKeys || []).map((key) => (
+      createdKey?._id && String(key._id) === String(createdKey._id) ? createdKey : key
+    )));
     setNewKeyName('');
     setShowApiKeyForm(false);
     showModal('success', 'Success', 'API key generated!');
@@ -1545,6 +1674,21 @@ export const ProfileLegacy = () => {
     try {
       await completeGenerateApiKey({ keyName });
     } catch (error) {
+      const passwordRequirement = getSensitiveActionRequirement(error);
+      if (passwordRequirement) {
+        openSensitiveAuthPrompt({
+          requirement: passwordRequirement,
+          title: 'Verify before generating API key',
+          description: 'Confirm your password before a new API credential is created.',
+          onVerified: async (result) => runAfterSensitiveAuth({
+            result,
+            fallbackAction: 'generate_api_key',
+            fallbackActionLabel: 'generate an API key',
+            runWithTokens: async (tokens) => completeGenerateApiKey({ keyName, ...tokens }),
+          }),
+        });
+        return;
+      }
       const requirement = getTwoFactorRequirement(error);
       if (requirement) {
         openTwoFactorPrompt({
@@ -1557,10 +1701,13 @@ export const ProfileLegacy = () => {
     }
   };
 
-  const performRevokeApiKey = async ({ keyId, twoFactorToken = '' }) => {
+  const performRevokeApiKey = async ({ keyId, sensitiveActionToken = '', twoFactorToken = '' }) => {
     await api.delete(`/users/api-keys/${keyId}`, {
-      headers: buildTwoFactorHeaders(twoFactorToken),
-      data: twoFactorToken ? { twoFactorToken } : undefined,
+      headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
+      data: {
+        ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+        ...(twoFactorToken ? { twoFactorToken } : {}),
+      },
     });
     showModal('success', 'Success', 'Key revoked');
     const { data } = await api.get('/users/api-keys');
@@ -1572,6 +1719,21 @@ export const ProfileLegacy = () => {
       try {
         await performRevokeApiKey({ keyId });
       } catch (error) {
+        const passwordRequirement = getSensitiveActionRequirement(error);
+        if (passwordRequirement) {
+          openSensitiveAuthPrompt({
+            requirement: passwordRequirement,
+            title: 'Verify before revoking API key',
+            description: 'Confirm your password before this API credential is revoked.',
+            onVerified: async (result) => runAfterSensitiveAuth({
+              result,
+              fallbackAction: 'revoke_api_key',
+              fallbackActionLabel: 'revoke an API key',
+              runWithTokens: async (tokens) => performRevokeApiKey({ keyId, ...tokens }),
+            }),
+          });
+          return;
+        }
         const requirement = getTwoFactorRequirement(error);
         if (requirement) {
           openTwoFactorPrompt({
@@ -1619,15 +1781,48 @@ export const ProfileLegacy = () => {
     }
   };
 
+  const performDisconnectSocialAccount = async ({ providerKey, sensitiveActionToken = '', twoFactorToken = '' }) => {
+    const { data } = await api.delete(`/users/social/${providerKey}`, {
+      headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
+      data: {
+        ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+        ...(twoFactorToken ? { twoFactorToken } : {}),
+      },
+    });
+    if (data?.user) {
+      setProfile(data.user);
+    }
+    showModal('success', 'Success', 'Connection removed!');
+  };
+
   const disconnectSocialAccount = (providerKey) => {
     showModal('confirm', 'Remove Connection', 'Remove this connected social account?', async () => {
       try {
-        const { data } = await api.delete(`/users/social/${providerKey}`);
-        if (data?.user) {
-          setProfile(data.user);
-        }
-        showModal('success', 'Success', 'Connection removed!');
+        await performDisconnectSocialAccount({ providerKey });
       } catch (error) {
+        const passwordRequirement = getSensitiveActionRequirement(error);
+        if (passwordRequirement) {
+          openSensitiveAuthPrompt({
+            requirement: passwordRequirement,
+            title: 'Verify before disconnecting',
+            description: 'Confirm your password before this social connection is removed.',
+            onVerified: async (result) => runAfterSensitiveAuth({
+              result,
+              fallbackAction: 'disconnect_social',
+              fallbackActionLabel: 'disconnect a social account',
+              runWithTokens: async (tokens) => performDisconnectSocialAccount({ providerKey, ...tokens }),
+            }),
+          });
+          return;
+        }
+        const requirement = getTwoFactorRequirement(error);
+        if (requirement) {
+          openTwoFactorPrompt({
+            requirement,
+            onVerified: async (twoFactorToken) => performDisconnectSocialAccount({ providerKey, twoFactorToken }),
+          });
+          return;
+        }
         showModal('error', 'Error', error.response?.data?.message || 'Failed to remove connection');
       }
     });
@@ -1710,18 +1905,65 @@ export const ProfileLegacy = () => {
     handlePrepareManualSocialLink(provider);
   };
 
+  const updateUsernameWithProof = ({ username, sensitiveActionToken = '', twoFactorToken = '' }) =>
+    api.put('/users/username', {
+      username,
+      ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+      ...(twoFactorToken ? { twoFactorToken } : {}),
+    }, {
+      headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
+    });
+
   const handleUpdateUsername = async (e) => {
     e.preventDefault();
-    if (!newUsername.trim() || newUsername.trim().length < 3) return;
+    const nextUsername = newUsername.trim();
+    if (!nextUsername || nextUsername.length < 3) return;
     setUsernameLoading(true);
     try {
-      const { data } = await api.put('/users/username', { username: newUsername.trim() });
+      const { data } = await updateUsernameWithProof({ username: nextUsername });
       setUser((currentUser) => ({ ...(currentUser || {}), username: data.user.username }));
       setProfile((currentProfile) => ({ ...(currentProfile || {}), username: data.user.username }));
       setShowUsernameModal(false);
       setNewUsername('');
       showModal('success', 'Success', 'Username updated!');
     } catch (error) {
+      const passwordRequirement = getSensitiveActionRequirement(error);
+      if (passwordRequirement) {
+        openSensitiveAuthPrompt({
+          requirement: passwordRequirement,
+          title: 'Verify before changing username',
+          description: 'Confirm your password before your username is changed.',
+          onVerified: async (result) => runAfterSensitiveAuth({
+            result,
+            fallbackAction: 'change_username',
+            fallbackActionLabel: 'change your username',
+            runWithTokens: async (tokens) => {
+              const { data } = await updateUsernameWithProof({ username: nextUsername, ...tokens });
+              setUser((currentUser) => ({ ...(currentUser || {}), username: data.user.username }));
+              setProfile((currentProfile) => ({ ...(currentProfile || {}), username: data.user.username }));
+              setShowUsernameModal(false);
+              setNewUsername('');
+              showModal('success', 'Success', 'Username updated!');
+            },
+          }),
+        });
+        return;
+      }
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        openTwoFactorPrompt({
+          requirement,
+          onVerified: async (twoFactorToken) => {
+            const { data } = await updateUsernameWithProof({ username: nextUsername, twoFactorToken });
+            setUser((currentUser) => ({ ...(currentUser || {}), username: data.user.username }));
+            setProfile((currentProfile) => ({ ...(currentProfile || {}), username: data.user.username }));
+            setShowUsernameModal(false);
+            setNewUsername('');
+            showModal('success', 'Success', 'Username updated!');
+          },
+        });
+        return;
+      }
       showModal('error', 'Error', error.response?.data?.message || 'Failed');
     } finally {
       setUsernameLoading(false);
@@ -2344,7 +2586,14 @@ export const ProfileLegacy = () => {
             <ProfileCompleteness user={user} profile={profile} />
 
             {/* Activity Statistics */}
-            <ActivityStats blogs={blogs} articles={articles} shorts={shorts} user={user} />
+            <ActivityStats
+              blogs={blogs}
+              articles={articles}
+              shorts={shorts}
+              user={user}
+              savedSummary={savedLibrary.summary}
+              onOpenSaved={() => setShowSavedItemsModal(true)}
+            />
 
             {/* Quick Actions - Only on small/medium screens */}
             <div className="lg:hidden">
@@ -2521,11 +2770,11 @@ export const ProfileLegacy = () => {
                         </button>
                       </div>
                       <div className="flex items-center gap-2 bg-[var(--surface-card)] p-2 rounded border border-[var(--border-default)]">
-                        <code className="flex-1 text-sm font-mono overflow-x-auto text-[var(--text-primary)]">{visibleKeys[key._id] ? key.key : '*'.repeat(40)}</code>
+                        <code className="flex-1 text-sm font-mono overflow-x-auto text-[var(--text-primary)]">{visibleKeys[key._id] ? (key.key || key.keyPreview || 'Hidden') : '*'.repeat(40)}</code>
                         <button onClick={(e) => { e.stopPropagation(); setVisibleKeys(prev => ({ ...prev, [key._id]: !prev[key._id] })); }} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1">
                           {visibleKeys[key._id] ? <FaEyeSlash /> : <FaEye />}
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(key.key); showModal('success', 'Success', 'Copied!'); }} className="text-[var(--brand-primary)] hover:opacity-80 p-1">
+                        <button disabled={!key.key} onClick={(e) => { e.stopPropagation(); if (!key.key) return; navigator.clipboard.writeText(key.key); showModal('success', 'Success', 'Copied!'); }} className={`p-1 ${key.key ? 'text-[var(--brand-primary)] hover:opacity-80' : 'cursor-not-allowed text-[var(--text-muted)]'}`}>
                           <FaCopy />
                         </button>
                       </div>
@@ -2992,6 +3241,17 @@ export const ProfileLegacy = () => {
         onClose={() => setTwoFactorPrompt(null)}
       />
 
+      <SensitiveActionAuthModal
+        open={Boolean(sensitiveAuthPrompt)}
+        action={sensitiveAuthPrompt?.action}
+        actionLabel={sensitiveAuthPrompt?.actionLabel}
+        title={sensitiveAuthPrompt?.title}
+        description={sensitiveAuthPrompt?.description}
+        onVerified={handleSensitiveAuthVerified}
+        onForgotPassword={handleSensitiveAuthForgotPassword}
+        onClose={() => setSensitiveAuthPrompt(null)}
+      />
+
       {/* Universal Modal */}
       {modal.show && (
         <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-[60] p-4">
@@ -3130,11 +3390,11 @@ export const ProfileLegacy = () => {
               <button onClick={() => setShowShareModal(false)} className="text-gray-500 hover:text-gray-700"><FaTimes size={24} /></button>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <button onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')} className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg flex flex-col items-center gap-2">
+              <button onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer')} className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg flex flex-col items-center gap-2">
                 <FaFacebookF className="text-2xl" />
                 <span className="text-xs font-semibold">Facebook</span>
               </button>
-              <button onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')} className="bg-black hover:bg-gray-800 text-white p-4 rounded-lg flex flex-col items-center gap-2">
+              <button onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank', 'noopener,noreferrer')} className="bg-black hover:bg-gray-800 text-white p-4 rounded-lg flex flex-col items-center gap-2">
                 <FaXTwitter className="text-2xl" />
                 <span className="text-xs font-semibold">Twitter</span>
               </button>
@@ -3156,11 +3416,11 @@ export const ProfileLegacy = () => {
               <button onClick={() => setShowProfileShareModal(false)} className="text-gray-500 hover:text-gray-700"><FaTimes size={24} /></button>
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <button onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${window.location.origin}/user/${displayUserId}`)}`, '_blank')} className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg flex flex-col items-center gap-2">
+              <button onClick={() => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(`${window.location.origin}/user/${displayUserId}`)}`, '_blank', 'noopener,noreferrer')} className="bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-lg flex flex-col items-center gap-2">
                 <FaFacebookF className="text-2xl" />
                 <span className="text-xs font-semibold">Facebook</span>
               </button>
-              <button onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(`${window.location.origin}/user/${displayUserId}`)}&text=${encodeURIComponent(`Check out ${displayUser.username}'s profile!`)}`, '_blank')} className="bg-black hover:bg-gray-800 text-white p-4 rounded-lg flex flex-col items-center gap-2">
+              <button onClick={() => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(`${window.location.origin}/user/${displayUserId}`)}&text=${encodeURIComponent(`Check out ${displayUser.username}'s profile!`)}`, '_blank', 'noopener,noreferrer')} className="bg-black hover:bg-gray-800 text-white p-4 rounded-lg flex flex-col items-center gap-2">
                 <FaXTwitter className="text-2xl" />
                 <span className="text-xs font-semibold">Twitter</span>
               </button>
@@ -3813,6 +4073,14 @@ export const ProfileLegacy = () => {
           userName={displayUser?.username || t('User')}
         />
       )}
+
+      <SavedItemsModal
+        open={showSavedItemsModal}
+        onClose={() => setShowSavedItemsModal(false)}
+        itemsByType={savedLibrary.itemsByType}
+        summary={savedLibrary.summary}
+        loading={savedLibrary.loading}
+      />
     </div>
   );
 };

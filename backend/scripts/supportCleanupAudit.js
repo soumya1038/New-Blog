@@ -7,6 +7,8 @@ dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 const SupportRequest = require('../models/SupportRequest');
 
 const args = process.argv.slice(2);
+const VALID_TYPES = new Set(['support', 'report', 'appeal']);
+const VALID_STATUSES = new Set(['open', 'reviewing', 'waiting_for_user', 'resolved', 'closed']);
 
 const hasFlag = (flag) => args.includes(flag);
 
@@ -23,6 +25,8 @@ const toPositiveInt = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 };
+
+const QUERY_MAX_TIME_MS = toPositiveInt(process.env.SUPPORT_QUERY_MAX_TIME_MS, 5000);
 
 const escapeRegExp = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -51,11 +55,8 @@ const buildQuery = ({ prefix, type, statuses, olderThanHours }) => {
     query.type = type;
   }
 
-  const validStatuses = statuses.filter((status) =>
-    ['open', 'reviewing', 'waiting_for_user', 'resolved', 'closed'].includes(status)
-  );
-  if (validStatuses.length > 0) {
-    query.status = { $in: validStatuses };
+  if (statuses.length > 0) {
+    query.status = { $in: statuses };
   }
 
   if (olderThanHours > 0) {
@@ -114,11 +115,17 @@ const closeRecords = async ({ records, owner, reason }) => {
       reason || 'Closed after release verification cleanup.'
     }`;
     const existingNotes = String(record.adminNotes || '').trim();
-    record.status = 'closed';
-    record.resolvedAt = now;
-    record.adminNotes = [existingNotes, note].filter(Boolean).join('\n').slice(-5000);
-    await record.save();
-    updated += 1;
+    const result = await SupportRequest.updateOne(
+      { _id: record._id },
+      {
+        $set: {
+          status: 'closed',
+          resolvedAt: now,
+          adminNotes: [existingNotes, note].filter(Boolean).join('\n').slice(-5000),
+        },
+      }
+    ).maxTimeMS(QUERY_MAX_TIME_MS);
+    updated += result.modifiedCount || 0;
   }
 
   return updated;
@@ -127,7 +134,8 @@ const closeRecords = async ({ records, owner, reason }) => {
 const deleteRecords = async (records) => {
   const ids = records.map((record) => record._id);
   if (ids.length === 0) return 0;
-  const result = await SupportRequest.deleteMany({ _id: { $in: ids } });
+  const result = await SupportRequest.deleteMany({ _id: { $in: ids } })
+    .maxTimeMS(QUERY_MAX_TIME_MS);
   return result.deletedCount || 0;
 };
 
@@ -171,6 +179,15 @@ const run = async () => {
     throw new Error('--mode must be list, close, or delete.');
   }
 
+  if (type && !VALID_TYPES.has(type)) {
+    throw new Error('--type must be support, report, or appeal.');
+  }
+
+  const invalidStatuses = statuses.filter((status) => !VALID_STATUSES.has(status));
+  if (invalidStatuses.length > 0) {
+    throw new Error(`Invalid --status value(s): ${invalidStatuses.join(', ')}.`);
+  }
+
   if (mode === 'delete' && execute && !hasFlag('--confirm-delete-support-cleanup-records')) {
     throw new Error('Delete mode requires --confirm-delete-support-cleanup-records.');
   }
@@ -183,8 +200,11 @@ const run = async () => {
   await mongoose.connect(process.env.MONGODB_URI);
 
   const records = await SupportRequest.find(query)
+    .select('_id referenceNumber type status priority subject email createdAt updatedAt adminNotes')
     .sort({ createdAt: 1 })
-    .limit(limit);
+    .limit(limit)
+    .lean()
+    .maxTimeMS(QUERY_MAX_TIME_MS);
 
   let changedCount = 0;
   if (execute && mode === 'close') {

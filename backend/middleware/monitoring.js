@@ -12,7 +12,8 @@ const ALERT_THRESHOLDS = {
   maxErrorRatePercent: parsePositiveNumber(process.env.ALERT_MAX_ERROR_RATE_PERCENT, 2.5),
   maxSlowRequests: parsePositiveNumber(process.env.ALERT_MAX_SLOW_REQUESTS, 25),
   slowRequestMs: parsePositiveNumber(process.env.ALERT_SLOW_REQUEST_MS, 1200),
-  activeUserWindowMs: parsePositiveNumber(process.env.ALERT_ACTIVE_USER_WINDOW_MS, 30 * 60 * 1000)
+  activeUserWindowMs: parsePositiveNumber(process.env.ALERT_ACTIVE_USER_WINDOW_MS, 30 * 60 * 1000),
+  maxRouteStats: parsePositiveNumber(process.env.ALERT_ROUTE_STATS_MAX_ENTRIES, 500)
 };
 
 const metrics = {
@@ -41,8 +42,24 @@ const deriveRouteKey = (req) => {
     const base = req.baseUrl || '';
     return `${req.method} ${base}${req.route.path}`;
   }
-  const fallbackPath = (req.originalUrl || req.path || '').split('?')[0];
-  return `${req.method} ${fallbackPath || '/'}`;
+  const fallbackPath = (req.originalUrl || req.path || '').split('?')[0] || '/';
+  if (fallbackPath.startsWith('/api/')) return `${req.method} /api/*`;
+  if (fallbackPath.startsWith('/uploads/')) return `${req.method} /uploads/*`;
+  if (fallbackPath.includes('.')) return `${req.method} /asset-or-file`;
+  return `${req.method} /unmatched`;
+};
+
+const rememberRouteStats = (routeKey, routeRecord) => {
+  if (metrics.routeStats.has(routeKey)) {
+    metrics.routeStats.set(routeKey, routeRecord);
+    return;
+  }
+
+  if (metrics.routeStats.size >= ALERT_THRESHOLDS.maxRouteStats) {
+    const oldestKey = metrics.routeStats.keys().next().value;
+    if (oldestKey) metrics.routeStats.delete(oldestKey);
+  }
+  metrics.routeStats.set(routeKey, routeRecord);
 };
 
 const calculateP95 = (samples) => {
@@ -181,7 +198,7 @@ const systemMonitor = (req, res, next) => {
       );
     }
 
-    metrics.routeStats.set(routeKey, routeRecord);
+    rememberRouteStats(routeKey, routeRecord);
     pushLimited(metrics.responseTimes, duration, 500);
 
     if (metrics.statusBreakdown[statusBucket] !== undefined) {

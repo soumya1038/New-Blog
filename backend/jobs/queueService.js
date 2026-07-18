@@ -1,6 +1,13 @@
 const { Queue, Worker } = require('bullmq');
 const IORedis = require('ioredis');
+const mongoose = require('mongoose');
 const { parsePositiveInt } = require('../utils/cacheStore');
+const {
+  formatErrorForLog,
+  logError,
+  logWarn,
+} = require('../utils/safeErrorLog');
+const User = require('../models/User');
 const {
   sendVerificationEmail,
   sendWelcomeEmail,
@@ -9,6 +16,7 @@ const {
   sendAccountDeletionConfirmation,
   sendPasswordChangedSuccess,
   sendAccountDeletedSuccess,
+  sendGenericNotificationEmail,
   sendNewFollowerEmail,
   sendNewMessageEmail,
   sendMissedCallEmail,
@@ -24,17 +32,25 @@ const { ensureSearchIndexes } = require('../utils/searchIndexBootstrap');
 const EMAIL_QUEUE_NAME = 'email-jobs';
 const EMAIL_DLQ_NAME = 'email-jobs-dead-letter';
 const INDEXING_QUEUE_NAME = 'indexing-jobs';
+const INDEXING_REFRESH_JOB_ID = 'refresh-search-indexes';
 const MARKETPLACE_QUEUE_NAME = 'marketplace-jobs';
 const MARKETPLACE_DLQ_NAME = 'marketplace-jobs-dead-letter';
 
 const EMAIL_JOB_ATTEMPTS = parsePositiveInt(process.env.QUEUE_JOB_ATTEMPTS, 3);
 const EMAIL_JOB_BACKOFF_MS = parsePositiveInt(process.env.QUEUE_JOB_BACKOFF_MS, 5000);
 const EMAIL_QUEUE_CONCURRENCY = parsePositiveInt(process.env.QUEUE_CONCURRENCY_EMAIL, 4);
+const EMAIL_FAILED_JOB_RETENTION_SECONDS = parsePositiveInt(process.env.QUEUE_EMAIL_FAILED_JOB_RETENTION_SECONDS, 60 * 60);
+const EMAIL_FAILED_JOB_RETENTION_COUNT = parsePositiveInt(process.env.QUEUE_EMAIL_FAILED_JOB_RETENTION_COUNT, 500);
 const INDEXING_QUEUE_CONCURRENCY = parsePositiveInt(process.env.QUEUE_CONCURRENCY_INDEXING, 1);
 const MARKETPLACE_JOB_ATTEMPTS = parsePositiveInt(process.env.QUEUE_MARKETPLACE_JOB_ATTEMPTS, 5);
 const MARKETPLACE_JOB_BACKOFF_MS = parsePositiveInt(process.env.QUEUE_MARKETPLACE_JOB_BACKOFF_MS, 10000);
 const MARKETPLACE_QUEUE_CONCURRENCY = parsePositiveInt(process.env.QUEUE_CONCURRENCY_MARKETPLACE, 2);
 const FALLBACK_JOB_DEDUPE_TTL_MS = parsePositiveInt(process.env.QUEUE_FALLBACK_JOB_DEDUPE_TTL_MS, 10 * 60 * 1000);
+const FALLBACK_JOB_DEDUPE_MAX_ENTRIES = parsePositiveInt(
+  process.env.QUEUE_FALLBACK_JOB_DEDUPE_MAX_ENTRIES,
+  10000
+);
+const REDIS_READY_TIMEOUT_MS = parsePositiveInt(process.env.QUEUE_REDIS_READY_TIMEOUT_MS, 10000);
 
 let initialized = false;
 let queueEnabled = false;
@@ -52,6 +68,26 @@ let marketplaceWorker = null;
 const fallbackJobDedupeMap = new Map();
 
 const isQueueFeatureEnabled = () => process.env.QUEUE_ENABLED !== 'false';
+const isQueueRequired = () => process.env.NODE_ENV === 'production';
+
+const getBackgroundQueueStatus = () => {
+  const required = isQueueRequired();
+  const redisStatus = connection?.status || 'disconnected';
+  const redisReady = queueEnabled && redisStatus === 'ready';
+  return {
+    required,
+    initialized,
+    enabled: queueEnabled,
+    workersStarted,
+    redisStatus,
+    ready: required ? redisReady : (!isQueueFeatureEnabled() || !process.env.REDIS_URL || redisReady),
+  };
+};
+
+const createEmailRemoveOnFailOptions = () => ({
+  age: EMAIL_FAILED_JOB_RETENTION_SECONDS,
+  count: EMAIL_FAILED_JOB_RETENTION_COUNT
+});
 
 const createDefaultJobOptions = () => ({
   attempts: EMAIL_JOB_ATTEMPTS,
@@ -63,10 +99,7 @@ const createDefaultJobOptions = () => ({
     age: 60 * 60, // 1 hour
     count: 2000
   },
-  removeOnFail: {
-    age: 60 * 60 * 24 * 3, // 3 days
-    count: 5000
-  }
+  removeOnFail: createEmailRemoveOnFailOptions()
 });
 
 const createMarketplaceJobOptions = () => ({
@@ -88,8 +121,50 @@ const createMarketplaceJobOptions = () => ({
 const createBullConnection = () => {
   return new IORedis(process.env.REDIS_URL, {
     maxRetriesPerRequest: null,
-    enableReadyCheck: true
+    enableReadyCheck: true,
+    connectTimeout: REDIS_READY_TIMEOUT_MS
   });
+};
+
+const withTimeout = (promise, label, timeoutMs = REDIS_READY_TIMEOUT_MS) => {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+};
+
+const closeRedisConnectionImmediately = async (redisConnection) => {
+  if (!redisConnection) return;
+  if (typeof redisConnection.disconnect === 'function') {
+    redisConnection.disconnect();
+    return;
+  }
+  if (typeof redisConnection.quit === 'function') {
+    await redisConnection.quit();
+  }
+};
+
+const verifyRedisConnection = async (redisConnection) => {
+  if (typeof redisConnection?.ping !== 'function') return;
+  await withTimeout(redisConnection.ping(), 'Redis readiness check');
+};
+
+const attachQueueErrorLogger = (emitter, label) => {
+  if (!emitter || typeof emitter.on !== 'function') return emitter;
+  emitter.on('error', (error) => {
+    logWarn(`[queue] ${label} error:`, error);
+  });
+  return emitter;
+};
+
+const attachWorkerLifecycleLogger = (worker, label) => {
+  attachQueueErrorLogger(worker, `${label} worker`);
+  worker.on('stalled', (jobId) => {
+    console.warn(`[queue] ${label} job stalled: ${String(jobId || '').slice(0, 128)}`);
+  });
+  return worker;
 };
 
 const pruneFallbackDedupeMap = () => {
@@ -98,6 +173,11 @@ const pruneFallbackDedupeMap = () => {
     if (expiresAt <= now) {
       fallbackJobDedupeMap.delete(key);
     }
+  }
+  while (fallbackJobDedupeMap.size > FALLBACK_JOB_DEDUPE_MAX_ENTRIES) {
+    const oldestKey = fallbackJobDedupeMap.keys().next().value;
+    if (!oldestKey) break;
+    fallbackJobDedupeMap.delete(oldestKey);
   }
 };
 
@@ -109,7 +189,167 @@ const shouldSkipFallbackJob = (jobId) => {
     return true;
   }
   fallbackJobDedupeMap.set(jobId, Date.now() + FALLBACK_JOB_DEDUPE_TTL_MS);
+  pruneFallbackDedupeMap();
   return false;
+};
+
+const maskEmail = (value = '') => {
+  const email = String(value || '').trim();
+  const [local, domain] = email.split('@');
+  if (!local || !domain) return email ? '[redacted-email]' : '';
+  return `${local.slice(0, 2)}***@${domain}`;
+};
+
+const redactQueueValue = (key, value) => {
+  const fieldName = String(key || '').toLowerCase();
+  if (/(password|code|token|secret|key|authorization|signature|otp|credential)/i.test(fieldName)) {
+    return value ? '[redacted]' : '';
+  }
+  if (fieldName === 'email') {
+    return maskEmail(value);
+  }
+  if (typeof value === 'string') {
+    const text = value.replace(/\s+/g, ' ').trim();
+    return text.length > 160 ? `${text.slice(0, 157)}...` : text;
+  }
+  if (Array.isArray(value)) {
+    return value.slice(0, 10).map((item, index) => redactQueueValue(`${key}.${index}`, item));
+  }
+  if (value && typeof value === 'object') {
+    return sanitizeQueuePayloadForDeadLetter(value);
+  }
+  return value;
+};
+
+const sanitizeQueuePayloadForDeadLetter = (payload = {}) => {
+  if (!payload || typeof payload !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => [key, redactQueueValue(key, value)])
+  );
+};
+
+const formatMoney = (value) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? `INR ${amount.toFixed(2)}` : String(value || '');
+};
+
+const resolveEmailRecipient = async (payload = {}) => {
+  const directEmail = String(payload.email || '').trim();
+  const directUsername = String(payload.username || payload.name || '').trim();
+  if (directEmail) {
+    return { email: directEmail, username: directUsername || 'User' };
+  }
+
+  const userId = String(payload.userId || '').trim();
+  if (!userId) return null;
+  if (!mongoose.isValidObjectId(userId)) return null;
+
+  const user = await User.findById(userId).select('email username name').lean();
+  const email = String(user?.email || '').trim();
+  if (!email) return null;
+  return {
+    email,
+    username: String(user?.username || user?.name || directUsername || 'User').trim() || 'User'
+  };
+};
+
+const orderPath = (payload = {}) => payload.orderId ? `/order/${payload.orderId}` : '/my-orders';
+
+const EMAIL_NOTICE_BUILDERS = {
+  'seller-new-order': (payload) => ({
+    subject: `New marketplace order ${payload.orderNumber || ''}`.trim(),
+    headingText: 'New marketplace order',
+    message: `A buyer placed order ${payload.orderNumber || 'for your store'}. Review it in your seller dashboard.`,
+    details: [{ label: 'Order', value: payload.orderNumber || payload.orderId }],
+    actionLabel: 'Open seller dashboard',
+    actionPath: '/seller/dashboard'
+  }),
+  'buyer-order-confirmed': (payload) => ({
+    subject: `Order ${payload.orderNumber || ''} confirmed`.trim(),
+    headingText: 'Order confirmed',
+    message: `Your order ${payload.orderNumber || ''} has been confirmed and is being prepared.`.trim(),
+    details: [{ label: 'Order', value: payload.orderNumber || payload.orderId }],
+    actionLabel: 'View order',
+    actionPath: orderPath(payload)
+  }),
+  'buyer-order-shipped': (payload) => ({
+    subject: `Order ${payload.orderNumber || ''} shipped`.trim(),
+    headingText: 'Order shipped',
+    message: `Your order ${payload.orderNumber || ''} has been shipped.`.trim(),
+    details: [
+      { label: 'Order', value: payload.orderNumber },
+      { label: 'Courier', value: payload.courier },
+      { label: 'Tracking number', value: payload.trackingNumber }
+    ],
+    actionLabel: 'View order',
+    actionPath: orderPath(payload)
+  }),
+  'buyer-order-refunded': (payload) => ({
+    subject: `Refund processed for order ${payload.orderNumber || ''}`.trim(),
+    headingText: 'Refund processed',
+    message: `The refund for order ${payload.orderNumber || ''} has been processed.`.trim(),
+    details: [{ label: 'Order', value: payload.orderNumber || payload.orderId }],
+    actionLabel: 'View orders',
+    actionPath: '/my-orders'
+  }),
+  'buyer-order-auto-completed': (payload) => ({
+    subject: `Order ${payload.orderNumber || ''} completed`.trim(),
+    headingText: 'Order completed',
+    message: `Order ${payload.orderNumber || ''} was automatically marked completed after the delivery confirmation window.`.trim(),
+    details: [{ label: 'Order', value: payload.orderNumber || payload.orderId }],
+    actionLabel: 'View order',
+    actionPath: orderPath(payload)
+  }),
+  'seller-payout-initiated': (payload) => ({
+    subject: 'Seller payout update',
+    headingText: 'Payout update',
+    message: payload.message || 'Your seller payout request has been updated.',
+    details: [
+      { label: 'Amount', value: formatMoney(payload.amount) },
+      { label: 'Method', value: payload.method }
+    ],
+    actionLabel: 'View payouts',
+    actionPath: '/seller/earnings'
+  }),
+  'seller-payout-completed': (payload) => ({
+    subject: 'Seller payout completed',
+    headingText: 'Payout completed',
+    message: 'Your seller payout has been marked as paid.',
+    details: [{ label: 'Amount', value: formatMoney(payload.amount) }],
+    actionLabel: 'View payouts',
+    actionPath: '/seller/earnings'
+  }),
+  'seller-approved': () => ({
+    subject: 'Your seller application was approved',
+    headingText: 'Seller application approved',
+    message: 'Your seller application has been approved. You can now list products on Lekhon.',
+    actionLabel: 'Open seller dashboard',
+    actionPath: '/seller/dashboard'
+  }),
+  'seller-rejected': (payload) => ({
+    subject: 'Seller application update',
+    headingText: 'Seller application update',
+    message: payload.reviewNote
+      ? `Your seller application was not approved. Review note: ${payload.reviewNote}`
+      : 'Your seller application was not approved. You can review the status and apply again later.',
+    actionLabel: 'Review application',
+    actionPath: '/become-seller'
+  })
+};
+
+const sendQueuedGenericNotice = async (jobName, payload = {}) => {
+  const buildNotice = EMAIL_NOTICE_BUILDERS[jobName];
+  if (!buildNotice) {
+    throw new Error(`Unsupported email job type: ${jobName}`);
+  }
+
+  const recipient = await resolveEmailRecipient(payload);
+  if (!recipient?.email) {
+    logWarn(`[queue] Skipping email job without deliverable recipient: ${jobName}`);
+    return { skipped: true };
+  }
+
+  return sendGenericNotificationEmail(recipient.email, recipient.username, buildNotice(payload));
 };
 
 const handleEmailJob = async (jobName, payload = {}) => {
@@ -214,6 +454,16 @@ const handleEmailJob = async (jobName, payload = {}) => {
         daysRemaining,
         deletionDate
       });
+    case 'seller-new-order':
+    case 'buyer-order-confirmed':
+    case 'buyer-order-shipped':
+    case 'buyer-order-refunded':
+    case 'buyer-order-auto-completed':
+    case 'seller-payout-initiated':
+    case 'seller-payout-completed':
+    case 'seller-approved':
+    case 'seller-rejected':
+      return sendQueuedGenericNotice(jobName, payload);
     default:
       throw new Error(`Unsupported email job type: ${jobName}`);
   }
@@ -251,20 +501,26 @@ const runFallbackEmailJob = (jobName, payload, options = {}) => {
     try {
       await handleEmailJob(jobName, payload);
     } catch (error) {
-      console.error(`[queue:fallback] Email job failed (${jobName}):`, error?.message || error);
+      logError(`[queue:fallback] Email job failed (${jobName}):`, error);
     }
   });
   return true;
 };
 
-const runFallbackIndexingJob = () => {
+const runFallbackIndexingJob = (options = {}) => {
+  const jobId = options.jobId || INDEXING_REFRESH_JOB_ID;
+  if (shouldSkipFallbackJob(jobId)) {
+    return false;
+  }
+
   setImmediate(async () => {
     try {
       await ensureSearchIndexes();
     } catch (error) {
-      console.error('[queue:fallback] Indexing job failed:', error?.message || error);
+      logError('[queue:fallback] Indexing job failed:', error);
     }
   });
+  return true;
 };
 
 const runFallbackMarketplaceJob = (jobName, payload, options = {}) => {
@@ -276,7 +532,7 @@ const runFallbackMarketplaceJob = (jobName, payload, options = {}) => {
     try {
       await handleMarketplaceJob(jobName, payload);
     } catch (error) {
-      console.error(`[queue:fallback] Marketplace job failed (${jobName}):`, error?.message || error);
+      logError(`[queue:fallback] Marketplace job failed (${jobName}):`, error);
     }
   });
   return true;
@@ -285,37 +541,46 @@ const runFallbackMarketplaceJob = (jobName, payload, options = {}) => {
 const startBackgroundWorkers = async () => {
   if (!queueEnabled || workersStarted) return;
 
-  emailWorker = new Worker(
-    EMAIL_QUEUE_NAME,
-    async (job) => {
-      await handleEmailJob(job.name, job.data);
-    },
-    {
-      connection,
-      concurrency: EMAIL_QUEUE_CONCURRENCY
-    }
+  emailWorker = attachWorkerLifecycleLogger(
+    new Worker(
+      EMAIL_QUEUE_NAME,
+      async (job) => {
+        await handleEmailJob(job.name, job.data);
+      },
+      {
+        connection,
+        concurrency: EMAIL_QUEUE_CONCURRENCY
+      }
+    ),
+    'Email'
   );
 
-  indexingWorker = new Worker(
-    INDEXING_QUEUE_NAME,
-    async (job) => {
-      await handleIndexingJob(job.name, job.data);
-    },
-    {
-      connection,
-      concurrency: INDEXING_QUEUE_CONCURRENCY
-    }
+  indexingWorker = attachWorkerLifecycleLogger(
+    new Worker(
+      INDEXING_QUEUE_NAME,
+      async (job) => {
+        await handleIndexingJob(job.name, job.data);
+      },
+      {
+        connection,
+        concurrency: INDEXING_QUEUE_CONCURRENCY
+      }
+    ),
+    'Indexing'
   );
 
-  marketplaceWorker = new Worker(
-    MARKETPLACE_QUEUE_NAME,
-    async (job) => {
-      await handleMarketplaceJob(job.name, job.data);
-    },
-    {
-      connection,
-      concurrency: MARKETPLACE_QUEUE_CONCURRENCY
-    }
+  marketplaceWorker = attachWorkerLifecycleLogger(
+    new Worker(
+      MARKETPLACE_QUEUE_NAME,
+      async (job) => {
+        await handleMarketplaceJob(job.name, job.data);
+      },
+      {
+        connection,
+        concurrency: MARKETPLACE_QUEUE_CONCURRENCY
+      }
+    ),
+    'Marketplace'
   );
 
   emailWorker.on('completed', (job) => {
@@ -323,7 +588,7 @@ const startBackgroundWorkers = async () => {
   });
 
   emailWorker.on('failed', async (job, error) => {
-    console.error(`[queue] Email job failed: ${job?.name} (${job?.id})`, error?.message || error);
+    logError(`[queue] Email job failed: ${job?.name} (${job?.id})`, error);
     const attempts = job?.opts?.attempts || EMAIL_JOB_ATTEMPTS;
     if (job && job.attemptsMade >= attempts && emailDeadLetterQueue) {
       try {
@@ -332,8 +597,8 @@ const startBackgroundWorkers = async () => {
           {
             sourceJobId: job.id,
             sourceJobName: job.name,
-            data: job.data,
-            failedReason: error?.message || String(error || 'Unknown error'),
+            data: sanitizeQueuePayloadForDeadLetter(job.data),
+            failedReason: formatErrorForLog(error),
             failedAt: new Date().toISOString(),
             attemptsMade: job.attemptsMade
           },
@@ -343,13 +608,13 @@ const startBackgroundWorkers = async () => {
           }
         );
       } catch (dlqError) {
-        console.error('[queue] Failed to enqueue dead-letter email job:', dlqError?.message || dlqError);
+        logError('[queue] Failed to enqueue dead-letter email job:', dlqError);
       }
     }
   });
 
   indexingWorker.on('failed', (job, error) => {
-    console.error(`[queue] Indexing job failed: ${job?.name} (${job?.id})`, error?.message || error);
+    logError(`[queue] Indexing job failed: ${job?.name} (${job?.id})`, error);
   });
 
   marketplaceWorker.on('completed', (job) => {
@@ -357,7 +622,7 @@ const startBackgroundWorkers = async () => {
   });
 
   marketplaceWorker.on('failed', async (job, error) => {
-    console.error(`[queue] Marketplace job failed: ${job?.name} (${job?.id})`, error?.message || error);
+    logError(`[queue] Marketplace job failed: ${job?.name} (${job?.id})`, error);
     const attempts = job?.opts?.attempts || MARKETPLACE_JOB_ATTEMPTS;
     if (job && job.attemptsMade >= attempts && marketplaceDeadLetterQueue) {
       try {
@@ -366,8 +631,8 @@ const startBackgroundWorkers = async () => {
           {
             sourceJobId: job.id,
             sourceJobName: job.name,
-            data: job.data,
-            failedReason: error?.message || String(error || 'Unknown error'),
+            data: sanitizeQueuePayloadForDeadLetter(job.data),
+            failedReason: formatErrorForLog(error),
             failedAt: new Date().toISOString(),
             attemptsMade: job.attemptsMade
           },
@@ -377,7 +642,7 @@ const startBackgroundWorkers = async () => {
           }
         );
       } catch (dlqError) {
-        console.error('[queue] Failed to enqueue dead-letter marketplace job:', dlqError?.message || dlqError);
+        logError('[queue] Failed to enqueue dead-letter marketplace job:', dlqError);
       }
     }
   });
@@ -397,30 +662,39 @@ const initializeBackgroundQueues = async ({ startWorkers = process.env.QUEUE_STA
   initialized = true;
   if (!isQueueFeatureEnabled()) {
     queueEnabled = false;
+    if (isQueueRequired()) {
+      initialized = false;
+      throw new Error('Background queues cannot be disabled in production.');
+    }
     console.log('[queue] Queue feature disabled by QUEUE_ENABLED=false. Using local fallback mode.');
     return;
   }
 
   if (!process.env.REDIS_URL) {
     queueEnabled = false;
+    if (isQueueRequired()) {
+      initialized = false;
+      throw new Error('REDIS_URL is required for production background queues.');
+    }
     console.log('[queue] REDIS_URL missing. Using local fallback mode for background jobs.');
     return;
   }
 
   try {
-    connection = createBullConnection();
-    emailQueue = new Queue(EMAIL_QUEUE_NAME, {
+    connection = attachQueueErrorLogger(createBullConnection(), 'Redis connection');
+    await verifyRedisConnection(connection);
+    emailQueue = attachQueueErrorLogger(new Queue(EMAIL_QUEUE_NAME, {
       connection,
       defaultJobOptions: createDefaultJobOptions()
-    });
-    emailDeadLetterQueue = new Queue(EMAIL_DLQ_NAME, {
+    }), 'Email queue');
+    emailDeadLetterQueue = attachQueueErrorLogger(new Queue(EMAIL_DLQ_NAME, {
       connection,
       defaultJobOptions: {
         removeOnComplete: true,
         removeOnFail: true
       }
-    });
-    indexingQueue = new Queue(INDEXING_QUEUE_NAME, {
+    }), 'Email dead-letter queue');
+    indexingQueue = attachQueueErrorLogger(new Queue(INDEXING_QUEUE_NAME, {
       connection,
       defaultJobOptions: {
         attempts: 2,
@@ -431,18 +705,18 @@ const initializeBackgroundQueues = async ({ startWorkers = process.env.QUEUE_STA
           count: 1000
         }
       }
-    });
-    marketplaceQueue = new Queue(MARKETPLACE_QUEUE_NAME, {
+    }), 'Indexing queue');
+    marketplaceQueue = attachQueueErrorLogger(new Queue(MARKETPLACE_QUEUE_NAME, {
       connection,
       defaultJobOptions: createMarketplaceJobOptions()
-    });
-    marketplaceDeadLetterQueue = new Queue(MARKETPLACE_DLQ_NAME, {
+    }), 'Marketplace queue');
+    marketplaceDeadLetterQueue = attachQueueErrorLogger(new Queue(MARKETPLACE_DLQ_NAME, {
       connection,
       defaultJobOptions: {
         removeOnComplete: true,
         removeOnFail: true
       }
-    });
+    }), 'Marketplace dead-letter queue');
     queueEnabled = true;
     console.log('[queue] BullMQ queues initialized.');
 
@@ -451,7 +725,13 @@ const initializeBackgroundQueues = async ({ startWorkers = process.env.QUEUE_STA
     }
   } catch (error) {
     queueEnabled = false;
-    console.warn('[queue] Failed to initialize BullMQ. Falling back to local mode.', error?.message || error);
+    await closeRedisConnectionImmediately(connection);
+    connection = null;
+    if (isQueueRequired()) {
+      initialized = false;
+      throw error;
+    }
+    logWarn('[queue] Failed to initialize BullMQ. Falling back to local mode.', error);
   }
 };
 
@@ -470,7 +750,7 @@ const enqueueEmailJob = async (jobName, payload = {}, options = {}) => {
     attempts: options.attempts || EMAIL_JOB_ATTEMPTS,
     backoff: options.backoff || { type: 'exponential', delay: EMAIL_JOB_BACKOFF_MS },
     removeOnComplete: options.removeOnComplete || { age: 60 * 60, count: 2000 },
-    removeOnFail: options.removeOnFail || { age: 60 * 60 * 24 * 3, count: 5000 }
+    removeOnFail: options.removeOnFail || createEmailRemoveOnFailOptions()
   });
 
   return { mode: 'bullmq', queued: true, jobId: job.id };
@@ -482,8 +762,8 @@ const enqueueSearchIndexRefresh = async (reason = 'content-update') => {
   }
 
   if (!queueEnabled || !indexingQueue) {
-    runFallbackIndexingJob();
-    return { mode: 'fallback', queued: false };
+    const queued = runFallbackIndexingJob({ jobId: INDEXING_REFRESH_JOB_ID });
+    return { mode: 'fallback', queued, deduped: !queued };
   }
 
   try {
@@ -494,7 +774,7 @@ const enqueueSearchIndexRefresh = async (reason = 'content-update') => {
         requestedAt: new Date().toISOString()
       },
       {
-        jobId: 'refresh-search-indexes'
+        jobId: INDEXING_REFRESH_JOB_ID
       }
     );
     return { mode: 'bullmq', queued: true, jobId: job.id };
@@ -546,11 +826,12 @@ const shutdownBackgroundQueues = async () => {
       await connection.quit();
     }
   } catch (error) {
-    console.warn('[queue] Shutdown warning:', error?.message || error);
+    logWarn('[queue] Shutdown warning:', error);
   }
 };
 
 module.exports = {
+  getBackgroundQueueStatus,
   initializeBackgroundQueues,
   startBackgroundWorkers,
   enqueueEmailJob,

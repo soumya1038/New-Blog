@@ -1,7 +1,10 @@
 import React from 'react';
 import { FaClock, FaExternalLinkAlt } from 'react-icons/fa';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const NewsCard = ({ news, onClick }) => {
+  const safeImage = getSafeImageUrl(news.image);
+
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -22,11 +25,16 @@ const NewsCard = ({ news, onClick }) => {
       className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden cursor-pointer hover:shadow-xl transition group"
     >
       <div className="relative h-48 overflow-hidden">
-        <img
-          src={news.image}
-          alt={news.title}
-          className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-        />
+        {safeImage ? (
+          <img
+            src={safeImage}
+            alt={news.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-blue-700 to-slate-900" />
+        )}
         {news.isExternal && (
           <div className="absolute top-2 right-2 bg-blue-600 text-white p-2 rounded-full">
             <FaExternalLinkAlt className="w-3 h-3" />

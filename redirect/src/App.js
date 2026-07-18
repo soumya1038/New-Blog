@@ -9,9 +9,9 @@ import IncomingCallModal from './components/IncomingCallModal';
 import GuestExpiredModal from './components/GuestExpiredModal';
 import FloatingCallBanner from './components/FloatingCallBanner';
 import GlobalGroupCallListener from './components/GlobalGroupCallListener';
-import MinimizedGroupCall from './components/MinimizedGroupCall';
 import PublicFooter from './components/PublicFooter';
 import MobileAppNav from './components/MobileAppNav';
+import ModernChatbotLauncher from './components/ModernChatbotLauncher';
 import { CinematicIntro } from './components/intro/CinematicIntro';
 import socketService from './services/socket';
 import webrtcService from './services/webrtc';
@@ -25,6 +25,7 @@ import { useGroupCall } from './context/GroupCallContext';
 import { captureFrontendException } from './utils/sentry';
 import { isNativeApp } from './utils/nativeApp';
 import { hasAuthToken } from './utils/authSession';
+import { storeRedirectAfterLogin } from './utils/authRedirects';
 
 const Home = lazy(() => import('./pages/Home'));
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -54,7 +55,6 @@ const FacebookAuthCallback = lazy(() => import('./pages/FacebookAuthCallback'));
 const TwitterAuthCallback = lazy(() => import('./pages/TwitterAuthCallback'));
 const LinkedInAuthCallback = lazy(() => import('./pages/LinkedInAuthCallback'));
 const NotFound = lazy(() => import('./pages/NotFound'));
-const ModernChatbot = lazy(() => import('./components/ModernChatbot'));
 const Marketplace = lazy(() => import('./pages/Marketplace'));
 const ProductDetail = lazy(() => import('./pages/ProductDetail'));
 const StorePage = lazy(() => import('./pages/StorePage'));
@@ -74,6 +74,7 @@ const PolicyCenter = lazy(() => import('./pages/PolicyCenter'));
 const PolicyDetail = lazy(() => import('./pages/PolicyDetail'));
 const SafetyCenter = lazy(() => import('./pages/SafetyCenter'));
 const SupportRequest = lazy(() => import('./pages/SupportRequest'));
+const MinimizedGroupCall = lazy(() => import('./components/MinimizedGroupCall'));
 
 const LoadingFallback = () => (
   <div className="min-h-screen flex items-center justify-center">
@@ -135,11 +136,7 @@ const RegisteredUserRoute = ({ children }) => {
   if (loading) return <LoadingFallback />;
 
   if (!user || !hasAuthToken()) {
-    try {
-      sessionStorage.setItem('redirectAfterLogin', `${location.pathname}${location.search}${location.hash}`);
-    } catch {
-      // Ignore storage failures and still send the visitor to sign in.
-    }
+    storeRedirectAfterLogin(`${location.pathname}${location.search}${location.hash}`);
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
@@ -153,8 +150,8 @@ const RegisteredUserRoute = ({ children }) => {
 const ROUTES_WITHOUT_GLOBAL_CHROME = new Set(['/', '/privacy', '/terms', '/auth/google/callback', '/auth/facebook/callback', '/auth/twitter/callback', '/auth/linkedin/callback']);
 const PUBLIC_FOOTER_ROUTES = new Set(['/about', '/privacy', '/terms']);
 const PUBLIC_FOOTER_PREFIXES = ['/help', '/policies', '/safety', '/contact', '/report', '/appeals'];
-const MOBILE_BOTTOM_NAV_FOCUS_ROUTES = new Set(['/checkout']);
-const MOBILE_BOTTOM_NAV_FOCUS_PREFIXES = ['/order'];
+const MOBILE_BOTTOM_NAV_FOCUS_ROUTES = new Set([]);
+const MOBILE_BOTTOM_NAV_FOCUS_PREFIXES = [];
 const MOBILE_CONTENT_ACTION_PREFIXES = ['/blog', '/article'];
 const MOBILE_IMMERSIVE_PREFIXES = ['/shorts', '/short-blogs'];
 
@@ -329,6 +326,7 @@ function AppContent() {
     if (!user) return;
 
     const socket = socketService.connect(user._id);
+    if (!socket) return undefined;
     
     setTimeout(() => {
       socketService.updateRoute(location.pathname);
@@ -513,9 +511,7 @@ function AppContent() {
         {!hideGlobalChrome && <Navbar />}
         {user && <GlobalGroupCallListener />}
         {!hideGlobalChrome && location.pathname !== '/chat' && (
-          <Suspense fallback={null}>
-            <ModernChatbot />
-          </Suspense>
+          <ModernChatbotLauncher />
         )}
         {globalIncomingCall && (
           <IncomingCallModal
@@ -566,16 +562,18 @@ function AppContent() {
           />
         )}
         {currentCall && isMinimized && location.pathname !== '/chat' && (
-          <MinimizedGroupCall
-            token={currentCall.token}
-            wsUrl={currentCall.wsUrl}
-            callType={currentCall.callType}
-            onOpen={() => {
-              toggleMinimize();
-              navigate('/chat');
-            }}
-            onEnd={endCall}
-          />
+          <Suspense fallback={null}>
+            <MinimizedGroupCall
+              token={currentCall.token}
+              wsUrl={currentCall.wsUrl}
+              callType={currentCall.callType}
+              onOpen={() => {
+                toggleMinimize();
+                navigate('/chat');
+              }}
+              onEnd={endCall}
+            />
+          </Suspense>
         )}
         <Suspense fallback={<LoadingFallback />}>
           <Routes>

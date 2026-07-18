@@ -68,9 +68,15 @@ Create `.env` file:
 ```env
 PORT=5000
 MONGODB_URI=your_mongodb_uri
-JWT_SECRET=your_jwt_secret
+JWT_SECRET=your_jwt_secret_min_32_chars
 JWT_EXPIRE=7d
+ENCRYPTION_KEY=your_message_encryption_secret_min_32_chars
+API_KEY_HASH_SECRET=your_api_key_hash_secret_min_32_chars
+VERIFICATION_CODE_PEPPER=your_verification_code_pepper_min_32_chars
+TWO_FACTOR_SECRET=your_two_factor_hmac_secret_min_32_chars
+TEMPORARY_STATE_SECRET=your_temporary_state_hmac_secret_min_32_chars
 NODE_ENV=development
+EXPOSE_INTERNAL_ERRORS=false
 
 # Email (Brevo)
 BREVO_API_KEY=your_brevo_api_key
@@ -95,6 +101,12 @@ GROQ_API_KEY=your_groq_api_key
 # Frontend URL
 FRONTEND_URL=http://localhost:3000
 ```
+
+For local development only, after creating `backend/.env`, run:
+```bash
+npm --prefix backend run secrets:provision-local
+```
+This fills missing local-only secret values without printing them. Production secrets should be provisioned explicitly in the hosting environment.
 
 Start backend:
 ```bash
@@ -159,9 +171,10 @@ Recommended uptime checks:
 - Alert when `GET /ready` returns non-`200` for 2+ consecutive checks.
 
 CI baseline checks (`.github/workflows/ci-cd.yml`):
+- Tracked secret scan
 - Backend lint (merge-marker check + JS syntax check)
 - Redirect production build
-- Backend smoke test (boot server + probe `/health` and `/ready`)
+- Backend smoke test (Redis-backed queue smoke, then boot server + probe `/health` and `/ready`)
 
 CD deploy automation:
 - Workflow: `.github/workflows/deploy-render.yml`

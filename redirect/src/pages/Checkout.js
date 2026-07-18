@@ -4,6 +4,12 @@ import { AuthContext }   from '../context/AuthContext';
 import api               from '../services/api';
 import { CouponInput }   from '../components/CouponInput';
 import RazorpayButton    from '../components/RazorpayButton';
+import {
+  getCheckoutAddressStorageKey,
+  readCheckoutAddresses,
+  writeCheckoutAddresses,
+} from '../utils/checkoutAddressStorage';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 import { FaCheck, FaChevronDown, FaChevronUp, FaMapMarkerAlt, FaPlus, FaShieldAlt, FaShoppingBag, FaTrash } from 'react-icons/fa';
 import { HiMinus, HiPlus } from 'react-icons/hi';
 
@@ -63,7 +69,7 @@ const Checkout = () => {
   const confirmationTimerRef = useRef(null);
 
   const hasPhysical = cart.items.some(i => i.productId?.type === 'physical');
-  const addressStorageKey = user?._id ? `lekhon_checkout_addresses_${user._id}` : '';
+  const addressStorageKey = getCheckoutAddressStorageKey(user?._id);
 
   useEffect(() => {
     if (!user) {
@@ -78,8 +84,7 @@ const Checkout = () => {
   useEffect(() => {
     if (!addressStorageKey) return;
     try {
-      const parsed = JSON.parse(localStorage.getItem(addressStorageKey) || '[]');
-      const nextAddresses = Array.isArray(parsed) ? parsed : [];
+      const nextAddresses = readCheckoutAddresses(addressStorageKey);
       setSavedAddresses(nextAddresses);
       if (nextAddresses.length > 0) {
         selectSavedAddress(nextAddresses[0], false);
@@ -163,8 +168,9 @@ const Checkout = () => {
     .every(key => String(address[key] || '').trim());
 
   const persistAddresses = (addresses) => {
-    setSavedAddresses(addresses);
-    if (addressStorageKey) localStorage.setItem(addressStorageKey, JSON.stringify(addresses));
+    const nextAddresses = writeCheckoutAddresses(addressStorageKey, addresses);
+    setSavedAddresses(nextAddresses);
+    return nextAddresses;
   };
 
   const saveCurrentAddress = () => {
@@ -186,8 +192,8 @@ const Checkout = () => {
         saved.phone !== address.phone
       )),
     ].slice(0, 5);
-    persistAddresses(next);
-    setSelectedAddressId(normalized.id);
+    const persisted = persistAddresses(next);
+    setSelectedAddressId(persisted[0]?.id || normalized.id);
     setShowAddressForm(false);
   };
 
@@ -429,16 +435,18 @@ const Checkout = () => {
                   const product = item.productId || {};
                   const productId = getCartItemProductId(item);
                   const price = product.price || item.priceSnapshot || 0;
+                  const safeThumbnail = getSafeImageUrl(product.thumbnail || item.thumbnailSnapshot);
                   const isPhysical = product.type === 'physical';
                   const minQty = Math.max(parseInt(product.physical?.minimumOrderQuantity, 10) || 1, 1);
                   const maxQty = product.physical?.stock ?? 99;
                   const updating = cartUpdating === productId;
-                  return (
-                    <div key={item._id || productId} className="flex gap-2 items-center">
-                      <img
-                        src={product.thumbnail || item.thumbnailSnapshot || ''}
+                      return (
+                        <div key={item._id || productId} className="flex gap-2 items-center">
+                          <img
+                        src={safeThumbnail || '/image/lekhon_url.png'}
                         alt={product.title || item.titleSnapshot || "Cart item"}
                         className="w-10 h-10 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0"
+                        referrerPolicy="no-referrer"
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-[var(--text-primary)] truncate">

@@ -11,6 +11,7 @@ import Avatar from '../components/Avatar';
 import StatusViewer from '../components/StatusViewer';
 import GuestBadge from '../components/GuestBadge';
 import toast, { Toaster } from 'react-hot-toast';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const UserProfile = () => {
   const { t } = useTranslation();
@@ -404,25 +405,25 @@ const UserProfile = () => {
       name: 'Facebook',
       icon: <FaFacebook className="text-2xl" />,
       color: 'bg-blue-600 hover:bg-blue-700',
-      action: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
+      action: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer')
     },
     {
       name: 'Twitter',
       icon: <FaXTwitter className="text-2xl" />,
       color: 'bg-black hover:bg-gray-800',
-      action: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')
+      action: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank', 'noopener,noreferrer')
     },
     {
       name: 'LinkedIn',
       icon: <FaLinkedin className="text-2xl" />,
       color: 'bg-blue-700 hover:bg-blue-800',
-      action: () => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank')
+      action: () => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer')
     },
     {
       name: 'WhatsApp',
       icon: <FaWhatsapp className="text-2xl" />,
       color: 'bg-green-500 hover:bg-green-600',
-      action: () => window.open(`https://wa.me/?text=${encodeURIComponent(shareTitle + ' ' + shareUrl)}`, '_blank')
+      action: () => window.open(`https://wa.me/?text=${encodeURIComponent(shareTitle + ' ' + shareUrl)}`, '_blank', 'noopener,noreferrer')
     },
     {
       name: 'Copy Link',
@@ -512,6 +513,14 @@ const UserProfile = () => {
     );
   }
 
+  const visibleSocialLinks = (Array.isArray(profile.socialMedia) ? profile.socialMedia : [])
+    .map((social) => ({
+      ...social,
+      url: getSafeHttpUrl(social?.url, { allowBareDomain: true }),
+    }))
+    .filter((social) => social.url && shouldShowSocialByPrivacy(social));
+  const safeProfileImage = getSafeImageUrl(profile.profileImage);
+
 return (
   <div className="min-h-screen theme-page-bg py-8">
     <Toaster />
@@ -528,12 +537,12 @@ return (
           <div
             onClick={() => {
               // Only show full-size image when clicking avatar
-              if (profile.profileImage) {
+              if (safeProfileImage) {
                 setShowImageModal(true);
               }
             }}
             className={`border-4 rounded-full ${profile.hasActiveStatus ? 'border-green-500' : 'border-blue-500'
-              } ${profile.profileImage ? 'cursor-pointer hover:opacity-90 transition' : ''
+              } ${safeProfileImage ? 'cursor-pointer hover:opacity-90 transition' : ''
               }`}
           >
             <Avatar user={profile} size="xl" showStatusRing={false} />
@@ -642,9 +651,9 @@ return (
             )}
 
             {/* Social Media Links */}
-            {profile.socialMedia && profile.socialMedia.length > 0 && profile.socialMedia.some((social) => shouldShowSocialByPrivacy(social)) && (
+            {visibleSocialLinks.length > 0 && (
               <div className="flex flex-wrap gap-3 justify-center sm:justify-start">
-                {profile.socialMedia.filter((social) => shouldShowSocialByPrivacy(social)).map((social, index) => (
+                {visibleSocialLinks.map((social, index) => (
                   <a
                     key={index}
                     href={social.url}
@@ -942,8 +951,9 @@ return (
                   'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
                 ];
                 const getBackgroundStyle = (blog, idx) => {
-                  if (blog.coverImage) {
-                    return { backgroundImage: `url(${blog.coverImage})`, backgroundSize: 'cover', backgroundPosition: 'center' };
+                  const safeCoverImage = getSafeImageUrl(blog.coverImage);
+                  if (safeCoverImage) {
+                    return { backgroundImage: `url("${safeCoverImage}")`, backgroundSize: 'cover', backgroundPosition: 'center' };
                   }
                   return { backgroundImage: gradients[idx % gradients.length] };
                 };
@@ -990,7 +1000,7 @@ return (
       </div>
 
       {/* Full Screen Image Modal */}
-      {showImageModal && profile.profileImage && (
+      {showImageModal && safeProfileImage && (
         <div
           className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4"
           onClick={() => setShowImageModal(false)}
@@ -1002,9 +1012,10 @@ return (
             <FaTimes />
           </button>
           <img
-            src={profile.profileImage}
+            src={safeProfileImage}
             alt={profile.username}
             className="max-w-full max-h-full object-contain rounded-lg"
+            referrerPolicy="no-referrer"
             onClick={(e) => e.stopPropagation()}
           />
         </div>

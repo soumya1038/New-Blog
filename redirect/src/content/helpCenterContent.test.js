@@ -381,12 +381,13 @@ describe('Help Center content governance', () => {
     });
 
     [
-      "router.post('/requests', submitLimiter, optionalAuth, createSupportRequest)",
+      "router.post('/requests', optionalAuth, submitLimiter, createSupportRequest)",
       "router.get('/requests/me', protect, getMySupportRequests)",
       "router.get('/admin/metrics', adminOrCoAdminAuth, getAdminSupportMetrics)",
       "router.get('/admin/requests', adminOrCoAdminAuth, getAdminSupportRequests)",
-      "router.patch('/admin/requests/:id', adminAuth, updateAdminSupportRequest)",
-      'max: 8',
+      "admin_update_support_request",
+      'SUPPORT_SUBMIT_RATE_LIMIT_MAX, 8',
+      'max: supportSubmitMax',
     ].forEach((token) => {
       expect(supportRoutes).toContain(token);
     });
@@ -397,6 +398,7 @@ describe('Help Center content governance', () => {
       "enum: ['normal', 'high', 'urgent']",
       'referenceNumber',
       'adminNotes',
+      'adminEvents',
       'metadata',
       'resolvedAt',
     ].forEach((token) => {
@@ -413,6 +415,7 @@ describe('Help Center content governance', () => {
       'Co-admins can review. Only admins can change status or internal notes.',
       'assignToMe',
       'adminNotes',
+      'Admin history',
     ].forEach((token) => {
       expect(adminQueue).toContain(token);
     });

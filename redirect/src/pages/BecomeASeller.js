@@ -146,13 +146,13 @@ const BecomeASeller = () => {
     setIdentityMessage('');
 
     try {
-      set('verificationProvider', 'razorpay');
+      set('verificationProvider', 'manual');
       setIdentityStatus('verified');
-      setIdentityMessage('Razorpay verification successful. You can continue.');
+      setIdentityMessage('Identity pre-check complete. The admin team will verify your details during review.');
     } catch (e) {
       setIdentityStatus('idle');
       setIdentityMessage('');
-      setError('Razorpay verification failed. Please try again.');
+      setError('Identity pre-check failed. Please try again.');
     }
 
     setIdentityLoading(false);
@@ -196,8 +196,8 @@ const BecomeASeller = () => {
     if (step === 2) {
       const identityError = getIdentityValidationError();
       if (identityError) return identityError;
-      if (form.verificationProvider !== 'razorpay' || identityStatus !== 'verified') {
-        return 'Complete Razorpay verification to continue.';
+      if (identityStatus !== 'verified') {
+        return 'Complete the identity pre-check to continue.';
       }
     }
     if (step === 3) {
@@ -289,9 +289,9 @@ const BecomeASeller = () => {
             </p>
           )}
           {existing.reviewNote && <p className="text-sm text-[var(--text-muted)]">Note: {existing.reviewNote}</p>}
-          {existing.verificationProvider === 'razorpay' && existing.status === 'pending' && (
+          {existing.status === 'pending' && (
             <p className="rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-700 dark:bg-violet-900/20 dark:text-violet-300">
-              Razorpay verification completed. The Team will review your application before approval.
+              Identity pre-check completed. The Team will verify your details before approval.
             </p>
           )}
           {existing.status === 'pending' && (
@@ -525,7 +525,7 @@ const BecomeASeller = () => {
                   : 'border-[var(--border-color)] bg-[var(--bg-card)] text-[var(--text-primary)] hover:border-violet-300'
               }`}
             >
-              {identityLoading ? 'Verifying with Razorpay...' : identityStatus === 'verified' ? 'Razorpay Verified' : 'Continue with Razorpay'}
+              {identityLoading ? 'Checking identity details...' : identityStatus === 'verified' ? 'Identity Pre-check Complete' : 'Continue identity pre-check'}
             </button>
             {identityMessage && (
               <p className={`mt-2 text-xs font-medium ${identityStatus === 'verified' ? 'text-green-600 dark:text-green-300' : 'text-violet-600 dark:text-violet-300'}`}>
@@ -701,19 +701,6 @@ const BecomeASeller = () => {
       </div>
 
       {/* Shared input style via Tailwind utility — add to global CSS or index.css */}
-      <style>{`
-        .input-field {
-          padding: 10px 12px;
-          border-radius: 12px;
-          border: 1px solid var(--border-color);
-          background: var(--bg-secondary);
-          color: var(--text-primary);
-          font-size: 14px;
-          outline: none;
-          transition: box-shadow 0.15s;
-        }
-        .input-field:focus { box-shadow: 0 0 0 2px #7c3aed55; }
-      `}</style>
     </div>
   );
 };

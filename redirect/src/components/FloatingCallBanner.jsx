@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FiPhone, FiVideo, FiX, FiMaximize2, FiMic, FiMicOff, FiRotateCw } from 'react-icons/fi';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const FloatingCallBanner = ({ 
   remoteUser, 
@@ -20,6 +21,9 @@ const FloatingCallBanner = ({
   const videoRef = useRef(null);
   const audioRef = useRef(null);
   const bannerRef = useRef(null);
+  const remoteDisplayName = remoteUser?.fullName || 'User';
+  const remoteAvatar = getSafeImageUrl(remoteUser?.profileImage)
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteDisplayName)}&background=0D8ABC&color=fff`;
 
   useEffect(() => {
     if (!startTime) return;
@@ -64,7 +68,7 @@ const FloatingCallBanner = ({
             ctx.font = '20px Arial';
             ctx.textAlign = 'center';
             ctx.fillText('Audio Call', canvas.width / 2, canvas.height / 2 - 10);
-            ctx.fillText(remoteUser.fullName, canvas.width / 2, canvas.height / 2 + 20);
+            ctx.fillText(remoteDisplayName, canvas.width / 2, canvas.height / 2 + 20);
             
             const stream = canvas.captureStream(1);
             const pipVideo = document.createElement('video');
@@ -83,7 +87,7 @@ const FloatingCallBanner = ({
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [callType, remoteStream, remoteUser.fullName]);
+  }, [callType, remoteStream, remoteDisplayName]);
 
   useEffect(() => {
     const handleMouseMove = (e) => {
@@ -162,12 +166,13 @@ const FloatingCallBanner = ({
           {/* User Info */}
           <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0">
             <img
-              src={remoteUser.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUser.fullName)}&background=0D8ABC&color=fff`}
-              alt={remoteUser.fullName}
+              src={remoteAvatar}
+              alt={remoteDisplayName}
               className="w-6 h-6 sm:w-8 sm:h-8 rounded-full border border-white object-cover"
+              referrerPolicy="no-referrer"
             />
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-[10px] sm:text-xs truncate">{remoteUser.fullName}</p>
+              <p className="font-semibold text-[10px] sm:text-xs truncate">{remoteDisplayName}</p>
               <div className="flex items-center gap-1 text-[8px] sm:text-[10px] text-white/90">
                 {callType === 'video' ? (
                   <FiVideo className="w-2 h-2 sm:w-2.5 sm:h-2.5" />

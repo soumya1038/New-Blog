@@ -5,16 +5,20 @@ import { ScaleLoader } from 'react-spinners';
 import api from '../services/api';
 import { getOAuthRedirectUri } from '../utils/oauthRedirects';
 import { redirectOAuthCallbackToNativeApp } from '../utils/nativeOAuthBridge';
-import { storeAuthSession } from '../utils/authSession';
+import {
+  clearPendingOAuthRememberMe,
+  consumePendingOAuthRememberMe,
+  hasAuthToken,
+  storeAuthSession,
+} from '../utils/authSession';
+import { API_BASE_URL } from '../utils/apiBaseUrl';
+import { clearRedirectAfterLogin, consumeRedirectAfterLogin } from '../utils/authRedirects';
 
 const LinkedInAuthCallback = () => {
   const navigate = useNavigate();
   const [error, setError] = useState('');
 
-  const apiBase = useMemo(
-    () => (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, ''),
-    []
-  );
+  const apiBase = useMemo(() => API_BASE_URL, []);
 
   useEffect(() => {
     const finalizeLinkedInAuth = async () => {
@@ -29,7 +33,7 @@ const LinkedInAuthCallback = () => {
         const code = params.get('code');
         const state = params.get('state');
         const socialConnectIntent = sessionStorage.getItem('socialConnectIntent');
-        const isConnectFlow = socialConnectIntent === 'linkedin' && Boolean(localStorage.getItem('token'));
+        const isConnectFlow = socialConnectIntent === 'linkedin' && hasAuthToken();
 
         guardKey = `linkedin_oauth_exchange:${code || 'no_code'}:${state || 'no_state'}`;
         if (sessionStorage.getItem(guardKey) === '1') {
@@ -46,6 +50,7 @@ const LinkedInAuthCallback = () => {
 
         const redirectUri = getOAuthRedirectUri('linkedin');
         if (isConnectFlow) {
+          clearPendingOAuthRememberMe();
           const connectResponse = await api.post('/auth/linkedin/connect/exchange', {
             code,
             state,
@@ -80,7 +85,8 @@ const LinkedInAuthCallback = () => {
         const passwordSetupRequired = Boolean(response?.data?.passwordSetupRequired);
         const missingEmailForWelcome = Boolean(response?.data?.missingEmailForWelcome);
 
-        storeAuthSession({ token, user: response?.data?.user, rememberMe: true });
+        const rememberMe = consumePendingOAuthRememberMe();
+        storeAuthSession({ token, user: response?.data?.user, rememberMe });
         sessionStorage.setItem('showLoginIntro', 'true');
 
         if (missingEmailForWelcome) {
@@ -88,21 +94,20 @@ const LinkedInAuthCallback = () => {
         }
         if (passwordSetupRequired) {
           sessionStorage.setItem('googlePasswordSetupRequired', 'true');
-          sessionStorage.removeItem('redirectAfterLogin');
+          clearRedirectAfterLogin();
           window.location.href = '/profile?forcePasswordChange=1';
           return;
         }
         if (missingEmailForWelcome) {
-          sessionStorage.removeItem('redirectAfterLogin');
+          clearRedirectAfterLogin();
           window.location.href = '/profile';
           return;
         }
 
         sessionStorage.removeItem('googlePasswordSetupRequired');
 
-        const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+        const redirectPath = consumeRedirectAfterLogin();
         if (redirectPath) {
-          sessionStorage.removeItem('redirectAfterLogin');
           window.location.href = redirectPath;
           return;
         }
@@ -112,6 +117,7 @@ const LinkedInAuthCallback = () => {
         if (guardKey) {
           sessionStorage.removeItem(guardKey);
         }
+        clearPendingOAuthRememberMe();
         sessionStorage.removeItem('socialConnectIntent');
         const fallback = 'LinkedIn sign-in failed. Please try again.';
         const detail =

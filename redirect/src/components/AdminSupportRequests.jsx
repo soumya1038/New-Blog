@@ -29,9 +29,32 @@ const statusOptions = [
 
 const priorityOptions = ['normal', 'high', 'urgent'];
 
-const AdminSupportRequests = () => {
+const formatEventDate = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const formatEventChanges = (event) => {
+  const changes = event?.changes || {};
+  const labels = [];
+  if (changes.status) labels.push(`status ${changes.status.from} -> ${changes.status.to}`);
+  if (changes.priority) labels.push(`priority ${changes.priority.from} -> ${changes.priority.to}`);
+  if (changes.assignedTo) labels.push(changes.assignedTo.to ? 'assigned' : 'unassigned');
+  if (changes.adminNotes) labels.push('notes updated');
+  return labels.join(', ') || 'request updated';
+};
+
+const AdminSupportRequests = ({ runAdminProtectedAction, adminStepUpConfig = () => ({}) }) => {
   const { user } = useContext(AuthContext);
   const isAdmin = user?.role === 'admin';
+  const runProtectedAction = runAdminProtectedAction || (async ({ request }) => request({}));
   const [requests, setRequests] = useState([]);
   const [filters, setFilters] = useState({ type: '', status: 'open', priority: '' });
   const [loading, setLoading] = useState(true);
@@ -129,24 +152,32 @@ const AdminSupportRequests = () => {
     if (!selected || !isAdmin) return;
     setSaving(true);
     setError('');
-    try {
-      const { data } = await api.patch(
-        `/support/admin/requests/${selected._id}`,
-        updates
-      );
-      setRequests((current) =>
-        current.map((request) =>
-          request._id === selected._id ? data.request : request
-        )
-      );
-      await loadRequests();
-    } catch (requestError) {
-      setError(
-        requestError.response?.data?.message || 'Unable to update the request.'
-      );
-    } finally {
-      setSaving(false);
-    }
+    await runProtectedAction({
+      title: 'Verify support update',
+      description: 'Confirm your password before updating this support request.',
+      onStepUp: () => setSaving(false),
+      request: async (tokens) => {
+        setSaving(true);
+        const { data } = await api.patch(
+          `/support/admin/requests/${selected._id}`,
+          updates,
+          adminStepUpConfig(tokens)
+        );
+        setRequests((current) =>
+          current.map((request) =>
+            request._id === selected._id ? data.request : request
+          )
+        );
+        await loadRequests();
+        setSaving(false);
+      },
+      onFailure: (requestError) => {
+        setError(
+          requestError.response?.data?.message || 'Unable to update the request.'
+        );
+        setSaving(false);
+      },
+    });
   };
 
   return (
@@ -421,6 +452,36 @@ const AdminSupportRequests = () => {
                   <FaCheck />
                   {saving ? 'Saving...' : 'Save notes and assign'}
                 </button>
+              </div>
+            ) : null}
+
+            {selected.assignedTo ? (
+              <p className="m-0 text-xs text-[var(--text-muted)]">
+                Assigned to @{selected.assignedTo.username || selected.assignedTo.name || 'admin'}
+              </p>
+            ) : null}
+
+            {Array.isArray(selected.adminEvents) && selected.adminEvents.length ? (
+              <div>
+                <p className="mb-2 text-xs font-black uppercase text-[var(--text-muted)]">
+                  Admin history
+                </p>
+                <div className="space-y-2">
+                  {[...selected.adminEvents].reverse().slice(0, 6).map((event, index) => (
+                    <div
+                      key={`${event.createdAt || 'event'}-${index}`}
+                      className="rounded-lg border border-[var(--border-default)] bg-[var(--surface-elevated)] p-3"
+                    >
+                      <p className="m-0 flex items-center gap-2 text-xs font-bold text-[var(--text-primary)]">
+                        <FaClock className="text-[var(--text-muted)]" />
+                        @{event.adminUsername || 'admin'} - {formatEventDate(event.createdAt)}
+                      </p>
+                      <p className="m-0 mt-1 text-xs text-[var(--text-muted)]">
+                        {formatEventChanges(event)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : null}
           </div>

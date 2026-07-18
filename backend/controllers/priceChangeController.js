@@ -1,18 +1,38 @@
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const PriceChangeRequest = require('../models/PriceChangeRequest');
+const { logError } = require('../utils/safeErrorLog');
+
+const sendPriceChangeServerError = (res, error) => {
+  logError('[priceChangeController] request failed:', error);
+  return res.status(500).json({ success: false, message: 'Unable to process price change request' });
+};
+
+const PRICE_CHANGE_QUERY_MAX_TIME_MS = Math.max(100, Number(process.env.PRICE_CHANGE_QUERY_MAX_TIME_MS) || 5000);
+const PRICE_CHANGE_STATUSES = new Set(['pending', 'approved', 'rejected', 'cancelled', 'expired']);
 
 const toMoney = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : NaN;
 };
 
-const formatRequest = async (request) => {
+const boundedLimit = (value, fallback, max) => Math.min(max, Math.max(1, Number(value) || fallback));
+
+const parseStatusFilter = (value, fallback) => {
+  const status = String(value || fallback || 'all').trim().toLowerCase();
+  if (status === 'all') return { status };
+  if (!PRICE_CHANGE_STATUSES.has(status)) {
+    return { error: 'Invalid price-change status filter.' };
+  }
+  return { status };
+};
+
+const formatRequest = async (request, { includeSellerEmail = false } = {}) => {
   if (!request) return request;
   return request.populate([
-    { path: 'sellerId', select: 'name username email' },
-    { path: 'productId', select: 'title slug thumbnail price status' },
-    { path: 'reviewedBy', select: 'name username' },
+    { path: 'sellerId', select: includeSellerEmail ? 'name username email' : 'name username', options: { maxTimeMS: PRICE_CHANGE_QUERY_MAX_TIME_MS } },
+    { path: 'productId', select: 'title slug thumbnail price status', options: { maxTimeMS: PRICE_CHANGE_QUERY_MAX_TIME_MS } },
+    { path: 'reviewedBy', select: 'name username', options: { maxTimeMS: PRICE_CHANGE_QUERY_MAX_TIME_MS } },
   ]);
 };
 
@@ -33,8 +53,12 @@ exports.createPriceChangeRequest = async (req, res) => {
     if (!cleanReason) {
       return res.status(400).json({ success: false, message: 'Reason is required.' });
     }
+    if (cleanReason.length > 1000) {
+      return res.status(400).json({ success: false, message: 'Reason must be 1000 characters or less.' });
+    }
 
-    const product = await Product.findOne({ _id: productId, sellerId: req.user._id });
+    const product = await Product.findOne({ _id: productId, sellerId: req.user._id })
+      .maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
     if (!product || product.status === 'archived') {
       return res.status(404).json({ success: false, message: 'Product not found.' });
     }
@@ -55,13 +79,13 @@ exports.createPriceChangeRequest = async (req, res) => {
         expiresAt: { $lte: new Date() },
       },
       { $set: { status: 'expired' } }
-    );
+    ).maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
 
     const existing = await PriceChangeRequest.findOne({
       sellerId: req.user._id,
       productId: product._id,
       status: 'pending',
-    });
+    }).maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
 
     if (existing) {
       return res.status(409).json({
@@ -97,43 +121,51 @@ exports.createPriceChangeRequest = async (req, res) => {
         message: 'A pending price-change token already exists for this product.',
       });
     }
-    console.error('[priceChangeController] createPriceChangeRequest:', error.message);
-    res.status(500).json({ success: false, message: error.message });
+    return sendPriceChangeServerError(res, error);
   }
 };
 
 exports.getSellerPriceChangeRequests = async (req, res) => {
   try {
     const { status = 'all', limit = 50 } = req.query;
+    const statusFilter = parseStatusFilter(status, 'all');
+    if (statusFilter.error) {
+      return res.status(400).json({ success: false, message: statusFilter.error });
+    }
     const query = { sellerId: req.user._id };
-    if (status && status !== 'all') query.status = status;
+    if (statusFilter.status !== 'all') query.status = statusFilter.status;
 
     const requests = await PriceChangeRequest.find(query)
-      .populate('productId', 'title slug thumbnail price status')
-      .populate('reviewedBy', 'name username')
+      .populate({ path: 'productId', select: 'title slug thumbnail price status', options: { maxTimeMS: PRICE_CHANGE_QUERY_MAX_TIME_MS } })
+      .populate({ path: 'reviewedBy', select: 'name username', options: { maxTimeMS: PRICE_CHANGE_QUERY_MAX_TIME_MS } })
       .sort({ createdAt: -1 })
-      .limit(Math.min(Number(limit) || 50, 100));
+      .limit(boundedLimit(limit, 50, 100))
+      .maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
 
     res.json({ success: true, requests });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendPriceChangeServerError(res, error);
   }
 };
 
 exports.cancelSellerPriceChangeRequest = async (req, res) => {
   try {
-    const request = await PriceChangeRequest.findOne({
-      _id: req.params.id,
-      sellerId: req.user._id,
-      status: 'pending',
-    });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid request id.' });
+    }
+    const request = await PriceChangeRequest.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        sellerId: req.user._id,
+        status: 'pending',
+      },
+      { $set: { status: 'cancelled' } },
+      { new: true, runValidators: true }
+    ).maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
 
     if (!request) {
       return res.status(404).json({ success: false, message: 'Pending request not found.' });
     }
-
-    request.status = 'cancelled';
-    await request.save();
 
     res.json({
       success: true,
@@ -141,42 +173,58 @@ exports.cancelSellerPriceChangeRequest = async (req, res) => {
       request: await formatRequest(request),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendPriceChangeServerError(res, error);
   }
 };
 
 exports.getAdminPriceChangeRequests = async (req, res) => {
   try {
     const { status = 'pending', limit = 100 } = req.query;
+    const statusFilter = parseStatusFilter(status, 'pending');
+    if (statusFilter.error) {
+      return res.status(400).json({ success: false, message: statusFilter.error });
+    }
     const query = {};
-    if (status && status !== 'all') query.status = status;
+    if (statusFilter.status !== 'all') query.status = statusFilter.status;
 
     const requests = await PriceChangeRequest.find(query)
-      .populate('sellerId', 'name username email')
-      .populate('productId', 'title slug thumbnail price status')
-      .populate('reviewedBy', 'name username')
+      .populate({ path: 'sellerId', select: 'name username email', options: { maxTimeMS: PRICE_CHANGE_QUERY_MAX_TIME_MS } })
+      .populate({ path: 'productId', select: 'title slug thumbnail price status', options: { maxTimeMS: PRICE_CHANGE_QUERY_MAX_TIME_MS } })
+      .populate({ path: 'reviewedBy', select: 'name username', options: { maxTimeMS: PRICE_CHANGE_QUERY_MAX_TIME_MS } })
       .sort({ status: 1, createdAt: -1 })
-      .limit(Math.min(Number(limit) || 100, 200));
+      .limit(boundedLimit(limit, 100, 200))
+      .maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
 
     res.json({ success: true, requests });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendPriceChangeServerError(res, error);
   }
 };
 
 exports.approvePriceChangeRequest = async (req, res) => {
   try {
-    const request = await PriceChangeRequest.findOne({ _id: req.params.id, status: 'pending' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid request id.' });
+    }
+    const request = await PriceChangeRequest.findOne({ _id: req.params.id, status: 'pending' })
+      .maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
     if (!request) {
       return res.status(404).json({ success: false, message: 'Pending request not found.' });
     }
 
     if (request.expiresAt && request.expiresAt <= new Date()) {
-      request.status = 'expired';
-      request.reviewedBy = req.user._id;
-      request.reviewedAt = new Date();
-      request.adminNote = 'Request expired before review.';
-      await request.save();
+      await PriceChangeRequest.findOneAndUpdate(
+        { _id: request._id, status: 'pending' },
+        {
+          $set: {
+            status: 'expired',
+            reviewedBy: req.user._id,
+            reviewedAt: new Date(),
+            adminNote: 'Request expired before review.',
+          },
+        },
+        { runValidators: true }
+      ).maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
       return res.status(409).json({ success: false, message: 'This price-change token has expired.' });
     }
 
@@ -184,7 +232,7 @@ exports.approvePriceChangeRequest = async (req, res) => {
       _id: request.productId,
       sellerId: request.sellerId,
       status: { $ne: 'archived' },
-    });
+    }).maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
 
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product is no longer available.' });
@@ -198,48 +246,80 @@ exports.approvePriceChangeRequest = async (req, res) => {
       });
     }
 
-    product.price = request.requestedPrice;
-    product.isFree = false;
-    await product.save();
+    const updatedProduct = await Product.findOneAndUpdate(
+      {
+        _id: request.productId,
+        sellerId: request.sellerId,
+        status: { $ne: 'archived' },
+        price: request.oldPrice,
+      },
+      { $set: { price: request.requestedPrice, isFree: false } },
+      { new: true, runValidators: true }
+    ).maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
 
-    request.status = 'approved';
-    request.reviewedBy = req.user._id;
-    request.reviewedAt = new Date();
-    request.appliedAt = new Date();
-    request.adminNote = String(req.body.adminNote || '').trim();
-    await request.save();
+    if (!updatedProduct) {
+      return res.status(409).json({
+        success: false,
+        message: 'Product price changed after this token was created. Ask the seller to create a new token.',
+      });
+    }
+
+    const updatedRequest = await PriceChangeRequest.findOneAndUpdate(
+      { _id: request._id, status: 'pending' },
+      {
+        $set: {
+          status: 'approved',
+          reviewedBy: req.user._id,
+          reviewedAt: new Date(),
+          appliedAt: new Date(),
+          adminNote: String(req.body.adminNote || '').trim().slice(0, 1000),
+        },
+      },
+      { new: true, runValidators: true }
+    ).maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
+
+    if (!updatedRequest) {
+      return res.status(409).json({ success: false, message: 'Pending request not found.' });
+    }
 
     res.json({
       success: true,
       message: 'Price change approved and applied.',
-      request: await formatRequest(request),
-      product,
+      request: await formatRequest(updatedRequest, { includeSellerEmail: true }),
+      product: updatedProduct,
     });
   } catch (error) {
-    console.error('[priceChangeController] approvePriceChangeRequest:', error.message);
-    res.status(500).json({ success: false, message: error.message });
+    return sendPriceChangeServerError(res, error);
   }
 };
 
 exports.rejectPriceChangeRequest = async (req, res) => {
   try {
-    const request = await PriceChangeRequest.findOne({ _id: req.params.id, status: 'pending' });
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid request id.' });
+    }
+    const request = await PriceChangeRequest.findOneAndUpdate(
+      { _id: req.params.id, status: 'pending' },
+      {
+        $set: {
+          status: 'rejected',
+          reviewedBy: req.user._id,
+          reviewedAt: new Date(),
+          adminNote: String(req.body.adminNote || '').trim().slice(0, 1000),
+        },
+      },
+      { new: true, runValidators: true }
+    ).maxTimeMS(PRICE_CHANGE_QUERY_MAX_TIME_MS);
     if (!request) {
       return res.status(404).json({ success: false, message: 'Pending request not found.' });
     }
 
-    request.status = 'rejected';
-    request.reviewedBy = req.user._id;
-    request.reviewedAt = new Date();
-    request.adminNote = String(req.body.adminNote || '').trim();
-    await request.save();
-
     res.json({
       success: true,
       message: 'Price change rejected.',
-      request: await formatRequest(request),
+      request: await formatRequest(request, { includeSellerEmail: true }),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendPriceChangeServerError(res, error);
   }
 };

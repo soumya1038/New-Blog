@@ -1,12 +1,27 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+const { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } = require('../utils/passwordPolicy');
 
 const userSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true, minlength: 3 },
+  username: {
+    type: String,
+    required: true,
+    unique: true,
+    minlength: 3,
+    maxlength: 30,
+    trim: true,
+    match: /^[a-zA-Z0-9_]+$/,
+  },
   name: { type: String, default: '' },
-  password: { type: String, required: true, minlength: 6 },
+  password: {
+    type: String,
+    required: true,
+    minlength: PASSWORD_MIN_LENGTH,
+    maxlength: PASSWORD_MAX_LENGTH,
+    select: false,
+  },
   fullName: { type: String, default: '' },
-  email: { type: String, default: '', sparse: true },
+  email: { type: String, default: '', trim: true, lowercase: true },
   phone: { type: String, default: '' },
   dateOfBirth: { type: Date },
   address: { type: String, default: '' },
@@ -38,8 +53,8 @@ const userSchema = new mongoose.Schema({
       enum: ['public', 'friends', 'private'],
       default: 'public',
     },
-    showEmail: { type: Boolean, default: true },
-    showPhone: { type: Boolean, default: true },
+    showEmail: { type: Boolean, default: false },
+    showPhone: { type: Boolean, default: false },
     showSocialLinks: { type: Boolean, default: true },
     showFacebookLinks: { type: Boolean, default: true },
     showTwitterLinks: { type: Boolean, default: true },
@@ -104,6 +119,9 @@ const userSchema = new mongoose.Schema({
     video: { type: String, default: '' },
     mediaType: { type: String, enum: ['text', 'image', 'video'], default: 'text' },
     mediaPublicId: { type: String, default: '' },
+    mediaFormat: { type: String, default: '' },
+    mediaResourceType: { type: String, enum: ['', 'image', 'video'], default: '' },
+    mediaDeliveryType: { type: String, enum: ['', 'upload', 'authenticated'], default: '' },
     backgroundColor: { type: String, default: '#1f2937' },
     textColor: { type: String, default: '#ffffff' },
     fontFamily: { type: String, default: 'Inter' },
@@ -132,19 +150,27 @@ const userSchema = new mongoose.Schema({
       user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
       seenAt: { type: Date, default: Date.now },
     }],
+    seenByCount: { type: Number, default: 0, min: 0 },
     durationSec: { type: Number, default: 7, min: 3, max: 30 },
     createdAt: { type: Date, default: Date.now },
     expiresAt: { type: Date }
   }],
   apiKeys: [{ 
     name: { type: String, default: 'Unnamed API Key' },
-    key: String, 
+    key: { type: String, select: false },
+    keyHash: { type: String, select: false },
+    keyPrefix: { type: String, default: '' },
+    keyLast4: { type: String, default: '' },
+    keyVersion: { type: Number, default: 1 },
     createdAt: { type: Date, default: Date.now } 
   }],
   role: { type: String, enum: ['user', 'admin', 'coAdmin', 'guest'], default: 'user' },
   isGuest: { type: Boolean, default: false },
-  guestExpiresAt: { type: Date, default: null, index: true },
+  guestExpiresAt: { type: Date, default: null },
+  guestCleanupStartedAt: { type: Date, default: null },
+  statusCleanupStartedAt: { type: Date, default: null, select: false },
   mustChangePasswordAfterGoogle: { type: Boolean, default: false },
+  authVersion: { type: Number, default: 0, min: 0 },
   isActive: { type: Boolean, default: true },
   suspendedUntil: { type: Date, default: null },
   isVerified: { type: Boolean, default: false },
@@ -172,7 +198,7 @@ const userSchema = new mongoose.Schema({
     }],
     updatedAt: { type: Date, default: null },
   },
-  verificationToken: { type: String, default: null },
+  verificationToken: { type: String, default: null, select: false },
   createdAt: { type: Date, default: Date.now }
 }, { timestamps: true });
 
@@ -185,15 +211,34 @@ userSchema.pre('save', async function(next) {
 
 // Compare password method
 userSchema.methods.comparePassword = async function(candidatePassword) {
+  if (!this.password) return false;
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-// TTL index for auto-deleting expired guests
+// Guest expiry is handled by the cleanup job so related data and media are removed first.
 userSchema.index(
-  { guestExpiresAt: 1 },
-  { 
-    expireAfterSeconds: 0,
+  { isGuest: 1, guestExpiresAt: 1, guestCleanupStartedAt: 1 },
+  {
+    name: 'guest_cleanup_due_idx',
     partialFilterExpression: { isGuest: true, guestExpiresAt: { $exists: true } }
+  }
+);
+userSchema.index({ 'apiKeys.keyHash': 1 });
+userSchema.index({ isGuest: 1, createdAt: -1, _id: -1 });
+userSchema.index({ isGuest: 1, suspendedUntil: 1 });
+userSchema.index({ lastActive: -1 });
+userSchema.index(
+  { 'statuses.expiresAt': 1, statusCleanupStartedAt: 1, _id: 1 },
+  { name: 'status_cleanup_due_idx' }
+);
+userSchema.index({ 'statuses._id': 1 }, { name: 'status_media_lookup_idx' });
+userSchema.index(
+  { email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      email: { $type: 'string', $gt: '' },
+    },
   }
 );
 

@@ -1,6 +1,13 @@
 import React, { useEffect, useRef } from 'react';
 import { FiVideo, FiX, FiPhone } from 'react-icons/fi';
 import soundManager from '../utils/soundManager';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
+
+const getUserAvatar = (user) => {
+  const displayName = user?.fullName || user?.name || 'User';
+  return getSafeImageUrl(user?.profileImage)
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0D8ABC&color=fff`;
+};
 
 const GroupCallInvitation = ({ groupName, initiatorName, initiatorImage, joinedUsers = [], callType = 'video', onJoin, onDecline }) => {
   const onDeclineRef = useRef(onDecline);
@@ -60,9 +67,10 @@ const GroupCallInvitation = ({ groupName, initiatorName, initiatorImage, joinedU
                   {joinedUsers.slice(0, 4).map((user, i) => (
                     <img
                       key={i}
-                      src={user.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName)}&background=0D8ABC&color=fff`}
-                      alt={user.fullName}
+                      src={getUserAvatar(user)}
+                      alt={user.fullName || user.name || 'User'}
                       className="w-10 h-10 rounded-full border-2 border-white dark:border-gray-800 object-cover"
+                      referrerPolicy="no-referrer"
                       title={user.fullName}
                     />
                   ))}

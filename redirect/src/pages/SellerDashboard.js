@@ -3,6 +3,7 @@ import { Link, useNavigate }  from 'react-router-dom';
 import { AuthContext }        from '../context/AuthContext';
 import api                    from '../services/api';
 import StarRating             from '../components/StarRating';
+import { getSafeImageUrl }    from '../utils/safeMediaUrls';
 import {
   FaPlus, FaStore, FaBoxOpen, FaChartLine, FaTag, FaCog,
   FaEdit, FaArchive, FaCheck, FaTruck, FaEye, FaToggleOn, FaToggleOff, FaTrash,
@@ -128,7 +129,7 @@ const SellerDashboard = () => {
         api.get('/seller/dashboard/stats'),
         api.get('/marketplace/seller/products?limit=50'),
         api.get('/orders/seller/orders?limit=50'),
-        api.get('/coupons/seller'),
+        api.get('/coupons/seller?limit=100'),
         api.get('/seller/store/settings'),
         api.get('/price-changes/seller?limit=50'),
       ]);
@@ -144,7 +145,7 @@ const SellerDashboard = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  const getProductImage = (product) => product?.thumbnail || product?.images?.[0] || '';
+  const getProductImage = (product) => getSafeImageUrl(product?.thumbnail || product?.images?.[0]);
 
   const publishedProducts = useMemo(
     () => products.filter(product => product.status === 'active'),
@@ -437,7 +438,7 @@ const SellerDashboard = () => {
                     <tr key={p._id} className="hover:bg-[var(--bg-secondary)] transition-colors">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <img src={getProductImage(p)} alt="" className="w-9 h-9 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" />
+                          <img src={getProductImage(p) || '/image/lekhon_url.png'} alt="" className="w-9 h-9 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" referrerPolicy="no-referrer" />
                           <p className="text-[var(--text-primary)] font-medium truncate max-w-[160px]">{p.title}</p>
                         </div>
                       </td>
@@ -530,15 +531,17 @@ const SellerDashboard = () => {
                   {priceRequests.map(req => {
                     const productTitle = req.productId?.title || req.snapshot?.productTitle || 'Product';
                     const statusClass = PRICE_REQUEST_STATUS_COLOR[req.status] || PRICE_REQUEST_STATUS_COLOR.expired;
+                    const safeThumbnail = getSafeImageUrl(req.productId?.thumbnail || req.snapshot?.thumbnail);
                     return (
                       <tr key={req._id} className="hover:bg-[var(--bg-secondary)] transition-colors">
                         <td className="px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">{req.requestToken}</td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2 min-w-[220px]">
                             <img
-                              src={req.productId?.thumbnail || req.snapshot?.thumbnail || ''}
+                              src={safeThumbnail || '/image/lekhon_url.png'}
                               alt=""
                               className="w-9 h-9 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0"
+                              referrerPolicy="no-referrer"
                             />
                             <span className="font-medium text-[var(--text-primary)] truncate max-w-[220px]">{productTitle}</span>
                           </div>
@@ -592,12 +595,14 @@ const SellerDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border-color)]">
-                  {orders.map(ord => (
+                  {orders.map(ord => {
+                    const safeBuyerProfileImage = getSafeImageUrl(ord.buyerId?.profileImage);
+                    return (
                     <tr key={ord._id} className="hover:bg-[var(--bg-secondary)] transition-colors">
                       <td className="px-4 py-3 font-mono text-xs text-[var(--text-secondary)]">{ord.orderNumber}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          {ord.buyerId?.profileImage && <img src={ord.buyerId.profileImage} alt="" className="w-6 h-6 rounded-full object-cover" />}
+                          {safeBuyerProfileImage && <img src={safeBuyerProfileImage} alt="" className="w-6 h-6 rounded-full object-cover" referrerPolicy="no-referrer" />}
                           <span className="text-[var(--text-primary)]">{ord.buyerId?.name || ord.buyerId?.username || '—'}</span>
                         </div>
                       </td>
@@ -630,7 +635,8 @@ const SellerDashboard = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {orders.length === 0 && (
                     <tr><td colSpan={6} className="px-4 py-10 text-center text-[var(--text-muted)]">No orders received yet.</td></tr>
                   )}
@@ -851,9 +857,10 @@ const SellerDashboard = () => {
                     className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-[var(--bg-secondary)] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <img
-                      src={getProductImage(product)}
+                      src={getProductImage(product) || '/image/lekhon_url.png'}
                       alt=""
                       className="h-12 w-12 shrink-0 rounded-xl bg-[var(--bg-secondary)] object-cover"
+                      referrerPolicy="no-referrer"
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-[var(--text-primary)]">{product.title}</p>

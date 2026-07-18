@@ -12,8 +12,8 @@ const KNOWN_SOCIAL_PROVIDERS = [
 
 const DEFAULT_PRIVACY = {
   profileVisibility: 'public',
-  showEmail: true,
-  showPhone: true,
+  showEmail: false,
+  showPhone: false,
   socialLinkVisibility: {},
   allowMessages: true,
 };

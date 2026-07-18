@@ -472,6 +472,54 @@ const renderAccountDeletedSuccessEmail = ({ username }) => {
   };
 };
 
+const renderGenericNotificationEmail = ({
+  username,
+  subject,
+  headingText,
+  message,
+  details = [],
+  actionLabel,
+  actionPath,
+}) => {
+  const config = getConfig();
+  const safeSubject = normalizeSubjectText(subject || 'Lekhon account update') || 'Lekhon account update';
+  const safeUsername = escapeHtml(username || 'User');
+  const safeHeading = escapeHtml(headingText || 'Account update');
+  const safeMessage = escapeHtml(message || 'There is a new update on your Lekhon account.');
+  const safeDetails = Array.isArray(details)
+    ? details
+        .slice(0, 8)
+        .map((item) => ({
+          label: String(item?.label ?? '').trim(),
+          value: String(item?.value ?? '').trim(),
+        }))
+        .filter((item) => item.label && item.value)
+    : [];
+  const detailRows = safeDetails.map((item) =>
+    `<tr><td style="font-family:Arial,sans-serif;font-size:13px;color:#888;padding:5px 0;width:140px;vertical-align:top;">${escapeHtml(item.label)}</td><td style="font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;padding:5px 0;">${escapeHtml(item.value)}</td></tr>`
+  );
+  const detailsBlock = detailRows.length
+    ? card(`<table width="100%" cellpadding="0" cellspacing="0" border="0">${detailRows.join('')}</table>`)
+    : '';
+  const actionBlock = actionLabel
+    ? button(escapeHtml(actionLabel), resolvePublicUrl(config.siteUrl, actionPath || '/notifications'))
+    : '';
+
+  const body = [
+    heading(safeHeading),
+    paragraph(`Dear <strong style="color:#1a1a1a;">${safeUsername}</strong>,`),
+    paragraph(safeMessage),
+    detailsBlock,
+    actionBlock,
+    signature(),
+  ].join('');
+
+  return {
+    subject: safeSubject,
+    html: wrapTemplate({ subject: safeSubject, bodyHtml: body, config }),
+  };
+};
+
 const renderContactAdminEmail = ({ username, userEmail, issue, advice }) => {
   const config = getConfig();
   const usernameText = String(username || 'Unknown user').trim() || 'Unknown user';
@@ -816,6 +864,7 @@ module.exports = {
   renderPasswordChangedSuccessEmail,
   renderAccountDeletionConfirmationEmail,
   renderAccountDeletedSuccessEmail,
+  renderGenericNotificationEmail,
   renderContactAdminEmail,
   renderNewFollowerEmail,
   renderNewMessageEmail,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useContext, useMemo, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
@@ -6,6 +6,8 @@ import StarRating from '../components/StarRating';
 import SellerBadge from '../components/SellerBadge';
 import CartDrawer from '../components/CartDrawer';
 import { addGuestCartItem } from '../utils/guestCart';
+import { readSessionValue, writeSessionValue } from '../utils/sessionBackedStorage';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
 import { MdVerified } from 'react-icons/md';
 import {
   FaArrowRight,
@@ -43,26 +45,75 @@ import {
   FaSearchPlus,
 } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
-import { BarLoader } from 'react-spinners';
 
 const PINCODE_REGEX = /^[1-9][0-9]{5}$/;
 const DELIVERY_PINCODE_KEY = 'lekhon-delivery-pincode';
 const VIEWER_ZOOM_CENTER = { x: 50, y: 50 };
 
 const formatPrice = (value = 0) => `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
+const getArray = (value) => (Array.isArray(value) ? value : []);
+const getWishlistItems = (data = {}) => getArray(data.products || data.items || data.wishlist);
+const getWishlistProduct = (item = {}) => item.product || item.productId || item;
+const getWishlistProductId = (item = {}) => String(getWishlistProduct(item)?._id || getWishlistProduct(item)?.id || '');
+const toSafeDescriptionText = (value = '') => String(value || '')
+  .replace(/<\s*br\s*\/?>/gi, '\n')
+  .replace(/<\/p>/gi, '\n\n')
+  .replace(/<[^>]*>/g, '')
+  .replace(/&nbsp;/gi, ' ')
+  .trim();
+
+const scrollProductPageToTop = () => {
+  if (typeof window === 'undefined') return;
+
+  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  const scroller = document.scrollingElement || document.documentElement;
+  if (scroller) scroller.scrollTop = 0;
+  document.body.scrollTop = 0;
+};
+
+const ProductDetailLoading = () => (
+  <div className="min-h-screen bg-[var(--bg-primary)] px-4 py-6">
+    <div className="marketplace-detail-skeleton mx-auto max-w-6xl" role="status" aria-live="polite" aria-label="Loading product details">
+      <div className="marketplace-detail-skeleton__gallery">
+        <span className="marketplace-skeleton-line marketplace-detail-skeleton__image" />
+        <div className="marketplace-detail-skeleton__thumbs">
+          {[0, 1, 2, 3].map((item) => (
+            <span key={item} className="marketplace-skeleton-line" />
+          ))}
+        </div>
+      </div>
+      <div className="marketplace-detail-skeleton__info">
+        <span className="marketplace-skeleton-line marketplace-detail-skeleton__pill" />
+        <span className="marketplace-skeleton-line marketplace-detail-skeleton__title" />
+        <span className="marketplace-skeleton-line marketplace-detail-skeleton__title marketplace-detail-skeleton__title--short" />
+        <div className="marketplace-detail-skeleton__price-row">
+          <span className="marketplace-skeleton-line" />
+          <span className="marketplace-skeleton-line" />
+        </div>
+        <div className="marketplace-detail-skeleton__actions">
+          <span className="marketplace-skeleton-line" />
+          <span className="marketplace-skeleton-line" />
+        </div>
+        <div className="marketplace-detail-skeleton__seller">
+          <span className="marketplace-skeleton-line" />
+          <span className="marketplace-skeleton-line" />
+        </div>
+      </div>
+      <div className="marketplace-detail-skeleton__tabs">
+        {[0, 1, 2, 3, 4].map((item) => (
+          <span key={item} className="marketplace-skeleton-line" />
+        ))}
+      </div>
+    </div>
+  </div>
+);
 
 const getStoredPincode = () => {
-  try {
-    return window.localStorage.getItem(DELIVERY_PINCODE_KEY) || '';
-  } catch {
-    return '';
-  }
+  return readSessionValue(DELIVERY_PINCODE_KEY);
 };
 
 const saveStoredPincode = (pincode) => {
-  try {
-    window.localStorage.setItem(DELIVERY_PINCODE_KEY, pincode);
-  } catch {}
+  writeSessionValue(DELIVERY_PINCODE_KEY, pincode);
 };
 
 const normalizeDistribution = (ratingSummary, reviews) => {
@@ -124,6 +175,10 @@ const ProductDetail = () => {
   const infoTabRailRef = useRef(null);
   const infoTabDragRef = useRef({ isDown: false, startX: 0, scrollLeft: 0, moved: false });
 
+  useLayoutEffect(() => {
+    scrollProductPageToTop();
+  }, [slug]);
+
   useEffect(() => {
     setLoading(true);
     setActiveImg(0);
@@ -154,6 +209,28 @@ const ProductDetail = () => {
     api.post('/marketplace/personalization/view', { productId: product._id }).catch(() => {});
   }, [user, product?._id]);
 
+  useEffect(() => {
+    if (!user || !product?._id) {
+      setWishlisted(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    api.get('/marketplace/wishlist')
+      .then(({ data }) => {
+        if (cancelled) return;
+        const savedIds = getWishlistItems(data).map(getWishlistProductId);
+        setWishlisted(savedIds.includes(String(product._id)));
+      })
+      .catch(() => {
+        if (!cancelled) setWishlisted(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [product?._id, user]);
+
   const computedRatingSummary = useMemo(() => {
     const distribution = normalizeDistribution(ratingSummary, reviews);
     const total = Number(ratingSummary?.total ?? product?.reviewCount ?? reviews.length) || 0;
@@ -162,7 +239,7 @@ const ProductDetail = () => {
   }, [product?.averageRating, product?.reviewCount, ratingSummary, reviews]);
 
   const reviewImages = useMemo(
-    () => reviews.flatMap((review) => review.images || []).filter(Boolean).slice(0, 10),
+    () => reviews.flatMap((review) => review.images || []).map(getSafeImageUrl).filter(Boolean).slice(0, 10),
     [reviews]
   );
 
@@ -183,8 +260,8 @@ const ProductDetail = () => {
 
   const productImages = useMemo(() => {
     const gallery = Array.isArray(product?.images) ? product.images.filter(Boolean) : [];
-    if (gallery.length) return gallery;
-    return product?.thumbnail ? [product.thumbnail] : [];
+    const sources = gallery.length ? gallery : [product?.thumbnail];
+    return [...new Set(sources.map(getSafeImageUrl).filter(Boolean))];
   }, [product?.images, product?.thumbnail]);
 
   const activeImage = productImages[activeImg] || productImages[0] || '';
@@ -219,7 +296,7 @@ const ProductDetail = () => {
     };
   }, [imageViewerOpen]);
 
-  if (loading) return <div className="min-h-screen"><BarLoader width="100%" color="#7c3aed" /></div>;
+  if (loading) return <ProductDetailLoading />;
   if (!product) return null;
 
   const discount = product.compareAtPrice && product.compareAtPrice > product.price
@@ -227,6 +304,8 @@ const ProductDetail = () => {
     : 0;
 
   const seller = product.sellerId;
+  const sellerAverageRating = Number(seller?.storeRating?.averageRating || 0);
+  const safeSellerProfileImage = getSafeImageUrl(seller?.profileImage);
   const isValidPincode = PINCODE_REGEX.test(deliveryPincode.trim());
   const baseDeliveryEstimate = {
     estimatedDeliveryDays: product.physical?.estimatedDeliveryDays || 7,
@@ -314,12 +393,16 @@ const ProductDetail = () => {
     try {
       const { data } = await api.post(`/marketplace/wishlist/${product._id}`);
       setWishlisted(data.added);
+      window.dispatchEvent(new CustomEvent('lekhon:saved-items-updated', {
+        detail: { type: 'product', id: product._id, saved: data.added },
+      }));
     } catch {}
   };
 
   const handleExternalClick = async () => {
     await api.post(`/marketplace/${product._id}/click`).catch(() => {});
-    window.open(product.external.url, '_blank', 'noopener,noreferrer');
+    const safeExternalUrl = getSafeHttpUrl(product.external?.url);
+    if (safeExternalUrl) window.open(safeExternalUrl, '_blank', 'noopener,noreferrer');
   };
 
   const copyLink = () => {
@@ -410,8 +493,8 @@ const ProductDetail = () => {
 
   const renderDescription = () => (
     <div className="prose prose-sm max-w-none text-[var(--text-secondary)] dark:prose-invert">
-      {product.description ? (
-        <div dangerouslySetInnerHTML={{ __html: product.description }} />
+      {toSafeDescriptionText(product.description) ? (
+        <p className="whitespace-pre-line">{toSafeDescriptionText(product.description)}</p>
       ) : (
         <p>No product description has been added yet.</p>
       )}
@@ -580,6 +663,7 @@ const ProductDetail = () => {
                       src={image}
                       alt=""
                       className="h-24 w-24 shrink-0 rounded-xl border border-[var(--border-color)] object-cover"
+                      referrerPolicy="no-referrer"
                     />
                   ))}
                 </div>
@@ -668,7 +752,7 @@ const ProductDetail = () => {
               >
                 {activeImage ? (
                   <>
-                    <img src={activeImage} alt={product.title} className="h-full w-full object-cover" />
+                    <img src={activeImage} alt={product.title} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                     <span className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full border border-white/30 bg-black/45 text-white opacity-90 shadow-lg transition-transform group-hover:scale-105">
                       <FaExpand size={14} />
                     </span>
@@ -694,7 +778,7 @@ const ProductDetail = () => {
                   <div
                     className="h-full w-full bg-no-repeat"
                     style={{
-                      backgroundImage: `url(${activeImage})`,
+                      backgroundImage: `url("${activeImage}")`,
                       backgroundSize: '230%',
                       backgroundPosition: `${imageZoom.x}% ${imageZoom.y}%`,
                     }}
@@ -715,7 +799,7 @@ const ProductDetail = () => {
                     className={`shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition-colors ${activeImg === index ? 'border-violet-500' : 'border-[var(--border-color)]'}`}
                     aria-label={`View product image ${index + 1}`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" />
+                    <img src={img} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   </button>
                 ))}
               </div>
@@ -941,8 +1025,8 @@ const ProductDetail = () => {
 
             {seller && (
               <Link to={`/store/${seller.username}`} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--border-color)] hover:border-violet-400 transition-colors mt-1">
-                {seller.profileImage ? (
-                  <img src={seller.profileImage} alt="" className="w-10 h-10 rounded-full object-cover bg-[var(--bg-secondary)]" />
+                {safeSellerProfileImage ? (
+                  <img src={safeSellerProfileImage} alt="" className="w-10 h-10 rounded-full object-cover bg-[var(--bg-secondary)]" referrerPolicy="no-referrer" />
                 ) : (
                   <span className="grid w-10 h-10 place-items-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)]">
                     <FaUserCircle size={24} />
@@ -954,7 +1038,16 @@ const ProductDetail = () => {
                     {seller.isVerified && <MdVerified size={14} className="text-blue-500 shrink-0" />}
                     <SellerBadge size="xs" withLabel />
                   </div>
-                  <p className="text-xs text-[var(--text-muted)]">View Store</p>
+                  <p className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                    <span>View Store</span>
+                    {sellerAverageRating > 0 && (
+                      <StarRating
+                        value={sellerAverageRating}
+                        size={12}
+                        className="shrink-0"
+                      />
+                    )}
+                  </p>
                 </div>
               </Link>
             )}
@@ -1000,21 +1093,24 @@ const ProductDetail = () => {
           <div>
             <h2 className="text-lg font-bold text-[var(--text-primary)] mb-4">You may also like</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
-              {related.map((item) => (
-                <Link key={item._id} to={`/marketplace/${item.slug}`} className="group text-center">
-                  <div className="aspect-square rounded-xl overflow-hidden bg-[var(--bg-secondary)] mb-1.5 border border-[var(--border-color)] group-hover:border-violet-400 transition-colors">
-                    {item.thumbnail ? (
-                      <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full grid place-items-center text-[var(--text-muted)]">
-                        <FaShoppingBag size={24} />
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-xs font-medium text-[var(--text-primary)] line-clamp-1">{item.title}</p>
-                  <p className="text-xs text-[var(--text-muted)]">{formatPrice(item.price)}</p>
-                </Link>
-              ))}
+              {related.map((item) => {
+                const safeThumbnail = getSafeImageUrl(item.thumbnail);
+                return (
+                  <Link key={item._id} to={`/marketplace/${item.slug}`} className="group text-center">
+                    <div className="aspect-square rounded-xl overflow-hidden bg-[var(--bg-secondary)] mb-1.5 border border-[var(--border-color)] group-hover:border-violet-400 transition-colors">
+                      {safeThumbnail ? (
+                        <img src={safeThumbnail} alt={item.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-full h-full grid place-items-center text-[var(--text-muted)]">
+                          <FaShoppingBag size={24} />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs font-medium text-[var(--text-primary)] line-clamp-1">{item.title}</p>
+                    <p className="text-xs text-[var(--text-muted)]">{formatPrice(item.price)}</p>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1045,6 +1141,7 @@ const ProductDetail = () => {
                   src={activeImage}
                   alt={product.title}
                   className={`max-h-full max-w-full object-contain transition-transform ${imageViewerZoomed ? 'scale-[1.85] duration-75 ease-out lg:scale-[3]' : 'scale-100 duration-200'}`}
+                  referrerPolicy="no-referrer"
                   style={{ transformOrigin: `${imageViewerZoomFocus.x}% ${imageViewerZoomFocus.y}%` }}
                 />
               </button>
@@ -1079,7 +1176,7 @@ const ProductDetail = () => {
                     }`}
                     aria-label={`Open product image ${index + 1}`}
                   >
-                    <img src={img} alt="" className="h-full w-full object-cover" />
+                    <img src={img} alt="" className="h-full w-full object-cover" referrerPolicy="no-referrer" />
                   </button>
                 ))}
               </div>
@@ -1100,11 +1197,14 @@ const ReviewList = ({ title, reviews, emptyText }) => (
       <p className="mt-3 text-sm text-[var(--text-muted)]">{emptyText || 'No reviews available.'}</p>
     ) : (
       <div className="mt-4 space-y-5">
-        {reviews.map((review) => (
+        {reviews.map((review) => {
+          const safeBuyerProfileImage = getSafeImageUrl(review.buyerId?.profileImage);
+          const safeReviewImages = (review.images || []).map(getSafeImageUrl).filter(Boolean);
+          return (
           <article key={review._id} className="border-b border-[var(--border-color)] pb-5 last:border-b-0 last:pb-0">
             <div className="flex items-center gap-2">
-              {review.buyerId?.profileImage ? (
-                <img src={review.buyerId.profileImage} alt="" className="w-9 h-9 rounded-full object-cover bg-[var(--bg-secondary)]" />
+              {safeBuyerProfileImage ? (
+                <img src={safeBuyerProfileImage} alt="" className="w-9 h-9 rounded-full object-cover bg-[var(--bg-secondary)]" referrerPolicy="no-referrer" />
               ) : (
                 <span className="grid w-9 h-9 place-items-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)]">
                   <FaUserCircle size={20} />
@@ -1130,10 +1230,10 @@ const ReviewList = ({ title, reviews, emptyText }) => (
               )}
             </div>
             {review.body && <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{review.body}</p>}
-            {review.images?.length > 0 && (
+            {safeReviewImages.length > 0 && (
               <div className="mt-3 flex gap-2 overflow-x-auto">
-                {review.images.map((image, index) => (
-                  <img key={`${image}-${index}`} src={image} alt="" className="h-20 w-20 shrink-0 rounded-lg border border-[var(--border-color)] object-cover" />
+                {safeReviewImages.map((image, index) => (
+                  <img key={`${image}-${index}`} src={image} alt="" className="h-20 w-20 shrink-0 rounded-lg border border-[var(--border-color)] object-cover" referrerPolicy="no-referrer" />
                 ))}
               </div>
             )}
@@ -1152,7 +1252,8 @@ const ReviewList = ({ title, reviews, emptyText }) => (
               </button>
             </div>
           </article>
-        ))}
+          );
+        })}
       </div>
     )}
   </div>

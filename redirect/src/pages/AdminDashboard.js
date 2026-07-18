@@ -12,13 +12,25 @@ import { StatsCardSkeleton, TableRowSkeleton } from '../components/SkeletonLoade
 import { BarLoader, PropagateLoader } from 'react-spinners';
 import AdminSellerApplications from '../components/AdminSellerApplications';
 import AdminSupportRequests from '../components/AdminSupportRequests';
+import SensitiveActionAuthModal from '../components/SensitiveActionAuthModal';
+import TwoFactorVerificationModal from '../components/TwoFactorVerificationModal';
+import {
+  buildSensitiveActionHeaders,
+  getSensitiveActionRequirement,
+  getTwoFactorRequirement,
+  requestAuthenticatedTwoFactorChallenge,
+  verifyAuthenticatedTwoFactorChallenge,
+} from '../utils/twoFactorFlow';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
-const AdminPayoutsPanel = () => {
+const AdminPayoutsPanel = ({ runAdminProtectedAction, adminStepUpConfig }) => {
   const [payouts, setPayouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('queued');
   const [markingId, setMarkingId] = useState(null);
   const [markPaidModal, setMarkPaidModal] = useState({ open: false, payoutId: null, reference: 'manual' });
+  const runProtectedAction = runAdminProtectedAction || (async ({ request }) => request({}));
+  const stepUpConfig = adminStepUpConfig || (() => ({}));
 
   const loadPayouts = async () => {
     setLoading(true);
@@ -40,14 +52,22 @@ const AdminPayoutsPanel = () => {
     const reference = markPaidModal.reference.trim();
     if (!reference) return;
     setMarkingId(id);
-    try {
-      await api.patch(`/seller/admin/payouts/${id}/mark-paid`, { reference });
-      setMarkPaidModal({ open: false, payoutId: null, reference: 'manual' });
-      await loadPayouts();
-    } catch (e) {
-      alert(e.response?.data?.message || 'Unable to mark payout as paid.');
-    }
-    setMarkingId(null);
+    await runProtectedAction({
+      title: 'Verify payout completion',
+      description: 'Confirm your password before marking this seller payout as paid.',
+      onStepUp: () => setMarkingId(null),
+      request: async (tokens) => {
+        setMarkingId(id);
+        await api.patch(`/seller/admin/payouts/${id}/mark-paid`, { reference }, stepUpConfig(tokens));
+        setMarkPaidModal({ open: false, payoutId: null, reference: 'manual' });
+        await loadPayouts();
+        setMarkingId(null);
+      },
+      onFailure: (e) => {
+        alert(e.response?.data?.message || 'Unable to mark payout as paid.');
+        setMarkingId(null);
+      },
+    });
   };
 
   return (
@@ -165,7 +185,7 @@ const PRICE_REQUEST_STATUS_STYLE = {
   expired: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
 };
 
-const AdminPriceChangesPanel = () => {
+const AdminPriceChangesPanel = ({ runAdminProtectedAction, adminStepUpConfig }) => {
   const { user } = useContext(AuthContext);
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -173,6 +193,8 @@ const AdminPriceChangesPanel = () => {
   const [reviewingId, setReviewingId] = useState(null);
   const [rejectModal, setRejectModal] = useState({ open: false, requestId: null, note: '' });
   const isAdmin = user?.role === 'admin';
+  const runProtectedAction = runAdminProtectedAction || (async ({ request }) => request({}));
+  const stepUpConfig = adminStepUpConfig || (() => ({}));
 
   const loadRequests = async () => {
     setLoading(true);
@@ -191,28 +213,44 @@ const AdminPriceChangesPanel = () => {
 
   const approveRequest = async (id) => {
     setReviewingId(id);
-    try {
-      const { data } = await api.patch(`/price-changes/admin/${id}/approve`, {});
-      setRequests(reqs => reqs.map(req => req._id === id ? data.request : req));
-    } catch (e) {
-      alert(e.response?.data?.message || 'Unable to approve price change.');
-    }
-    setReviewingId(null);
+    await runProtectedAction({
+      title: 'Verify price-change approval',
+      description: 'Confirm your password before approving this product price change.',
+      onStepUp: () => setReviewingId(null),
+      request: async (tokens) => {
+        setReviewingId(id);
+        const { data } = await api.patch(`/price-changes/admin/${id}/approve`, {}, stepUpConfig(tokens));
+        setRequests(reqs => reqs.map(req => req._id === id ? data.request : req));
+        setReviewingId(null);
+      },
+      onFailure: (e) => {
+        alert(e.response?.data?.message || 'Unable to approve price change.');
+        setReviewingId(null);
+      },
+    });
   };
 
   const rejectRequest = async () => {
     const id = rejectModal.requestId;
     setReviewingId(id);
-    try {
-      const { data } = await api.patch(`/price-changes/admin/${id}/reject`, {
-        adminNote: rejectModal.note.trim(),
-      });
-      setRequests(reqs => reqs.map(req => req._id === id ? data.request : req));
-      setRejectModal({ open: false, requestId: null, note: '' });
-    } catch (e) {
-      alert(e.response?.data?.message || 'Unable to reject price change.');
-    }
-    setReviewingId(null);
+    await runProtectedAction({
+      title: 'Verify price-change rejection',
+      description: 'Confirm your password before rejecting this product price change.',
+      onStepUp: () => setReviewingId(null),
+      request: async (tokens) => {
+        setReviewingId(id);
+        const { data } = await api.patch(`/price-changes/admin/${id}/reject`, {
+          adminNote: rejectModal.note.trim(),
+        }, stepUpConfig(tokens));
+        setRequests(reqs => reqs.map(req => req._id === id ? data.request : req));
+        setRejectModal({ open: false, requestId: null, note: '' });
+        setReviewingId(null);
+      },
+      onFailure: (e) => {
+        alert(e.response?.data?.message || 'Unable to reject price change.');
+        setReviewingId(null);
+      },
+    });
   };
 
   return (
@@ -259,6 +297,7 @@ const AdminPriceChangesPanel = () => {
                 const productSlug = request.productId?.slug || request.snapshot?.productSlug || '';
                 const statusClass = PRICE_REQUEST_STATUS_STYLE[request.status] || PRICE_REQUEST_STATUS_STYLE.expired;
                 const increase = Number(request.requestedPrice || 0) - Number(request.oldPrice || 0);
+                const safeProductThumbnail = getSafeImageUrl(request.productId?.thumbnail || request.snapshot?.thumbnail);
                 return (
                   <tr key={request._id} className="border-t border-[var(--border-default)] align-top">
                     <td className="px-4 py-3 font-mono text-xs">{request.requestToken}</td>
@@ -271,18 +310,20 @@ const AdminPriceChangesPanel = () => {
                           className="flex items-center gap-2 min-w-[220px] text-[var(--text-primary)] hover:text-[var(--brand-primary)] transition-colors"
                         >
                           <img
-                            src={request.productId?.thumbnail || request.snapshot?.thumbnail || ''}
+                            src={safeProductThumbnail || '/image/lekhon_url.png'}
                             alt=""
                             className="w-9 h-9 rounded-lg object-cover bg-[var(--surface-elevated)] shrink-0"
+                            referrerPolicy="no-referrer"
                           />
                           <span className="font-semibold truncate max-w-[220px]">{productTitle}</span>
                         </Link>
                       ) : (
                         <div className="flex items-center gap-2 min-w-[220px]">
                           <img
-                            src={request.productId?.thumbnail || request.snapshot?.thumbnail || ''}
+                            src={safeProductThumbnail || '/image/lekhon_url.png'}
                             alt=""
                             className="w-9 h-9 rounded-lg object-cover bg-[var(--surface-elevated)] shrink-0"
+                            referrerPolicy="no-referrer"
                           />
                           <span className="font-semibold truncate max-w-[220px]">{productTitle}</span>
                         </div>
@@ -404,6 +445,8 @@ const AdminDashboard = () => {
   const [suspendLoading, setSuspendLoading] = useState(false);
   const [systemMetrics, setSystemMetrics] = useState(null);
   const [verifyingUserId, setVerifyingUserId] = useState(null);
+  const [sensitiveAuthPrompt, setSensitiveAuthPrompt] = useState(null);
+  const [twoFactorPrompt, setTwoFactorPrompt] = useState(null);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -426,13 +469,14 @@ const AdminDashboard = () => {
 
   const fetchData = async () => {
     try {
+      const adminListQuery = 'limit=100';
       const [statsRes, usersRes, guestsRes, blogsRes, articlesRes, shortsRes, metricsRes] = await Promise.all([
         api.get(`/admin/stats?days=${timeRange}`),
-        api.get('/admin/users'),
-        api.get('/admin/guests'),
-        api.get('/admin/blogs'),
-        api.get('/admin/articles'),
-        api.get('/admin/shorts'),
+        api.get(`/admin/users?${adminListQuery}`),
+        api.get(`/admin/guests?${adminListQuery}`),
+        api.get(`/admin/blogs?${adminListQuery}`),
+        api.get(`/admin/articles?${adminListQuery}`),
+        api.get(`/admin/shorts?${adminListQuery}`),
         api.get('/admin/metrics')
       ]);
       setStats(statsRes.data.stats);
@@ -442,8 +486,8 @@ const AdminDashboard = () => {
       setArticles(articlesRes.data.articles);
       setShorts(shortsRes.data.shorts);
       setSystemMetrics(metricsRes.data.metrics);
-    } catch (error) {
-      console.error('Error fetching admin data:', error);
+    } catch {
+      console.error('Error fetching admin data');
     } finally {
       setLoading(false);
     }
@@ -474,6 +518,102 @@ const AdminDashboard = () => {
     setSuspendLoading(false);
   };
 
+  const adminStepUpConfig = ({ sensitiveActionToken = '', twoFactorToken = '' } = {}) => ({
+    headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
+  });
+
+  const openTwoFactorPrompt = ({ requirement, onVerified }) => {
+    setTwoFactorPrompt({
+      action: requirement.action,
+      actionLabel: requirement.actionLabel,
+      twoFactor: requirement.twoFactor,
+      onVerified,
+    });
+  };
+
+  const openSensitiveAuthPrompt = ({ requirement, onVerified, title, description }) => {
+    setSensitiveAuthPrompt({
+      action: requirement.action,
+      actionLabel: requirement.actionLabel,
+      title,
+      description,
+      onVerified,
+    });
+  };
+
+  const handleSensitiveAuthVerified = async (result) => {
+    const prompt = sensitiveAuthPrompt;
+    setSensitiveAuthPrompt(null);
+    if (!prompt?.onVerified) return;
+    await prompt.onVerified(result);
+  };
+
+  const handleSensitiveAuthForgotPassword = () => {
+    setSensitiveAuthPrompt(null);
+    navigate('/profile?forgotPassword=1');
+  };
+
+  const runAdminProtectedAction = async (options, tokens = {}) => {
+    const {
+      request,
+      onFailure,
+      onStepUp,
+      title = 'Verify admin action',
+      description = 'Confirm your account before this admin change is applied.',
+      fallbackAction = '',
+      fallbackActionLabel = '',
+    } = options;
+
+    try {
+      return await request(tokens);
+    } catch (error) {
+      const passwordRequirement = getSensitiveActionRequirement(error);
+      if (passwordRequirement) {
+        onStepUp?.();
+        openSensitiveAuthPrompt({
+          requirement: passwordRequirement,
+          title,
+          description,
+          onVerified: async (result) => {
+            const sensitiveActionToken = result?.sensitiveActionToken || tokens.sensitiveActionToken || '';
+            if (result?.requiresTwoFactor) {
+              openTwoFactorPrompt({
+                requirement: {
+                  action: result.action || passwordRequirement.action || fallbackAction,
+                  actionLabel: result.actionLabel || passwordRequirement.actionLabel || fallbackActionLabel,
+                  twoFactor: result.twoFactor,
+                },
+                onVerified: async (twoFactorToken) =>
+                  runAdminProtectedAction(options, { sensitiveActionToken, twoFactorToken }),
+              });
+              return null;
+            }
+
+            return runAdminProtectedAction(options, { ...tokens, sensitiveActionToken });
+          },
+        });
+        return null;
+      }
+
+      const twoFactorRequirement = getTwoFactorRequirement(error);
+      if (twoFactorRequirement) {
+        onStepUp?.();
+        openTwoFactorPrompt({
+          requirement: twoFactorRequirement,
+          onVerified: async (twoFactorToken) =>
+            runAdminProtectedAction(options, { ...tokens, twoFactorToken }),
+        });
+        return null;
+      }
+
+      if (onFailure) {
+        onFailure(error);
+        return null;
+      }
+      throw error;
+    }
+  };
+
   const handleDeleteUser = (userId, username) => {
     openModal({
       type: 'delete-user',
@@ -481,14 +621,17 @@ const AdminDashboard = () => {
       message: `${t('Are you sure you want to delete')} ${username}? ${t('All their blogs and comments will be permanently deleted.')}`,
       confirmText: t('Delete'),
       onConfirm: async () => {
-        try {
-          await api.delete(`/admin/users/${userId}`);
-          setUsers(users.filter(u => u._id !== userId));
-          closeModal();
-          openModal({ type: 'success', title: t('Success!'), message: t('User deleted successfully') });
-        } catch (error) {
-          setModalError(error.response?.data?.message || 'Error deleting user');
-        }
+        await runAdminProtectedAction({
+          title: 'Verify user deletion',
+          description: 'Confirm your password before permanently deleting this user account.',
+          request: async (tokens) => {
+            await api.delete(`/admin/users/${userId}`, adminStepUpConfig(tokens));
+            setUsers(users.filter(u => u._id !== userId));
+            closeModal();
+            openModal({ type: 'success', title: t('Success!'), message: t('User deleted successfully') });
+          },
+          onFailure: (error) => setModalError(error.response?.data?.message || 'Error deleting user'),
+        });
       }
     });
   };
@@ -520,21 +663,24 @@ const AdminDashboard = () => {
   const confirmWarningEmail = async () => {
     const { userId, username } = modalConfig;
     const reason = modalText.trim() || 'Policy warning issued by moderation team';
-    try {
-      await api.post(`/admin/users/${userId}/warn-email`, { reason });
-      closeModal();
-      openModal({
-        type: 'success',
-        title: t('Success!'),
-        message: `Warning email queued for ${username}.`,
-      });
-    } catch (error) {
-      openModal({
+    await runAdminProtectedAction({
+      title: 'Verify warning email',
+      description: 'Confirm your password before sending an account warning.',
+      request: async (tokens) => {
+        await api.post(`/admin/users/${userId}/warn-email`, { reason }, adminStepUpConfig(tokens));
+        closeModal();
+        openModal({
+          type: 'success',
+          title: t('Success!'),
+          message: `Warning email queued for ${username}.`,
+        });
+      },
+      onFailure: (error) => openModal({
         type: 'delete-user',
         title: 'Error',
         message: error.response?.data?.message || 'Failed to queue warning email',
-      });
-    }
+      }),
+    });
   };
 
   const handleSendPreDeletionEmail = (userId, username) => {
@@ -560,24 +706,27 @@ const AdminDashboard = () => {
     const daysRemaining = Math.max(1, Math.floor(parsedDays));
     const deletionDate = new Date(Date.now() + daysRemaining * 24 * 60 * 60 * 1000).toISOString();
 
-    try {
-      await api.post(`/admin/users/${userId}/pre-deletion-email`, {
-        daysRemaining,
-        deletionDate,
-      });
-      closeModal();
-      openModal({
-        type: 'success',
-        title: t('Success!'),
-        message: `Pre-deletion warning email queued for ${username} (${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining).`,
-      });
-    } catch (error) {
-      openModal({
+    await runAdminProtectedAction({
+      title: 'Verify pre-deletion warning',
+      description: 'Confirm your password before sending a pre-deletion account warning.',
+      request: async (tokens) => {
+        await api.post(`/admin/users/${userId}/pre-deletion-email`, {
+          daysRemaining,
+          deletionDate,
+        }, adminStepUpConfig(tokens));
+        closeModal();
+        openModal({
+          type: 'success',
+          title: t('Success!'),
+          message: `Pre-deletion warning email queued for ${username} (${daysRemaining} day${daysRemaining === 1 ? '' : 's'} remaining).`,
+        });
+      },
+      onFailure: (error) => openModal({
         type: 'delete-user',
         title: 'Error',
         message: error.response?.data?.message || 'Failed to queue pre-deletion warning email',
-      });
-    }
+      }),
+    });
   };
 
   const handleModalConfirm = async () => {
@@ -610,16 +759,26 @@ const AdminDashboard = () => {
         }
       }
       
-      console.log('Sending to backend:', { value, suspendUnit, days });
-      const response = await api.put(`/admin/users/${userId}/suspend`, { days });
-      console.log('Backend response:', response.data);
-      await fetchData();
-      setSuspendLoading(false);
-      closeModal();
-      
-      const durationText = response.data.message || 'User status updated successfully';
-      
-      openModal({ type: 'success', title: t('Success!'), message: durationText });
+      await runAdminProtectedAction({
+        title: isActive ? 'Verify user suspension' : 'Verify user unsuspension',
+        description: 'Confirm your password before changing this user suspension.',
+        onStepUp: () => setSuspendLoading(false),
+        request: async (tokens) => {
+          setSuspendLoading(true);
+          const response = await api.put(`/admin/users/${userId}/suspend`, { days }, adminStepUpConfig(tokens));
+          await fetchData();
+          setSuspendLoading(false);
+          closeModal();
+
+          const durationText = response.data.message || 'User status updated successfully';
+
+          openModal({ type: 'success', title: t('Success!'), message: durationText });
+        },
+        onFailure: (error) => {
+          setSuspendLoading(false);
+          setModalError(error.response?.data?.message || 'Error updating user status');
+        },
+      });
     } catch (error) {
       setSuspendLoading(false);
       setModalError(error.response?.data?.message || 'Error updating user status');
@@ -633,14 +792,17 @@ const AdminDashboard = () => {
       message: `${t('Are you sure you want to delete')} ${username} ${t('to admin')}? ${t('They will have full administrative privileges')}.`,
       confirmText: t('Make Admin'),
       onConfirm: async () => {
-        try {
-          await api.put(`/admin/users/${userId}/make-admin`);
-          await fetchData();
-          closeModal();
-          openModal({ type: 'success', title: t('Success!'), message: `${username} ${t('is now an admin')}` });
-        } catch (error) {
-          setModalError(error.response?.data?.message || 'Error promoting user');
-        }
+        await runAdminProtectedAction({
+          title: 'Verify admin promotion',
+          description: 'Confirm your password before granting full admin privileges.',
+          request: async (tokens) => {
+            await api.put(`/admin/users/${userId}/make-admin`, {}, adminStepUpConfig(tokens));
+            await fetchData();
+            closeModal();
+            openModal({ type: 'success', title: t('Success!'), message: `${username} ${t('is now an admin')}` });
+          },
+          onFailure: (error) => setModalError(error.response?.data?.message || 'Error promoting user'),
+        });
       }
     });
   };
@@ -652,14 +814,17 @@ const AdminDashboard = () => {
       message: `${t('Promote')} ${username} ${t('to co-admin')}? ${t('They will have read-only access to the admin panel')}.`,
       confirmText: t('Make Co-Admin'),
       onConfirm: async () => {
-        try {
-          await api.put(`/admin/users/${userId}/make-coadmin`);
-          await fetchData();
-          closeModal();
-          openModal({ type: 'success', title: t('Success!'), message: `${username} ${t('is now a co-admin')}` });
-        } catch (error) {
-          setModalError(error.response?.data?.message || 'Error promoting user');
-        }
+        await runAdminProtectedAction({
+          title: 'Verify co-admin promotion',
+          description: 'Confirm your password before granting co-admin privileges.',
+          request: async (tokens) => {
+            await api.put(`/admin/users/${userId}/make-coadmin`, {}, adminStepUpConfig(tokens));
+            await fetchData();
+            closeModal();
+            openModal({ type: 'success', title: t('Success!'), message: `${username} ${t('is now a co-admin')}` });
+          },
+          onFailure: (error) => setModalError(error.response?.data?.message || 'Error promoting user'),
+        });
       }
     });
   };
@@ -671,14 +836,17 @@ const AdminDashboard = () => {
       message: `${t('Remove')} ${t('co-admin privileges from')} ${username}? ${t('They will become a regular user')}.`,
       confirmText: t('Remove'),
       onConfirm: async () => {
-        try {
-          await api.put(`/admin/users/${userId}/remove-coadmin`);
-          await fetchData();
-          closeModal();
-          openModal({ type: 'success', title: t('Success!'), message: `${username} ${t('is now a regular user')}` });
-        } catch (error) {
-          setModalError(error.response?.data?.message || 'Error removing co-admin');
-        }
+        await runAdminProtectedAction({
+          title: 'Verify role removal',
+          description: 'Confirm your password before removing co-admin privileges.',
+          request: async (tokens) => {
+            await api.put(`/admin/users/${userId}/remove-coadmin`, {}, adminStepUpConfig(tokens));
+            await fetchData();
+            closeModal();
+            openModal({ type: 'success', title: t('Success!'), message: `${username} ${t('is now a regular user')}` });
+          },
+          onFailure: (error) => setModalError(error.response?.data?.message || 'Error removing co-admin'),
+        });
       }
     });
   };
@@ -690,14 +858,17 @@ const AdminDashboard = () => {
       message: `${t('Are you sure you want to delete')} "${title}"? ${t('This action cannot be undone.')}.`,
       confirmText: t('Delete'),
       onConfirm: async () => {
-        try {
-          await api.delete(`/admin/blogs/${blogId}`);
-          setBlogs(blogs.filter(b => b._id !== blogId));
-          closeModal();
-          openModal({ type: 'success', title: t('Success!'), message: t('Blog deleted successfully!') });
-        } catch (error) {
-          setModalError(error.response?.data?.message || 'Error deleting blog');
-        }
+        await runAdminProtectedAction({
+          title: 'Verify content deletion',
+          description: 'Confirm your password before deleting this blog.',
+          request: async (tokens) => {
+            await api.delete(`/admin/blogs/${blogId}`, adminStepUpConfig(tokens));
+            setBlogs(blogs.filter(b => b._id !== blogId));
+            closeModal();
+            openModal({ type: 'success', title: t('Success!'), message: t('Blog deleted successfully!') });
+          },
+          onFailure: (error) => setModalError(error.response?.data?.message || 'Error deleting blog'),
+        });
       }
     });
   };
@@ -709,14 +880,17 @@ const AdminDashboard = () => {
       message: `${t('Are you sure you want to delete')} "${title}"? ${t('This action cannot be undone.')}.`,
       confirmText: t('Delete'),
       onConfirm: async () => {
-        try {
-          await api.delete(`/admin/articles/${articleId}`);
-          setArticles(articles.filter(a => a._id !== articleId));
-          closeModal();
-          openModal({ type: 'success', title: t('Success!'), message: t('Article deleted successfully!') });
-        } catch (error) {
-          setModalError(error.response?.data?.message || 'Error deleting article');
-        }
+        await runAdminProtectedAction({
+          title: 'Verify content deletion',
+          description: 'Confirm your password before deleting this article.',
+          request: async (tokens) => {
+            await api.delete(`/admin/articles/${articleId}`, adminStepUpConfig(tokens));
+            setArticles(articles.filter(a => a._id !== articleId));
+            closeModal();
+            openModal({ type: 'success', title: t('Success!'), message: t('Article deleted successfully!') });
+          },
+          onFailure: (error) => setModalError(error.response?.data?.message || 'Error deleting article'),
+        });
       }
     });
   };
@@ -728,29 +902,42 @@ const AdminDashboard = () => {
       message: `${t('Are you sure you want to delete')} "${title}"? ${t('This action cannot be undone.')}.`,
       confirmText: t('Delete'),
       onConfirm: async () => {
-        try {
-          await api.delete(`/admin/shorts/${shortId}`);
-          setShorts(shorts.filter(s => s._id !== shortId));
-          closeModal();
-          openModal({ type: 'success', title: t('Success!'), message: t('Short deleted successfully!') });
-        } catch (error) {
-          setModalError(error.response?.data?.message || 'Error deleting short');
-        }
+        await runAdminProtectedAction({
+          title: 'Verify content deletion',
+          description: 'Confirm your password before deleting this short.',
+          request: async (tokens) => {
+            await api.delete(`/admin/shorts/${shortId}`, adminStepUpConfig(tokens));
+            setShorts(shorts.filter(s => s._id !== shortId));
+            closeModal();
+            openModal({ type: 'success', title: t('Success!'), message: t('Short deleted successfully!') });
+          },
+          onFailure: (error) => setModalError(error.response?.data?.message || 'Error deleting short'),
+        });
       }
     });
   };
 
   const handleToggleVerification = async (userId, username, isVerified) => {
     setVerifyingUserId(userId);
-    try {
-      await api.put(`/admin/users/${userId}/verify`);
-      await fetchData();
-      openModal({ type: 'success', title: t('Success!'), message: `${username} ${isVerified ? 'unverified' : 'verified'} successfully` });
-    } catch (error) {
-      openModal({ type: 'error', title: t('Error'), message: error.response?.data?.message || 'Failed to update verification' });
-    } finally {
-      setVerifyingUserId(null);
-    }
+    await runAdminProtectedAction({
+      title: 'Verify account verification change',
+      description: 'Confirm your password before changing this user verification status.',
+      onStepUp: () => setVerifyingUserId(null),
+      request: async (tokens) => {
+        setVerifyingUserId(userId);
+        try {
+          await api.put(`/admin/users/${userId}/verify`, {}, adminStepUpConfig(tokens));
+          await fetchData();
+          openModal({ type: 'success', title: t('Success!'), message: `${username} ${isVerified ? 'unverified' : 'verified'} successfully` });
+        } finally {
+          setVerifyingUserId(null);
+        }
+      },
+      onFailure: (error) => {
+        setVerifyingUserId(null);
+        openModal({ type: 'error', title: t('Error'), message: error.response?.data?.message || 'Failed to update verification' });
+      },
+    });
   };
 
   if (loading || authLoading) {
@@ -1359,7 +1546,7 @@ const AdminDashboard = () => {
                     <tr key={g._id} className="hover:bg-[var(--surface-elevated)] transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
-                          <img src={g.profileImage || 'https://via.placeholder.com/40'} alt={g.username} className="w-10 h-10 rounded-full" />
+                          <img src={getSafeImageUrl(g.profileImage) || 'https://via.placeholder.com/40'} alt={g.username} className="w-10 h-10 rounded-full" referrerPolicy="no-referrer" />
                           <div>
                             <p className="font-semibold">{g.username}</p>
                             <span className="text-xs bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 px-2 py-1 rounded">Guest</span>
@@ -1436,7 +1623,7 @@ const AdminDashboard = () => {
                     <tr key={u._id} className="hover:bg-[var(--surface-elevated)] transition-colors">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
-                          <img src={u.profileImage || 'https://via.placeholder.com/40'} alt={u.username} className="w-10 h-10 rounded-full" />
+                          <img src={getSafeImageUrl(u.profileImage) || 'https://via.placeholder.com/40'} alt={u.username} className="w-10 h-10 rounded-full" referrerPolicy="no-referrer" />
                           <div>
                             <p className="font-semibold">{u.username}</p>
                             {u.role === 'admin' && <span className="text-xs bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 px-2 py-1 rounded">Admin</span>}
@@ -1671,19 +1858,31 @@ const AdminDashboard = () => {
         )}
 
         {activeTab === 'seller-applications' && (
-          <AdminSellerApplications />
+          <AdminSellerApplications
+            runAdminProtectedAction={runAdminProtectedAction}
+            adminStepUpConfig={adminStepUpConfig}
+          />
         )}
 
         {activeTab === 'payouts' && (
-          <AdminPayoutsPanel />
+          <AdminPayoutsPanel
+            runAdminProtectedAction={runAdminProtectedAction}
+            adminStepUpConfig={adminStepUpConfig}
+          />
         )}
 
         {activeTab === 'price-changes' && (
-          <AdminPriceChangesPanel />
+          <AdminPriceChangesPanel
+            runAdminProtectedAction={runAdminProtectedAction}
+            adminStepUpConfig={adminStepUpConfig}
+          />
         )}
 
         {activeTab === 'support' && (
-          <AdminSupportRequests />
+          <AdminSupportRequests
+            runAdminProtectedAction={runAdminProtectedAction}
+            adminStepUpConfig={adminStepUpConfig}
+          />
         )}
 
         {/* Blogs Tab */}
@@ -1936,6 +2135,30 @@ const AdminDashboard = () => {
             </div>
           </div>
         )}
+        <TwoFactorVerificationModal
+          open={Boolean(twoFactorPrompt)}
+          action={twoFactorPrompt?.action}
+          actionLabel={twoFactorPrompt?.actionLabel}
+          twoFactor={twoFactorPrompt?.twoFactor}
+          requestChallenge={requestAuthenticatedTwoFactorChallenge}
+          verifyChallenge={verifyAuthenticatedTwoFactorChallenge}
+          onVerified={async (token) => {
+            const prompt = twoFactorPrompt;
+            setTwoFactorPrompt(null);
+            if (prompt?.onVerified) await prompt.onVerified(token);
+          }}
+          onClose={() => setTwoFactorPrompt(null)}
+        />
+        <SensitiveActionAuthModal
+          open={Boolean(sensitiveAuthPrompt)}
+          action={sensitiveAuthPrompt?.action}
+          actionLabel={sensitiveAuthPrompt?.actionLabel}
+          title={sensitiveAuthPrompt?.title}
+          description={sensitiveAuthPrompt?.description}
+          onVerified={handleSensitiveAuthVerified}
+          onForgotPassword={handleSensitiveAuthForgotPassword}
+          onClose={() => setSensitiveAuthPrompt(null)}
+        />
       </div>
     </div>
   );

@@ -3,11 +3,12 @@ const path = require('path');
 
 // Use memory storage for cloud deployment (Render/Heroku)
 const storage = multer.memoryStorage();
+const allowedImageMimeTypes = new Set(['image/jpeg', 'image/png']);
+const allowedImageExtensions = new Set(['.jpg', '.jpeg', '.png']);
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  const extname = allowedImageExtensions.has(path.extname(file.originalname || '').toLowerCase());
+  const mimetype = allowedImageMimeTypes.has(String(file.mimetype || '').toLowerCase());
 
   if (extname && mimetype) {
     cb(null, true);

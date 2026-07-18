@@ -17,6 +17,7 @@ import ActiveCallScreen from '../components/ActiveCallScreen';
 import ActiveCallBanner from '../components/ActiveCallBanner';
 import FloatingCallBanner from '../components/FloatingCallBanner';
 import { saveCallState, getCallState, clearCallState } from '../utils/callStateManager';
+import { readSessionJson, writeSessionJson } from '../utils/sessionBackedStorage';
 import CallHistoryModal from '../components/CallHistoryModal';
 import VoiceRecorder from '../components/VoiceRecorder';
 import VoiceMessagePlayer from '../components/VoiceMessagePlayer';
@@ -36,6 +37,7 @@ import '../styles/camera.css';
 import BlogImageEditor from '../components/BlogImageEditor';
 import { ClipLoader } from 'react-spinners';
 import { compressImage } from '../utils/imageCompression';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const CHAT_CONVERSATION_REFRESH_MS = 15000;
 const GROUP_CALL_REFRESH_MS = 15000;
@@ -105,8 +107,8 @@ const ChatNew = () => {
   const [currentStatusIndex, setCurrentStatusIndex] = useState(0);
   const [statusProgress, setStatusProgress] = useState(0);
   const [viewedStatuses, setViewedStatuses] = useState(() => {
-    const saved = localStorage.getItem('viewedStatuses');
-    return saved ? new Set(JSON.parse(saved)) : new Set();
+    const saved = readSessionJson('viewedStatuses', []);
+    return new Set(Array.isArray(saved) ? saved : []);
   });
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [modalStatusIndex, setModalStatusIndex] = useState(0);
@@ -227,6 +229,7 @@ const ChatNew = () => {
     if (authLoading || !user?._id) return;
 
     socket.current = socketService.connect(user._id);
+    if (!socket.current) return;
     webrtcService.setSocket(socket.current);
 
     webrtcService.setOnRemoteStream((stream) => {
@@ -799,7 +802,7 @@ const ChatNew = () => {
 
   // Persist viewed statuses
   useEffect(() => {
-    localStorage.setItem('viewedStatuses', JSON.stringify([...viewedStatuses]));
+    writeSessionJson('viewedStatuses', [...viewedStatuses]);
   }, [viewedStatuses]);
 
   // Status slideshow with progress bar (header preview)
@@ -889,16 +892,16 @@ const ChatNew = () => {
               audio.currentTime = 0;
               audio.play()
                 // .then(() => console.log('✅ Audio playing, count:', playCount + 1))
-                .catch(err => console.log('❌ Audio play failed:', err.message));
+                .catch(() => {});
               playCount++;
             }
           };
 
           audio.onended = playNext;
-          audio.onerror = (e) => console.log('❌ Audio error:', e);
+          audio.onerror = () => {};
           playNext();
-        } catch (err) {
-          console.log('❌ Audio exception:', err);
+        } catch {
+          // Ignore non-critical notification audio failures.
         }
       };
 
@@ -933,7 +936,7 @@ const ChatNew = () => {
 
   const loadGroups = async () => {
     try {
-      const { data } = await api.get('/groups');
+      const { data } = await api.get('/groups?limit=100');
       setGroups(data.groups || []);
     } catch (error) {
       console.error('Failed to load groups:', error);
@@ -1143,11 +1146,7 @@ const ChatNew = () => {
       loadConversations();
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Failed to send voice message. Please retry.';
-      console.error('Failed to send voice message:', {
-        message: error.message,
-        status: error.response?.status,
-        response: error.response?.data
-      });
+      console.error('Failed to send voice message');
       showAlertModal('Error', errorMessage);
     } finally {
       setVoiceSending(false);
@@ -1564,8 +1563,15 @@ const ChatNew = () => {
 
   const getUserAvatar = (user) => {
     const displayName = getUserDisplayName(user);
-    return user?.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0D8ABC&color=fff`;
+    return getSafeImageUrl(user?.profileImage) || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0D8ABC&color=fff`;
   };
+
+  const getGroupAvatar = (group) => {
+    const displayName = group?.name || 'Group';
+    return getSafeImageUrl(group?.icon) || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0D8ABC&color=fff`;
+  };
+
+  const getSafeStatusImage = (status) => getSafeImageUrl(status?.image);
 
   const getLastSeenText = (lastSeen) => {
     if (!lastSeen) return t('Offline');
@@ -2175,11 +2181,14 @@ const ChatNew = () => {
 
             {/* Status image */}
             <div className="flex-1 flex items-center justify-center">
-              <img
-                src={selectedUserStatuses[modalStatusIndex]?.image}
-                alt="Status"
-                className="max-w-full max-h-full object-contain"
-              />
+              {getSafeStatusImage(selectedUserStatuses[modalStatusIndex]) ? (
+                <img
+                  src={getSafeStatusImage(selectedUserStatuses[modalStatusIndex])}
+                  alt="Status"
+                  className="max-w-full max-h-full object-contain"
+                  referrerPolicy="no-referrer"
+                />
+              ) : null}
             </div>
 
             {/* Navigation */}
@@ -2235,6 +2244,7 @@ const ChatNew = () => {
               src={getUserAvatar(selectedChat)}
               alt={getUserDisplayName(selectedChat)}
               className="w-full h-auto max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              referrerPolicy="no-referrer"
             />
           </div>
         </div>
@@ -2358,6 +2368,7 @@ const ChatNew = () => {
                       src={getUserAvatar(conv.user)}
                       alt={getUserDisplayName(conv.user)}
                       className="w-10 h-10 rounded-full object-cover ml-3"
+                      referrerPolicy="no-referrer"
                     />
                     <p className="ml-3 font-medium text-[var(--text-primary)]">{getUserDisplayName(conv.user)}</p>
                   </label>
@@ -2682,6 +2693,7 @@ const ChatNew = () => {
                     src={getUserAvatar(user)}
                     alt={getUserDisplayName(user)}
                     className="w-12 h-12 rounded-full object-cover"
+                    referrerPolicy="no-referrer"
                   />
                 </div>
                 <div className="ml-3 flex-1">
@@ -2707,9 +2719,10 @@ const ChatNew = () => {
                   <div className="flex items-center flex-1 min-w-0">
                     <div className="relative">
                       <img
-                        src={chat.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.name)}&background=0D8ABC&color=fff`}
+                        src={getGroupAvatar(chat)}
                         alt={chat.name}
                         className="w-12 h-12 rounded-full object-cover"
+                        referrerPolicy="no-referrer"
                       />
                     </div>
                     <div className="ml-3 flex-1 min-w-0">
@@ -2813,6 +2826,7 @@ const ChatNew = () => {
                           src={getUserAvatar(chat.user)}
                           alt={getUserDisplayName(chat.user)}
                           className="w-12 h-12 rounded-full object-cover"
+                          referrerPolicy="no-referrer"
                         />
                       </div>
                       {isOnline(chat.user._id) && (
@@ -2990,9 +3004,10 @@ const ChatNew = () => {
                       }}
                     >
                       <img
-                        src={selectedChat.isGroup ? (selectedChat.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedChat.name)}&background=0D8ABC&color=fff`) : getUserAvatar(selectedChat)}
+                        src={selectedChat.isGroup ? getGroupAvatar(selectedChat) : getUserAvatar(selectedChat)}
                         alt={selectedChat.isGroup ? selectedChat.name : getUserDisplayName(selectedChat)}
                         className="w-10 h-10 rounded-full object-cover"
+                        referrerPolicy="no-referrer"
                       />
                     </div>
                     {!selectedChat.isGroup && isOnline(selectedChat._id) && (
@@ -3063,8 +3078,8 @@ const ChatNew = () => {
                   ref={userPanelRef}
                   className="absolute top-full left-0 w-full md:w-1/2 border border-[var(--border-default)] rounded-b-lg shadow-2xl z-50 animate-slideDown overflow-hidden"
                   style={{
-                    backgroundImage: selectedUserStatuses.length > 0 && selectedUserStatuses[currentStatusIndex]?.image
-                      ? `url(${selectedUserStatuses[currentStatusIndex].image})`
+                    backgroundImage: selectedUserStatuses.length > 0 && getSafeStatusImage(selectedUserStatuses[currentStatusIndex])
+                      ? `url("${getSafeStatusImage(selectedUserStatuses[currentStatusIndex])}")`
                       : 'none',
                     backgroundSize: 'cover',
                     backgroundPosition: 'center'
@@ -3104,6 +3119,7 @@ const ChatNew = () => {
                           src={getUserAvatar(selectedChat)}
                           alt={getUserDisplayName(selectedChat)}
                           className="w-16 h-16 rounded-full object-cover border-2 border-white dark:border-[var(--border-default)] hover:opacity-80 transition-opacity"
+                          referrerPolicy="no-referrer"
                         />
                         {isOnline(selectedChat._id) && (
                           <span className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full"></span>
@@ -3317,21 +3333,12 @@ const ChatNew = () => {
             <div
               ref={messagesContainerRef}
               onScroll={handleScroll}
-              className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 pb-3 max-w-full relative"
+              className="chat-messages-background flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 pb-3 max-w-full relative"
               style={{
-                backgroundImage: `url(${process.env.PUBLIC_URL}/image/chat_light_background.png)`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat'
+                '--chat-light-background-image': `url(${process.env.PUBLIC_URL}/image/chat_light_background.png)`,
+                '--chat-dark-background-image': `url(${process.env.PUBLIC_URL}/image/chat_dark_background.png)`,
               }}
             >
-              <style>{`
-                @media (prefers-color-scheme: dark) {
-                  .dark div[style*="chat_light_background"] {
-                    background-image: url(${process.env.PUBLIC_URL}/image/chat_dark_background.png) !important;
-                  }
-                }
-              `}</style>
               <div className="relative">
                 {/* Loading Messages */}
                 {loadingMessages && (
@@ -3427,6 +3434,7 @@ const ChatNew = () => {
                               src={getUserAvatar(msg.sender)}
                               alt={getUserDisplayName(msg.sender)}
                               className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                              referrerPolicy="no-referrer"
                             />
                             <div className={`${isOwn ? 'bg-blue-500/10' : 'bg-[var(--background-secondary)]'} rounded-2xl px-4 py-3 shadow-sm`}>
                               <div className="flex items-start gap-3">
@@ -3445,9 +3453,10 @@ const ChatNew = () => {
                                       {joinedUsers.slice(0, 3).map((u, i) => (
                                         <img
                                           key={i}
-                                          src={u.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.fullName)}&background=0D8ABC&color=fff`}
+                                          src={getUserAvatar(u)}
                                           alt={u.fullName}
                                           className="w-6 h-6 rounded-full border-2 border-white dark:border-[var(--border-default)] object-cover"
+                                          referrerPolicy="no-referrer"
                                           title={u.fullName}
                                         />
                                       ))}
@@ -3525,6 +3534,7 @@ const ChatNew = () => {
                               src={isOwn ? getUserAvatar(user) : getUserAvatar(msg.sender)}
                               alt={isOwn ? getUserDisplayName(user) : getUserDisplayName(msg.sender)}
                               className="w-8 h-8 rounded-full object-cover"
+                              referrerPolicy="no-referrer"
                             />
                           ) : (
                             <div className="w-8 h-8" />
@@ -3570,22 +3580,27 @@ const ChatNew = () => {
                                         </p>
                                       </div>
                                       {msg.replyTo.type === 'image' && msg.replyTo.fileUrl && (
-                                        <img
-                                          src={msg.replyTo.fileUrl}
-                                          alt="Reply"
-                                          className="w-10 h-10 rounded object-cover flex-shrink-0"
-                                        />
+                                        getSafeImageUrl(msg.replyTo.fileUrl) ? (
+                                          <img
+                                            src={getSafeImageUrl(msg.replyTo.fileUrl)}
+                                            alt="Reply"
+                                            className="w-10 h-10 rounded object-cover flex-shrink-0"
+                                            referrerPolicy="no-referrer"
+                                          />
+                                        ) : null
                                       )}
                                     </div>
                                   )}
                                   {msg.type === 'voice' ? (
                                     <VoiceMessagePlayer
+                                      messageId={msg._id}
                                       audioUrl={msg.voiceUrl}
                                       duration={msg.voiceDuration}
                                       isOwn={isOwn}
                                     />
                                   ) : msg.type === 'image' || msg.type === 'document' ? (
                                     <FileMessage
+                                      messageId={msg._id}
                                       fileUrl={msg.fileUrl}
                                       fileName={msg.fileName}
                                       fileSize={msg.fileSize}
@@ -3988,11 +4003,14 @@ const ChatNew = () => {
                           </p>
                         </div>
                         {replyingTo.type === 'image' && replyingTo.fileUrl && (
-                          <img
-                            src={replyingTo.fileUrl}
-                            alt="Reply preview"
-                            className="w-12 h-12 rounded object-cover flex-shrink-0"
-                          />
+                          getSafeImageUrl(replyingTo.fileUrl) ? (
+                            <img
+                              src={getSafeImageUrl(replyingTo.fileUrl)}
+                              alt="Reply preview"
+                              className="w-12 h-12 rounded object-cover flex-shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : null
                         )}
                       </div>
                       <button

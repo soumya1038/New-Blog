@@ -2,9 +2,25 @@ const Short = require('../models/Short');
 const Comment = require('../models/Comment');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
 const { enqueueEmailJob } = require('../jobs/queueService');
 const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
+const { normalizeAllowedPublicId } = require('../utils/cloudinaryPublicIds');
+const { cleanupOldDraftBatch } = require('../utils/draftCleanup');
+const { logError, sendSafeServerError } = require('../utils/safeErrorLog');
+const { trackPublishedContentView } = require('../utils/contentViewTracking');
+const { resolveContentAuthorRelationships } = require('../utils/contentAuthorRelationships');
+const {
+  canViewerSeeStatus,
+  filterVisibleStatusesForViewer,
+  getViewerRelationshipToTarget,
+  hasUserId,
+  sanitizeStatusesForViewer,
+} = require('../utils/userVisibility');
+
+const sendShortServerError = (res, error) =>
+  sendSafeServerError(res, '[shortController] request failed:', error, 'Unable to process short request');
 
 const SHORT_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_SHORT_LIST_SECONDS,
@@ -15,6 +31,19 @@ const SHORT_DETAIL_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_SHORT_DETAIL_SECONDS,
   parsePositiveInt(process.env.CACHE_TTL_DETAIL_SECONDS, 180)
 );
+
+const SHORT_LIST_DEFAULT_LIMIT = parsePositiveInt(process.env.SHORT_LIST_DEFAULT_LIMIT, 20);
+const SHORT_LIST_MAX_LIMIT = parsePositiveInt(process.env.SHORT_LIST_MAX_LIMIT, 100);
+const SHORT_LIST_MAX_PAGE = parsePositiveInt(process.env.SHORT_LIST_MAX_PAGE, 100);
+const SHORT_QUERY_MAX_TIME_MS = Math.max(
+  100,
+  Number(process.env.SHORT_QUERY_MAX_TIME_MS) || 5000
+);
+
+const parseBoundedPositiveInt = (value, fallback, max) => {
+  const parsed = parsePositiveInt(value, fallback);
+  return Math.min(parsed, max);
+};
 
 const invalidateShortCache = async () => {
   await invalidateCacheByPrefixes(['shorts:list:', 'short:detail:']);
@@ -39,6 +68,10 @@ exports.createShort = async (req, res) => {
 
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
     const videoUrlsArray = videoUrls ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : [];
+    const coverPublicIdResult = normalizeAllowedPublicId(cloudinaryPublicId, req.user._id);
+    if (coverPublicIdResult.error) {
+      return res.status(400).json({ success: false, message: 'Invalid image ownership' });
+    }
 
     // If publishing, delete existing draft with same title
     if (!isDraft && !isScheduled) {
@@ -54,7 +87,7 @@ exports.createShort = async (req, res) => {
           try {
             await cloudinary.uploader.destroy(existingDraft.cloudinaryPublicId);
           } catch (err) {
-            console.error('Cloudinary delete error:', err);
+            logError('Cloudinary delete error:', err);
           }
         }
         await Short.findByIdAndDelete(existingDraft._id);
@@ -68,7 +101,7 @@ exports.createShort = async (req, res) => {
       tags: tagArray,
       category: category || 'General',
       coverImage: coverImage || null,
-      cloudinaryPublicId: cloudinaryPublicId || null,
+      cloudinaryPublicId: coverPublicIdResult.publicId || null,
       videoUrls: videoUrlsArray,
       metaDescription: metaDescription || null,
       isDraft: isScheduled ? true : (isDraft || false),
@@ -92,13 +125,13 @@ exports.createShort = async (req, res) => {
         },
         { jobId: `content-published:short:${short._id}` }
       ).catch((error) => {
-        console.error('Failed to queue short published email:', error?.message || error);
+        logError('Failed to queue short published email:', error);
       });
     }
 
     res.status(201).json({ success: true, short: populatedShort });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendShortServerError(res, error);
   }
 };
 
@@ -106,9 +139,26 @@ exports.createShort = async (req, res) => {
 exports.getShorts = async (req, res) => {
   try {
     const { author, tag, draft } = req.query;
+    const limit = parseBoundedPositiveInt(req.query.limit, SHORT_LIST_DEFAULT_LIMIT, SHORT_LIST_MAX_LIMIT);
+    const page = parseBoundedPositiveInt(req.query.page, 1, SHORT_LIST_MAX_PAGE);
+    const skip = (page - 1) * limit;
     const filter = {};
     const canUseListCache = draft !== 'true';
-    const listCacheKey = `shorts:list:${createQueryCacheKey(req.query)}`;
+    const viewerId = String(req.user?._id || 'anon');
+    if (author && !mongoose.Types.ObjectId.isValid(author)) {
+      return res.status(400).json({ success: false, message: 'Invalid author id' });
+    }
+
+    const listCacheKey = `shorts:list:${createQueryCacheKey({
+      author,
+      tag,
+      draft,
+      page,
+      limit,
+      viewer: viewerId,
+      visibility: 'block-aware-v1',
+      published: 'scheduled-aware-v1'
+    })}`;
 
     if (canUseListCache) {
       const cachedPayload = await getCache(listCacheKey);
@@ -121,71 +171,74 @@ exports.getShorts = async (req, res) => {
     if (tag) filter.tags = tag;
     if (draft !== undefined) {
       filter.isDraft = draft === 'true';
+      if (draft !== 'true') filter.isScheduled = false;
       if (req.user) {
         filter.author = req.user._id;
         
-        // Auto-delete drafts older than 42 hours (exclude scheduled)
         const fortyTwoHoursAgo = new Date(Date.now() - 42 * 60 * 60 * 1000);
-        const oldDrafts = await Short.find({
-          author: req.user._id,
-          isDraft: true,
-          isScheduled: false,
-          updatedAt: { $lt: fortyTwoHoursAgo }
-        });
-        
-        for (const draft of oldDrafts) {
-          if (draft.cloudinaryPublicId) {
-            const cloudinary = require('../utils/cloudinary');
-            try {
-              await cloudinary.uploader.destroy(draft.cloudinaryPublicId);
-            } catch (err) {
-              console.error('Cloudinary delete error:', err);
-            }
+        await cleanupOldDraftBatch({
+          Model: Short,
+          commentField: 'short',
+          filter: {
+            author: req.user._id,
+            isDraft: true,
+            isScheduled: false,
+            updatedAt: { $lt: fortyTwoHoursAgo }
           }
-          await Comment.deleteMany({ short: draft._id });
-          await Notification.deleteMany({ short: draft._id });
-          await Short.findByIdAndDelete(draft._id);
-        }
+        });
       } else {
         return res.status(401).json({ success: false, message: 'Authentication required for drafts' });
       }
     } else {
       filter.isDraft = false;
+      filter.isScheduled = false;
     }
 
-    const shorts = await Short.find(filter)
-      .populate('author', 'username profileImage isGuest role isVerified statuses followers')
-      .sort({ createdAt: -1 });
+    const [shorts, total] = await Promise.all([
+      Short.find(filter)
+        .populate({
+          path: 'author',
+          select: 'username profileImage isGuest role isVerified statuses.audience statuses.expiresAt',
+          options: { maxTimeMS: SHORT_QUERY_MAX_TIME_MS },
+        })
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .maxTimeMS(SHORT_QUERY_MAX_TIME_MS),
+      Short.countDocuments(filter).maxTimeMS(SHORT_QUERY_MAX_TIME_MS)
+    ]);
 
-    const viewerId = String(req.user?._id || '');
-    const canViewerSeeStatus = (status, { isOwner, isFollower }) => {
-      if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
-      if (isOwner) return true;
-      const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
-      if (audience === 'public') return true;
-      if (audience === 'followers' && isFollower) return true;
-      return false;
-    };
+    const authorRelationships = await resolveContentAuthorRelationships({
+      viewer: req.user,
+      authorIds: shorts.map((short) => short.author?._id),
+      maxTimeMS: SHORT_QUERY_MAX_TIME_MS,
+    });
 
     // Add audience-aware hasActiveStatus to each short author
     const shortsWithStatus = shorts.map(short => {
       const shortObj = short.toObject();
       if (shortObj.author && shortObj.author.statuses) {
-        const authorId = String(shortObj.author._id || '');
-        const isOwner = viewerId && viewerId === authorId;
-        const isFollower = Array.isArray(shortObj.author.followers)
-          ? shortObj.author.followers.some((id) => String(id) === viewerId)
-          : false;
+        const relationship = authorRelationships.get(String(shortObj.author._id || '')) || {};
         shortObj.author.hasActiveStatus = shortObj.author.statuses.some((status) =>
-          canViewerSeeStatus(status, { isOwner, isFollower })
+          canViewerSeeStatus(status, relationship)
         );
         delete shortObj.author.statuses;
-        delete shortObj.author.followers;
       }
       return shortObj;
     });
 
-    const payload = { success: true, shorts: shortsWithStatus };
+    const payload = {
+      success: true,
+      shorts: shortsWithStatus,
+      pagination: {
+        mode: 'page',
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: page * limit < total
+      }
+    };
 
     if (canUseListCache) {
       await setCache(listCacheKey, payload, SHORT_LIST_CACHE_TTL_SECONDS);
@@ -193,48 +246,65 @@ exports.getShorts = async (req, res) => {
 
     res.json(payload);
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendShortServerError(res, error);
   }
 };
 
 // Get single short
 exports.getShort = async (req, res) => {
   try {
-    const viewerId = String(req.user?._id || 'anon');
-    const detailCacheKey = `short:detail:${req.params.id}:viewer:${viewerId}`;
-    const cachedPayload = await getCache(detailCacheKey);
-    if (cachedPayload) {
-      return res.json(cachedPayload);
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid short id' });
     }
 
+    const viewerId = String(req.user?._id || 'anon');
+    const detailCacheKey = `short:detail:v4:${req.params.id}:viewer:${viewerId}`;
+
     const short = await Short.findById(req.params.id)
-      .populate('author', 'username profileImage fullName bio statuses followers')
-      .populate('likes', 'username profileImage');
+      .populate({
+        path: 'author',
+        select: 'username profileImage fullName bio statuses',
+        options: { maxTimeMS: SHORT_QUERY_MAX_TIME_MS },
+      })
+      .populate({
+        path: 'likes',
+        select: 'username profileImage',
+        options: { maxTimeMS: SHORT_QUERY_MAX_TIME_MS },
+      })
+      .maxTimeMS(SHORT_QUERY_MAX_TIME_MS);
 
     if (!short) {
       return res.status(404).json({ success: false, message: 'Short not found' });
     }
 
-    const commentCount = await Comment.countDocuments({ short: short._id });
+    const isPublished = !short.isDraft && !short.isScheduled;
+    const isOwner = req.user && String(short.author?._id || short.author) === String(req.user._id);
+    if (!isPublished && !isOwner) {
+      return res.status(404).json({ success: false, message: 'Short not found' });
+    }
+
+    if (isPublished) {
+      const cachedPayload = await getCache(detailCacheKey);
+      if (cachedPayload) {
+        return res.json(cachedPayload);
+      }
+    }
+
+    const [commentCount, authorRelationships] = await Promise.all([
+      Comment.countDocuments({ short: short._id }).maxTimeMS(SHORT_QUERY_MAX_TIME_MS),
+      resolveContentAuthorRelationships({
+        viewer: req.user,
+        authorIds: short.author?._id ? [short.author._id] : [],
+        maxTimeMS: SHORT_QUERY_MAX_TIME_MS,
+      }),
+    ]);
 
     const shortObj = short.toObject();
     if (shortObj.author && shortObj.author.statuses) {
-      const authorId = String(shortObj.author._id || '');
-      const isOwner = viewerId !== 'anon' && viewerId === authorId;
-      const isFollower = Array.isArray(shortObj.author.followers)
-        ? shortObj.author.followers.some((id) => String(id) === viewerId)
-        : false;
-      const visibleStatuses = (shortObj.author.statuses || []).filter((status) => {
-        if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
-        if (isOwner) return true;
-        const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
-        if (audience === 'public') return true;
-        if (audience === 'followers' && isFollower) return true;
-        return false;
-      });
+      const relationship = authorRelationships.get(String(shortObj.author._id || '')) || {};
+      const visibleStatuses = filterVisibleStatusesForViewer(shortObj.author.statuses, relationship);
       shortObj.author.hasActiveStatus = visibleStatuses.length > 0;
-      shortObj.author.statuses = visibleStatuses;
-      delete shortObj.author.followers;
+      shortObj.author.statuses = sanitizeStatusesForViewer(visibleStatuses, relationship);
     }
 
     const payload = {
@@ -246,11 +316,13 @@ exports.getShort = async (req, res) => {
       }
     };
 
-    await setCache(detailCacheKey, payload, SHORT_DETAIL_CACHE_TTL_SECONDS);
+    if (isPublished) {
+      await setCache(detailCacheKey, payload, SHORT_DETAIL_CACHE_TTL_SECONDS);
+    }
 
     res.json(payload);
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendShortServerError(res, error);
   }
 };
 
@@ -279,6 +351,13 @@ exports.updateShort = async (req, res) => {
     
     const tagArray = tags ? tags.split(',').map(tag => tag.trim()).filter(tag => tag) : short.tags;
     const videoUrlsArray = videoUrls !== undefined ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : short.videoUrls;
+    const coverPublicIdResult = cloudinaryPublicId !== undefined
+      ? normalizeAllowedPublicId(cloudinaryPublicId, req.user._id, [short.cloudinaryPublicId])
+      : { publicId: short.cloudinaryPublicId };
+
+    if (coverPublicIdResult.error) {
+      return res.status(400).json({ success: false, message: 'Invalid image ownership' });
+    }
 
     const publishingFromDraft =
       (short.isDraft || short.isScheduled) && isDraft === false && !isScheduled;
@@ -298,7 +377,7 @@ exports.updateShort = async (req, res) => {
           try {
             await cloudinary.uploader.destroy(otherDraft.cloudinaryPublicId);
           } catch (err) {
-            console.error('Cloudinary delete error:', err);
+            logError('Cloudinary delete error:', err);
           }
         }
         await Short.findByIdAndDelete(otherDraft._id);
@@ -310,7 +389,7 @@ exports.updateShort = async (req, res) => {
     short.tags = tagArray;
     short.category = category || short.category;
     short.coverImage = coverImage !== undefined ? coverImage : short.coverImage;
-    short.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : short.cloudinaryPublicId;
+    short.cloudinaryPublicId = coverPublicIdResult.publicId || null;
     short.videoUrls = videoUrlsArray;
     short.metaDescription = metaDescription !== undefined ? metaDescription : short.metaDescription;
     short.isDraft = isScheduled ? true : (isDraft !== undefined ? isDraft : short.isDraft);
@@ -333,7 +412,7 @@ exports.updateShort = async (req, res) => {
         },
         { jobId: `content-published:short:${short._id}` }
       ).catch((error) => {
-        console.error('Failed to queue short published email after draft publish:', error?.message || error);
+        logError('Failed to queue short published email after draft publish:', error);
       });
     }
 
@@ -341,7 +420,7 @@ exports.updateShort = async (req, res) => {
 
     res.json({ success: true, short: updatedShort });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendShortServerError(res, error);
   }
 };
 
@@ -363,7 +442,7 @@ exports.deleteShort = async (req, res) => {
       try {
         await cloudinary.uploader.destroy(short.cloudinaryPublicId);
       } catch (err) {
-        console.error('Cloudinary delete error:', err);
+        logError('Cloudinary delete error:', err);
       }
     }
 
@@ -374,61 +453,82 @@ exports.deleteShort = async (req, res) => {
 
     res.json({ success: true, message: 'Short deleted' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendShortServerError(res, error);
   }
 };
 
 // Track short view
 exports.trackView = async (req, res) => {
   try {
-    const short = await Short.findById(req.params.id);
-    if (!short) {
+    const result = await trackPublishedContentView({
+      Model: Short,
+      identifier: req.params.id,
+      userId: req.user?._id,
+      ip: req.ip || req.connection.remoteAddress,
+      allowSlug: false,
+    });
+
+    if (!result.found) {
       return res.status(404).json({ success: false, message: 'Short not found' });
     }
 
-    const userId = req.user?._id;
-    const userIp = req.ip || req.connection.remoteAddress;
-
-    const alreadyViewed = short.viewedBy.some(view => 
-      (userId && view.user?.toString() === userId.toString()) || 
-      (!userId && view.ip === userIp)
-    );
-
-    if (!alreadyViewed) {
-      short.views += 1;
-      short.viewedBy.push({ user: userId, ip: userIp });
-      await short.save();
+    if (result.counted) {
       await invalidateShortCache();
     }
 
-    res.json({ success: true, views: short.views });
+    res.json({ success: true, views: result.views });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendShortServerError(res, error);
   }
 };
 
 // Like/Unlike short
 exports.toggleLike = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid short id' });
+    }
+
     const short = await Short.findById(req.params.id);
 
-    if (!short) {
+    if (!short || short.isDraft || short.isScheduled) {
       return res.status(404).json({ success: false, message: 'Short not found' });
     }
 
-    const likeIndex = short.likes.indexOf(req.user._id);
+    const shortAuthor = await User.findById(short.author).select('blockedUsers email username emailNotifications');
+    if (!shortAuthor) {
+      return res.status(404).json({ success: false, message: 'Short author not found' });
+    }
 
-    if (likeIndex > -1) {
-      short.likes.splice(likeIndex, 1);
-      await short.save();
+    const relationship = getViewerRelationshipToTarget(req.user, {
+      _id: short.author,
+      blockedUsers: shortAuthor.blockedUsers,
+    });
+    if (!relationship.isOwner && relationship.isBlocked) {
+      return res.status(403).json({ success: false, message: 'Cannot react to this content' });
+    }
+
+    const wasLiked = hasUserId(short.likes, req.user._id);
+
+    if (wasLiked) {
+      await Short.updateOne({ _id: short._id }, { $pull: { likes: req.user._id } });
+      const updatedShort = await Short.findById(short._id).select('likes');
       await invalidateShortCache();
-      res.json({ success: true, liked: false, likes: short.likes });
+      return res.json({
+        success: true,
+        liked: false,
+        likes: updatedShort?.likes || [],
+        likeCount: updatedShort?.likes?.length || 0,
+      });
     } else {
-      short.likes.push(req.user._id);
-      await short.save();
+      const updateResult = await Short.updateOne(
+        { _id: short._id, likes: { $ne: req.user._id } },
+        { $addToSet: { likes: req.user._id } }
+      );
+      const updatedShort = await Short.findById(short._id).select('likes');
       await invalidateShortCache();
 
-      if (short.author.toString() !== req.user._id.toString()) {
+      if (updateResult.modifiedCount > 0 && short.author.toString() !== req.user._id.toString()) {
         await Notification.create({
           recipient: short.author,
           sender: req.user._id,
@@ -437,7 +537,6 @@ exports.toggleLike = async (req, res) => {
           message: `${req.user.username} liked your short "${short.title}"`
         });
 
-        const shortAuthor = await User.findById(short.author).select('email username emailNotifications');
         if (shortAuthor?.email && isEmailNotificationEnabled(shortAuthor, 'newReaction')) {
           enqueueEmailJob(
             'new-reaction',
@@ -445,13 +544,13 @@ exports.toggleLike = async (req, res) => {
               email: shortAuthor.email,
               username: shortAuthor.username,
               reactorName: req.user.username,
-              reactionCount: short.likes.length,
+              reactionCount: updatedShort?.likes?.length || 0,
               postTitle: short.title,
               postUrl: `/shorts/${short._id}`
             },
             { jobId: `new-reaction:short:${short._id}:${req.user._id}` }
           ).catch((error) => {
-            console.error('Failed to queue short reaction email:', error?.message || error);
+            logError('Failed to queue short reaction email:', error);
           });
         }
         
@@ -465,9 +564,14 @@ exports.toggleLike = async (req, res) => {
         }
       }
 
-      res.json({ success: true, liked: true, likes: short.likes, likeCount: short.likes.length });
+      res.json({
+        success: true,
+        liked: true,
+        likes: updatedShort?.likes || [],
+        likeCount: updatedShort?.likes?.length || 0,
+      });
     }
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendShortServerError(res, error);
   }
 };

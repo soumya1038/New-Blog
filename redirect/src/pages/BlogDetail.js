@@ -6,7 +6,7 @@ import ReadingProgressBar from '../components/ReadingProgressBar';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import socketService from '../services/socket';
-import ReactMarkdown from 'react-markdown';
+import SafeMarkdown from '../components/SafeMarkdown';
 import { FaHeart, FaComment, FaClock, FaEdit, FaTrash, FaArrowLeft, FaShare, FaRetweet, FaTimes, FaFacebook, FaLinkedin, FaWhatsapp, FaEnvelope, FaLink, FaUserPlus, FaUserCheck, FaChevronDown, FaChevronUp, FaEye, FaLock, FaExternalLinkAlt, FaRegBookmark, FaRegCommentDots, FaFeatherAlt } from 'react-icons/fa';
 import { FaXTwitter } from 'react-icons/fa6';
 import { GoVerified } from 'react-icons/go';
@@ -33,6 +33,20 @@ import {
   requestAuthenticatedTwoFactorChallenge,
   verifyAuthenticatedTwoFactorChallenge,
 } from '../utils/twoFactorFlow';
+import {
+  getSavedUserKey,
+  isSavedContentMeta,
+  removeSavedContentMeta,
+  saveSavedContentMeta,
+} from '../utils/savedItemsStorage';
+import {
+  SAFE_EMBED_IFRAME_ALLOW,
+  SAFE_EMBED_IFRAME_SANDBOX,
+  SAFE_EMBED_REFERRER_POLICY,
+  getSafeHttpUrl,
+  getSafeDirectVideoUrl,
+  getSafeVideoRenderInfo,
+} from '../utils/safeMediaUrls';
 
 const compactCount = (value = 0) => {
   const count = Number(value || 0);
@@ -111,44 +125,7 @@ const normalizeVideoUrls = (blog) => {
     });
 };
 
-const getYouTubeId = (url) => {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.includes('youtu.be')) {
-      return parsed.pathname.split('/').filter(Boolean)[0] || '';
-    }
-    if (parsed.hostname.includes('youtube.com')) {
-      if (parsed.pathname.startsWith('/embed/')) return parsed.pathname.split('/')[2] || '';
-      if (parsed.pathname.startsWith('/shorts/')) return parsed.pathname.split('/')[2] || '';
-      return parsed.searchParams.get('v') || '';
-    }
-  } catch {
-    return '';
-  }
-  return '';
-};
-
-const getVideoEmbedUrl = (url) => {
-  const trimmedUrl = String(url || '').trim();
-  if (!trimmedUrl) return '';
-
-  const youtubeId = getYouTubeId(trimmedUrl);
-  if (youtubeId) return `https://www.youtube.com/embed/${youtubeId}`;
-
-  try {
-    const parsed = new URL(trimmedUrl);
-    if (parsed.hostname.includes('vimeo.com')) {
-      const videoId = parsed.pathname.split('/').filter(Boolean).find(part => /^\d+$/.test(part));
-      if (videoId) return `https://player.vimeo.com/video/${videoId}`;
-    }
-  } catch {
-    return trimmedUrl;
-  }
-
-  return trimmedUrl;
-};
-
-const isDirectVideoUrl = (url) => /\.(mp4|webm|ogg|mov)(\?.*)?$/i.test(String(url || ''));
+const isDirectVideoUrl = (url) => Boolean(getSafeDirectVideoUrl(url));
 
 const normalizeBlogGalleryMedia = (blog) => [
   ...normalizeBlogImages(blog).map((src, index) => ({
@@ -156,12 +133,19 @@ const normalizeBlogGalleryMedia = (blog) => [
     type: 'image',
     src,
   })),
-  ...normalizeVideoUrls(blog).map((src, index) => ({
-    id: `video-${index}-${src}`,
-    type: 'video',
-    src,
-    embedSrc: getVideoEmbedUrl(src),
-  })),
+  ...normalizeVideoUrls(blog)
+    .map((src, index) => {
+      const renderInfo = getSafeVideoRenderInfo(src);
+      if (!renderInfo) return null;
+
+      return {
+        id: `video-${index}-${renderInfo.src}`,
+        type: 'video',
+        src: renderInfo.src,
+        embedSrc: renderInfo.type === 'embed' ? renderInfo.src : '',
+      };
+    })
+    .filter(Boolean),
 ];
 
 const normalizeBlogProductTags = (blog) => {
@@ -186,15 +170,20 @@ const normalizeBlogProductTags = (blog) => {
 
   const externalTags = (Array.isArray(blog?.externalProductLinks) ? blog.externalProductLinks : [])
     .filter(link => link && typeof link === 'object' && link.url)
-    .map((link, index) => ({
-      key: getExternalProductKey(link, index),
-      source: 'external',
-      title: link.title || 'External product',
-      image: link.thumbnail || '/image/lekhon_url.png',
-      meta: link.priceLabel || link.platform || 'External',
-      href: link.url,
-      external: true,
-    }));
+    .map((link, index) => {
+      const href = getSafeHttpUrl(link.url);
+      if (!href) return null;
+      return {
+        key: getExternalProductKey(link, index),
+        source: 'external',
+        title: link.title || 'External product',
+        image: getSafeHttpUrl(link.thumbnail) || '/image/lekhon_url.png',
+        meta: link.priceLabel || link.platform || 'External',
+        href,
+        external: true,
+      };
+    })
+    .filter(Boolean);
 
   return [...productMap.values(), ...externalTags];
 };
@@ -449,9 +438,12 @@ const BlogGalleryDock = ({
                   />
                 ) : (
                   <iframe
-                    src={activeMedia.embedSrc || activeMedia.src}
+                    src={activeMedia.embedSrc}
                     title={`${title} video ${activeIndex + 1}`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allow={SAFE_EMBED_IFRAME_ALLOW}
+                    sandbox={SAFE_EMBED_IFRAME_SANDBOX}
+                    referrerPolicy={SAFE_EMBED_REFERRER_POLICY}
+                    loading="lazy"
                     allowFullScreen
                   />
                 )}
@@ -575,9 +567,12 @@ const BlogGalleryDock = ({
                   <video src={activeMedia.src} controls playsInline autoPlay />
                 ) : (
                   <iframe
-                    src={activeMedia.embedSrc || activeMedia.src}
+                    src={activeMedia.embedSrc}
                     title={`${title} video ${activeIndex + 1}`}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allow={SAFE_EMBED_IFRAME_ALLOW}
+                    sandbox={SAFE_EMBED_IFRAME_SANDBOX}
+                    referrerPolicy={SAFE_EMBED_REFERRER_POLICY}
+                    loading="lazy"
                     allowFullScreen
                   />
                 )}
@@ -651,8 +646,11 @@ const BlogDetail = () => {
 
   useEffect(() => {
     if (!contentId) return;
-    const key = `lekhon:saved-blog:${user?._id || 'guest'}:${contentId}`;
-    setSavedBlog(localStorage.getItem(key) === '1');
+    setSavedBlog(isSavedContentMeta({
+      type: 'blog',
+      userKey: getSavedUserKey(user),
+      id: contentId,
+    }));
   }, [contentId, user?._id]);
 
   useEffect(() => {
@@ -826,11 +824,10 @@ const BlogDetail = () => {
   const fetchComments = async () => {
     try {
       const { data } = await api.get(`/comments/${contentId}`);
-      const commentsWithReplies = await Promise.all(data.comments.map(async (comment) => {
-        const replyCount = await api.get(`/comments/${comment._id}/replies`).then(res => res.data.replies.length).catch(() => 0);
-        return { ...comment, replyCount };
-      }));
-      setComments(commentsWithReplies);
+      setComments((data.comments || []).map((comment) => ({
+        ...comment,
+        replyCount: comment.replyCount || 0
+      })));
     } catch (error) {
       console.error('Error fetching comments:', error);
     }
@@ -1128,14 +1125,22 @@ const BlogDetail = () => {
 
   const handleSaveBlog = () => {
     if (!contentId) return;
-    const key = `lekhon:saved-blog:${user?._id || 'guest'}:${contentId}`;
+    const savedUserKey = getSavedUserKey(user);
     const nextSaved = !savedBlog;
     setSavedBlog(nextSaved);
     if (nextSaved) {
-      localStorage.setItem(key, '1');
+      saveSavedContentMeta({
+        type: 'blog',
+        userKey: savedUserKey,
+        id: contentId,
+        title: blog?.title || 'Saved blog',
+        image: blog?.coverImage || blog?.image || blog?.featuredImage || blog?.thumbnail || '',
+        subtitle: blog?.author?.username || blog?.author?.fullName || '',
+        path: `/blog/${blog?.slug || contentId}`,
+      });
       toast.success('Blog saved to your reading list.');
     } else {
-      localStorage.removeItem(key);
+      removeSavedContentMeta({ type: 'blog', userKey: savedUserKey, id: contentId });
       toast.success('Blog removed from saved items.');
     }
   };
@@ -1148,25 +1153,25 @@ const BlogDetail = () => {
       name: 'Facebook',
       icon: <FaFacebook className="text-2xl" />,
       color: 'bg-blue-600 hover:bg-blue-700',
-      action: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank')
+      action: () => window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer')
     },
     {
       name: 'Twitter',
       icon: <FaXTwitter className="text-2xl" />,
       color: 'bg-black hover:bg-gray-800',
-      action: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank')
+      action: () => window.open(`https://twitter.com/intent/tweet?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareTitle)}`, '_blank', 'noopener,noreferrer')
     },
     {
       name: 'LinkedIn',
       icon: <FaLinkedin className="text-2xl" />,
       color: 'bg-blue-700 hover:bg-blue-800',
-      action: () => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank')
+      action: () => window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer')
     },
     {
       name: 'WhatsApp',
       icon: <FaWhatsapp className="text-2xl" />,
       color: 'bg-green-500 hover:bg-green-600',
-      action: () => window.open(`https://wa.me/?text=${encodeURIComponent(shareTitle + ' ' + shareUrl)}`, '_blank')
+      action: () => window.open(`https://wa.me/?text=${encodeURIComponent(shareTitle + ' ' + shareUrl)}`, '_blank', 'noopener,noreferrer')
     },
     {
       name: 'Email',
@@ -1657,7 +1662,7 @@ const BlogDetail = () => {
               <section className="blog-detail-body-frame">
                 <AudioControls text={blog.content} content={blog.content} blogId={blog._id} />
                 <div className="blog-content blog-detail-markdown">
-                  <ReactMarkdown>{blog.content}</ReactMarkdown>
+                  <SafeMarkdown>{blog.content}</SafeMarkdown>
                 </div>
               </section>
 

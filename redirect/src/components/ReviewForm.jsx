@@ -50,6 +50,7 @@ const ReviewForm = ({ orderId, productId, productTitle, productImage, onSubmitte
             src={productImage}
             alt={productTitle}
             className="w-12 h-12 rounded-xl object-cover bg-[var(--bg-secondary)] border border-[var(--border-color)]"
+            referrerPolicy="no-referrer"
           />
         )}
         <p className="text-sm font-semibold text-[var(--text-primary)] min-w-0">

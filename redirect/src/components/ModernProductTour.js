@@ -289,23 +289,6 @@ const ModernProductTour = ({ onComplete }) => {
         </div>
       </div>
 
-      <style jsx>{`
-        @keyframes pulse-ring {
-          0%, 100% {
-            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
-          }
-          50% {
-            box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
-          }
-        }
-        .animate-pulse-ring {
-          animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-        .tour-highlight {
-          position: relative;
-          z-index: 10000 !important;
-        }
-      `}</style>
     </>
   );
 };

@@ -171,6 +171,7 @@ const ArticleTemplateFrame = ({
 
   useEffect(() => {
     const onMessage = (event) => {
+      if (event.source !== iframeRef.current?.contentWindow) return;
       const payload = event.data;
       if (!payload || payload.type !== 'article-template:height') return;
       if (typeof payload.height === 'number') {
@@ -204,7 +205,7 @@ const ArticleTemplateFrame = ({
       ref={iframeRef}
       srcDoc={htmlContent}
       title="Article Template"
-      sandbox="allow-same-origin allow-scripts allow-popups"
+      sandbox="allow-scripts allow-popups"
       onLoad={handleLoad}
       className={`w-full border-0 ${className}`}
       style={{

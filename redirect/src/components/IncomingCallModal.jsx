@@ -1,18 +1,24 @@
 import React from 'react';
 import { FiPhone, FiVideo, FiX } from 'react-icons/fi';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const IncomingCallModal = ({ caller, callType, onAccept, onReject }) => {
+  const displayName = caller?.fullName || caller?.username || 'User';
+  const avatarSrc = getSafeImageUrl(caller?.profileImage)
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0D8ABC&color=fff`;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 z-[70] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-pulse-slow">
         <div className="text-center">
           <img
-            src={caller.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(caller.fullName || caller.username)}&background=0D8ABC&color=fff`}
-            alt={caller.fullName || caller.username}
+            src={avatarSrc}
+            alt={displayName}
             className="w-24 h-24 rounded-full mx-auto mb-4 border-4 border-blue-500"
+            referrerPolicy="no-referrer"
           />
           <h3 className="text-xl font-semibold text-gray-900 mb-2">
-            {caller.fullName || caller.username}
+            {displayName}
           </h3>
           <div className="flex items-center justify-center gap-2 text-gray-600 mb-6">
             {callType === 'video' ? (

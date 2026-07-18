@@ -1,6 +1,7 @@
 const express = require('express');
 const { adminAuth, adminOrCoAdminAuth } = require('../middleware/auth');
 const { getMetrics, getAlertThresholds } = require('../middleware/monitoring');
+const { requireSensitiveActionToken, requireTwoFactorForAction } = require('../utils/twoFactor');
 const {
   getStats,
   getUsers,
@@ -22,9 +23,13 @@ const {
 } = require('../controllers/adminController');
 
 const router = express.Router();
+const requireAdminStepUp = (action) => [
+  requireSensitiveActionToken(action),
+  requireTwoFactorForAction(action),
+];
 
-// Health check endpoint (public)
-router.get('/health', (req, res) => {
+// Detailed health endpoint (admin only; public checks live at /health and /ready)
+router.get('/health', adminOrCoAdminAuth, (req, res) => {
   const metrics = getMetrics();
   const isHealthy = metrics.database === 'connected' && metrics.alerts?.status !== 'critical';
   res.status(isHealthy ? 200 : 503).json({
@@ -58,16 +63,16 @@ router.get('/articles', adminOrCoAdminAuth, getAllArticles);
 router.get('/shorts', adminOrCoAdminAuth, getAllShorts);
 
 // Write routes (admin only)
-router.delete('/users/:id', adminAuth, deleteUser);
-router.put('/users/:id/suspend', adminAuth, suspendUser);
-router.put('/users/:id/verify', adminAuth, toggleVerification);
-router.put('/users/:id/make-admin', adminAuth, makeAdmin);
-router.put('/users/:id/make-coadmin', adminAuth, makeCoAdmin);
-router.put('/users/:id/remove-coadmin', adminAuth, removeCoAdmin);
-router.post('/users/:id/warn-email', adminAuth, sendAccountWarningEmailNotice);
-router.post('/users/:id/pre-deletion-email', adminAuth, sendPreDeletionWarningEmailNotice);
-router.delete('/blogs/:id', adminAuth, deleteBlog);
-router.delete('/articles/:id', adminAuth, deleteArticle);
-router.delete('/shorts/:id', adminAuth, deleteShort);
+router.delete('/users/:id', adminAuth, ...requireAdminStepUp('admin_delete_user'), deleteUser);
+router.put('/users/:id/suspend', adminAuth, ...requireAdminStepUp('admin_suspend_user'), suspendUser);
+router.put('/users/:id/verify', adminAuth, ...requireAdminStepUp('admin_toggle_verification'), toggleVerification);
+router.put('/users/:id/make-admin', adminAuth, ...requireAdminStepUp('admin_change_role'), makeAdmin);
+router.put('/users/:id/make-coadmin', adminAuth, ...requireAdminStepUp('admin_change_role'), makeCoAdmin);
+router.put('/users/:id/remove-coadmin', adminAuth, ...requireAdminStepUp('admin_change_role'), removeCoAdmin);
+router.post('/users/:id/warn-email', adminAuth, ...requireAdminStepUp('admin_warn_user'), sendAccountWarningEmailNotice);
+router.post('/users/:id/pre-deletion-email', adminAuth, ...requireAdminStepUp('admin_pre_delete_user'), sendPreDeletionWarningEmailNotice);
+router.delete('/blogs/:id', adminAuth, ...requireAdminStepUp('admin_delete_content'), deleteBlog);
+router.delete('/articles/:id', adminAuth, ...requireAdminStepUp('admin_delete_content'), deleteArticle);
+router.delete('/shorts/:id', adminAuth, ...requireAdminStepUp('admin_delete_content'), deleteShort);
 
 module.exports = router;

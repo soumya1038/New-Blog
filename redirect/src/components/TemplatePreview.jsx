@@ -30,15 +30,15 @@ import {
   deleteTemplatePreset,
   toggleTemplatePresetShare
 } from '../services/templatePresets';
+import { hasAuthToken } from '../utils/authSession';
+import { readSessionJson, writeSessionJson } from '../utils/sessionBackedStorage';
 
 const CUSTOM_TEMPLATE_NAME_STORAGE_KEY = 'lekhon:custom-template-saved-names';
 const CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY = 'lekhon:custom-template-presets:v1';
+const MAX_CUSTOM_TEMPLATE_RECORDS = 120;
 const CUSTOM_STUDIO_PREVIEW_TEMPLATES = articleTemplates.filter(
   (template) => template.id === CUSTOM_ARTICLE_TEMPLATE_ID
 );
-
-const hasAuthToken = () =>
-  typeof window !== 'undefined' && Boolean(window.localStorage.getItem('token'));
 
 const normalizePresetRecord = (preset) => {
   const id = String(preset?.id || preset?._id || '').trim();
@@ -95,37 +95,24 @@ const TemplatePreview = ({
     let isMounted = true;
 
     const loadLocalFallback = () => {
-      try {
-        const raw = window.localStorage.getItem(CUSTOM_TEMPLATE_NAME_STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) {
-            const normalized = parsed
-              .map((item) => String(item || '').trim())
-              .filter(Boolean)
-              .slice(0, 120);
-            if (isMounted) setSavedCustomTemplateNames(normalized);
-          }
-        }
-      } catch (error) {
-        // Ignore local storage read issues.
-      }
-
-      try {
-        const rawPresets = window.localStorage.getItem(CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY);
-        if (!rawPresets) return;
-        const parsedPresets = JSON.parse(rawPresets);
-        if (!Array.isArray(parsedPresets)) return;
-
-        const normalizedPresets = parsedPresets
-          .map((preset) => normalizePresetRecord(preset))
+      const parsedNames = readSessionJson(CUSTOM_TEMPLATE_NAME_STORAGE_KEY, []);
+      if (Array.isArray(parsedNames)) {
+        const normalized = parsedNames
+          .map((item) => String(item || '').trim())
           .filter(Boolean)
-          .slice(0, 120);
-
-        if (isMounted) setCustomPresets(normalizedPresets);
-      } catch (error) {
-        // Ignore local storage read issues.
+          .slice(0, MAX_CUSTOM_TEMPLATE_RECORDS);
+        if (isMounted) setSavedCustomTemplateNames(normalized);
       }
+
+      const parsedPresets = readSessionJson(CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY, []);
+      if (!Array.isArray(parsedPresets)) return;
+
+      const normalizedPresets = parsedPresets
+        .map((preset) => normalizePresetRecord(preset))
+        .filter(Boolean)
+        .slice(0, MAX_CUSTOM_TEMPLATE_RECORDS);
+
+      if (isMounted) setCustomPresets(normalizedPresets);
     };
 
     const hydratePresets = async () => {
@@ -139,14 +126,16 @@ const TemplatePreview = ({
         const normalized = serverPresets
           .map((preset) => normalizePresetRecord(preset))
           .filter(Boolean)
-          .slice(0, 120);
+          .slice(0, MAX_CUSTOM_TEMPLATE_RECORDS);
 
         if (!isMounted) return;
 
         setCustomPresets(normalized);
         const presetNames = normalized.map((preset) => preset.name);
-        setSavedCustomTemplateNames((current) => [...new Set([...current, ...presetNames])].slice(0, 120));
-        window.localStorage.setItem(CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY, JSON.stringify(normalized));
+        setSavedCustomTemplateNames((current) =>
+          [...new Set([...current, ...presetNames])].slice(0, MAX_CUSTOM_TEMPLATE_RECORDS)
+        );
+        writeSessionJson(CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY, normalized);
       } catch (error) {
         // Ignore API failures and keep local fallback data.
       } finally {
@@ -328,8 +317,9 @@ const TemplatePreview = ({
     if (!candidate || typeof window === 'undefined') return;
 
     try {
-      const nextNames = [...new Set([...savedCustomTemplateNames, candidate])].slice(0, 120);
-      window.localStorage.setItem(CUSTOM_TEMPLATE_NAME_STORAGE_KEY, JSON.stringify(nextNames));
+      const nextNames = [...new Set([...savedCustomTemplateNames, candidate])]
+        .slice(0, MAX_CUSTOM_TEMPLATE_RECORDS);
+      writeSessionJson(CUSTOM_TEMPLATE_NAME_STORAGE_KEY, nextNames);
       setSavedCustomTemplateNames(nextNames);
     } catch (error) {
       // Ignore local storage write issues.
@@ -339,7 +329,10 @@ const TemplatePreview = ({
   const persistCustomPresets = (nextPresets) => {
     if (typeof window === 'undefined') return;
     try {
-      window.localStorage.setItem(CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY, JSON.stringify(nextPresets));
+      writeSessionJson(
+        CUSTOM_TEMPLATE_PRESETS_STORAGE_KEY,
+        nextPresets.slice(0, MAX_CUSTOM_TEMPLATE_RECORDS)
+      );
     } catch (error) {
       // Ignore local storage write issues.
     }
@@ -805,7 +798,7 @@ const TemplatePreview = ({
                   srcDoc={htmlContent}
                   className="h-full w-full rounded-2xl"
                   title="Article Template Preview"
-                  sandbox="allow-same-origin allow-scripts allow-popups"
+                  sandbox="allow-scripts allow-popups"
                 />
               </div>
             </div>

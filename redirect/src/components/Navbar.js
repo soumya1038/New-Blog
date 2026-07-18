@@ -7,6 +7,8 @@ import LanguageSelector from './LanguageSelector';
 import Avatar from './Avatar';
 import AnimatedLogo from './AnimatedLogo';
 import { useTheme } from '../context/ThemeContext';
+import { getAuthToken } from '../utils/authSession';
+import { buildApiUrl } from '../utils/apiBaseUrl';
 
 const Navbar = () => {
   const { t } = useTranslation();
@@ -52,8 +54,13 @@ const Navbar = () => {
 
   const fetchUnreadCount = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/social/notifications/unread-count`, {
+      const token = getAuthToken();
+      if (!token) {
+        setUnreadCount(0);
+        return;
+      }
+
+      const response = await fetch(buildApiUrl('/api/social/notifications/unread-count'), {
         headers: { 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

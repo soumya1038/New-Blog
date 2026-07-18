@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../services/api';
 import { FaSearch, FaTimes } from 'react-icons/fa';
 import { AuthContext } from '../context/AuthContext';
-import { HomePageSkeleton } from '../components/SkeletonLoader';
+import { BlogCardSkeleton } from '../components/SkeletonLoader';
 import soundNotification from '../utils/soundNotifications';
 import ArticleCard from '../components/ArticleCard';
 import BlogCard from '../components/BlogCard';
@@ -17,9 +17,22 @@ import Avatar from '../components/Avatar';
 import StatusViewer from '../components/StatusViewer';
 import { useDebounce } from '../hooks/useDebounce';
 import { apiCache } from '../utils/apiCache';
+import { readSessionJson, writeSessionJson } from '../utils/sessionBackedStorage';
 
 const STORY_SEEN_STORAGE_PREFIX = 'lekhon_story_seen_v1';
 const CONTENT_FILTERS = ['all', 'articles', 'blogs', 'shorts'];
+const HOME_CONTENT_CACHE_TTL = 2 * 60 * 1000;
+const HOME_CONTENT_STALE_TTL = 30 * 60 * 1000;
+const HOME_SECTION_LOADING_STATE = {
+  blogs: true,
+  articles: true,
+  shorts: true,
+};
+const HOME_SECTION_ERROR_STATE = {
+  blogs: false,
+  articles: false,
+  shorts: false,
+};
 
 const normalizeContentFilter = (filter) =>
   CONTENT_FILTERS.includes(filter) ? filter : 'all';
@@ -42,6 +55,14 @@ const getLatestStatusAt = (statuses = []) => {
     .toString();
 };
 
+const HomeSectionSkeletonGrid = ({ count = 6 }) => (
+  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
+    {Array.from({ length: count }).map((_, index) => (
+      <BlogCardSkeleton key={`home-section-skeleton-${index}`} />
+    ))}
+  </div>
+);
+
 const Home = () => {
   const { t } = useTranslation();
   const { user } = useContext(AuthContext);
@@ -50,7 +71,9 @@ const Home = () => {
   const [blogs, setBlogs] = useState([]);
   const [articles, setArticles] = useState([]);
   const [shortBlogs, setShortBlogs] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [contentLoading, setContentLoading] = useState(HOME_SECTION_LOADING_STATE);
+  const [contentRefreshing, setContentRefreshing] = useState(HOME_SECTION_ERROR_STATE);
+  const [contentErrors, setContentErrors] = useState(HOME_SECTION_ERROR_STATE);
   const [contentFilter, setContentFilter] = useState(() => getRequestedContentFilter(location));
   const [showShortBlogs, setShowShortBlogs] = useState(true);
   const [clickTimer, setClickTimer] = useState(null);
@@ -59,7 +82,6 @@ const Home = () => {
   const [selectedTags, setSelectedTags] = useState([]);
   const [showAllTags, setShowAllTags] = useState(false);
   const [visibleTagCount, setVisibleTagCount] = useState(5);
-  const [error, setError] = useState(false);
   const [isDark, setIsDark] = useState(false);
   const [isCompactViewport, setIsCompactViewport] = useState(() => window.innerWidth < 640);
   const searchBarRef = useRef(null);
@@ -121,8 +143,7 @@ const Home = () => {
     }
 
     try {
-      const raw = localStorage.getItem(storySeenStorageKey);
-      setSeenStories(raw ? JSON.parse(raw) : {});
+      setSeenStories(readSessionJson(storySeenStorageKey, {}));
     } catch (error) {
       setSeenStories({});
     }
@@ -131,7 +152,7 @@ const Home = () => {
   useEffect(() => {
     if (!storySeenStorageKey) return;
     try {
-      localStorage.setItem(storySeenStorageKey, JSON.stringify(seenStories));
+      writeSessionJson(storySeenStorageKey, seenStories);
     } catch (error) {
       // Ignore storage write failures
     }
@@ -209,70 +230,62 @@ const Home = () => {
   }, [user?._id, user?.username]);
 
   useEffect(() => {
-    fetchBlogs();
-    fetchArticles();
-    fetchShortBlogs();
+    let isMounted = true;
+
+    const sections = [
+      { key: 'blogs', cacheKey: 'blogs-list', endpoint: '/blogs', responseKey: 'blogs', apply: setBlogs },
+      { key: 'articles', cacheKey: 'articles-list', endpoint: '/articles', responseKey: 'articles', apply: setArticles },
+      { key: 'shorts', cacheKey: 'shorts-list', endpoint: '/shorts', responseKey: 'shorts', apply: setShortBlogs },
+    ];
+
+    const updateSectionState = (setter, key, value) => {
+      if (!isMounted) return;
+      setter((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
+    };
+
+    const loadSection = async ({ key, cacheKey, endpoint, responseKey, apply }) => {
+      const cached = apiCache.getStale(cacheKey, { staleTtl: HOME_CONTENT_STALE_TTL });
+      const hasFreshCache = apiCache.isFresh(cacheKey, { ttl: HOME_CONTENT_CACHE_TTL });
+
+      if (cached) {
+        apply(Array.isArray(cached) ? cached : []);
+        updateSectionState(setContentLoading, key, false);
+      } else {
+        updateSectionState(setContentLoading, key, true);
+      }
+
+      updateSectionState(setContentRefreshing, key, Boolean(cached && !hasFreshCache));
+
+      try {
+        const nextItems = await apiCache.fetch(cacheKey, async () => {
+          const { data } = await api.get(endpoint);
+          const items = data?.[responseKey];
+          return Array.isArray(items) ? items : [];
+        }, {
+          ttl: HOME_CONTENT_CACHE_TTL,
+          force: Boolean(cached && !hasFreshCache),
+        });
+
+        if (!isMounted) return;
+
+        apply(nextItems);
+        updateSectionState(setContentErrors, key, false);
+      } catch (error) {
+        console.error(`Error fetching ${key}:`, error);
+        if (!isMounted) return;
+        updateSectionState(setContentErrors, key, true);
+      } finally {
+        updateSectionState(setContentLoading, key, false);
+        updateSectionState(setContentRefreshing, key, false);
+      }
+    };
+
+    sections.forEach(loadSection);
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
-
-  const fetchBlogs = async () => {
-    try {
-      const cacheKey = 'blogs-list';
-      const cached = apiCache.get(cacheKey);
-      
-      if (cached) {
-        setBlogs(cached);
-        setError(false);
-        setLoading(false);
-        return;
-      }
-      
-      const { data } = await api.get('/blogs');
-      apiCache.set(cacheKey, data.blogs);
-      setBlogs(data.blogs);
-      setError(false);
-    } catch (error) {
-      console.error('Error fetching blogs:', error);
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchShortBlogs = async () => {
-    try {
-      const cacheKey = 'shorts-list';
-      const cached = apiCache.get(cacheKey);
-      
-      if (cached) {
-        setShortBlogs(cached);
-        return;
-      }
-      
-      const { data } = await api.get('/shorts');
-      apiCache.set(cacheKey, data.shorts);
-      setShortBlogs(data.shorts);
-    } catch (error) {
-      console.error('Error fetching short blogs:', error);
-    }
-  };
-
-  const fetchArticles = async () => {
-    try {
-      const cacheKey = 'articles-list';
-      const cached = apiCache.get(cacheKey);
-      
-      if (cached) {
-        setArticles(cached);
-        return;
-      }
-      
-      const { data } = await api.get('/articles');
-      apiCache.set(cacheKey, data.articles);
-      setArticles(data.articles);
-    } catch (error) {
-      console.error('Error fetching articles:', error);
-    }
-  };
 
   const handleLike = async (e, blogId) => {
     e?.preventDefault();
@@ -283,7 +296,7 @@ const Home = () => {
     }
     try {
       const { data } = await api.post(`/blogs/${blogId}/like`);
-      setBlogs(blogs.map(blog => 
+      setBlogs(prev => prev.map(blog =>
         blog._id === blogId ? { ...blog, likes: data.likes } : blog
       ));
       apiCache.clear('blogs-list');
@@ -305,7 +318,7 @@ const Home = () => {
     }
     try {
       const { data } = await api.post(`/articles/${articleId}/like`);
-      setArticles(articles.map(article => 
+      setArticles(prev => prev.map(article =>
         article._id === articleId ? { ...article, likes: data.likes } : article
       ));
       apiCache.clear('articles-list');
@@ -611,11 +624,22 @@ const Home = () => {
     }
   };
 
-  if (loading) {
-    return <HomePageSkeleton />;
-  }
+  const filteredArticles = filteredBlogs.filter(item => item.type === 'article');
+  const filteredBlogItems = filteredBlogs.filter(item => item.type === 'blog');
+  const isAnyContentLoading = Object.values(contentLoading).some(Boolean);
+  const hasAnyContent = blogs.length > 0 || articles.length > 0 || shortBlogs.length > 0;
+  const hasBlockingError = !isAnyContentLoading && !hasAnyContent && Object.values(contentErrors).some(Boolean);
+  const activeContentLoading =
+    contentFilter === 'all'
+      ? isAnyContentLoading
+      : Boolean(contentLoading[contentFilter]);
+  const hasVisibleContent =
+    filteredArticles.length > 0 ||
+    filteredBlogItems.length > 0 ||
+    ((contentFilter === 'all' || contentFilter === 'shorts') && shortBlogs.length > 0);
+  const showEmptyContent = !activeContentLoading && !hasVisibleContent;
 
-  if (error) {
+  if (hasBlockingError) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center px-4 py-8 relative">
         <div className="absolute inset-0 opacity-20 dark:opacity-10">
@@ -844,44 +868,56 @@ const Home = () => {
           )}
 
           {/* Content Sections */}
-          {filteredBlogs.length === 0 && shortBlogs.length === 0 ? (
+          {showEmptyContent ? (
             <div style={{ textAlign:'center', padding:'80px 20px', color:'var(--text-muted)' }}>
               <p style={{ fontSize:'18px' }}>{t('No content found matching your search.')}</p>
             </div>
           ) : (
             <>
-              {(contentFilter === 'all' || contentFilter === 'articles') && (
+              {(contentFilter === 'all' || contentFilter === 'articles') && (filteredArticles.length > 0 || contentLoading.articles || contentRefreshing.articles) && (
                 <section style={{ marginBottom:'60px' }}>
                   <SectionHeader type="article" label="Articles" badge="Premium" />
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap:'20px' }}>
-                    {filteredBlogs.filter(b=>b.type==='article').map((article,i) => (
-                      <ArticleCard key={article._id} article={article} index={i}
-                        onLike={(id,likes) => setArticles(p => p.map(a=>a._id===id?{...a,likes}:a))}
-                        onTagClick={tag => setSelectedTags(prev=>prev.includes(tag)?prev.filter(t=>t!==tag):[...prev,tag])} />
-                    ))}
-                  </div>
+                  {contentLoading.articles && filteredArticles.length === 0 ? (
+                    <HomeSectionSkeletonGrid count={isCompactViewport ? 2 : 6} />
+                  ) : (
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap:'20px' }}>
+                      {filteredArticles.map((article,i) => (
+                        <ArticleCard key={article._id} article={article} index={i}
+                          onLike={(id,likes) => setArticles(p => p.map(a=>a._id===id?{...a,likes}:a))}
+                          onTagClick={tag => setSelectedTags(prev=>prev.includes(tag)?prev.filter(t=>t!==tag):[...prev,tag])} />
+                      ))}
+                    </div>
+                  )}
                 </section>
               )}
-              {(contentFilter === 'all' || contentFilter === 'blogs') && (
+              {(contentFilter === 'all' || contentFilter === 'blogs') && (filteredBlogItems.length > 0 || contentLoading.blogs || contentRefreshing.blogs) && (
                 <section style={{ marginBottom:'60px' }}>
                   <SectionHeader type="blog" label="Blogs" badge="Community" />
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap:'20px' }}>
-                    {filteredBlogs.filter(b=>b.type==='blog').map((blog,i) => (
-                      <BlogCard key={blog._id} blog={blog} index={i}
-                        onLike={(id,likes) => setBlogs(p => p.map(b=>b._id===id?{...b,likes}:b))}
-                        onTagClick={tag => setSelectedTags(prev=>prev.includes(tag)?prev.filter(t=>t!==tag):[...prev,tag])} />
-                    ))}
-                  </div>
+                  {contentLoading.blogs && filteredBlogItems.length === 0 ? (
+                    <HomeSectionSkeletonGrid count={isCompactViewport ? 2 : 6} />
+                  ) : (
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap:'20px' }}>
+                      {filteredBlogItems.map((blog,i) => (
+                        <BlogCard key={blog._id} blog={blog} index={i}
+                          onLike={(id,likes) => setBlogs(p => p.map(b=>b._id===id?{...b,likes}:b))}
+                          onTagClick={tag => setSelectedTags(prev=>prev.includes(tag)?prev.filter(t=>t!==tag):[...prev,tag])} />
+                      ))}
+                    </div>
+                  )}
                 </section>
               )}
-              {(contentFilter === 'all' || contentFilter === 'shorts') && shortBlogs.length > 0 && (
+              {(contentFilter === 'all' || contentFilter === 'shorts') && (shortBlogs.length > 0 || contentLoading.shorts || contentRefreshing.shorts) && (
                 <section style={{ marginBottom:'60px' }}>
                   <SectionHeader type="short" label="Shorts" badge="Trending" />
-                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap:'16px' }}>
-                    {shortBlogs.slice(0,6).map((short,i) => (
-                      <ShortPreviewCard key={short._id} short={short} index={i} />
-                    ))}
-                  </div>
+                  {contentLoading.shorts && shortBlogs.length === 0 ? (
+                    <HomeSectionSkeletonGrid count={isCompactViewport ? 2 : 6} />
+                  ) : (
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(min(100%, 280px), 1fr))', gap:'16px' }}>
+                      {shortBlogs.slice(0,6).map((short,i) => (
+                        <ShortPreviewCard key={short._id} short={short} index={i} />
+                      ))}
+                    </div>
+                  )}
                 </section>
               )}
             </>

@@ -5,6 +5,7 @@ import { HiMinus, HiPlus } from 'react-icons/hi';
 import api                from '../services/api';
 import { AuthContext } from '../context/AuthContext';
 import { getGuestCart, removeGuestCartItem, updateGuestCartItem } from '../utils/guestCart';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const FREE_SHIPPING_THRESHOLD = 1000;
 const CART_QTY_SYNC_DELAY_MS = 2000;
@@ -156,12 +157,14 @@ const CartDrawer = ({ open, onClose }) => {
               const maxQty = p.physical?.stock ?? 99;
               const itemTotal = price * item.qty;
               const qtySyncing = Boolean(syncingQty[productId]);
+              const safeThumbnail = getSafeImageUrl(p.thumbnail || item.thumbnailSnapshot);
               return (
                 <div key={item._id || p._id} className="flex gap-3">
                   <img
-                    src={p.thumbnail || item.thumbnailSnapshot || ''}
+                    src={safeThumbnail || '/image/lekhon_url.png'}
                     alt={p.title || item.titleSnapshot}
                     className="w-16 h-16 rounded-xl object-cover bg-[var(--bg-secondary)] shrink-0"
+                    referrerPolicy="no-referrer"
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[var(--text-primary)] truncate">

@@ -16,11 +16,15 @@ const shortSchema = new mongoose.Schema({
   isScheduled: { type: Boolean, default: false },
   scheduledPublishDate: { type: Date },
   views: { type: Number, default: 0 },
-  viewedBy: [{ 
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    ip: { type: String },
-    viewedAt: { type: Date, default: Date.now }
-  }],
+  viewedBy: {
+    type: [{
+      user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      ip: { type: String },
+      ipHash: { type: String },
+      viewedAt: { type: Date, default: Date.now }
+    }],
+    select: false
+  },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
@@ -31,5 +35,9 @@ shortSchema.pre('save', function(next) {
   this.wordCount = words.length;
   next();
 });
+
+shortSchema.index({ createdAt: -1, _id: -1 });
+shortSchema.index({ isDraft: 1, createdAt: -1 });
+shortSchema.index({ isScheduled: 1, isDraft: 1, scheduledPublishDate: 1 });
 
 module.exports = mongoose.model('Short', shortSchema);

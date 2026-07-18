@@ -5,10 +5,12 @@ import { FaHeart, FaRegHeart } from 'react-icons/fa';
 import { getArticlePath } from '../utils/contentRoutes';
 import Avatar from './Avatar';
 import ProductTagOverlay from './ProductTagOverlay';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const ArticleCard = ({ article, index = 0, onLike, onTagClick }) => {
   const [isLiked, setIsLiked] = React.useState(false);
   const [likes, setLikes] = React.useState(article?.likes?.length || 0);
+  const safeCoverImage = getSafeImageUrl(article?.coverImage);
 
   const handleLike = async (e) => {
     e.preventDefault();
@@ -32,16 +34,21 @@ const ArticleCard = ({ article, index = 0, onLike, onTagClick }) => {
         padding: '24px',
         transition: 'background var(--transition-card)',
         boxShadow: 'var(--art-shadow)',
+        contentVisibility: 'auto',
+        containIntrinsicSize: '360px',
       }}
     >
       <div className="relative">
       <ProductTagOverlay content={article} />
       <Link to={getArticlePath(article)} style={{ textDecoration: 'none' }}>
-        {article.coverImage && (
+        {safeCoverImage && (
           <div style={{ width: '100%', height: '220px', overflow: 'hidden', marginBottom: '20px', borderRadius: '0px' }}>
             <img
-              src={article.coverImage}
+              src={safeCoverImage}
               alt={article.title}
+              loading={index < 2 ? 'eager' : 'lazy'}
+              decoding="async"
+              referrerPolicy="no-referrer"
               style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 400ms var(--ease-smooth)' }}
               onMouseEnter={(e) => (e.target.style.transform = 'scale(1.05)')}
               onMouseLeave={(e) => (e.target.style.transform = 'scale(1)')}

@@ -21,11 +21,13 @@ const twoFactorChallengeSchema = new mongoose.Schema({
   codeHash: {
     type: String,
     default: '',
+    select: false,
   },
   tokenHash: {
     type: String,
     default: '',
     index: true,
+    select: false,
   },
   attempts: {
     type: Number,
@@ -34,6 +36,7 @@ const twoFactorChallengeSchema = new mongoose.Schema({
   metadata: {
     type: mongoose.Schema.Types.Mixed,
     default: {},
+    select: false,
   },
   verifiedAt: {
     type: Date,

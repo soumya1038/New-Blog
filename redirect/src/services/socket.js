@@ -1,6 +1,8 @@
 import { io } from 'socket.io-client';
+import { getAuthToken } from '../utils/authSession';
+import { getSocketBaseUrl } from '../utils/apiBaseUrl';
 
-const SOCKET_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const SOCKET_URL = getSocketBaseUrl();
 
 class SocketService {
   constructor() {
@@ -8,16 +10,28 @@ class SocketService {
     this.userId = null;
   }
 
+  getToken() {
+    return getAuthToken();
+  }
+
   connect(userId) {
+    const token = this.getToken();
+    if (!token) return null;
+    if (this.socket && this.userId && this.userId !== userId) {
+      this.disconnect();
+    }
+
     this.userId = userId;
     if (!this.socket) {
-      this.socket = io(SOCKET_URL, {
+      const socketOptions = {
+        auth: { token },
         reconnection: true,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,
         reconnectionAttempts: Infinity,
         transports: ['websocket', 'polling']
-      });
+      };
+      this.socket = SOCKET_URL ? io(SOCKET_URL, socketOptions) : io(socketOptions);
 
       this.socket.on('connect', () => {
         // console.log('✅ Socket connected:', this.socket.id);

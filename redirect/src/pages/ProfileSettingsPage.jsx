@@ -24,8 +24,16 @@ import { ScaleLoader } from 'react-spinners';
 import LanguageSelector from '../components/LanguageSelector';
 import PrivacySettings from '../components/PrivacySettings';
 import EmailNotificationSettings from '../components/EmailNotificationSettings';
+import SensitiveActionAuthModal from '../components/SensitiveActionAuthModal';
+import TwoFactorVerificationModal from '../components/TwoFactorVerificationModal';
 import { useTheme } from '../context/ThemeContext';
 import useCurrentProfileSummary from '../hooks/useCurrentProfileSummary';
+import {
+  getSensitiveActionRequirement,
+  getTwoFactorRequirement,
+  requestAuthenticatedTwoFactorChallenge,
+  verifyAuthenticatedTwoFactorChallenge,
+} from '../utils/twoFactorFlow';
 
 const sectionTitleClass = 'px-1 pt-2 text-[11px] font-black uppercase tracking-[0.14em] text-[var(--text-secondary)]';
 const pulseClass = 'lekhon-target-pulse';
@@ -205,6 +213,8 @@ const ProfileSettingsPage = () => {
     updateProfile,
   } = useCurrentProfileSummary();
   const [saving, setSaving] = useState(false);
+  const [twoFactorPrompt, setTwoFactorPrompt] = useState(null);
+  const [sensitiveAuthPrompt, setSensitiveAuthPrompt] = useState(null);
   const [highlightTarget, setHighlightTarget] = useState('');
   const activeSection = searchParams.get('section') || '';
   const activeTarget = searchParams.get('target') || '';
@@ -281,6 +291,59 @@ const ProfileSettingsPage = () => {
     };
   }, [activeSection, activePulse, activeTarget, loading, setSearchParams]);
 
+  const openTwoFactorPrompt = ({ requirement, onVerified }) => {
+    setTwoFactorPrompt({
+      action: requirement.action,
+      actionLabel: requirement.actionLabel,
+      twoFactor: requirement.twoFactor,
+      onVerified,
+    });
+  };
+
+  const openSensitiveAuthPrompt = ({ requirement, onVerified }) => {
+    setSensitiveAuthPrompt({
+      action: requirement.action,
+      actionLabel: requirement.actionLabel,
+      onVerified,
+    });
+  };
+
+  const runAfterSensitiveAuth = ({ result, fallbackAction, fallbackActionLabel, runWithTokens }) => {
+    const sensitiveActionToken = result?.sensitiveActionToken || '';
+    if (result?.requiresTwoFactor) {
+      openTwoFactorPrompt({
+        requirement: {
+          action: result.action || fallbackAction,
+          actionLabel: result.actionLabel || fallbackActionLabel,
+          twoFactor: result.twoFactor,
+        },
+        onVerified: async (twoFactorToken) => runWithTokens({ sensitiveActionToken, twoFactorToken }),
+      });
+      return;
+    }
+
+    return runWithTokens({ sensitiveActionToken });
+  };
+
+  const handleSensitiveAuthVerified = async (result) => {
+    const prompt = sensitiveAuthPrompt;
+    setSensitiveAuthPrompt(null);
+    if (!prompt?.onVerified) return;
+    await prompt.onVerified(result);
+  };
+
+  const handleTwoFactorPromptVerified = async (token) => {
+    const prompt = twoFactorPrompt;
+    setTwoFactorPrompt(null);
+    if (!prompt?.onVerified) return;
+    await prompt.onVerified(token);
+  };
+
+  const handleSensitiveAuthForgotPassword = () => {
+    setSensitiveAuthPrompt(null);
+    navigate('/profile/manage?forgotPassword=1');
+  };
+
   const handleSaveProfile = async (form) => {
     setSaving(true);
     try {
@@ -288,6 +351,37 @@ const ProfileSettingsPage = () => {
       toast.success(t('Profile updated'));
       openSection('');
     } catch (err) {
+      const passwordRequirement = getSensitiveActionRequirement(err);
+      if (passwordRequirement) {
+        openSensitiveAuthPrompt({
+          requirement: passwordRequirement,
+          onVerified: async (result) => runAfterSensitiveAuth({
+            result,
+            fallbackAction: 'change_email',
+            fallbackActionLabel: t('change your email'),
+            runWithTokens: async (tokens) => {
+              await updateProfile(form, tokens);
+              toast.success(t('Profile updated'));
+              openSection('');
+            },
+          }),
+        });
+        return;
+      }
+
+      const twoFactorRequirement = getTwoFactorRequirement(err);
+      if (twoFactorRequirement) {
+        openTwoFactorPrompt({
+          requirement: twoFactorRequirement,
+          onVerified: async (twoFactorToken) => {
+            await updateProfile(form, { twoFactorToken });
+            toast.success(t('Profile updated'));
+            openSection('');
+          },
+        });
+        return;
+      }
+
       toast.error(err.response?.data?.message || t('Unable to update profile'));
     } finally {
       setSaving(false);
@@ -441,6 +535,28 @@ const ProfileSettingsPage = () => {
           </div>
         </div>
       </div>
+
+      <TwoFactorVerificationModal
+        open={Boolean(twoFactorPrompt)}
+        action={twoFactorPrompt?.action}
+        actionLabel={twoFactorPrompt?.actionLabel}
+        twoFactor={twoFactorPrompt?.twoFactor}
+        requestChallenge={requestAuthenticatedTwoFactorChallenge}
+        verifyChallenge={verifyAuthenticatedTwoFactorChallenge}
+        onVerified={handleTwoFactorPromptVerified}
+        onClose={() => setTwoFactorPrompt(null)}
+      />
+
+      <SensitiveActionAuthModal
+        open={Boolean(sensitiveAuthPrompt)}
+        action={sensitiveAuthPrompt?.action}
+        actionLabel={sensitiveAuthPrompt?.actionLabel}
+        title={t('Verify before changing email')}
+        description={t('Confirm your password before your account email is changed.')}
+        onVerified={handleSensitiveAuthVerified}
+        onForgotPassword={handleSensitiveAuthForgotPassword}
+        onClose={() => setSensitiveAuthPrompt(null)}
+      />
     </main>
   );
 };

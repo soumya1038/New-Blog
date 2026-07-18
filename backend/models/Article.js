@@ -52,11 +52,15 @@ const articleSchema = new mongoose.Schema({
     priceLabel: { type: String, trim: true, default: '' },
   }],
   isPromoPost: { type: Boolean, default: false },
-  viewedBy: [{ 
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    ip: { type: String },
-    viewedAt: { type: Date, default: Date.now }
-  }],
+  viewedBy: {
+    type: [{
+      user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      ip: { type: String },
+      ipHash: { type: String },
+      viewedAt: { type: Date, default: Date.now }
+    }],
+    select: false
+  },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 }, { timestamps: true });
@@ -69,6 +73,9 @@ articleSchema.pre('save', function(next) {
 });
 
 articleSchema.index({ slugHistory: 1 });
+articleSchema.index({ createdAt: -1, _id: -1 });
+articleSchema.index({ isDraft: 1, createdAt: -1 });
+articleSchema.index({ isScheduled: 1, isDraft: 1, scheduledPublishDate: 1 });
 articleSchema.index(
   {
     title: 'text',

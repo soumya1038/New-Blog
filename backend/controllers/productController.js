@@ -3,8 +3,92 @@ const Review   = require('../models/Review');
 const Order    = require('../models/Order');
 const User     = require('../models/User');
 const Cart     = require('../models/Cart');
+const StoreSettings = require('../models/StoreSettings');
 const cloudinary = require('../utils/cloudinary');
 const { processProductThumbnail } = require('../services/backgroundRemovalService');
+const { getDocumentFileSignatureValidationError } = require('../utils/documentSignatures');
+const {
+  getImageFileSignatureValidationError,
+  getImageSignatureValidationError,
+} = require('../utils/imageSignatures');
+const { getMediaFileSignatureValidationError } = require('../utils/mediaSignatures');
+const { normalizeHttpUrl } = require('../utils/safeUrls');
+const { logWarn, sendSafeServerError } = require('../utils/safeErrorLog');
+const { hasUserId } = require('../utils/userVisibility');
+const fs = require('fs');
+const path = require('path');
+const mongoose = require('mongoose');
+
+const MAX_CART_ITEM_QTY = Math.max(1, Number(process.env.MAX_CART_ITEM_QTY || process.env.MAX_ORDER_ITEM_QTY) || 99);
+const SELLER_PRODUCT_DEFAULT_LIMIT = Math.max(1, Number(process.env.SELLER_PRODUCT_DEFAULT_LIMIT) || 20);
+const SELLER_PRODUCT_MAX_LIMIT = Math.max(1, Number(process.env.SELLER_PRODUCT_MAX_LIMIT) || 100);
+const SELLER_PRODUCT_MAX_PAGE = Math.max(1, Number(process.env.SELLER_PRODUCT_MAX_PAGE) || 1000);
+const MARKETPLACE_PRODUCT_MAX_PAGE = Math.max(1, Number(process.env.MARKETPLACE_PRODUCT_MAX_PAGE) || 200);
+const MARKETPLACE_SEARCH_MAX_PAGE = Math.max(1, Number(process.env.MARKETPLACE_SEARCH_MAX_PAGE) || 10);
+const MARKETPLACE_SEARCH_MAX_LENGTH = Math.max(1, Number(process.env.MARKETPLACE_SEARCH_MAX_LENGTH) || 120);
+const MARKETPLACE_FILTER_VALUE_MAX_LENGTH = Math.max(1, Number(process.env.MARKETPLACE_FILTER_VALUE_MAX_LENGTH) || 80);
+const MARKETPLACE_CATEGORY_FILTER_MAX = Math.max(1, Number(process.env.MARKETPLACE_CATEGORY_FILTER_MAX) || 10);
+const MARKETPLACE_SEARCH_FETCH_MAX = Math.max(50, Number(process.env.MARKETPLACE_SEARCH_FETCH_MAX) || 240);
+const MARKETPLACE_MAX_PRICE_FILTER = Math.max(1, Number(process.env.MARKETPLACE_MAX_PRICE_FILTER) || 10000000);
+const MARKETPLACE_QUERY_MAX_TIME_MS = Math.max(100, Number(process.env.MARKETPLACE_QUERY_MAX_TIME_MS) || 5000);
+const MAX_WISHLIST_ITEMS = Math.max(1, Number(process.env.MAX_WISHLIST_ITEMS) || 500);
+const DIGITAL_MAX_DOWNLOADS = Math.max(1, Number(process.env.DIGITAL_MAX_DOWNLOADS) || 100);
+const REVIEW_TITLE_MAX_LENGTH = Math.max(1, Number(process.env.REVIEW_TITLE_MAX_LENGTH) || 100);
+const REVIEW_BODY_MAX_LENGTH = Math.max(1, Number(process.env.REVIEW_BODY_MAX_LENGTH) || 1000);
+const REVIEW_REPLY_MAX_LENGTH = Math.max(1, Number(process.env.REVIEW_REPLY_MAX_LENGTH) || 1000);
+const MARKETPLACE_PRODUCT_TYPES = new Set(['digital', 'physical', 'service', 'external']);
+const MARKETPLACE_SORT_FIELDS = new Set(['createdAt', 'price', 'rating', 'popular']);
+const PRODUCT_EXTERNAL_PLATFORMS = new Set(['Amazon', 'Etsy', 'Gumroad', 'Flipkart', 'Other']);
+const PRODUCT_IMAGE_SIGNATURE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const PRODUCT_SERVER_ERROR_MESSAGE = 'Unable to process product request';
+
+const getSafeProductErrorStatus = (error) => {
+  const status = Number(error?.statusCode || error?.status);
+  return Number.isInteger(status) && status >= 400 && status < 500 ? status : 500;
+};
+
+const sendProductError = (res, error) => {
+  const status = getSafeProductErrorStatus(error);
+  if (status >= 500) {
+    return sendSafeServerError(res, '[productController] request failed:', error, PRODUCT_SERVER_ERROR_MESSAGE);
+  }
+
+  return res.status(status).json({
+    success: false,
+    message: error?.message || 'Invalid product request',
+  });
+};
+
+const digitalImageMimeTypesByExt = new Map([
+  ['png', new Set(['image/png'])],
+  ['jpg', new Set(['image/jpeg'])],
+  ['jpeg', new Set(['image/jpeg'])],
+  ['webp', new Set(['image/webp'])],
+]);
+const digitalMediaMimeTypesByExt = new Map([
+  ['mp3', new Set(['audio/mpeg', 'audio/mp3'])],
+  ['wav', new Set(['audio/wav', 'audio/wave', 'audio/x-wav'])],
+  ['mp4', new Set(['audio/mp4', 'audio/m4a', 'audio/x-m4a', 'video/mp4'])],
+  ['mov', new Set(['video/quicktime'])],
+]);
+const digitalDocumentMimeTypesByExt = new Map([
+  ['pdf', new Set(['application/pdf'])],
+  ['zip', new Set(['application/zip', 'application/x-zip-compressed'])],
+  ['epub', new Set(['application/epub+zip', 'application/zip', 'application/x-zip-compressed'])],
+  ['txt', new Set(['text/plain'])],
+  ['doc', new Set(['application/msword'])],
+  ['docx', new Set(['application/vnd.openxmlformats-officedocument.wordprocessingml.document'])],
+  ['ppt', new Set(['application/vnd.ms-powerpoint'])],
+  ['pptx', new Set(['application/vnd.openxmlformats-officedocument.presentationml.presentation'])],
+  ['xls', new Set(['application/vnd.ms-excel'])],
+  ['xlsx', new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])],
+]);
+
+const parseBoundedInt = (value, fallback, min, max) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+};
 
 const extractCloudinaryPublicId = (url = '') => {
   const match = String(url).match(/\/upload\/(?:v\d+\/)?(.+?)(?:\.[a-z0-9]+)?(?:\?.*)?$/i);
@@ -44,17 +128,97 @@ const parseBooleanField = (value) => {
   return Boolean(value);
 };
 
-const uploadBufferToCloudinary = (file, folder) =>
-  new Promise((resolve, reject) => {
+const buildValidationError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+};
+
+const normalizeBoundedOptionalText = (value, maxLength, fieldName) => {
+  if (value === undefined || value === null) return '';
+  if (typeof value !== 'string') {
+    throw buildValidationError(`${fieldName} must be text.`);
+  }
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (text.length > maxLength) {
+    throw buildValidationError(`${fieldName} must be ${maxLength} characters or fewer.`);
+  }
+  return text;
+};
+
+const uploadBufferToCloudinary = (file, folder) => {
+  const signatureError = getImageSignatureValidationError(file, PRODUCT_IMAGE_SIGNATURE_MIME_TYPES);
+  if (signatureError) {
+    throw buildValidationError(signatureError);
+  }
+
+  return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       { folder },
       (err, result) => (err ? reject(err) : resolve(result))
     );
     stream.end(file.buffer);
   });
+};
+
+const getDigitalFileSignatureValidationError = async (file) => {
+  const ext = path.extname(file?.originalname || '').replace(/^\./, '').toLowerCase();
+  if (digitalImageMimeTypesByExt.has(ext)) {
+    return getImageFileSignatureValidationError(file, digitalImageMimeTypesByExt.get(ext));
+  }
+  if (digitalMediaMimeTypesByExt.has(ext)) {
+    return getMediaFileSignatureValidationError(file, digitalMediaMimeTypesByExt.get(ext));
+  }
+  if (digitalDocumentMimeTypesByExt.has(ext)) {
+    return getDocumentFileSignatureValidationError(file, digitalDocumentMimeTypesByExt.get(ext));
+  }
+  return 'This digital file type is not allowed';
+};
 
 const compactUnique = (values = []) =>
   [...new Set(values.filter(Boolean).map(value => String(value)))];
+
+const parseCartQuantity = (value, { allowZero = false } = {}) => {
+  const parsed = Number(value);
+  const minimum = allowZero ? 0 : 1;
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > MAX_CART_ITEM_QTY) return null;
+  return parsed;
+};
+const physicalMinimumQty = product => Math.max(1, Number(product?.physical?.minimumOrderQuantity) || 1);
+const physicalStockQty = product => Math.max(0, Number(product?.physical?.stock) || 0);
+const CART_PRODUCT_POPULATE_FIELDS = 'title slug thumbnail price type status physical.stock physical.minimumOrderQuantity physical.shippingFee isFree sellerId';
+
+const buildCartItemSnapshot = (product, qty) => ({
+  productId: product._id,
+  qty,
+  priceSnapshot: product.price,
+  titleSnapshot: product.title,
+  thumbnailSnapshot: product.thumbnail,
+});
+
+const buildCartItemSnapshotSet = (product) => ({
+  'items.$.priceSnapshot': product.price,
+  'items.$.titleSnapshot': product.title,
+  'items.$.thumbnailSnapshot': product.thumbnail,
+});
+
+const ensureUserCart = async (userId) => {
+  try {
+    await Cart.updateOne(
+      { userId },
+      { $setOnInsert: { userId, items: [], couponCode: '' } },
+      { upsert: true }
+    );
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+  }
+};
+
+const getPopulatedCartForUser = async (userId) => {
+  const cart = await Cart.findOne({ userId })
+    .populate('items.productId', CART_PRODUCT_POPULATE_FIELDS);
+  return cart || { items: [], couponCode: '' };
+};
 
 const parseImageListField = (value) => compactUnique(parseArrayField(value) || []);
 const topCountKeys = (counts = {}, limit = 6) =>
@@ -74,6 +238,33 @@ const escapeRegex = (value = '') =>
 
 const normalizeSearchTerm = (value = '') =>
   String(value).trim().replace(/\s+/g, ' ').toLowerCase();
+
+const normalizeMarketplaceFilterValue = (value = '') =>
+  String(value || '').trim().slice(0, MARKETPLACE_FILTER_VALUE_MAX_LENGTH);
+
+const normalizeMarketplaceCategories = (value) => {
+  const rawValues = Array.isArray(value) ? value : [value];
+  return compactUnique(
+    rawValues
+      .flatMap(item => String(item || '').split(','))
+      .map(normalizeMarketplaceFilterValue)
+      .filter(Boolean)
+  ).slice(0, MARKETPLACE_CATEGORY_FILTER_MAX);
+};
+
+const parseMarketplaceNumberFilter = (value, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) => {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) {
+    return undefined;
+  }
+  return parsed;
+};
+
+const normalizeProductSlugParam = (value = '') => String(value || '').trim().toLowerCase();
+
+const isValidProductSlug = (value = '') =>
+  value.length > 0 && value.length <= 220 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 
 const buildMarketplaceSearchQuery = (baseQuery, search) => {
   const term = normalizeSearchTerm(search);
@@ -235,6 +426,28 @@ const mapProductForMarketplaceCard = (product) => ({
   stats: product.stats || {},
 });
 
+const sanitizePublicProduct = (product, { includeDigitalPreview = false } = {}) => {
+  if (!product) return product;
+  const obj = typeof product.toObject === 'function' ? product.toObject() : { ...product };
+
+  delete obj.imagePublicIds;
+  delete obj.transparentThumbnailPublicId;
+  delete obj.backgroundRemovalStatus;
+  delete obj.backgroundRemovalError;
+  delete obj.backgroundRemovalSourceHash;
+  delete obj.backgroundRemovedAt;
+  delete obj.__v;
+
+  if (obj.digital) {
+    obj.digital = { ...obj.digital };
+    delete obj.digital.fileUrl;
+    delete obj.digital.filePublicId;
+    if (!includeDigitalPreview) delete obj.digital.previewUrl;
+  }
+
+  return obj;
+};
+
 const getProductImagePublicIds = (product) =>
   compactUnique([
     ...(product.imagePublicIds || []),
@@ -256,6 +469,39 @@ const destroyCloudinaryAssets = async ({ imagePublicIds = [], rawPublicIds = [] 
   return Promise.allSettled([...imageDeletes, ...rawDeletes]);
 };
 
+const normalizeExternalProductDetails = (external) => {
+  if (external === undefined) return undefined;
+  if (!external || typeof external !== 'object') return {};
+  const platform = PRODUCT_EXTERNAL_PLATFORMS.has(external.platform) ? external.platform : 'Other';
+  return {
+    url: normalizeHttpUrl(external.url),
+    platform,
+  };
+};
+
+const normalizeDigitalDetails = (digital, existing = {}) => {
+  if (digital === undefined) return undefined;
+  const current = existing?.toObject ? existing.toObject() : (existing || {});
+  const maxDownloads = parseBoundedInt(
+    digital?.maxDownloads ?? current.maxDownloads,
+    Number(current.maxDownloads) || 5,
+    1,
+    DIGITAL_MAX_DOWNLOADS
+  );
+  const previewUrl = digital?.previewUrl !== undefined
+    ? normalizeHttpUrl(digital.previewUrl)
+    : (current.previewUrl || '');
+
+  return {
+    fileUrl: current.fileUrl || '',
+    filePublicId: current.filePublicId || '',
+    fileSize: Number(current.fileSize || 0),
+    fileFormat: current.fileFormat || '',
+    maxDownloads,
+    previewUrl,
+  };
+};
+
 const normalizeProductBody = (body = {}) => ({
   ...body,
   category: parseArrayField(body.category),
@@ -264,7 +510,7 @@ const normalizeProductBody = (body = {}) => ({
   digital: parseObjectField(body.digital),
   physical: parseObjectField(body.physical),
   service: parseObjectField(body.service),
-  external: parseObjectField(body.external),
+  external: normalizeExternalProductDetails(parseObjectField(body.external)),
   decoration: parseObjectField(body.decoration),
   isFree: parseBooleanField(body.isFree),
   replaceImages: parseBooleanField(body.replaceImages),
@@ -283,39 +529,78 @@ exports.getProducts = async (req, res) => {
       page = 1, limit = 20, isFree, rating,
     } = req.query;
 
+    const normalizedSearch = normalizeSearchTerm(search);
+    if (normalizedSearch.length > MARKETPLACE_SEARCH_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: `Search query must be ${MARKETPLACE_SEARCH_MAX_LENGTH} characters or fewer.`,
+      });
+    }
+
+    const parsedPage = parseBoundedInt(
+      page,
+      1,
+      1,
+      normalizedSearch ? MARKETPLACE_SEARCH_MAX_PAGE : MARKETPLACE_PRODUCT_MAX_PAGE
+    );
+    const parsedLimit = parseBoundedInt(limit, 20, 1, 50);
+    const skip = (parsedPage - 1) * parsedLimit;
+
     const baseQuery = { status: 'active' };
-    if (type)           baseQuery.type     = type;
-    if (category)       baseQuery.category = { $in: Array.isArray(category) ? category : [category] };
+    if (type) {
+      const normalizedType = String(type || '').trim().toLowerCase();
+      if (!MARKETPLACE_PRODUCT_TYPES.has(normalizedType)) {
+        return res.status(400).json({ success: false, message: 'Invalid product type.' });
+      }
+      baseQuery.type = normalizedType;
+    }
+    const categories = normalizeMarketplaceCategories(category);
+    if (categories.length) baseQuery.category = { $in: categories };
     if (isFree === 'true') baseQuery.isFree = true;
     if (minPrice || maxPrice) {
+      const parsedMinPrice = parseMarketplaceNumberFilter(minPrice, { min: 0, max: MARKETPLACE_MAX_PRICE_FILTER });
+      const parsedMaxPrice = parseMarketplaceNumberFilter(maxPrice, { min: 0, max: MARKETPLACE_MAX_PRICE_FILTER });
+      if (parsedMinPrice === undefined || parsedMaxPrice === undefined) {
+        return res.status(400).json({ success: false, message: 'Invalid price filter.' });
+      }
+      if (parsedMinPrice !== null && parsedMaxPrice !== null && parsedMinPrice > parsedMaxPrice) {
+        return res.status(400).json({ success: false, message: 'Minimum price cannot exceed maximum price.' });
+      }
       baseQuery.price = {};
-      if (minPrice) baseQuery.price.$gte = parseFloat(minPrice);
-      if (maxPrice) baseQuery.price.$lte = parseFloat(maxPrice);
+      if (parsedMinPrice !== null) baseQuery.price.$gte = parsedMinPrice;
+      if (parsedMaxPrice !== null) baseQuery.price.$lte = parsedMaxPrice;
     }
-    if (rating) baseQuery.averageRating = { $gte: parseFloat(rating) };
-    const query = buildMarketplaceSearchQuery(baseQuery, search);
+    if (rating) {
+      const parsedRating = parseMarketplaceNumberFilter(rating, { min: 0, max: 5 });
+      if (parsedRating === undefined) {
+        return res.status(400).json({ success: false, message: 'Invalid rating filter.' });
+      }
+      if (parsedRating !== null) baseQuery.averageRating = { $gte: parsedRating };
+    }
+    const query = buildMarketplaceSearchQuery(baseQuery, normalizedSearch);
 
     const sortObj = {};
-    if (sort === 'price')    sortObj.price            = order === 'asc' ? 1 : -1;
-    else if (sort === 'rating')   sortObj.averageRating = -1;
-    else if (sort === 'popular')  sortObj['stats.sales'] = -1;
+    const normalizedSort = MARKETPLACE_SORT_FIELDS.has(String(sort)) ? String(sort) : 'createdAt';
+    const normalizedOrder = order === 'asc' ? 'asc' : 'desc';
+    if (normalizedSort === 'price')    sortObj.price            = normalizedOrder === 'asc' ? 1 : -1;
+    else if (normalizedSort === 'rating')   sortObj.averageRating = -1;
+    else if (normalizedSort === 'popular')  sortObj['stats.sales'] = -1;
     else                          sortObj.createdAt      = -1;
 
-    const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
-    const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 50);
-    const skip = (parsedPage - 1) * parsedLimit;
     let products;
     let total;
 
-    if (normalizeSearchTerm(search)) {
-      const maxSearchFetch = Math.min(Math.max(skip + parsedLimit, 120), 500);
+    if (normalizedSearch) {
+      const maxSearchFetch = Math.min(Math.max(skip + parsedLimit, 120), MARKETPLACE_SEARCH_FETCH_MAX);
       const [matchedProducts, matchedCount] = await Promise.all([
         Product.find(query)
           .populate('sellerId', 'username name profileImage isSeller isVerified')
           .sort({ createdAt: -1 })
           .limit(maxSearchFetch)
-          .select('-digital.fileUrl -digital.filePublicId -digital.previewUrl'),
-        Product.countDocuments(query),
+          .select('-digital.fileUrl -digital.filePublicId -digital.previewUrl')
+          .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS)
+          .lean(),
+        Product.countDocuments(query).maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS),
       ]);
 
       const matchedIds = matchedProducts.map(product => product._id);
@@ -334,13 +619,15 @@ exports.getProducts = async (req, res) => {
             .populate('sellerId', 'username name profileImage isSeller isVerified')
             .sort({ 'stats.sales': -1, 'stats.views': -1, createdAt: -1 })
             .limit(maxSearchFetch)
-            .select('-digital.fileUrl -digital.filePublicId -digital.previewUrl'),
-          Product.countDocuments(categoryQuery),
+            .select('-digital.fileUrl -digital.filePublicId -digital.previewUrl')
+            .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS)
+            .lean(),
+          Product.countDocuments(categoryQuery).maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS),
         ]);
       }
 
       products = [
-        ...sortProductsForSearch(matchedProducts, search),
+        ...sortProductsForSearch(matchedProducts, normalizedSearch),
         ...categoryProducts,
       ].slice(skip, skip + parsedLimit);
       total = matchedCount + categoryCount;
@@ -351,20 +638,27 @@ exports.getProducts = async (req, res) => {
           .sort(sortObj)
           .skip(skip)
           .limit(parsedLimit)
-          .select('-digital.fileUrl -digital.filePublicId -digital.previewUrl'), // never expose private URLs in listing
-        Product.countDocuments(query),
+          .select('-digital.fileUrl -digital.filePublicId -digital.previewUrl') // never expose private URLs in listing
+          .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS)
+          .lean(),
+        Product.countDocuments(query).maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS),
       ]);
     }
 
     res.json({
       success: true,
-      products,
+      products: products.map(product => sanitizePublicProduct(product)),
       total,
       page:  parsedPage,
+      limit: parsedLimit,
       pages: Math.ceil(total / parsedLimit),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    const statusCode = error.statusCode && error.statusCode < 500 ? error.statusCode : 500;
+    res.status(statusCode).json({
+      success: false,
+      message: statusCode >= 500 ? 'Failed to load products' : error.message,
+    });
   }
 };
 
@@ -374,6 +668,13 @@ exports.getProductSuggestions = async (req, res) => {
     const term = normalizeSearchTerm(req.query.q);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 4), 12);
 
+    if (term.length > MARKETPLACE_SEARCH_MAX_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: `Search query must be ${MARKETPLACE_SEARCH_MAX_LENGTH} characters or fewer.`,
+      });
+    }
+
     if (term.length < 2) {
       return res.json({ success: true, suggestions: [] });
     }
@@ -382,7 +683,9 @@ exports.getProductSuggestions = async (req, res) => {
     const products = await Product.find(query)
       .select('title slug thumbnail price compareAtPrice isFree type category tags stats createdAt')
       .sort({ createdAt: -1 })
-      .limit(60);
+      .limit(Math.min(60, MARKETPLACE_SEARCH_FETCH_MAX))
+      .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS)
+      .lean();
 
     const rankedProducts = sortProductsForSearch(products, term).slice(0, limit);
     const categoryCounts = new Map();
@@ -441,7 +744,7 @@ exports.getProductSuggestions = async (req, res) => {
       ].slice(0, limit + 4),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load product suggestions' });
   }
 };
 
@@ -517,7 +820,7 @@ exports.getMarketplacePersonalization = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
@@ -555,49 +858,80 @@ exports.recordMarketplaceProductView = async (req, res) => {
       personalization: formatMarketplacePreferences(user.marketplacePreferences),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
 // GET /api/marketplace/:slug
 exports.getProductBySlug = async (req, res) => {
   try {
-    const product = await Product.findOne({ slug: req.params.slug, status: 'active' })
+    const slug = normalizeProductSlugParam(req.params.slug);
+    if (!isValidProductSlug(slug)) {
+      return res.status(400).json({ success: false, message: 'Invalid product slug.' });
+    }
+
+    const product = await Product.findOne({ slug, status: 'active' })
       .populate('sellerId', 'username name profileImage isSeller isVerified createdAt bio')
-      .select('-digital.fileUrl -digital.filePublicId');
+      .select('-digital.fileUrl -digital.filePublicId')
+      .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS)
+      .lean();
 
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
 
     // Increment view count (fire-and-forget)
-    Product.findByIdAndUpdate(product._id, { $inc: { 'stats.views': 1 } }).exec();
+    Product.findByIdAndUpdate(product._id, { $inc: { 'stats.views': 1 } })
+      .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS)
+      .exec()
+      .catch((error) => {
+        logWarn('[marketplace] Product view increment failed:', error);
+      });
 
     // Fetch reviews for this product (latest 10)
     const reviews = await Review.find({ productId: product._id })
       .populate('buyerId', 'username name profileImage')
       .sort({ createdAt: -1 })
-      .limit(10);
+      .limit(10)
+      .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS)
+      .lean();
 
     const ratingBuckets = await Review.aggregate([
       { $match: { productId: product._id } },
       { $group: { _id: '$rating', count: { $sum: 1 } } },
-    ]);
+    ]).option({ maxTimeMS: MARKETPLACE_QUERY_MAX_TIME_MS });
     const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
     ratingBuckets.forEach(bucket => {
       distribution[bucket._id] = bucket.count;
     });
 
     // Related products (same category, excluding this one)
-    const related = await Product.find({
-      status:   'active',
-      _id:      { $ne: product._id },
-      category: { $in: product.category },
-    })
-      .select('title slug thumbnail price compareAtPrice type averageRating reviewCount')
-      .limit(6);
+    const related = product.category?.length
+      ? await Product.find({
+          status:   'active',
+          _id:      { $ne: product._id },
+          category: { $in: product.category },
+        })
+          .select('title slug thumbnail price compareAtPrice type averageRating reviewCount')
+          .limit(6)
+          .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS)
+          .lean()
+      : [];
+
+    const publicProduct = sanitizePublicProduct(product, { includeDigitalPreview: true });
+    const sellerObjectId = product.sellerId?._id || product.sellerId;
+    if (sellerObjectId && publicProduct.sellerId && typeof publicProduct.sellerId === 'object') {
+      const storeSettings = await StoreSettings.findOne({ sellerId: sellerObjectId })
+        .select('stats.averageRating stats.ratingCount')
+        .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS)
+        .lean();
+      publicProduct.sellerId.storeRating = {
+        averageRating: storeSettings?.stats?.averageRating || 0,
+        ratingCount: storeSettings?.stats?.ratingCount || 0,
+      };
+    }
 
     res.json({
       success: true,
-      product,
+      product: publicProduct,
       reviews,
       related,
       ratingSummary: {
@@ -607,20 +941,26 @@ exports.getProductBySlug = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load product' });
   }
 };
 
 // GET /api/marketplace/:id/delivery-estimate?pincode=000000
 exports.getDeliveryEstimate = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid product id.' });
+    }
+
     const pincode = String(req.query.pincode || '').trim();
     if (!/^[1-9][0-9]{5}$/.test(pincode)) {
       return res.status(400).json({ success: false, message: 'Enter a valid 6 digit Indian pincode.' });
     }
 
     const product = await Product.findOne({ _id: req.params.id, status: 'active' })
-      .select('type physical');
+      .select('type physical')
+      .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS)
+      .lean();
 
     if (!product) {
       return res.status(404).json({ success: false, message: 'Product not found.' });
@@ -645,17 +985,27 @@ exports.getDeliveryEstimate = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load delivery estimate' });
   }
 };
 
 // POST /api/marketplace/:id/external-click  (track external link clicks)
 exports.trackExternalClick = async (req, res) => {
   try {
-    await Product.findByIdAndUpdate(req.params.id, { $inc: { 'stats.clicks': 1 } });
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid product id.' });
+    }
+
+    const result = await Product.updateOne(
+      { _id: req.params.id, status: 'active', type: 'external' },
+      { $inc: { 'stats.clicks': 1 } }
+    ).maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS);
+    if (!result.matchedCount) {
+      return res.status(404).json({ success: false, message: 'Product not found.' });
+    }
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to track external click' });
   }
 };
 
@@ -665,6 +1015,7 @@ exports.trackExternalClick = async (req, res) => {
 
 // POST /api/seller/products
 exports.createProduct = async (req, res) => {
+  let uploadedImagePublicIds = [];
   try {
     const body = normalizeProductBody(req.body);
     const {
@@ -674,6 +1025,14 @@ exports.createProduct = async (req, res) => {
       digital, physical, service, external,
       seoTitle, seoDescription, decoration, status,
     } = body;
+
+    if (!MARKETPLACE_PRODUCT_TYPES.has(type)) {
+      return res.status(400).json({ success: false, message: 'Invalid product type.' });
+    }
+
+    if (type === 'external' && !external?.url) {
+      return res.status(400).json({ success: false, message: 'External products require a valid http or https URL.' });
+    }
 
     const product = new Product({
       sellerId:       req.user._id,
@@ -695,7 +1054,7 @@ exports.createProduct = async (req, res) => {
       status:         status         || 'draft',
     });
 
-    if (type === 'digital'  && digital)  product.digital  = digital;
+    if (type === 'digital') product.digital = normalizeDigitalDetails(digital || {}, {});
     if (type === 'physical' && physical) product.physical = physical;
     if (type === 'service'  && service)  product.service  = service;
     if (type === 'external' && external) product.external = external;
@@ -703,44 +1062,46 @@ exports.createProduct = async (req, res) => {
     // Handle multi-image upload (req.files from multer)
     if (req.files && req.files.length > 0) {
       const uploads = await Promise.all(
-        req.files.map(f =>
-          new Promise((resolve, reject) => {
-            const stream = cloudinary.uploader.upload_stream(
-              { folder: 'lekhon/products' },
-              (err, r) => (err ? reject(err) : resolve(r))
-            );
-            stream.end(f.buffer);
-          })
-        )
+        req.files.map(f => uploadBufferToCloudinary(f, 'lekhon/products'))
       );
       product.images    = uploads.map(r => r.secure_url).filter(Boolean);
       product.imagePublicIds = uploads.map(r => r.public_id).filter(Boolean);
+      uploadedImagePublicIds = product.imagePublicIds;
       product.thumbnail = product.images[0] || '';
     }
 
     product.backgroundRemovalStatus = product.thumbnail ? 'pending' : 'skipped';
     await product.save();
-    let responseProduct = product;
+    uploadedImagePublicIds = [];
+    let responseProduct = await Product.findById(product._id);
 
     if (product.thumbnail) {
       await processProductThumbnail(product._id);
       responseProduct = await Product.findById(product._id);
     }
 
-    res.status(201).json({ success: true, product: responseProduct || product });
+    res.status(201).json({ success: true, product: responseProduct });
   } catch (error) {
-    console.error('[productController] createProduct:', error.message);
-    res.status(500).json({ success: false, message: error.message });
+    if (uploadedImagePublicIds.length) {
+      await destroyCloudinaryAssets({ imagePublicIds: uploadedImagePublicIds });
+    }
+    return sendProductError(res, error);
   }
 };
 
 // PUT /api/seller/products/:id
 exports.updateProduct = async (req, res) => {
+  let uploadedImagePublicIds = [];
   try {
-    const product = await Product.findOne({ _id: req.params.id, sellerId: req.user._id });
+    const product = await Product.findOne({ _id: req.params.id, sellerId: req.user._id })
+      .select('+digital.fileUrl +digital.filePublicId');
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
     const body = normalizeProductBody(req.body);
     const requestedPrice = body.price !== undefined ? Number(body.price) : null;
+
+    if (product.type === 'external' && body.external !== undefined && !body.external?.url) {
+      return res.status(400).json({ success: false, message: 'External products require a valid http or https URL.' });
+    }
 
     if (Number.isFinite(requestedPrice) && requestedPrice > Number(product.price || 0)) {
       return res.status(403).json({
@@ -754,11 +1115,14 @@ exports.updateProduct = async (req, res) => {
       'specifications', 'warranty', 'countryOfOrigin',
       'price', 'compareAtPrice', 'isFree', 'currency',
       'status', 'videoUrl', 'seoTitle', 'seoDescription', 'decoration',
-      'digital', 'physical', 'service', 'external',
+      'physical', 'service', 'external',
     ];
     allowed.forEach(field => {
       if (body[field] !== undefined) product[field] = body[field];
     });
+    if (product.type === 'digital' && body.digital !== undefined) {
+      product.digital = normalizeDigitalDetails(body.digital, product.digital);
+    }
 
     const previousThumbnail = product.thumbnail;
     const previousImages = product.images || [];
@@ -769,18 +1133,11 @@ exports.updateProduct = async (req, res) => {
     if (req.files && req.files.length > 0) {
       // Upload new images
       const uploads = await Promise.all(
-        req.files.map(f =>
-          new Promise((resolve, reject) => {
-            const stream = cloudinary.uploader.upload_stream(
-              { folder: 'lekhon/products' },
-              (err, r) => (err ? reject(err) : resolve(r))
-            );
-            stream.end(f.buffer);
-          })
-        )
+        req.files.map(f => uploadBufferToCloudinary(f, 'lekhon/products'))
       );
       const newUrls = uploads.map(r => r.secure_url).filter(Boolean);
       const newPublicIds = uploads.map(r => r.public_id).filter(Boolean);
+      uploadedImagePublicIds = newPublicIds;
 
       // Merge with any existing images the frontend wants to keep
       const existingKept = req.body.existingImages !== undefined
@@ -814,6 +1171,7 @@ exports.updateProduct = async (req, res) => {
     }
 
     await product.save();
+    uploadedImagePublicIds = [];
     if (removedImageUrls.length || (thumbnailChanged && previousTransparentPublicId)) {
       await destroyCloudinaryAssets({
         imagePublicIds: [
@@ -823,22 +1181,26 @@ exports.updateProduct = async (req, res) => {
       });
     }
 
-    let responseProduct = product;
+    let responseProduct = await Product.findById(product._id);
     if (product.thumbnail && thumbnailChanged) {
       await processProductThumbnail(product._id);
       responseProduct = await Product.findById(product._id);
     }
 
-    res.json({ success: true, product: responseProduct || product });
+    res.json({ success: true, product: responseProduct });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    if (uploadedImagePublicIds.length) {
+      await destroyCloudinaryAssets({ imagePublicIds: uploadedImagePublicIds });
+    }
+    return sendProductError(res, error);
   }
 };
 
 // DELETE /api/seller/products/:id  (soft-archive — orders are never broken)
 exports.archiveProduct = async (req, res) => {
   try {
-    const product = await Product.findOne({ _id: req.params.id, sellerId: req.user._id });
+    const product = await Product.findOne({ _id: req.params.id, sellerId: req.user._id })
+      .select('+digital.filePublicId');
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
 
     const imageCleanup = await destroyCloudinaryAssets({
@@ -862,7 +1224,7 @@ exports.archiveProduct = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
@@ -870,20 +1232,29 @@ exports.archiveProduct = async (req, res) => {
 exports.getSellerProducts = async (req, res) => {
   try {
     const { status, page = 1, limit = 20 } = req.query;
+    const parsedPage = parseBoundedInt(page, 1, 1, SELLER_PRODUCT_MAX_PAGE);
+    const parsedLimit = parseBoundedInt(limit, SELLER_PRODUCT_DEFAULT_LIMIT, 1, SELLER_PRODUCT_MAX_LIMIT);
     const query = { sellerId: req.user._id };
     if (status) query.status = status;
 
     const [products, total] = await Promise.all([
       Product.find(query)
         .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit)),
+        .skip((parsedPage - 1) * parsedLimit)
+        .limit(parsedLimit),
       Product.countDocuments(query),
     ]);
 
-    res.json({ success: true, products, total, page: parseInt(page) });
+    res.json({
+      success: true,
+      products,
+      total,
+      page: parsedPage,
+      limit: parsedLimit,
+      pages: Math.ceil(total / parsedLimit),
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
@@ -897,20 +1268,30 @@ exports.getSellerProductById = async (req, res) => {
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
     res.json({ success: true, product });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
 // Upload private digital file
 // POST /api/seller/products/:id/upload-file
 exports.uploadDigitalFile = async (req, res) => {
+  let uploadedRawPublicId = '';
+  let productSaved = false;
+  const tempFilePath = req.file?.path;
+
   try {
-    const product = await Product.findOne({ _id: req.params.id, sellerId: req.user._id });
+    const product = await Product.findOne({ _id: req.params.id, sellerId: req.user._id })
+      .select('+digital.filePublicId');
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
     if (product.type !== 'digital') return res.status(400).json({ success: false, message: 'Only digital products can have file uploads.' });
     if (!req.file) return res.status(400).json({ success: false, message: 'No file provided.' });
+    const previousRawPublicId = product.digital?.filePublicId || '';
 
     // Upload as private (authenticated delivery) resource
+    const signatureError = await getDigitalFileSignatureValidationError(req.file);
+    if (signatureError) {
+      return res.status(400).json({ success: false, message: signatureError });
+    }
     const result = await new Promise((resolve, reject) => {
       const stream = cloudinary.uploader.upload_stream(
         {
@@ -922,18 +1303,36 @@ exports.uploadDigitalFile = async (req, res) => {
         },
         (err, r) => (err ? reject(err) : resolve(r))
       );
-      stream.end(req.file.buffer);
-    });
+        if (req.file.path) {
+          fs.createReadStream(req.file.path)
+            .on('error', reject)
+            .pipe(stream);
+        } else {
+          stream.end(req.file.buffer);
+        }
+      });
+    uploadedRawPublicId = result.public_id;
 
     product.digital.fileUrl      = result.secure_url;
     product.digital.filePublicId = result.public_id;
     product.digital.fileSize     = req.file.size;
     product.digital.fileFormat   = result.format || req.file.originalname.split('.').pop();
     await product.save();
+    productSaved = true;
+    if (previousRawPublicId && previousRawPublicId !== result.public_id) {
+      await destroyCloudinaryAssets({ rawPublicIds: [previousRawPublicId] });
+    }
 
     res.json({ success: true, message: 'File uploaded successfully.', fileSize: req.file.size, fileFormat: product.digital.fileFormat });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    if (uploadedRawPublicId && !productSaved) {
+      await destroyCloudinaryAssets({ rawPublicIds: [uploadedRawPublicId] });
+    }
+    return sendProductError(res, error);
+  } finally {
+    if (tempFilePath) {
+      await fs.promises.unlink(tempFilePath).catch(() => {});
+    }
   }
 };
 
@@ -944,9 +1343,10 @@ exports.retryBackgroundRemoval = async (req, res) => {
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
 
     await processProductThumbnail(product);
-    res.json({ success: true, product });
+    const safeProduct = await Product.findById(product._id);
+    res.json({ success: true, product: safeProduct });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
@@ -956,9 +1356,21 @@ exports.retryBackgroundRemoval = async (req, res) => {
 
 // POST /api/marketplace/:id/reviews
 exports.addReview = async (req, res) => {
+  let uploadedReviewPublicIds = [];
   try {
     const { orderId, rating, title, body } = req.body;
     const productId = req.params.id;
+    const parsedRating = Number.parseInt(rating, 10);
+
+    if (!mongoose.isValidObjectId(productId) || !mongoose.isValidObjectId(orderId)) {
+      return res.status(400).json({ success: false, message: 'Invalid product or order id.' });
+    }
+
+    if (!Number.isInteger(parsedRating) || parsedRating < 1 || parsedRating > 5) {
+      return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5.' });
+    }
+    const safeTitle = normalizeBoundedOptionalText(title, REVIEW_TITLE_MAX_LENGTH, 'Review title');
+    const safeBody = normalizeBoundedOptionalText(body, REVIEW_BODY_MAX_LENGTH, 'Review body');
 
     // Verify this buyer actually purchased this product in this order
     const order = await Order.findOne({
@@ -977,47 +1389,64 @@ exports.addReview = async (req, res) => {
     const reviewImages = req.files?.length
       ? await Promise.all(req.files.slice(0, 4).map(file => uploadBufferToCloudinary(file, 'lekhon/reviews')))
       : [];
+    uploadedReviewPublicIds = reviewImages.map(result => result.public_id).filter(Boolean);
 
     const review = await Review.create({
       productId,
       buyerId:            req.user._id,
       orderId,
-      rating:             parseInt(rating),
-      title:              title || '',
-      body:               body  || '',
+      rating:             parsedRating,
+      title:              safeTitle,
+      body:               safeBody,
       images:             reviewImages.map(result => result.secure_url),
       isVerifiedPurchase: true,
     });
+    uploadedReviewPublicIds = [];
 
     // Update product average rating
-    const allReviews = await Review.find({ productId });
-    const avg        = allReviews.reduce((s, r) => s + r.rating, 0) / allReviews.length;
+    const [ratingStats] = await Review.aggregate([
+      { $match: { productId: new mongoose.Types.ObjectId(productId) } },
+      {
+        $group: {
+          _id: '$productId',
+          averageRating: { $avg: '$rating' },
+          reviewCount: { $sum: 1 }
+        }
+      }
+    ]);
     await Product.findByIdAndUpdate(productId, {
-      averageRating: Math.round(avg * 10) / 10,
-      reviewCount:   allReviews.length,
+      averageRating: Math.round((ratingStats?.averageRating || 0) * 10) / 10,
+      reviewCount: ratingStats?.reviewCount || 0,
     });
 
     await review.populate('buyerId', 'username name profileImage');
     res.status(201).json({ success: true, review });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    if (uploadedReviewPublicIds.length) {
+      await destroyCloudinaryAssets({ imagePublicIds: uploadedReviewPublicIds });
+    }
+    return sendProductError(res, error);
   }
 };
 
 // POST /api/seller/reviews/:id/reply
 exports.replyToReview = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid review id.' });
+    }
+
     const review  = await Review.findById(req.params.id).populate('productId', 'sellerId');
     if (!review) return res.status(404).json({ success: false, message: 'Review not found.' });
     if (review.productId.sellerId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not your product.' });
     }
-    review.sellerReply    = req.body.reply;
+    review.sellerReply    = normalizeBoundedOptionalText(req.body.reply, REVIEW_REPLY_MAX_LENGTH, 'Seller reply');
     review.sellerRepliedAt= new Date();
     await review.save();
     res.json({ success: true, review });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
@@ -1028,41 +1457,75 @@ exports.replyToReview = async (req, res) => {
 // POST /api/marketplace/wishlist/:id
 exports.toggleWishlist = async (req, res) => {
   try {
-    const product = await Product.findById(req.params.id);
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid product id.' });
+    }
+    const product = await Product.findOne({ _id: req.params.id, status: 'active' })
+      .select('_id')
+      .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS);
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
 
-    const user  = await User.findById(req.user._id);
-    const list  = user.wishlist || [];
-    const idx   = list.findIndex(id => id.toString() === req.params.id);
-    let added;
-
-    if (idx > -1) {
-      list.splice(idx, 1);
-      added = false;
-    } else {
-      list.push(req.params.id);
-      added = true;
+    const removeResult = await User.updateOne(
+      { _id: req.user._id, wishlist: product._id },
+      { $pull: { wishlist: product._id } }
+    ).maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS);
+    if (removeResult.modifiedCount === 1) {
+      return res.json({ success: true, added: false });
     }
 
-    await User.findByIdAndUpdate(req.user._id, { wishlist: list });
-    res.json({ success: true, added });
+    const addResult = await User.updateOne(
+      {
+        _id: req.user._id,
+        wishlist: { $ne: product._id },
+        $expr: {
+          $lt: [
+            { $size: { $ifNull: ['$wishlist', []] } },
+            MAX_WISHLIST_ITEMS
+          ]
+        }
+      },
+      { $addToSet: { wishlist: product._id } }
+    ).maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS);
+    if (addResult.modifiedCount === 1) {
+      return res.json({ success: true, added: true });
+    }
+
+    const user = await User.findById(req.user._id)
+      .select({ wishlist: { $slice: MAX_WISHLIST_ITEMS + 1 } })
+      .lean()
+      .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
+    if (hasUserId(user.wishlist, product._id)) {
+      return res.json({ success: true, added: true });
+    }
+    return res.status(409).json({
+      success: false,
+      message: `Wishlist is limited to ${MAX_WISHLIST_ITEMS} products.`
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
 // GET /api/marketplace/wishlist
 exports.getWishlist = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('wishlist');
+    const user = await User.findById(req.user._id)
+      .select({ wishlist: { $slice: MAX_WISHLIST_ITEMS } })
+      .lean()
+      .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found.' });
     const products = await Product.find({
       _id:    { $in: user.wishlist || [] },
       status: 'active',
-    }).select('title slug thumbnail price compareAtPrice type averageRating reviewCount');
+    })
+      .select('title slug thumbnail price compareAtPrice type averageRating reviewCount')
+      .limit(MAX_WISHLIST_ITEMS)
+      .maxTimeMS(MARKETPLACE_QUERY_MAX_TIME_MS);
 
     res.json({ success: true, products, total: products.length });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
@@ -1073,11 +1536,10 @@ exports.getWishlist = async (req, res) => {
 // GET /api/marketplace/cart
 exports.getCart = async (req, res) => {
   try {
-    const cart = await Cart.findOne({ userId: req.user._id })
-      .populate('items.productId', 'title slug thumbnail price type status physical.stock physical.minimumOrderQuantity physical.shippingFee isFree sellerId');
-    res.json({ success: true, cart: cart || { items: [], couponCode: '' } });
+    const cart = await getPopulatedCartForUser(req.user._id);
+    res.json({ success: true, cart });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
@@ -1085,46 +1547,75 @@ exports.getCart = async (req, res) => {
 exports.addToCart = async (req, res) => {
   try {
     const { productId, qty = 1 } = req.body;
-    const requestedQty = Math.max(parseInt(qty, 10) || 1, 1);
+    if (!mongoose.isValidObjectId(productId)) {
+      return res.status(400).json({ success: false, message: 'Invalid product id.' });
+    }
+    const requestedQty = parseCartQuantity(qty);
+    if (!requestedQty) {
+      return res.status(400).json({ success: false, message: `Quantity must be a whole number from 1 to ${MAX_CART_ITEM_QTY}.` });
+    }
     const product = await Product.findOne({ _id: productId, status: 'active' });
     if (!product) return res.status(404).json({ success: false, message: 'Product not found.' });
     if (product.type === 'external') {
       return res.status(400).json({ success: false, message: 'External products cannot be added to cart.' });
     }
-    const minimumOrderQuantity = product.type === 'physical'
-      ? Math.max(parseInt(product.physical?.minimumOrderQuantity, 10) || 1, 1)
-      : 1;
-    if (requestedQty < minimumOrderQuantity) {
+    const minimumOrderQuantity = product.type === 'physical' ? physicalMinimumQty(product) : 1;
+    const effectiveQty = product.type === 'physical' ? requestedQty : 1;
+    const stockCap = product.type === 'physical' ? Math.min(physicalStockQty(product), MAX_CART_ITEM_QTY) : 1;
+    if (effectiveQty < minimumOrderQuantity) {
       return res.status(400).json({
         success: false,
         message: `Minimum order quantity for "${product.title}" is ${minimumOrderQuantity}.`,
       });
     }
-
-    let cart = await Cart.findOne({ userId: req.user._id });
-    if (!cart) cart = new Cart({ userId: req.user._id, items: [] });
-
-    const existing = cart.items.find(i => i.productId.toString() === productId);
-    if (existing) {
-      // Services: cap at 1; physical: allow multiple
-      if (product.type === 'service') existing.qty = 1;
-      else existing.qty = Math.min(existing.qty + requestedQty, product.physical?.stock || 99);
-    } else {
-      cart.items.push({
-        productId,
-        qty:              product.type === 'service' ? 1 : requestedQty,
-        priceSnapshot:    product.price,
-        titleSnapshot:    product.title,
-        thumbnailSnapshot:product.thumbnail,
-      });
+    if (product.type === 'physical' && effectiveQty > stockCap) {
+      return res.status(409).json({ success: false, message: `"${product.title}" does not have enough stock.` });
     }
 
-    await cart.save();
-    const populated = await Cart.findById(cart._id)
-      .populate('items.productId', 'title slug thumbnail price type status physical.stock physical.minimumOrderQuantity physical.shippingFee isFree sellerId');
-    res.json({ success: true, cart: populated });
+    await ensureUserCart(req.user._id);
+
+    const snapshotSet = buildCartItemSnapshotSet(product);
+    const existingFilter = product.type === 'physical'
+      ? {
+          userId: req.user._id,
+          items: {
+            $elemMatch: {
+              productId: product._id,
+              qty: { $lte: stockCap - effectiveQty },
+            },
+          },
+        }
+      : {
+          userId: req.user._id,
+          'items.productId': product._id,
+        };
+    const existingUpdate = product.type === 'physical'
+      ? { $inc: { 'items.$.qty': effectiveQty }, $set: snapshotSet }
+      : { $set: { ...snapshotSet, 'items.$.qty': 1 } };
+
+    let updateResult = await Cart.updateOne(existingFilter, existingUpdate);
+    if (updateResult.matchedCount === 0) {
+      if (product.type === 'physical' && await Cart.exists({ userId: req.user._id, 'items.productId': product._id })) {
+        return res.status(409).json({ success: false, message: `"${product.title}" does not have enough stock.` });
+      }
+
+      const pushResult = await Cart.updateOne(
+        { userId: req.user._id, 'items.productId': { $ne: product._id } },
+        { $push: { items: buildCartItemSnapshot(product, effectiveQty) } }
+      );
+
+      if (pushResult.matchedCount === 0) {
+        updateResult = await Cart.updateOne(existingFilter, existingUpdate);
+        if (updateResult.matchedCount === 0 && product.type === 'physical') {
+          return res.status(409).json({ success: false, message: `"${product.title}" does not have enough stock.` });
+        }
+      }
+    }
+
+    const cart = await getPopulatedCartForUser(req.user._id);
+    res.json({ success: true, cart });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
@@ -1132,45 +1623,75 @@ exports.addToCart = async (req, res) => {
 exports.updateCartItem = async (req, res) => {
   try {
     const { productId, qty } = req.body;
-    const requestedQty = parseInt(qty, 10);
-    const cart = await Cart.findOne({ userId: req.user._id });
-    if (!cart) return res.status(404).json({ success: false, message: 'Cart not found.' });
-
-    const item = cart.items.find(i => i.productId.toString() === productId);
-    if (!item) return res.status(404).json({ success: false, message: 'Item not in cart.' });
-
+    if (!mongoose.isValidObjectId(productId)) {
+      return res.status(400).json({ success: false, message: 'Invalid product id.' });
+    }
+    const requestedQty = parseCartQuantity(qty, { allowZero: true });
+    if (requestedQty === null) {
+      return res.status(400).json({ success: false, message: `Quantity must be a whole number from 0 to ${MAX_CART_ITEM_QTY}.` });
+    }
     if (requestedQty < 1) {
-      cart.items = cart.items.filter(i => i.productId.toString() !== productId);
+      const updateResult = await Cart.updateOne(
+        { userId: req.user._id, 'items.productId': productId },
+        { $pull: { items: { productId } } }
+      );
+      if (updateResult.matchedCount === 0) {
+        return res.status(404).json({ success: false, message: 'Item not in cart.' });
+      }
+      const cart = await getPopulatedCartForUser(req.user._id);
+      return res.json({ success: true, cart });
     } else {
-      const product = await Product.findById(productId);
-      const minimumOrderQuantity = product?.type === 'physical'
-        ? Math.max(parseInt(product.physical?.minimumOrderQuantity, 10) || 1, 1)
-        : 1;
-      if (requestedQty < minimumOrderQuantity) {
+      const product = await Product.findOne({ _id: productId, status: 'active' });
+      if (!product || product.type === 'external') {
+        return res.status(404).json({ success: false, message: 'Product not available.' });
+      }
+      const minimumOrderQuantity = product.type === 'physical' ? physicalMinimumQty(product) : 1;
+      const effectiveQty = product.type === 'physical' ? requestedQty : 1;
+      const stockCap = product.type === 'physical' ? Math.min(physicalStockQty(product), MAX_CART_ITEM_QTY) : 1;
+      if (effectiveQty < minimumOrderQuantity) {
         return res.status(400).json({
           success: false,
           message: `Minimum order quantity is ${minimumOrderQuantity}.`,
         });
       }
-      item.qty = requestedQty;
+      if (product.type === 'physical' && effectiveQty > stockCap) {
+        return res.status(409).json({ success: false, message: `"${product.title}" does not have enough stock.` });
+      }
+      const updateResult = await Cart.updateOne(
+        { userId: req.user._id, 'items.productId': product._id },
+        {
+          $set: {
+            'items.$.qty': effectiveQty,
+            ...buildCartItemSnapshotSet(product),
+          },
+        }
+      );
+      if (updateResult.matchedCount === 0) {
+        return res.status(404).json({ success: false, message: 'Item not in cart.' });
+      }
     }
-    await cart.save();
+
+    const cart = await getPopulatedCartForUser(req.user._id);
     res.json({ success: true, cart });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
 // DELETE /api/marketplace/cart/:productId
 exports.removeFromCart = async (req, res) => {
   try {
-    const cart = await Cart.findOne({ userId: req.user._id });
-    if (!cart) return res.json({ success: true });
-    cart.items = cart.items.filter(i => i.productId.toString() !== req.params.productId);
-    await cart.save();
+    if (!mongoose.isValidObjectId(req.params.productId)) {
+      return res.status(400).json({ success: false, message: 'Invalid product id.' });
+    }
+    await Cart.updateOne(
+      { userId: req.user._id },
+      { $pull: { items: { productId: req.params.productId } } }
+    );
+    const cart = await getPopulatedCartForUser(req.user._id);
     res.json({ success: true, cart });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };
 
@@ -1178,8 +1699,8 @@ exports.removeFromCart = async (req, res) => {
 exports.clearCart = async (req, res) => {
   try {
     await Cart.findOneAndUpdate({ userId: req.user._id }, { items: [], couponCode: '' });
-    res.json({ success: true });
+    res.json({ success: true, cart: { items: [], couponCode: '' } });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendProductError(res, error);
   }
 };

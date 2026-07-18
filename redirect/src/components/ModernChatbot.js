@@ -18,17 +18,56 @@ import {
   FaUserCog
 } from 'react-icons/fa';
 import { useLocation } from 'react-router-dom';
-import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneLight, vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import api from '../services/api';
+import SafeMarkdown from './SafeMarkdown';
 
 const HISTORY_STORAGE_KEY = 'chatbot-history-v2';
 const LEGACY_HISTORY_STORAGE_KEY = 'chatbot-history';
+const CHAT_HISTORY_STORAGE_VERSION = 2;
+const CHAT_HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_STORED_MESSAGES = 80;
+const MAX_STORED_MESSAGE_TEXT_LENGTH = 8000;
+const MAX_STORED_SUGGESTION_LENGTH = 160;
 const MAX_INPUT_LENGTH = 600;
 const REQUEST_TIMEOUT_MS = 12000;
 const MIN_TYPING_MS = 280;
+
+const getBrowserStorage = (type) => {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window[type] || null;
+  } catch {
+    return null;
+  }
+};
+
+const cleanMessageText = (value, maxLength = MAX_STORED_MESSAGE_TEXT_LENGTH) =>
+  String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+
+const cleanCompactText = (value, maxLength = MAX_STORED_SUGGESTION_LENGTH) =>
+  String(value || '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+
+const getTimestampIso = (value) => {
+  const parsedMs = new Date(value || Date.now()).getTime();
+  const timestamp = Number.isFinite(parsedMs) && parsedMs > 0 ? parsedMs : Date.now();
+  return new Date(timestamp).toISOString();
+};
+
+const removeStoredHistory = () => {
+  getBrowserStorage('sessionStorage')?.removeItem(HISTORY_STORAGE_KEY);
+  getBrowserStorage('localStorage')?.removeItem(HISTORY_STORAGE_KEY);
+  getBrowserStorage('localStorage')?.removeItem(LEGACY_HISTORY_STORAGE_KEY);
+};
 
 const BASE_QUICK_ACTIONS = [
   { key: 'create-content', text: 'How do I create posts, articles, and shorts?', icon: FaPenNib },
@@ -78,16 +117,68 @@ const normalizeMessages = (raw) => {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((item) => item && typeof item === 'object')
-    .map((item) => ({
-      sender: item.sender === 'user' || item.sender === 'system' ? item.sender : 'bot',
-      text: asString(item.text).trim(),
-      timestamp: asString(item.timestamp) || new Date().toISOString(),
-      suggestions: Array.isArray(item.suggestions)
-        ? item.suggestions.filter((s) => typeof s === 'string').slice(0, 6)
-        : []
-    }))
+    .map((item) => {
+      const text = cleanMessageText(item.text);
+      const suggestions = Array.isArray(item.suggestions)
+        ? item.suggestions
+            .map((suggestion) => cleanCompactText(suggestion))
+            .filter(Boolean)
+            .slice(0, 6)
+        : [];
+      return {
+        sender: item.sender === 'user' || item.sender === 'system' ? item.sender : 'bot',
+        text,
+        timestamp: getTimestampIso(item.timestamp),
+        suggestions
+      };
+    })
     .filter((item) => item.text.length > 0)
     .slice(-MAX_STORED_MESSAGES);
+};
+
+const createHistoryPayload = (messages) => ({
+  version: CHAT_HISTORY_STORAGE_VERSION,
+  savedAt: new Date().toISOString(),
+  messages: normalizeMessages(messages)
+});
+
+const parseStoredHistory = (raw) => {
+  const parsed = JSON.parse(raw);
+
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Array.isArray(parsed.messages)) {
+    const savedAtMs = new Date(parsed.savedAt || 0).getTime();
+    const expired =
+      Number.isFinite(savedAtMs) &&
+      savedAtMs > 0 &&
+      Date.now() - savedAtMs > CHAT_HISTORY_TTL_MS;
+    if (expired) return { messages: [], expired: true, shouldRewrite: true };
+
+    const messages = normalizeMessages(parsed.messages);
+    const shouldRewrite =
+      parsed.version !== CHAT_HISTORY_STORAGE_VERSION ||
+      !Number.isFinite(savedAtMs) ||
+      savedAtMs <= 0 ||
+      JSON.stringify(messages) !== JSON.stringify(parsed.messages);
+    return { messages, shouldRewrite };
+  }
+
+  return { messages: normalizeMessages(parsed), shouldRewrite: true };
+};
+
+const writeStoredHistory = (messages) => {
+  const payload = createHistoryPayload(messages);
+  const sessionStorage = getBrowserStorage('sessionStorage');
+  const localStorage = getBrowserStorage('localStorage');
+
+  if (!payload.messages.length) {
+    removeStoredHistory();
+    return [];
+  }
+
+  sessionStorage?.setItem(HISTORY_STORAGE_KEY, JSON.stringify(payload));
+  localStorage?.removeItem(HISTORY_STORAGE_KEY);
+  localStorage?.removeItem(LEGACY_HISTORY_STORAGE_KEY);
+  return payload.messages;
 };
 
 const buildBotMessage = (text, suggestions = []) => ({
@@ -170,9 +261,9 @@ const getFallbackResponse = (message, pathname) => {
   };
 };
 
-const ModernChatbot = () => {
+const ModernChatbot = ({ defaultOpen = false }) => {
   const location = useLocation();
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(() => Boolean(defaultOpen));
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -209,7 +300,7 @@ const ModernChatbot = () => {
 
   const appendMessages = useCallback((items) => {
     const normalizedItems = Array.isArray(items) ? items : [items];
-    setMessages((prev) => [...prev, ...normalizedItems].slice(-MAX_STORED_MESSAGES));
+    setMessages((prev) => normalizeMessages([...prev, ...normalizedItems]));
   }, []);
 
   const closeChat = useCallback(() => {
@@ -232,23 +323,34 @@ const ModernChatbot = () => {
   }, []);
 
   useEffect(() => {
-    const raw =
-      localStorage.getItem(HISTORY_STORAGE_KEY) || localStorage.getItem(LEGACY_HISTORY_STORAGE_KEY);
+    const sessionStorage = getBrowserStorage('sessionStorage');
+    const localStorage = getBrowserStorage('localStorage');
+    const sessionValue = sessionStorage?.getItem(HISTORY_STORAGE_KEY);
+    const legacyValue =
+      localStorage?.getItem(HISTORY_STORAGE_KEY) || localStorage?.getItem(LEGACY_HISTORY_STORAGE_KEY);
+    const raw = sessionValue || legacyValue;
     if (!raw) return;
     try {
-      const parsed = JSON.parse(raw);
-      const normalized = normalizeMessages(parsed);
-      if (normalized.length > 0) setMessages(normalized);
+      const { messages: normalized, expired, shouldRewrite } = parseStoredHistory(raw);
+      if (expired || normalized.length === 0) {
+        removeStoredHistory();
+        return;
+      }
+      setMessages(normalized);
+      if (shouldRewrite || legacyValue) writeStoredHistory(normalized);
+      else {
+        localStorage?.removeItem(HISTORY_STORAGE_KEY);
+        localStorage?.removeItem(LEGACY_HISTORY_STORAGE_KEY);
+      }
     } catch (error) {
-      localStorage.removeItem(HISTORY_STORAGE_KEY);
-      localStorage.removeItem(LEGACY_HISTORY_STORAGE_KEY);
+      removeStoredHistory();
     }
   }, []);
 
   useEffect(() => {
     if (messages.length === 0) return;
     try {
-      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(messages));
+      writeStoredHistory(messages);
     } catch (error) {
       setStatusHint('Chat history could not be saved locally, but chat still works.');
     }
@@ -471,8 +573,7 @@ const ModernChatbot = () => {
     if (!window.confirm('Clear all chatbot history?')) return;
     setMessages([]);
     setLastFailedPrompt('');
-    localStorage.removeItem(HISTORY_STORAGE_KEY);
-    localStorage.removeItem(LEGACY_HISTORY_STORAGE_KEY);
+    removeStoredHistory();
     setStatusHint('History cleared. Start fresh anytime.');
   };
 
@@ -558,7 +659,7 @@ const ModernChatbot = () => {
                     }
                   >
                     {msg.sender === 'bot' || msg.sender === 'system' ? (
-                      <ReactMarkdown
+                      <SafeMarkdown
                         className={`prose max-w-none text-[13px] sm:text-sm leading-relaxed ${
                           msg.sender === 'system' ? 'prose-p:my-1' : 'prose-p:my-2'
                         }`}
@@ -587,7 +688,7 @@ const ModernChatbot = () => {
                         }}
                       >
                         {msg.text}
-                      </ReactMarkdown>
+                      </SafeMarkdown>
                     ) : (
                       <p className="text-[13px] sm:text-sm leading-relaxed break-words">{msg.text}</p>
                     )}

@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FaTimes, FaChevronLeft, FaChevronRight, FaMusic } from 'react-icons/fa';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
+import api from '../services/api';
 
 const clampDurationSec = (value) => {
   const parsed = Number(value);
@@ -17,7 +19,10 @@ const getMediaType = (status) => {
 
 const getMediaUrl = (status) => {
   if (!status) return '';
-  return status.video || status.image || '';
+  const mediaType = getMediaType(status);
+  if (mediaType === 'video') return getSafeHttpUrl(status.video || status.image);
+  if (mediaType === 'image') return getSafeImageUrl(status.image || status.video);
+  return '';
 };
 
 const clampTextPosition = (value) => {
@@ -59,11 +64,15 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
     return Math.max(0, Math.min(safeIndex, Math.max(0, statuses.length - 1)));
   });
   const [progress, setProgress] = useState(0);
+  const [authorizedMediaUrls, setAuthorizedMediaUrls] = useState({});
+  const [loadingMediaId, setLoadingMediaId] = useState('');
   const videoRef = useRef(null);
 
   const currentStatus = statuses[currentIndex] || null;
   const currentMediaType = useMemo(() => getMediaType(currentStatus), [currentStatus]);
-  const currentMediaUrl = useMemo(() => getMediaUrl(currentStatus), [currentStatus]);
+  const currentStatusId = String(currentStatus?._id || currentStatus?.id || '');
+  const legacyMediaUrl = useMemo(() => getMediaUrl(currentStatus), [currentStatus]);
+  const currentMediaUrl = legacyMediaUrl || authorizedMediaUrls[currentStatusId] || '';
   const currentTextPosX = useMemo(
     () => clampTextPosition(currentStatus?.textPosX),
     [currentStatus?.textPosX]
@@ -78,10 +87,43 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
   );
   const isVideoStatus = currentMediaType === 'video' && Boolean(currentMediaUrl);
   const hasMedia = Boolean(currentMediaUrl);
+  const isMediaLoading = Boolean(currentStatusId && loadingMediaId === currentStatusId);
   const currentStickers = useMemo(() => normalizeStickers(currentStatus?.stickers), [currentStatus?.stickers]);
   const currentMusicLabel = useMemo(() => String(currentStatus?.musicLabel || '').trim(), [currentStatus?.musicLabel]);
   const currentMusicSourceType = useMemo(() => String(currentStatus?.musicSourceType || '').trim().toLowerCase(), [currentStatus?.musicSourceType]);
   const currentMusicSourceUrl = useMemo(() => String(currentStatus?.musicSourceUrl || '').trim(), [currentStatus?.musicSourceUrl]);
+
+  useEffect(() => {
+    if (
+      !currentStatusId ||
+      legacyMediaUrl ||
+      !['image', 'video'].includes(currentMediaType) ||
+      (!currentStatus?.hasMedia && !currentStatus?.mediaProtected)
+    ) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    setLoadingMediaId(currentStatusId);
+    api.get(`/users/statuses/${encodeURIComponent(currentStatusId)}/media`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const safeUrl = currentMediaType === 'video'
+          ? getSafeHttpUrl(data?.url)
+          : getSafeImageUrl(data?.url);
+        if (safeUrl) {
+          setAuthorizedMediaUrls((current) => ({ ...current, [currentStatusId]: safeUrl }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadingMediaId('');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentMediaType, currentStatus?.hasMedia, currentStatus?.mediaProtected, currentStatusId, legacyMediaUrl]);
 
   useEffect(() => {
     if (statuses.length === 0) return;
@@ -113,7 +155,7 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
   }, []);
 
   useEffect(() => {
-    if (!currentStatus || isVideoStatus) return undefined;
+    if (!currentStatus || isVideoStatus || isMediaLoading) return undefined;
 
     const startedAt = Date.now();
     const timer = setInterval(() => {
@@ -128,7 +170,7 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
     }, 100);
 
     return () => clearInterval(timer);
-  }, [currentStatus, currentDurationMs, handleNext, isVideoStatus]);
+  }, [currentStatus, currentDurationMs, handleNext, isMediaLoading, isVideoStatus]);
 
   useEffect(() => {
     if (!currentStatus || !isVideoStatus) return undefined;
@@ -245,7 +287,7 @@ const StatusViewer = ({ statuses = [], onClose, userName, initialIndex = 0 }) =>
             controls={false}
           />
         ) : currentMediaType === 'image' && currentMediaUrl ? (
-          <img src={currentMediaUrl} alt="Status" className="max-w-full max-h-full object-contain rounded-lg" />
+          <img src={currentMediaUrl} alt="Status" className="max-w-full max-h-full object-contain rounded-lg" referrerPolicy="no-referrer" />
         ) : (
           <div
             className="w-full h-full rounded-lg"

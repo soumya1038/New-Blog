@@ -2,6 +2,10 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const { initializeBackgroundQueues, shutdownBackgroundQueues } = require('./queueService');
 const { initSentry } = require('../utils/sentry');
+const { assertValidEnvironment } = require('../utils/envValidation');
+const { logError } = require('../utils/safeErrorLog');
+
+assertValidEnvironment({ profile: 'worker' });
 
 initSentry();
 
@@ -17,7 +21,7 @@ const gracefulShutdown = async (signal) => {
     await mongoose.connection.close();
     process.exit(0);
   } catch (error) {
-    console.error('[queue-worker] Shutdown failed:', error?.message || error);
+    logError('[queue-worker] Shutdown failed:', error);
     process.exit(1);
   }
 };
@@ -34,7 +38,7 @@ const startWorker = async () => {
     await initializeBackgroundQueues({ startWorkers: true });
     console.log('[queue-worker] Queue worker is running.');
   } catch (error) {
-    console.error('[queue-worker] Failed to start:', error?.message || error);
+    logError('[queue-worker] Failed to start:', error);
     process.exit(1);
   }
 };

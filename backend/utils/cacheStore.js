@@ -1,4 +1,5 @@
 const { createClient } = require('redis');
+const { logWarn } = require('./safeErrorLog');
 
 let redisClient = null;
 let redisConnected = false;
@@ -13,6 +14,7 @@ const parsePositiveInt = (value, fallback) => {
 };
 
 const DEFAULT_CACHE_TTL_SECONDS = parsePositiveInt(process.env.CACHE_TTL_SECONDS, 300);
+const MEMORY_CACHE_MAX_ENTRIES = parsePositiveInt(process.env.CACHE_MEMORY_MAX_ENTRIES, 5000);
 
 const pruneExpiredMemoryEntries = () => {
   const now = Date.now();
@@ -20,6 +22,11 @@ const pruneExpiredMemoryEntries = () => {
     if (!entry || entry.expiresAt <= now) {
       memoryCache.delete(key);
     }
+  }
+  while (memoryCache.size > MEMORY_CACHE_MAX_ENTRIES) {
+    const oldestKey = memoryCache.keys().next().value;
+    if (!oldestKey) break;
+    memoryCache.delete(oldestKey);
   }
 };
 
@@ -49,7 +56,7 @@ const initializeCacheStore = async () => {
 
     redisClient.on('error', (error) => {
       redisConnected = false;
-      console.warn('[cache] Redis error; continuing with fallback cache.', error?.message || error);
+      logWarn('[cache] Redis error; continuing with fallback cache.', error);
     });
 
     await redisClient.connect();
@@ -58,7 +65,7 @@ const initializeCacheStore = async () => {
   } catch (error) {
     redisConnected = false;
     if (!warnedFallback) {
-      console.warn('[cache] Redis unavailable; using in-memory cache fallback.', error?.message || error);
+      logWarn('[cache] Redis unavailable; using in-memory cache fallback.', error);
       warnedFallback = true;
     }
   }
@@ -95,6 +102,7 @@ const setCache = async (key, value, ttlSeconds = DEFAULT_CACHE_TTL_SECONDS) => {
       value,
       expiresAt: Date.now() + ttl * 1000
     });
+    pruneExpiredMemoryEntries();
     return true;
   } catch (error) {
     return false;

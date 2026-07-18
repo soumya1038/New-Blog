@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   FaBoxOpen,
+  FaBookmark,
   FaClock,
   FaExternalLinkAlt,
   FaFilePdf,
@@ -55,6 +56,13 @@ const STATE_COPY = {
     title: 'No external products found',
     body: 'Affiliate or external listings will appear here when sellers add them.',
     tone: 'text-fuchsia-500',
+  },
+  saved: {
+    icon: FaBookmark,
+    eyebrow: 'Saved products',
+    title: 'No saved products yet',
+    body: 'Tap the heart on product cards or product details to keep products here.',
+    tone: 'text-violet-500',
   },
   'server-error': {
     icon: FaServer,

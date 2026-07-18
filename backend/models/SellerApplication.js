@@ -50,12 +50,12 @@ const sellerApplicationSchema = new mongoose.Schema({
   city:         { type: String, default: '' },
   state:        { type: String, default: '' },
   country:      { type: String, default: '' },
-  panNumber:    { type: String, default: '' },        // AES encrypted at rest via utils/encryption.js
+  panNumber:    { type: String, default: '', select: false }, // AES encrypted at rest via utils/encryption.js
   maskedPan:    { type: String, default: '' },
   payoutMethod: {
     type:              { type: String, enum: ['bank', 'upi'], default: 'upi' },
     upiId:             { type: String, default: '' },
-    bankAccount:       { type: String, default: '' }, // AES encrypted
+    bankAccount:       { type: String, default: '', select: false }, // AES encrypted
     bankAccountMasked: { type: String, default: '' },
     ifsc:              { type: String, default: '' },
     accountHolderName: { type: String, default: '' },
@@ -67,9 +67,9 @@ const sellerApplicationSchema = new mongoose.Schema({
       enum: ['not_started', 'pending_setup', 'pending_provider', 'verified', 'failed'],
       default: 'not_started',
     },
-    accountId: { type: String, default: '' },
-    referenceId: { type: String, default: '' },
-    onboardingUrl: { type: String, default: '' },
+    accountId: { type: String, default: '', select: false },
+    referenceId: { type: String, default: '', select: false },
+    onboardingUrl: { type: String, default: '', select: false },
     note: { type: String, default: '' },
     requestedAt: { type: Date, default: null },
     verifiedAt: { type: Date, default: null },

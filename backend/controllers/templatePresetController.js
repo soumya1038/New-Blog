@@ -1,6 +1,22 @@
 const TemplatePreset = require('../models/TemplatePreset');
+const mongoose = require('mongoose');
+const { sendSafeServerError } = require('../utils/safeErrorLog');
+
+const sendTemplatePresetServerError = (res, error) =>
+  sendSafeServerError(res, '[templatePresetController] request failed:', error, 'Unable to process template preset request');
 
 const MAX_TEMPLATE_PAYLOAD_BYTES = 450000;
+const TEMPLATE_PRESET_DEFAULT_LIMIT = Math.max(1, Number(process.env.TEMPLATE_PRESET_DEFAULT_LIMIT) || 50);
+const TEMPLATE_PRESET_MAX_LIMIT = Math.max(1, Number(process.env.TEMPLATE_PRESET_MAX_LIMIT) || 100);
+const TEMPLATE_PRESET_QUERY_MAX_TIME_MS = Math.max(100, Number(process.env.TEMPLATE_PRESET_QUERY_MAX_TIME_MS) || 5000);
+
+const parsePresetLimit = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 1) return TEMPLATE_PRESET_DEFAULT_LIMIT;
+  return Math.min(parsed, TEMPLATE_PRESET_MAX_LIMIT);
+};
+
+const isValidPresetId = (id) => mongoose.isValidObjectId(id);
 
 const serializePreset = (preset) => ({
   id: preset._id,
@@ -46,16 +62,29 @@ const normalizeTemplatePayload = (rawTemplate) => {
 
 exports.getMyTemplatePresets = async (req, res) => {
   try {
-    const presets = await TemplatePreset.find({ owner: req.user._id })
-      .sort({ updatedAt: -1, _id: -1 })
-      .lean();
+    const limit = parsePresetLimit(req.query?.limit);
+    const query = { owner: req.user._id };
+    const [presets, total] = await Promise.all([
+      TemplatePreset.find(query)
+        .sort({ updatedAt: -1, _id: -1 })
+        .limit(limit)
+        .maxTimeMS(TEMPLATE_PRESET_QUERY_MAX_TIME_MS)
+        .lean(),
+      TemplatePreset.countDocuments(query)
+        .maxTimeMS(TEMPLATE_PRESET_QUERY_MAX_TIME_MS)
+    ]);
 
     return res.json({
       success: true,
-      presets: presets.map((preset) => serializePreset(preset))
+      presets: presets.map((preset) => serializePreset(preset)),
+      total,
+      pagination: {
+        mode: 'limit',
+        limit
+      }
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendTemplatePresetServerError(res, error);
   }
 };
 
@@ -74,7 +103,8 @@ exports.createTemplatePreset = async (req, res) => {
     const visibility = req.body?.visibility === 'public' ? 'public' : 'private';
     const nameLower = name.toLowerCase();
 
-    const existingPreset = await TemplatePreset.findOne({ owner: req.user._id, nameLower });
+    const existingPreset = await TemplatePreset.findOne({ owner: req.user._id, nameLower })
+      .maxTimeMS(TEMPLATE_PRESET_QUERY_MAX_TIME_MS);
     if (existingPreset) {
       return res.status(409).json({
         success: false,
@@ -103,16 +133,17 @@ exports.createTemplatePreset = async (req, res) => {
         code: 'TEMPLATE_NAME_CONFLICT'
       });
     }
-    return res.status(500).json({ success: false, message: error.message });
+    return sendTemplatePresetServerError(res, error);
   }
 };
 
 exports.updateTemplatePreset = async (req, res) => {
   try {
-    const preset = await TemplatePreset.findOne({ _id: req.params.id, owner: req.user._id });
-    if (!preset) {
-      return res.status(404).json({ success: false, message: 'Template preset not found' });
+    if (!isValidPresetId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid template preset id' });
     }
+
+    const updates = {};
 
     if (req.body?.name !== undefined) {
       const nextName = normalizeName(req.body.name);
@@ -124,8 +155,8 @@ exports.updateTemplatePreset = async (req, res) => {
       const conflict = await TemplatePreset.findOne({
         owner: req.user._id,
         nameLower: nextNameLower,
-        _id: { $ne: preset._id }
-      });
+        _id: { $ne: req.params.id }
+      }).maxTimeMS(TEMPLATE_PRESET_QUERY_MAX_TIME_MS);
       if (conflict) {
         return res.status(409).json({
           success: false,
@@ -134,8 +165,8 @@ exports.updateTemplatePreset = async (req, res) => {
         });
       }
 
-      preset.name = nextName;
-      preset.nameLower = nextNameLower;
+      updates.name = nextName;
+      updates.nameLower = nextNameLower;
     }
 
     if (req.body?.template !== undefined) {
@@ -143,17 +174,25 @@ exports.updateTemplatePreset = async (req, res) => {
       if (!templateResult.value) {
         return res.status(400).json({ success: false, message: templateResult.error });
       }
-      preset.template = templateResult.value;
+      updates.template = templateResult.value;
     }
 
     if (req.body?.visibility !== undefined) {
       if (!['private', 'public'].includes(req.body.visibility)) {
         return res.status(400).json({ success: false, message: 'Invalid visibility value' });
       }
-      preset.visibility = req.body.visibility;
+      updates.visibility = req.body.visibility;
     }
 
-    await preset.save();
+    const preset = await TemplatePreset.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user._id },
+      Object.keys(updates).length ? { $set: updates } : { $set: { updatedAt: new Date() } },
+      { new: true, runValidators: true }
+    ).maxTimeMS(TEMPLATE_PRESET_QUERY_MAX_TIME_MS);
+
+    if (!preset) {
+      return res.status(404).json({ success: false, message: 'Template preset not found' });
+    }
 
     return res.json({
       success: true,
@@ -167,26 +206,37 @@ exports.updateTemplatePreset = async (req, res) => {
         code: 'TEMPLATE_NAME_CONFLICT'
       });
     }
-    return res.status(500).json({ success: false, message: error.message });
+    return sendTemplatePresetServerError(res, error);
   }
 };
 
 exports.deleteTemplatePreset = async (req, res) => {
   try {
-    const preset = await TemplatePreset.findOneAndDelete({ _id: req.params.id, owner: req.user._id });
+    if (!isValidPresetId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid template preset id' });
+    }
+
+    const preset = await TemplatePreset.findOneAndDelete({ _id: req.params.id, owner: req.user._id })
+      .maxTimeMS(TEMPLATE_PRESET_QUERY_MAX_TIME_MS);
     if (!preset) {
       return res.status(404).json({ success: false, message: 'Template preset not found' });
     }
 
     return res.json({ success: true, message: 'Template preset deleted' });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendTemplatePresetServerError(res, error);
   }
 };
 
 exports.toggleTemplatePresetShare = async (req, res) => {
   try {
-    const preset = await TemplatePreset.findOne({ _id: req.params.id, owner: req.user._id });
+    if (!isValidPresetId(req.params.id)) {
+      return res.status(400).json({ success: false, message: 'Invalid template preset id' });
+    }
+
+    const preset = await TemplatePreset.findOne({ _id: req.params.id, owner: req.user._id })
+      .select('visibility')
+      .maxTimeMS(TEMPLATE_PRESET_QUERY_MAX_TIME_MS);
     if (!preset) {
       return res.status(404).json({ success: false, message: 'Template preset not found' });
     }
@@ -196,14 +246,21 @@ exports.toggleTemplatePresetShare = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid visibility value' });
     }
 
-    preset.visibility = requested || (preset.visibility === 'public' ? 'private' : 'public');
-    await preset.save();
+    const updated = await TemplatePreset.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user._id },
+      { $set: { visibility: requested || (preset.visibility === 'public' ? 'private' : 'public') } },
+      { new: true, runValidators: true }
+    ).maxTimeMS(TEMPLATE_PRESET_QUERY_MAX_TIME_MS);
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'Template preset not found' });
+    }
 
     return res.json({
       success: true,
-      preset: serializePreset(preset)
+      preset: serializePreset(updated)
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendTemplatePresetServerError(res, error);
   }
 };

@@ -52,6 +52,28 @@ const messageSchema = new mongoose.Schema({
   cloudinaryPublicId: {
     type: String
   },
+  cloudinaryResourceType: {
+    type: String,
+    enum: ['image', 'video', 'raw'],
+    default: '',
+    select: false,
+  },
+  cloudinaryDeliveryType: {
+    type: String,
+    enum: ['upload', 'private', 'authenticated'],
+    default: 'upload',
+    select: false,
+  },
+  cloudinaryFormat: {
+    type: String,
+    default: '',
+    select: false,
+  },
+  cleanupStartedAt: {
+    type: Date,
+    default: null,
+    select: false,
+  },
   encrypted: {
     type: Boolean,
     default: true
@@ -114,20 +136,23 @@ const messageSchema = new mongoose.Schema({
 messageSchema.pre('deleteOne', { document: true, query: false }, async function() {
   if (this.cloudinaryPublicId) {
     try {
-      const cloudinary = require('../config/cloudinary');
-      await cloudinary.uploader.destroy(this.cloudinaryPublicId);
-      console.log(`✅ Deleted Cloudinary file: ${this.cloudinaryPublicId}`);
+      const { deleteCloudinaryPublicIdAcrossResourceTypes } = require('../utils/cloudinaryCleanup');
+      await deleteCloudinaryPublicIdAcrossResourceTypes(this.cloudinaryPublicId);
+      console.log('[message] Deleted Cloudinary file for removed message.');
     } catch (error) {
-      console.error('❌ Failed to delete Cloudinary file:', error);
+      console.error('[message] Failed to delete Cloudinary file:', error?.message || error);
     }
   }
 });
 
 // TTL index - auto-delete messages after 30 days
-messageSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 }); // 30 days = 2592000 seconds
+// Retention cleanup is application-managed so Cloudinary assets are deleted before records.
+messageSchema.index({ createdAt: 1, cleanupStartedAt: 1, _id: 1 });
 
 messageSchema.index({ sender: 1, receiver: 1, createdAt: -1 });
 messageSchema.index({ receiver: 1, read: 1 });
 messageSchema.index({ sender: 1, createdAt: -1 });
+messageSchema.index({ group: 1, createdAt: -1 });
+messageSchema.index({ receiver: 1, delivered: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Message', messageSchema);

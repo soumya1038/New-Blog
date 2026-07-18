@@ -15,9 +15,11 @@ const idempotencyKeySchema = new mongoose.Schema({
   error: { type: String, default: '' },
   lockedUntil: { type: Date, default: null, index: true },
   completedAt: { type: Date, default: null },
-  failedAt: { type: Date, default: null }
+  failedAt: { type: Date, default: null },
+  expiresAt: { type: Date, default: null, select: false }
 }, { timestamps: true });
 
 idempotencyKeySchema.index({ scope: 1, status: 1, updatedAt: -1 });
+idempotencyKeySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('IdempotencyKey', idempotencyKeySchema);

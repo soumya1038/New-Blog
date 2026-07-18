@@ -3,14 +3,36 @@ const generateToken = require('../utils/generateToken');
 const { validateEmail } = require('../utils/emailValidator');
 const { enqueueEmailJob } = require('../jobs/queueService');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const axios = require('axios');
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
+const {
+  consumeVerificationCode,
+  createVerificationCode,
+  deleteVerificationCodes,
+  getActiveVerificationCode,
+  normalizeEmail,
+  verifyVerificationCode,
+} = require('../utils/verificationCodes');
+const {
+  consumeStateKeyOnce,
+  createTemporaryState,
+  getTemporaryState,
+} = require('../utils/temporaryState');
 const {
   buildTwoFactorStatus,
   getChallengeMethodsPayload,
   verifyTwoFactorActionToken,
 } = require('../utils/twoFactor');
+const {
+  getPasswordValidationError,
+  isPasswordComparable,
+  normalizePasswordInput,
+} = require('../utils/passwordPolicy');
+const { sanitizeOwnerProfile } = require('../utils/userSanitizer');
+const { logError } = require('../utils/safeErrorLog');
+const { getOAuthProviderTimeoutMs } = require('../utils/providerTimeouts');
 
 const GOOGLE_AUTH_BASE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -24,6 +46,11 @@ const LINKEDIN_USERINFO_URL = 'https://api.linkedin.com/v2/userinfo';
 const TWITTER_AUTH_BASE_URL = 'https://x.com/i/oauth2/authorize';
 const TWITTER_TOKEN_URL = 'https://api.twitter.com/2/oauth2/token';
 const TWITTER_USERINFO_URL = 'https://api.twitter.com/2/users/me';
+
+const withOAuthTimeout = (config = {}) => ({
+  ...config,
+  timeout: getOAuthProviderTimeoutMs(),
+});
 
 const normalizeAbsoluteUrl = (value = '') => {
   const trimmed = String(value || '').trim();
@@ -114,92 +141,63 @@ const getLinkedInOauthScopes = () => {
   return normalized;
 };
 
-const getAllowedGoogleRedirectUris = () => {
-  const configured = (process.env.GOOGLE_ALLOWED_REDIRECT_URIS || '')
+const isProductionRuntime = () => process.env.NODE_ENV === 'production';
+
+const buildFrontendCallbackUrl = (baseUrl, provider) => {
+  const normalized = normalizeAbsoluteUrl(baseUrl);
+  if (!normalized) return '';
+  return `${normalized}/auth/${provider}/callback`.replace(/\/{2,}/g, '/').replace(':/', '://');
+};
+
+const buildAllowedRedirectUris = ({ provider, envKey }) => {
+  const configured = (process.env[envKey] || '')
     .split(',')
     .map((entry) => normalizeAbsoluteUrl(entry))
     .filter(Boolean);
 
-  const defaults = [
-    'https://lekhon-development.netlify.app/auth/google/callback',
-    'https://localhost/auth/google/callback',
-    'http://localhost:3000/auth/google/callback',
-    'http://localhost:3001/auth/google/callback',
-  ];
+  const defaults = [];
+  if (!isProductionRuntime()) {
+    defaults.push(
+      `https://lekhon-development.netlify.app/auth/${provider}/callback`,
+      `https://localhost/auth/${provider}/callback`,
+      `http://localhost:3000/auth/${provider}/callback`,
+      `http://localhost:3001/auth/${provider}/callback`
+    );
+  }
 
-  const frontendProd = normalizeAbsoluteUrl(process.env.FRONTEND_URL_PROD || '');
-  const frontendLocal = normalizeAbsoluteUrl(process.env.FRONTEND_URL || '');
-
-  if (frontendProd) defaults.push(`${frontendProd}/auth/google/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
-  if (frontendLocal) defaults.push(`${frontendLocal}/auth/google/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
+  [
+    process.env.FRONTEND_URL_PROD,
+    process.env.FRONTEND_URL,
+    process.env.PUBLIC_SITE_URL,
+  ].forEach((baseUrl) => {
+    const callbackUrl = buildFrontendCallbackUrl(baseUrl, provider);
+    if (callbackUrl) defaults.push(callbackUrl);
+  });
 
   return [...new Set([...defaults, ...configured].map((entry) => normalizeAbsoluteUrl(entry)).filter(Boolean))];
+};
+
+const resolveBackendPublicUrl = (req) => {
+  const configured = normalizeAbsoluteUrl(process.env.BACKEND_PUBLIC_URL || '');
+  if (configured) return configured.replace(/\/+$/, '');
+  if (isProductionRuntime()) return '';
+  return normalizeAbsoluteUrl(`${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+};
+
+const getAllowedGoogleRedirectUris = () => {
+  return buildAllowedRedirectUris({ provider: 'google', envKey: 'GOOGLE_ALLOWED_REDIRECT_URIS' });
 };
 
 const getAllowedFacebookRedirectUris = () => {
-  const configured = (process.env.FACEBOOK_ALLOWED_REDIRECT_URIS || '')
-    .split(',')
-    .map((entry) => normalizeAbsoluteUrl(entry))
-    .filter(Boolean);
-
-  const defaults = [
-    'https://lekhon-development.netlify.app/auth/facebook/callback',
-    'https://localhost/auth/facebook/callback',
-    'http://localhost:3000/auth/facebook/callback',
-    'http://localhost:3001/auth/facebook/callback',
-  ];
-
-  const frontendProd = normalizeAbsoluteUrl(process.env.FRONTEND_URL_PROD || '');
-  const frontendLocal = normalizeAbsoluteUrl(process.env.FRONTEND_URL || '');
-
-  if (frontendProd) defaults.push(`${frontendProd}/auth/facebook/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
-  if (frontendLocal) defaults.push(`${frontendLocal}/auth/facebook/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
-
-  return [...new Set([...defaults, ...configured].map((entry) => normalizeAbsoluteUrl(entry)).filter(Boolean))];
+  return buildAllowedRedirectUris({ provider: 'facebook', envKey: 'FACEBOOK_ALLOWED_REDIRECT_URIS' });
 };
 
 const getAllowedTwitterRedirectUris = () => {
-  const configured = (process.env.TWITTER_ALLOWED_REDIRECT_URIS || '')
-    .split(',')
-    .map((entry) => normalizeAbsoluteUrl(entry))
-    .filter(Boolean);
-
-  const defaults = [
-    'https://lekhon-development.netlify.app/auth/twitter/callback',
-    'https://localhost/auth/twitter/callback',
-    'http://localhost:3000/auth/twitter/callback',
-    'http://localhost:3001/auth/twitter/callback',
-  ];
-
-  const frontendProd = normalizeAbsoluteUrl(process.env.FRONTEND_URL_PROD || '');
-  const frontendLocal = normalizeAbsoluteUrl(process.env.FRONTEND_URL || '');
-
-  if (frontendProd) defaults.push(`${frontendProd}/auth/twitter/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
-  if (frontendLocal) defaults.push(`${frontendLocal}/auth/twitter/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
-
-  return [...new Set([...defaults, ...configured].map((entry) => normalizeAbsoluteUrl(entry)).filter(Boolean))];
+  return buildAllowedRedirectUris({ provider: 'twitter', envKey: 'TWITTER_ALLOWED_REDIRECT_URIS' });
 };
 
 const getAllowedLinkedInRedirectUris = () => {
-  const configured = (process.env.LINKEDIN_ALLOWED_REDIRECT_URIS || '')
-    .split(',')
-    .map((entry) => normalizeAbsoluteUrl(entry))
-    .filter(Boolean);
-
-  const defaults = [
-    'https://lekhon-development.netlify.app/auth/linkedin/callback',
-    'https://localhost/auth/linkedin/callback',
-    'http://localhost:3000/auth/linkedin/callback',
-    'http://localhost:3001/auth/linkedin/callback',
-  ];
-
-  const frontendProd = normalizeAbsoluteUrl(process.env.FRONTEND_URL_PROD || '');
-  const frontendLocal = normalizeAbsoluteUrl(process.env.FRONTEND_URL || '');
-
-  if (frontendProd) defaults.push(`${frontendProd}/auth/linkedin/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
-  if (frontendLocal) defaults.push(`${frontendLocal}/auth/linkedin/callback`.replace(/\/{2,}/g, '/').replace(':/', '://'));
-
-  return [...new Set([...defaults, ...configured].map((entry) => normalizeAbsoluteUrl(entry)).filter(Boolean))];
+  return buildAllowedRedirectUris({ provider: 'linkedin', envKey: 'LINKEDIN_ALLOWED_REDIRECT_URIS' });
 };
 
 const isGoogleRedirectUriAllowed = (redirectUri) => {
@@ -226,6 +224,41 @@ const isLinkedInRedirectUriAllowed = (redirectUri) => {
   return getAllowedLinkedInRedirectUris().includes(normalized);
 };
 
+const buildRedirectUriError = (message, getAllowedRedirectUris) => ({
+  success: false,
+  message,
+  ...(!isProductionRuntime() && { allowedRedirectUris: getAllowedRedirectUris() }),
+});
+
+const shouldRedactDetailKey = (key = '') =>
+  /(token|secret|authorization|password|verifier|credential|client_secret|access_token|refresh_token|id_token|code)/i.test(String(key));
+
+const redactErrorDetails = (value, depth = 0) => {
+  if (depth > 4) return '[redacted]';
+  if (value === null || value === undefined) return value;
+  if (typeof value === 'string') return value.slice(0, 500);
+  if (typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.slice(0, 10).map((item) => redactErrorDetails(item, depth + 1));
+  }
+
+  return Object.entries(value).reduce((safe, [key, item]) => {
+    safe[key] = shouldRedactDetailKey(key) ? '[redacted]' : redactErrorDetails(item, depth + 1);
+    return safe;
+  }, {});
+};
+
+const buildSafeOAuthErrorBody = (message, error) => {
+  const body = { success: false, message };
+  if (!isProductionRuntime()) {
+    body.details = redactErrorDetails(error?.response?.data || error?.message || 'OAuth request failed');
+  }
+  return body;
+};
+
+const sendOAuthError = (res, status, message, error) =>
+  res.status(status).json(buildSafeOAuthErrorBody(message, error));
+
 const createGoogleState = (redirectUri, payload = {}) => {
   return jwt.sign(
     {
@@ -247,25 +280,10 @@ const readGoogleState = (stateToken) => {
   }
 };
 
-const consumeGoogleStateToken = (stateToken, ttlMs = 10 * 60 * 1000) => {
+const consumeGoogleStateToken = async (stateToken, ttlMs = 10 * 60 * 1000) => {
   const token = String(stateToken || '').trim();
   if (!token) return false;
-
-  global.consumedGoogleStateTokens = global.consumedGoogleStateTokens || new Map();
-  const now = Date.now();
-
-  for (const [savedToken, expiresAt] of global.consumedGoogleStateTokens.entries()) {
-    if (expiresAt <= now) {
-      global.consumedGoogleStateTokens.delete(savedToken);
-    }
-  }
-
-  if (global.consumedGoogleStateTokens.has(token)) {
-    return false;
-  }
-
-  global.consumedGoogleStateTokens.set(token, now + ttlMs);
-  return true;
+  return consumeStateKeyOnce({ type: 'google_oauth_state', key: token, ttlMs });
 };
 
 const createOAuthState = (payload = {}, expiresIn = '10m') => {
@@ -288,25 +306,10 @@ const readOAuthState = (stateToken) => {
   }
 };
 
-const consumeOAuthStateToken = (stateToken, ttlMs = 10 * 60 * 1000) => {
+const consumeOAuthStateToken = async (stateToken, ttlMs = 10 * 60 * 1000) => {
   const token = String(stateToken || '').trim();
   if (!token) return false;
-
-  global.consumedOAuthStateTokens = global.consumedOAuthStateTokens || new Map();
-  const now = Date.now();
-
-  for (const [savedToken, expiresAt] of global.consumedOAuthStateTokens.entries()) {
-    if (expiresAt <= now) {
-      global.consumedOAuthStateTokens.delete(savedToken);
-    }
-  }
-
-  if (global.consumedOAuthStateTokens.has(token)) {
-    return false;
-  }
-
-  global.consumedOAuthStateTokens.set(token, now + ttlMs);
-  return true;
+  return consumeStateKeyOnce({ type: 'oauth_state', key: token, ttlMs });
 };
 
 const toBase64Url = (input) =>
@@ -507,6 +510,53 @@ const linkProviderToExistingUser = async ({
 const buildWelcomeEmailJobId = (email) =>
   `welcome-email:${String(email || '').trim().toLowerCase()}`;
 
+const REGISTRATION_VERIFICATION_REQUEST_MESSAGE =
+  'If this email can be registered, a verification code has been sent.';
+const PASSWORD_RESET_REQUEST_MESSAGE =
+  'If an account matches those details, a verification code has been sent.';
+const INVALID_VERIFICATION_CODE_MESSAGE = 'Invalid or expired verification code';
+const INVALID_CONFIRMATION_CODE_MESSAGE = 'Invalid or expired confirmation code';
+const USERNAME_MAX_LENGTH = 30;
+const USERNAME_PATTERN = /^[a-zA-Z0-9_]+$/;
+const escapeRegex = (value = '') => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const isDuplicateKeyError = (error) => error?.code === 11000;
+
+const normalizeUsername = (value = '') => String(value || '').trim();
+const isRememberMeEnabled = (value) => value === true || String(value || '').toLowerCase() === 'true';
+
+const getUsernameValidationMessage = (username) => {
+  if (!username) return 'Username is required';
+  if (username.length < 3) return 'Username must be at least 3 characters';
+  if (username.length > USERNAME_MAX_LENGTH) {
+    return `Username must be at most ${USERNAME_MAX_LENGTH} characters`;
+  }
+  if (!USERNAME_PATTERN.test(username)) return 'Only letters, numbers, and underscores allowed';
+  return '';
+};
+
+const duplicateAccountMessage = (error) => {
+  const keyPattern = error?.keyPattern || {};
+  if (keyPattern.email || error?.message?.includes('email')) return 'Email already registered';
+  if (keyPattern.username || error?.message?.includes('username')) return 'Username already exists';
+  return 'Account already exists';
+};
+
+const findUserByNormalizedEmail = async (email, projection = '') => {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return null;
+
+  const exactQuery = User.findOne({ email: normalizedEmail });
+  if (projection) exactQuery.select(projection);
+  const exactUser = await exactQuery;
+  if (exactUser) return exactUser;
+
+  const fallbackQuery = User.findOne({
+    email: { $regex: new RegExp(`^${escapeRegex(normalizedEmail)}$`, 'i') },
+  });
+  if (projection) fallbackQuery.select(projection);
+  return fallbackQuery;
+};
+
 const sanitizeUsernameFragment = (value) => {
   const normalized = String(value || '')
     .toLowerCase()
@@ -571,18 +621,19 @@ exports.register = async (req, res) => {
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { username, email, password, rememberMe, mathAnswer, mathQuestion } = req.body;
-
-    // Verify math CAPTCHA
-    if (!mathAnswer || !mathQuestion) {
-      return res.status(400).json({ success: false, message: 'Please complete the verification' });
+    const username = normalizeUsername(req.body?.username);
+    const { email } = req.body;
+    const rememberMe = isRememberMeEnabled(req.body?.rememberMe);
+    const password = normalizePasswordInput(req.body?.password);
+    const normalizedEmail = normalizeEmail(email);
+    const usernameError = getUsernameValidationMessage(username);
+    if (usernameError) {
+      return res.status(400).json({ success: false, message: usernameError });
     }
 
-    const { num1, num2, operator } = mathQuestion;
-    const expectedAnswer = operator === '+' ? num1 + num2 : num1 - num2;
-    
-    if (parseInt(mathAnswer) !== expectedAnswer) {
-      return res.status(400).json({ success: false, message: 'Incorrect verification answer' });
+    const passwordError = getPasswordValidationError(password);
+    if (passwordError) {
+      return res.status(400).json({ success: false, message: passwordError });
     }
 
     const existingUser = await User.findOne({ username });
@@ -590,47 +641,54 @@ exports.register = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Username already exists' });
     }
 
-    if (email) {
+    let verifiedEmailCode = null;
+    if (normalizedEmail) {
       // Validate email domain
-      const emailValidation = validateEmail(email);
+      const emailValidation = validateEmail(normalizedEmail);
       if (!emailValidation.valid) {
         return res.status(400).json({ success: false, message: emailValidation.message });
       }
 
-      const existingEmail = await User.findOne({ email });
+      verifiedEmailCode = await getActiveVerificationCode({
+        email: normalizedEmail,
+        type: 'registration',
+        requireVerified: true,
+      });
+      if (!verifiedEmailCode) {
+        return res.status(400).json({ success: false, message: 'Please verify your email before registering' });
+      }
+
+      const existingEmail = await findUserByNormalizedEmail(normalizedEmail, '_id');
       if (existingEmail) {
         return res.status(400).json({ success: false, message: 'Email already registered' });
       }
     }
-
-    // Email should already be verified at this point
-    // Check if verification code was used
-    const verifiedEmail = global.verificationCodes?.[email];
-    if (verifiedEmail) {
-      delete global.verificationCodes[email]; // Clean up
-    }
     
     const user = await User.create({
       username, 
-      email, 
+      email: normalizedEmail,
       password,
-      isVerified: false
+      isVerified: Boolean(normalizedEmail)
     });
 
+    if (verifiedEmailCode) {
+      await consumeVerificationCode(verifiedEmailCode);
+    }
+
     // Send welcome email
-    if (email) {
+    if (normalizedEmail) {
       try {
         await enqueueEmailJob(
           'welcome-email',
-          { email, username },
-          { jobId: buildWelcomeEmailJobId(email) }
+          { email: normalizedEmail, username },
+          { jobId: buildWelcomeEmailJobId(normalizedEmail) }
         );
       } catch (error) {
-        console.error('Failed to send welcome email:', error);
+        logError('Failed to send welcome email:', error);
       }
     }
 
-    const token = generateToken(user._id);
+    const token = generateToken(user);
 
     res.status(201).json({
       success: true,
@@ -648,20 +706,28 @@ exports.register = async (req, res) => {
       rememberMe
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    if (isDuplicateKeyError(error)) {
+      return res.status(409).json({ success: false, message: duplicateAccountMessage(error) });
+    }
+    res.status(500).json({ success: false, message: 'Registration failed' });
   }
 };
 
 // Login user
 exports.login = async (req, res) => {
   try {
-    const { username, password, rememberMe } = req.body;
+    const username = normalizeUsername(req.body?.username);
+    const rememberMe = isRememberMeEnabled(req.body?.rememberMe);
+    const password = normalizePasswordInput(req.body?.password);
 
     if (!username || !password) {
       return res.status(400).json({ success: false, message: 'Please provide username and password' });
     }
+    if (!isPasswordComparable(password)) {
+      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    }
 
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ username }).select('+password');
     if (!user) {
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
@@ -696,7 +762,7 @@ exports.login = async (req, res) => {
     user.lastActive = new Date();
     await user.save();
 
-    const token = generateToken(user._id);
+    const token = generateToken(user);
 
     res.json({
       success: true,
@@ -713,7 +779,7 @@ exports.login = async (req, res) => {
       rememberMe
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Login failed' });
   }
 };
 
@@ -731,11 +797,7 @@ exports.startGoogleAuth = async (req, res) => {
     }
 
     if (!isGoogleRedirectUriAllowed(redirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirect_uri is not allowed',
-        allowedRedirectUris: getAllowedGoogleRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirect_uri is not allowed', getAllowedGoogleRedirectUris));
     }
 
     const state = createGoogleState(redirectUri, {
@@ -754,7 +816,7 @@ exports.startGoogleAuth = async (req, res) => {
 
     return sendOAuthStartResponse(req, res, `${GOOGLE_AUTH_BASE_URL}?${params.toString()}`);
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to start Google OAuth' });
   }
 };
 
@@ -775,18 +837,14 @@ exports.exchangeGoogleCode = async (req, res) => {
     }
 
     if (!isGoogleRedirectUriAllowed(normalizedRedirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirectUri is not allowed',
-        allowedRedirectUris: getAllowedGoogleRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirectUri is not allowed', getAllowedGoogleRedirectUris));
     }
 
     const statePayload = readGoogleState(state);
     if (!statePayload || normalizeAbsoluteUrl(statePayload.redirectUri) !== normalizedRedirectUri) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
     }
-    if (!consumeGoogleStateToken(state)) {
+    if (!(await consumeGoogleStateToken(state))) {
       return res.status(409).json({
         success: false,
         message: 'This Google sign-in request has already been used. Please try again.',
@@ -801,22 +859,22 @@ exports.exchangeGoogleCode = async (req, res) => {
       grant_type: 'authorization_code',
     });
 
-    const tokenResponse = await axios.post(GOOGLE_TOKEN_URL, tokenParams.toString(), {
+    const tokenResponse = await axios.post(GOOGLE_TOKEN_URL, tokenParams.toString(), withOAuthTimeout({
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-    });
+    }));
 
     const accessToken = tokenResponse?.data?.access_token;
     if (!accessToken) {
       return res.status(400).json({ success: false, message: 'Google access token not received' });
     }
 
-    const profileResponse = await axios.get(GOOGLE_USERINFO_URL, {
+    const profileResponse = await axios.get(GOOGLE_USERINFO_URL, withOAuthTimeout({
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-    });
+    }));
 
     const profile = profileResponse?.data || {};
     const googleUserId = String(profile.sub || '').trim();
@@ -868,7 +926,7 @@ exports.exchangeGoogleCode = async (req, res) => {
           jobId: buildWelcomeEmailJobId(email),
         });
       } catch (mailError) {
-        console.error('Failed to send Google onboarding welcome email:', mailError);
+        logError('Failed to send Google onboarding welcome email:', mailError);
       }
     } else {
       let shouldSave = false;
@@ -910,7 +968,7 @@ exports.exchangeGoogleCode = async (req, res) => {
     user.lastActive = new Date();
     await user.save();
 
-    const token = generateToken(user._id);
+    const token = generateToken(user);
     return res.json({
       success: true,
       token,
@@ -924,15 +982,13 @@ exports.exchangeGoogleCode = async (req, res) => {
         isSeller: user.isSeller || false,
       },
       passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
-      rememberMe: true,
+      rememberMe: false,
     });
   } catch (error) {
-    const details = error?.response?.data || error.message;
-    return res.status(500).json({
-      success: false,
-      message: 'Google authentication failed',
-      details,
-    });
+    if (isDuplicateKeyError(error)) {
+      return res.status(409).json({ success: false, message: duplicateAccountMessage(error) });
+    }
+    return sendOAuthError(res, 500, 'Google authentication failed', error);
   }
 };
 
@@ -958,12 +1014,12 @@ const exchangeTwitterAuthorizationCode = async ({
   });
 
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-  const tokenResponse = await axios.post(TWITTER_TOKEN_URL, tokenParams.toString(), {
+  const tokenResponse = await axios.post(TWITTER_TOKEN_URL, tokenParams.toString(), withOAuthTimeout({
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Authorization: `Basic ${basicAuth}`,
     },
-  });
+  }));
 
   return tokenResponse?.data || {};
 };
@@ -972,14 +1028,14 @@ const fetchTwitterProfile = async (accessToken, { includeEmail = false } = {}) =
   const baseFields = ['id', 'name', 'username', 'profile_image_url'];
   const userFields = includeEmail ? [...baseFields, 'email'] : baseFields;
 
-  const response = await axios.get(TWITTER_USERINFO_URL, {
+  const response = await axios.get(TWITTER_USERINFO_URL, withOAuthTimeout({
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
     params: {
       'user.fields': userFields.join(','),
     },
-  });
+  }));
   return response?.data || {};
 };
 
@@ -1029,21 +1085,21 @@ const exchangeLinkedInAuthorizationCode = async ({
     client_secret: String(clientSecret),
   });
 
-  const tokenResponse = await axios.post(LINKEDIN_TOKEN_URL, tokenParams.toString(), {
+  const tokenResponse = await axios.post(LINKEDIN_TOKEN_URL, tokenParams.toString(), withOAuthTimeout({
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-  });
+  }));
 
   return tokenResponse?.data || {};
 };
 
 const fetchLinkedInProfile = async (accessToken) => {
-  const response = await axios.get(LINKEDIN_USERINFO_URL, {
+  const response = await axios.get(LINKEDIN_USERINFO_URL, withOAuthTimeout({
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
-  });
+  }));
   return response?.data || {};
 };
 
@@ -1060,11 +1116,7 @@ exports.startFacebookAuth = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
     }
     if (!isFacebookRedirectUriAllowed(redirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirect_uri is not allowed',
-        allowedRedirectUris: getAllowedFacebookRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirect_uri is not allowed', getAllowedFacebookRedirectUris));
     }
 
     const state = createOAuthState({
@@ -1084,7 +1136,7 @@ exports.startFacebookAuth = async (req, res) => {
 
     return sendOAuthStartResponse(req, res, `${FACEBOOK_AUTH_BASE_URL}?${params.toString()}`);
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to start Facebook OAuth' });
   }
 };
 
@@ -1103,11 +1155,7 @@ exports.exchangeFacebookCode = async (req, res) => {
       return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
     }
     if (!isFacebookRedirectUriAllowed(normalizedRedirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirectUri is not allowed',
-        allowedRedirectUris: getAllowedFacebookRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirectUri is not allowed', getAllowedFacebookRedirectUris));
     }
 
     const statePayload = readOAuthState(state);
@@ -1119,33 +1167,33 @@ exports.exchangeFacebookCode = async (req, res) => {
     ) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
     }
-    if (!consumeOAuthStateToken(state)) {
+    if (!(await consumeOAuthStateToken(state))) {
       return res.status(409).json({
         success: false,
         message: 'This Facebook sign-in request has already been used. Please try again.',
       });
     }
 
-    const tokenResponse = await axios.get(FACEBOOK_TOKEN_URL, {
+    const tokenResponse = await axios.get(FACEBOOK_TOKEN_URL, withOAuthTimeout({
       params: {
         client_id: appId,
         client_secret: appSecret,
         redirect_uri: normalizedRedirectUri,
         code: String(code),
       },
-    });
+    }));
 
     const accessToken = tokenResponse?.data?.access_token;
     if (!accessToken) {
       return res.status(400).json({ success: false, message: 'Facebook access token not received' });
     }
 
-    const profileResponse = await axios.get(FACEBOOK_USERINFO_URL, {
+    const profileResponse = await axios.get(FACEBOOK_USERINFO_URL, withOAuthTimeout({
       params: {
         fields: 'id,name,email,picture.type(large)',
         access_token: accessToken,
       },
-    });
+    }));
 
     const profile = profileResponse?.data || {};
     const facebookUserId = String(profile.id || '').trim();
@@ -1197,7 +1245,7 @@ exports.exchangeFacebookCode = async (req, res) => {
             jobId: buildWelcomeEmailJobId(email),
           });
         } catch (mailError) {
-          console.error('Failed to send Facebook onboarding welcome email:', mailError);
+          logError('Failed to send Facebook onboarding welcome email:', mailError);
         }
       }
     } else {
@@ -1240,7 +1288,7 @@ exports.exchangeFacebookCode = async (req, res) => {
     user.lastActive = new Date();
     await user.save();
 
-    const token = generateToken(user._id);
+    const token = generateToken(user);
     return res.json({
       success: true,
       token,
@@ -1254,16 +1302,14 @@ exports.exchangeFacebookCode = async (req, res) => {
         isSeller: user.isSeller || false,
       },
       passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
-      rememberMe: true,
+      rememberMe: false,
       missingEmailForWelcome,
     });
   } catch (error) {
-    const details = error?.response?.data || error.message;
-    return res.status(500).json({
-      success: false,
-      message: 'Facebook authentication failed',
-      details,
-    });
+    if (isDuplicateKeyError(error)) {
+      return res.status(409).json({ success: false, message: duplicateAccountMessage(error) });
+    }
+    return sendOAuthError(res, 500, 'Facebook authentication failed', error);
   }
 };
 
@@ -1280,11 +1326,7 @@ exports.startLinkedInAuth = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
     }
     if (!isLinkedInRedirectUriAllowed(redirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirect_uri is not allowed',
-        allowedRedirectUris: getAllowedLinkedInRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirect_uri is not allowed', getAllowedLinkedInRedirectUris));
     }
 
     const state = createOAuthState({
@@ -1304,7 +1346,7 @@ exports.startLinkedInAuth = async (req, res) => {
 
     return sendOAuthStartResponse(req, res, `${LINKEDIN_AUTH_BASE_URL}?${params.toString()}`);
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to start LinkedIn OAuth' });
   }
 };
 
@@ -1323,11 +1365,7 @@ exports.exchangeLinkedInCode = async (req, res) => {
       return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
     }
     if (!isLinkedInRedirectUriAllowed(normalizedRedirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirectUri is not allowed',
-        allowedRedirectUris: getAllowedLinkedInRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirectUri is not allowed', getAllowedLinkedInRedirectUris));
     }
 
     const statePayload = readOAuthState(state);
@@ -1339,7 +1377,7 @@ exports.exchangeLinkedInCode = async (req, res) => {
     ) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
     }
-    if (!consumeOAuthStateToken(state)) {
+    if (!(await consumeOAuthStateToken(state))) {
       return res.status(409).json({
         success: false,
         message: 'This LinkedIn sign-in request has already been used. Please try again.',
@@ -1416,7 +1454,7 @@ exports.exchangeLinkedInCode = async (req, res) => {
             jobId: buildWelcomeEmailJobId(email),
           });
         } catch (mailError) {
-          console.error('Failed to send LinkedIn onboarding welcome email:', mailError);
+          logError('Failed to send LinkedIn onboarding welcome email:', mailError);
         }
       }
     } else {
@@ -1459,7 +1497,7 @@ exports.exchangeLinkedInCode = async (req, res) => {
     user.lastActive = new Date();
     await user.save();
 
-    const token = generateToken(user._id);
+    const token = generateToken(user);
     return res.json({
       success: true,
       token,
@@ -1473,24 +1511,18 @@ exports.exchangeLinkedInCode = async (req, res) => {
         isSeller: user.isSeller || false,
       },
       passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
-      rememberMe: true,
+      rememberMe: false,
       missingEmailForWelcome,
     });
   } catch (error) {
-    const upstreamStatus = error?.response?.status;
-    const details = error?.response?.data || error.message;
-    if (upstreamStatus >= 400 && upstreamStatus < 500) {
-      return res.status(400).json({
-        success: false,
-        message: 'LinkedIn OAuth request was rejected. Please try again.',
-        details,
-      });
+    if (isDuplicateKeyError(error)) {
+      return res.status(409).json({ success: false, message: duplicateAccountMessage(error) });
     }
-    return res.status(500).json({
-      success: false,
-      message: 'LinkedIn authentication failed',
-      details,
-    });
+    const upstreamStatus = error?.response?.status;
+    if (upstreamStatus >= 400 && upstreamStatus < 500) {
+      return sendOAuthError(res, 400, 'LinkedIn OAuth request was rejected. Please try again.', error);
+    }
+    return sendOAuthError(res, 500, 'LinkedIn authentication failed', error);
   }
 };
 
@@ -1507,11 +1539,7 @@ exports.startTwitterAuth = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
     }
     if (!isTwitterRedirectUriAllowed(redirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirect_uri is not allowed',
-        allowedRedirectUris: getAllowedTwitterRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirect_uri is not allowed', getAllowedTwitterRedirectUris));
     }
 
     const { codeVerifier, codeChallenge } = generateTwitterPkcePair();
@@ -1535,7 +1563,7 @@ exports.startTwitterAuth = async (req, res) => {
 
     return sendOAuthStartResponse(req, res, `${TWITTER_AUTH_BASE_URL}?${params.toString()}`);
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to start Twitter OAuth' });
   }
 };
 
@@ -1554,11 +1582,7 @@ exports.exchangeTwitterCode = async (req, res) => {
       return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
     }
     if (!isTwitterRedirectUriAllowed(normalizedRedirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirectUri is not allowed',
-        allowedRedirectUris: getAllowedTwitterRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirectUri is not allowed', getAllowedTwitterRedirectUris));
     }
 
     const statePayload = readOAuthState(state);
@@ -1570,7 +1594,7 @@ exports.exchangeTwitterCode = async (req, res) => {
     ) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
     }
-    if (!consumeOAuthStateToken(state)) {
+    if (!(await consumeOAuthStateToken(state))) {
       return res.status(409).json({
         success: false,
         message: 'This Twitter sign-in request has already been used. Please try again.',
@@ -1600,13 +1624,8 @@ exports.exchangeTwitterCode = async (req, res) => {
       profileData = await fetchTwitterProfileWithFallback(accessToken, tokenData?.scope || '');
     } catch (error) {
       const upstreamStatus = error?.response?.status;
-      const details = error?.response?.data || error.message;
       if (upstreamStatus >= 400 && upstreamStatus < 500) {
-        return res.status(400).json({
-          success: false,
-          message: 'Twitter OAuth request was rejected. Please try again.',
-          details,
-        });
+        return sendOAuthError(res, 400, 'Twitter OAuth request was rejected. Please try again.', error);
       }
       throw error;
     }
@@ -1662,7 +1681,7 @@ exports.exchangeTwitterCode = async (req, res) => {
             jobId: buildWelcomeEmailJobId(email),
           });
         } catch (mailError) {
-          console.error('Failed to send Twitter onboarding welcome email:', mailError);
+          logError('Failed to send Twitter onboarding welcome email:', mailError);
         }
       }
     } else {
@@ -1705,7 +1724,7 @@ exports.exchangeTwitterCode = async (req, res) => {
     user.lastActive = new Date();
     await user.save();
 
-    const token = generateToken(user._id);
+    const token = generateToken(user);
     return res.json({
       success: true,
       token,
@@ -1719,16 +1738,14 @@ exports.exchangeTwitterCode = async (req, res) => {
         isSeller: user.isSeller || false,
       },
       passwordSetupRequired: Boolean(user.mustChangePasswordAfterGoogle),
-      rememberMe: true,
+      rememberMe: false,
       missingEmailForWelcome,
     });
   } catch (error) {
-    const details = error?.response?.data || error.message;
-    return res.status(500).json({
-      success: false,
-      message: 'Twitter authentication failed',
-      details,
-    });
+    if (isDuplicateKeyError(error)) {
+      return res.status(409).json({ success: false, message: duplicateAccountMessage(error) });
+    }
+    return sendOAuthError(res, 500, 'Twitter authentication failed', error);
   }
 };
 
@@ -1744,11 +1761,7 @@ exports.startGoogleConnectAuth = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
     }
     if (!isGoogleRedirectUriAllowed(redirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirect_uri is not allowed',
-        allowedRedirectUris: getAllowedGoogleRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirect_uri is not allowed', getAllowedGoogleRedirectUris));
     }
 
     const state = createOAuthState({
@@ -1775,7 +1788,7 @@ exports.startGoogleConnectAuth = async (req, res) => {
       authUrl: `${GOOGLE_AUTH_BASE_URL}?${params.toString()}`,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to start Google account connection' });
   }
 };
 
@@ -1793,11 +1806,7 @@ exports.exchangeGoogleConnectCode = async (req, res) => {
       return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
     }
     if (!isGoogleRedirectUriAllowed(normalizedRedirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirectUri is not allowed',
-        allowedRedirectUris: getAllowedGoogleRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirectUri is not allowed', getAllowedGoogleRedirectUris));
     }
 
     const statePayload = readOAuthState(state);
@@ -1810,7 +1819,7 @@ exports.exchangeGoogleConnectCode = async (req, res) => {
     ) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
     }
-    if (!consumeOAuthStateToken(state)) {
+    if (!(await consumeOAuthStateToken(state))) {
       return res.status(409).json({
         success: false,
         message: 'This Google connect request has already been used. Please try again.',
@@ -1825,22 +1834,22 @@ exports.exchangeGoogleConnectCode = async (req, res) => {
       grant_type: 'authorization_code',
     });
 
-    const tokenResponse = await axios.post(GOOGLE_TOKEN_URL, tokenParams.toString(), {
+    const tokenResponse = await axios.post(GOOGLE_TOKEN_URL, tokenParams.toString(), withOAuthTimeout({
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-    });
+    }));
 
     const accessToken = tokenResponse?.data?.access_token;
     if (!accessToken) {
       return res.status(400).json({ success: false, message: 'Google access token not received' });
     }
 
-    const profileResponse = await axios.get(GOOGLE_USERINFO_URL, {
+    const profileResponse = await axios.get(GOOGLE_USERINFO_URL, withOAuthTimeout({
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-    });
+    }));
 
     const profile = profileResponse?.data || {};
     const googleUserId = String(profile.sub || '').trim();
@@ -1884,12 +1893,7 @@ exports.exchangeGoogleConnectCode = async (req, res) => {
       },
     });
   } catch (error) {
-    const details = error?.response?.data || error.message;
-    return res.status(500).json({
-      success: false,
-      message: 'Google account connection failed',
-      details,
-    });
+    return sendOAuthError(res, 500, 'Google account connection failed', error);
   }
 };
 
@@ -1905,11 +1909,7 @@ exports.startFacebookConnectAuth = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
     }
     if (!isFacebookRedirectUriAllowed(redirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirect_uri is not allowed',
-        allowedRedirectUris: getAllowedFacebookRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirect_uri is not allowed', getAllowedFacebookRedirectUris));
     }
 
     const state = createOAuthState({
@@ -1933,7 +1933,7 @@ exports.startFacebookConnectAuth = async (req, res) => {
       authUrl: `${FACEBOOK_AUTH_BASE_URL}?${params.toString()}`,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to start Facebook account connection' });
   }
 };
 
@@ -1951,11 +1951,7 @@ exports.exchangeFacebookConnectCode = async (req, res) => {
       return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
     }
     if (!isFacebookRedirectUriAllowed(normalizedRedirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirectUri is not allowed',
-        allowedRedirectUris: getAllowedFacebookRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirectUri is not allowed', getAllowedFacebookRedirectUris));
     }
 
     const statePayload = readOAuthState(state);
@@ -1968,33 +1964,33 @@ exports.exchangeFacebookConnectCode = async (req, res) => {
     ) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
     }
-    if (!consumeOAuthStateToken(state)) {
+    if (!(await consumeOAuthStateToken(state))) {
       return res.status(409).json({
         success: false,
         message: 'This Facebook connect request has already been used. Please try again.',
       });
     }
 
-    const tokenResponse = await axios.get(FACEBOOK_TOKEN_URL, {
+    const tokenResponse = await axios.get(FACEBOOK_TOKEN_URL, withOAuthTimeout({
       params: {
         client_id: appId,
         client_secret: appSecret,
         redirect_uri: normalizedRedirectUri,
         code: String(code),
       },
-    });
+    }));
 
     const accessToken = tokenResponse?.data?.access_token;
     if (!accessToken) {
       return res.status(400).json({ success: false, message: 'Facebook access token not received' });
     }
 
-    const profileResponse = await axios.get(FACEBOOK_USERINFO_URL, {
+    const profileResponse = await axios.get(FACEBOOK_USERINFO_URL, withOAuthTimeout({
       params: {
         fields: 'id,name,email,picture.type(large)',
         access_token: accessToken,
       },
-    });
+    }));
 
     const profile = profileResponse?.data || {};
     const facebookUserId = String(profile.id || '').trim();
@@ -2035,12 +2031,7 @@ exports.exchangeFacebookConnectCode = async (req, res) => {
       },
     });
   } catch (error) {
-    const details = error?.response?.data || error.message;
-    return res.status(500).json({
-      success: false,
-      message: 'Facebook account connection failed',
-      details,
-    });
+    return sendOAuthError(res, 500, 'Facebook account connection failed', error);
   }
 };
 
@@ -2056,11 +2047,7 @@ exports.startLinkedInConnectAuth = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
     }
     if (!isLinkedInRedirectUriAllowed(redirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirect_uri is not allowed',
-        allowedRedirectUris: getAllowedLinkedInRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirect_uri is not allowed', getAllowedLinkedInRedirectUris));
     }
 
     const state = createOAuthState({
@@ -2084,7 +2071,7 @@ exports.startLinkedInConnectAuth = async (req, res) => {
       authUrl: `${LINKEDIN_AUTH_BASE_URL}?${params.toString()}`,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to start LinkedIn account connection' });
   }
 };
 
@@ -2102,11 +2089,7 @@ exports.exchangeLinkedInConnectCode = async (req, res) => {
       return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
     }
     if (!isLinkedInRedirectUriAllowed(normalizedRedirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirectUri is not allowed',
-        allowedRedirectUris: getAllowedLinkedInRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirectUri is not allowed', getAllowedLinkedInRedirectUris));
     }
 
     const statePayload = readOAuthState(state);
@@ -2119,7 +2102,7 @@ exports.exchangeLinkedInConnectCode = async (req, res) => {
     ) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
     }
-    if (!consumeOAuthStateToken(state)) {
+    if (!(await consumeOAuthStateToken(state))) {
       return res.status(409).json({
         success: false,
         message: 'This LinkedIn connect request has already been used. Please try again.',
@@ -2188,19 +2171,10 @@ exports.exchangeLinkedInConnectCode = async (req, res) => {
     });
   } catch (error) {
     const upstreamStatus = error?.response?.status;
-    const details = error?.response?.data || error.message;
     if (upstreamStatus >= 400 && upstreamStatus < 500) {
-      return res.status(400).json({
-        success: false,
-        message: 'LinkedIn OAuth request was rejected. Please try again.',
-        details,
-      });
+      return sendOAuthError(res, 400, 'LinkedIn OAuth request was rejected. Please try again.', error);
     }
-    return res.status(500).json({
-      success: false,
-      message: 'LinkedIn account connection failed',
-      details,
-    });
+    return sendOAuthError(res, 500, 'LinkedIn account connection failed', error);
   }
 };
 
@@ -2216,11 +2190,7 @@ exports.startTwitterConnectAuth = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A valid redirect_uri is required' });
     }
     if (!isTwitterRedirectUriAllowed(redirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirect_uri is not allowed',
-        allowedRedirectUris: getAllowedTwitterRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirect_uri is not allowed', getAllowedTwitterRedirectUris));
     }
 
     const { codeVerifier, codeChallenge } = generateTwitterPkcePair();
@@ -2248,7 +2218,7 @@ exports.startTwitterConnectAuth = async (req, res) => {
       authUrl: `${TWITTER_AUTH_BASE_URL}?${params.toString()}`,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: 'Failed to start Twitter account connection' });
   }
 };
 
@@ -2266,11 +2236,7 @@ exports.exchangeTwitterConnectCode = async (req, res) => {
       return res.status(400).json({ success: false, message: 'code and redirectUri are required' });
     }
     if (!isTwitterRedirectUriAllowed(normalizedRedirectUri)) {
-      return res.status(400).json({
-        success: false,
-        message: 'redirectUri is not allowed',
-        allowedRedirectUris: getAllowedTwitterRedirectUris(),
-      });
+      return res.status(400).json(buildRedirectUriError('redirectUri is not allowed', getAllowedTwitterRedirectUris));
     }
 
     const statePayload = readOAuthState(state);
@@ -2283,7 +2249,7 @@ exports.exchangeTwitterConnectCode = async (req, res) => {
     ) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OAuth state' });
     }
-    if (!consumeOAuthStateToken(state)) {
+    if (!(await consumeOAuthStateToken(state))) {
       return res.status(409).json({
         success: false,
         message: 'This Twitter connect request has already been used. Please try again.',
@@ -2313,13 +2279,8 @@ exports.exchangeTwitterConnectCode = async (req, res) => {
       profileData = await fetchTwitterProfileWithFallback(accessToken, tokenData?.scope || '');
     } catch (error) {
       const upstreamStatus = error?.response?.status;
-      const details = error?.response?.data || error.message;
       if (upstreamStatus >= 400 && upstreamStatus < 500) {
-        return res.status(400).json({
-          success: false,
-          message: 'Twitter OAuth request was rejected. Please try again.',
-          details,
-        });
+        return sendOAuthError(res, 400, 'Twitter OAuth request was rejected. Please try again.', error);
       }
       throw error;
     }
@@ -2366,12 +2327,7 @@ exports.exchangeTwitterConnectCode = async (req, res) => {
       missingEmailForWelcome: !email,
     });
   } catch (error) {
-    const details = error?.response?.data || error.message;
-    return res.status(500).json({
-      success: false,
-      message: 'Twitter account connection failed',
-      details,
-    });
+    return sendOAuthError(res, 500, 'Twitter account connection failed', error);
   }
 };
 
@@ -2416,7 +2372,10 @@ exports.facebookDeauthorizeCallback = async (req, res) => {
 exports.facebookDataDeletionRequest = async (req, res) => {
   try {
     const appSecret = getFacebookAppSecret();
-    const backendPublicUrl = (process.env.BACKEND_PUBLIC_URL || '').replace(/\/$/, '');
+    const backendPublicUrl = resolveBackendPublicUrl(req);
+    if (!backendPublicUrl) {
+      return res.status(503).json({ success: false, message: 'Backend public URL is not configured' });
+    }
     const payload = parseFacebookSignedRequest(req.body?.signed_request, appSecret);
     if (!payload?.user_id) {
       return res.status(400).json({ success: false, message: 'Invalid signed request' });
@@ -2425,14 +2384,21 @@ exports.facebookDataDeletionRequest = async (req, res) => {
     const facebookUserId = String(payload.user_id);
     const matchedUser = await User.findOne({ 'oauthProviders.facebook.id': facebookUserId }).select('_id');
     const confirmationCode = crypto.randomBytes(12).toString('hex');
+    const processedAt = Date.now();
+    const deletionStatusTtlMs =
+      Number(process.env.FACEBOOK_DELETION_STATUS_TTL_DAYS || 30) * 24 * 60 * 60 * 1000;
 
-    global.facebookDeletionRequests = global.facebookDeletionRequests || {};
-    global.facebookDeletionRequests[confirmationCode] = {
-      userId: matchedUser?._id ? String(matchedUser._id) : null,
-      facebookUserId,
-      createdAt: Date.now(),
-      status: 'completed',
-    };
+    await createTemporaryState({
+      type: 'facebook_deletion_status',
+      key: confirmationCode,
+      ttlMs: deletionStatusTtlMs,
+      data: {
+        userId: matchedUser?._id ? String(matchedUser._id) : null,
+        facebookUserId,
+        processedAt,
+        status: 'completed',
+      },
+    });
 
     await User.updateMany(
       { 'oauthProviders.facebook.id': facebookUserId },
@@ -2440,9 +2406,7 @@ exports.facebookDataDeletionRequest = async (req, res) => {
     );
 
     return res.json({
-      url: backendPublicUrl
-        ? `${backendPublicUrl}/api/auth/facebook/data-deletion-status/${confirmationCode}`
-        : `https://example.com/data-deletion-status/${confirmationCode}`,
+      url: `${backendPublicUrl}/api/auth/facebook/data-deletion-status/${confirmationCode}`,
       confirmation_code: confirmationCode,
     });
   } catch (error) {
@@ -2452,16 +2416,15 @@ exports.facebookDataDeletionRequest = async (req, res) => {
 
 exports.facebookDataDeletionStatus = async (req, res) => {
   const code = String(req.params.code || '');
-  const requestMap = global.facebookDeletionRequests || {};
-  const request = requestMap[code];
+  const request = await getTemporaryState({ type: 'facebook_deletion_status', key: code });
   if (!request) {
     return res.status(404).json({ success: false, message: 'Deletion request not found' });
   }
   return res.json({
     success: true,
     confirmationCode: code,
-    status: request.status || 'completed',
-    processedAt: request.createdAt,
+    status: request.data?.status || 'completed',
+    processedAt: request.data?.processedAt || request.createdAt?.getTime?.(),
   });
 };
 
@@ -2469,9 +2432,12 @@ exports.facebookDataDeletionStatus = async (req, res) => {
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('-password -twoFactor.sms.phone');
-    res.json({ success: true, user });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+    res.json({ success: true, user: sanitizeOwnerProfile(user.toObject()) });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to load account' });
   }
 };
 
@@ -2479,129 +2445,58 @@ exports.getMe = async (req, res) => {
 exports.sendVerificationCode = async (req, res) => {
   try {
     const { email } = req.body;
+    const normalizedEmail = normalizeEmail(email);
 
-    if (!email) {
+    if (!normalizedEmail) {
       return res.status(400).json({ success: false, message: 'Email is required' });
     }
 
     // Validate email domain
-    const emailValidation = validateEmail(email);
+    const emailValidation = validateEmail(normalizedEmail);
     if (!emailValidation.valid) {
       return res.status(400).json({ success: false, message: emailValidation.message });
     }
 
-    // Check if email already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await findUserByNormalizedEmail(normalizedEmail, '_id');
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'Email already registered' });
+      return res.json({ success: true, message: REGISTRATION_VERIFICATION_REQUEST_MESSAGE });
     }
 
-    // Generate 6-digit code
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // Store in temporary collection or cache (for now, we'll use a simple approach)
-    // In production, use Redis or a temporary collection
-    global.verificationCodes = global.verificationCodes || {};
-    const verificationExpiresAt = Date.now() + 2 * 60 * 1000;
-    global.verificationCodes[email] = {
-      code: verificationCode,
-      expiresAt: verificationExpiresAt // 2 minutes
-    };
+    const { code: verificationCode, expiresAt: verificationExpiresAt } = await createVerificationCode({
+      email: normalizedEmail,
+      type: 'registration',
+      username: 'User',
+    });
 
     // Queue verification email send
     await enqueueEmailJob('verification-code', {
-      email,
+      email: normalizedEmail,
       username: 'User',
       code: verificationCode,
       expiresAt: verificationExpiresAt
     });
 
-    res.json({ success: true, message: 'Verification code sent to your email' });
+    res.json({ success: true, message: REGISTRATION_VERIFICATION_REQUEST_MESSAGE });
   } catch (error) {
-    console.error('Verification email error:', error);
+    logError('Verification email error:', error);
     res.status(500).json({ success: false, message: 'Failed to send verification email' });
   }
 };
 
 // Send password reset code
 exports.sendPasswordResetCode = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ success: false, message: 'Email is required' });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'No account found with this email' });
-    }
-
-    // Generate 6-digit code
-    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    global.passwordResetCodes = global.passwordResetCodes || {};
-    const resetExpiresAt = Date.now() + 2 * 60 * 1000;
-    global.passwordResetCodes[email] = {
-      code: resetCode,
-      expiresAt: resetExpiresAt // 2 minutes
-    };
-
-    await enqueueEmailJob('password-reset-code', {
-      email,
-      username: user.username,
-      code: resetCode,
-      expiresAt: resetExpiresAt
-    });
-
-    res.json({ success: true, message: 'Password reset code sent to your email' });
-  } catch (error) {
-    console.error('Password reset email error:', error);
-    res.status(500).json({ success: false, message: 'Failed to send password reset email' });
-  }
+  return res.status(410).json({
+    success: false,
+    message: 'This password reset endpoint has been retired. Please use the forgot-password flow.',
+  });
 };
 
 // Reset password with code
 exports.resetPasswordWithCode = async (req, res) => {
-  try {
-    const { email, code, newPassword } = req.body;
-
-    if (!email || !code || !newPassword) {
-      return res.status(400).json({ success: false, message: 'Email, code, and new password are required' });
-    }
-
-    const storedData = global.passwordResetCodes?.[email];
-    
-    if (!storedData) {
-      return res.status(400).json({ success: false, message: 'No reset code found for this email' });
-    }
-
-    if (Date.now() > storedData.expiresAt) {
-      delete global.passwordResetCodes[email];
-      return res.status(400).json({ success: false, message: 'Reset code expired' });
-    }
-
-    if (storedData.code !== code) {
-      return res.status(400).json({ success: false, message: 'Invalid reset code' });
-    }
-
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    user.password = newPassword;
-    if (user.mustChangePasswordAfterGoogle) {
-      user.mustChangePasswordAfterGoogle = false;
-    }
-    await user.save();
-
-    delete global.passwordResetCodes[email];
-
-    res.json({ success: true, message: 'Password reset successfully' });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  return res.status(410).json({
+    success: false,
+    message: 'This password reset endpoint has been retired. Please use the forgot-password flow.',
+  });
 };
 
 // Verify code
@@ -2613,25 +2508,21 @@ exports.verifyCode = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Email and code are required' });
     }
 
-    const storedData = global.verificationCodes?.[email];
-    
-    if (!storedData) {
-      return res.status(400).json({ success: false, message: 'No verification code found for this email' });
-    }
+    const verification = await verifyVerificationCode({
+      email,
+      type: 'registration',
+      code,
+      markVerified: true,
+    });
 
-    if (Date.now() > storedData.expiresAt) {
-      delete global.verificationCodes[email];
-      return res.status(400).json({ success: false, message: 'Verification code expired' });
-    }
-
-    if (storedData.code !== code) {
-      return res.status(400).json({ success: false, message: 'Invalid verification code' });
+    if (!verification.ok) {
+      return res.status(400).json({ success: false, message: INVALID_VERIFICATION_CODE_MESSAGE });
     }
 
     // Code is valid
     res.json({ success: true, message: 'Email verified successfully' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to verify code' });
   }
 };
 
@@ -2640,7 +2531,7 @@ exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.params;
 
-    const user = await User.findOne({ verificationToken: token });
+    const user = await User.findOne({ verificationToken: token }).select('+verificationToken');
     
     if (!user) {
       return res.status(400).json({ success: false, message: 'Invalid or expired verification token' });
@@ -2652,7 +2543,7 @@ exports.verifyEmail = async (req, res) => {
 
     res.json({ success: true, message: 'Email verified successfully! You can now login.' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to verify email' });
   }
 };
 
@@ -2660,41 +2551,37 @@ exports.verifyEmail = async (req, res) => {
 exports.requestForgotPassword = async (req, res) => {
   try {
     const { username, email } = req.body;
+    const normalizedEmail = String(email || '').trim().toLowerCase();
 
-    if (!username || !email) {
+    if (!username || !normalizedEmail) {
       return res.status(400).json({ success: false, message: 'Username and email are required' });
     }
 
     const user = await User.findOne({ username });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'Invalid username or email' });
+      return res.json({ success: true, message: PASSWORD_RESET_REQUEST_MESSAGE });
     }
 
-    if (user.email !== email) {
-      return res.status(404).json({ success: false, message: 'Invalid username or email' });
+    if (String(user.email || '').trim().toLowerCase() !== normalizedEmail) {
+      return res.json({ success: true, message: PASSWORD_RESET_REQUEST_MESSAGE });
     }
 
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    global.forgotPasswordCodes = global.forgotPasswordCodes || {};
-    const forgotVerificationExpiresAt = Date.now() + 2 * 60 * 1000;
-    global.forgotPasswordCodes[email] = {
-      code: verificationCode,
+    const { code: verificationCode, expiresAt: forgotVerificationExpiresAt } = await createVerificationCode({
+      email: normalizedEmail,
+      type: 'forgotPassword',
       username,
-      expiresAt: forgotVerificationExpiresAt, // 2 minutes
-      verified: false
-    };
+    });
 
     await enqueueEmailJob('password-reset-code', {
-      email,
+      email: normalizedEmail,
       username: user.username,
       code: verificationCode,
       expiresAt: forgotVerificationExpiresAt
     });
 
-    res.json({ success: true, message: 'Verification code sent to your email' });
+    res.json({ success: true, message: PASSWORD_RESET_REQUEST_MESSAGE });
   } catch (error) {
-    console.error('Forgot password error:', error);
+    logError('Forgot password error:', error);
     res.status(500).json({ success: false, message: 'Failed to send verification code' });
   }
 };
@@ -2703,67 +2590,70 @@ exports.requestForgotPassword = async (req, res) => {
 exports.verifyForgotPasswordCode = async (req, res) => {
   try {
     const { username, email, code } = req.body;
+    const normalizedEmail = String(email || '').trim().toLowerCase();
 
-    if (!username || !email || !code) {
+    if (!username || !normalizedEmail || !code) {
       return res.status(400).json({ success: false, message: 'Username, email and code are required' });
     }
 
-    const storedData = global.forgotPasswordCodes?.[email];
-    
-    if (!storedData || storedData.username !== username) {
-      return res.status(400).json({ success: false, message: 'Invalid verification request' });
+    const verification = await verifyVerificationCode({
+      email: normalizedEmail,
+      type: 'forgotPassword',
+      username,
+      code,
+      markVerified: true,
+    });
+
+    if (!verification.ok) {
+      return res.status(400).json({ success: false, message: INVALID_VERIFICATION_CODE_MESSAGE });
     }
 
-    if (Date.now() > storedData.expiresAt) {
-      delete global.forgotPasswordCodes[email];
-      return res.status(400).json({ success: false, message: 'Verification code expired' });
-    }
-
-    if (storedData.code !== code) {
-      return res.status(400).json({ success: false, message: 'Invalid verification code' });
-    }
-
-    storedData.verified = true;
     res.json({ success: true, message: 'Verification successful' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to verify code' });
   }
 };
 
 // Forgot Password - Step 3: Request password change (send 2nd code)
 exports.requestForgotPasswordChange = async (req, res) => {
   try {
-    const { username, email, newPassword } = req.body;
+    const { username, email } = req.body;
+    const newPassword = normalizePasswordInput(req.body?.newPassword);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
 
-    if (!username || !email || !newPassword) {
+    if (!username || !normalizedEmail || !newPassword) {
       return res.status(400).json({ success: false, message: 'Username, email and new password are required' });
     }
+    const passwordError = getPasswordValidationError(newPassword, 'New password');
+    if (passwordError) {
+      return res.status(400).json({ success: false, message: passwordError });
+    }
 
-    const storedData = global.forgotPasswordCodes?.[email];
-    
-    if (!storedData || !storedData.verified || storedData.username !== username) {
+    const verifiedResetSession = await getActiveVerificationCode({
+      email: normalizedEmail,
+      type: 'forgotPassword',
+      username,
+      requireVerified: true,
+    });
+
+    if (!verifiedResetSession) {
       return res.status(400).json({ success: false, message: 'Please verify your email first' });
     }
 
-    if (Date.now() > storedData.expiresAt) {
-      delete global.forgotPasswordCodes[email];
-      return res.status(400).json({ success: false, message: 'Session expired. Please start again' });
-    }
-
-    const confirmCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    global.forgotPasswordChangeCodes = global.forgotPasswordChangeCodes || {};
-    const forgotChangeExpiresAt = Date.now() + 2 * 60 * 1000;
-    global.forgotPasswordChangeCodes[email] = {
-      code: confirmCode,
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const { code: confirmCode, expiresAt: forgotChangeExpiresAt } = await createVerificationCode({
+      email: normalizedEmail,
+      type: 'forgotPasswordChange',
       username,
-      newPassword,
-      expiresAt: forgotChangeExpiresAt // 2 minutes
-    };
+      metadata: { passwordHash },
+    });
 
-    const user = await User.findOne({ username, email });
+    const user = await User.findOne({ username, email: normalizedEmail });
+    if (!user) {
+      return res.status(400).json({ success: false, message: 'Invalid password reset session' });
+    }
     await enqueueEmailJob('password-change-confirmation', {
-      email,
+      email: normalizedEmail,
       username: user.username,
       code: confirmCode,
       expiresAt: forgotChangeExpiresAt
@@ -2771,7 +2661,7 @@ exports.requestForgotPasswordChange = async (req, res) => {
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
   } catch (error) {
-    console.error('Password change request error:', error);
+    logError('Password change request error:', error);
     res.status(500).json({ success: false, message: 'Failed to send confirmation code' });
   }
 };
@@ -2780,29 +2670,26 @@ exports.requestForgotPasswordChange = async (req, res) => {
 exports.confirmForgotPasswordChange = async (req, res) => {
   try {
     const { username, email, code } = req.body;
+    const normalizedEmail = String(email || '').trim().toLowerCase();
 
-    if (!username || !email || !code) {
+    if (!username || !normalizedEmail || !code) {
       return res.status(400).json({ success: false, message: 'Username, email and code are required' });
     }
 
-    const storedData = global.forgotPasswordChangeCodes?.[email];
-    
-    if (!storedData || storedData.username !== username) {
-      return res.status(400).json({ success: false, message: 'Invalid confirmation request' });
+    const verification = await verifyVerificationCode({
+      email: normalizedEmail,
+      type: 'forgotPasswordChange',
+      username,
+      code,
+    });
+
+    if (!verification.ok) {
+      return res.status(400).json({ success: false, message: INVALID_CONFIRMATION_CODE_MESSAGE });
     }
 
-    if (Date.now() > storedData.expiresAt) {
-      delete global.forgotPasswordChangeCodes[email];
-      return res.status(400).json({ success: false, message: 'Confirmation code expired' });
-    }
-
-    if (storedData.code !== code) {
-      return res.status(400).json({ success: false, message: 'Invalid confirmation code' });
-    }
-
-    const user = await User.findOne({ username, email });
+    const user = await User.findOne({ username, email: normalizedEmail });
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res.status(400).json({ success: false, message: 'Invalid confirmation request' });
     }
 
     const twoFactorStatus = buildTwoFactorStatus(user);
@@ -2825,40 +2712,47 @@ exports.confirmForgotPasswordChange = async (req, res) => {
       }
     }
 
-    user.password = storedData.newPassword;
-    if (user.mustChangePasswordAfterGoogle) {
-      user.mustChangePasswordAfterGoogle = false;
+    const passwordHash = verification.record?.metadata?.passwordHash;
+    if (!passwordHash) {
+      return res.status(400).json({ success: false, message: 'Invalid confirmation request' });
     }
-    await user.save();
 
-    delete global.forgotPasswordCodes[email];
-    delete global.forgotPasswordChangeCodes[email];
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: { password: passwordHash, mustChangePasswordAfterGoogle: false },
+        $inc: { authVersion: 1 },
+      }
+    );
+    await consumeVerificationCode(verification.record);
+    await deleteVerificationCodes({ email: normalizedEmail, types: ['forgotPassword', 'forgotPasswordChange'] });
 
     // Send success email
     try {
-      await enqueueEmailJob('password-changed-success', { email, username, changedAt: Date.now() });
+      await enqueueEmailJob('password-changed-success', { email: normalizedEmail, username, changedAt: Date.now() });
     } catch (error) {
-      console.error('Failed to send success email:', error);
+      logError('Failed to send success email:', error);
     }
 
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to change password' });
   }
 };
 
 // Authenticated Forgot Password - Step 1: Request password change (send code)
 exports.requestAuthenticatedPasswordChange = async (req, res) => {
   try {
-    const { newPassword } = req.body;
+    const newPassword = normalizePasswordInput(req.body?.newPassword);
     const userId = req.user._id;
 
     if (!newPassword) {
       return res.status(400).json({ success: false, message: 'New password is required' });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
+    const passwordError = getPasswordValidationError(newPassword);
+    if (passwordError) {
+      return res.status(400).json({ success: false, message: passwordError });
     }
 
     const user = await User.findById(userId);
@@ -2866,15 +2760,16 @@ exports.requestAuthenticatedPasswordChange = async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    const confirmCode = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    global.authenticatedPasswordChangeCodes = global.authenticatedPasswordChangeCodes || {};
-    const authenticatedChangeExpiresAt = Date.now() + 2 * 60 * 1000;
-    global.authenticatedPasswordChangeCodes[userId.toString()] = {
-      code: confirmCode,
-      newPassword,
-      expiresAt: authenticatedChangeExpiresAt // 2 minutes
-    };
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const { code: confirmCode, expiresAt: authenticatedChangeExpiresAt } = await createVerificationCode({
+      email: user.email,
+      type: 'authenticatedPasswordChange',
+      username: user.username,
+      metadata: {
+        userId: user._id.toString(),
+        passwordHash,
+      },
+    });
 
     await enqueueEmailJob('password-change-confirmation', {
       email: user.email,
@@ -2885,7 +2780,7 @@ exports.requestAuthenticatedPasswordChange = async (req, res) => {
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
   } catch (error) {
-    console.error('Authenticated password change request error:', error);
+    logError('Authenticated password change request error:', error);
     res.status(500).json({ success: false, message: 'Failed to send confirmation code' });
   }
 };
@@ -2900,33 +2795,38 @@ exports.confirmAuthenticatedPasswordChange = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Confirmation code is required' });
     }
 
-    const storedData = global.authenticatedPasswordChangeCodes?.[userId.toString()];
-    
-    if (!storedData) {
-      return res.status(400).json({ success: false, message: 'No password change request found' });
-    }
-
-    if (Date.now() > storedData.expiresAt) {
-      delete global.authenticatedPasswordChangeCodes[userId.toString()];
-      return res.status(400).json({ success: false, message: 'Confirmation code expired' });
-    }
-
-    if (storedData.code !== code) {
-      return res.status(400).json({ success: false, message: 'Invalid confirmation code' });
-    }
-
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    user.password = storedData.newPassword;
-    if (user.mustChangePasswordAfterGoogle) {
-      user.mustChangePasswordAfterGoogle = false;
-    }
-    await user.save();
+    const verification = await verifyVerificationCode({
+      email: user.email,
+      type: 'authenticatedPasswordChange',
+      username: user.username,
+      code,
+      consume: true,
+    });
 
-    delete global.authenticatedPasswordChangeCodes[userId.toString()];
+    if (!verification.ok && verification.reason === 'not_found') {
+      return res.status(400).json({ success: false, message: 'No password change request found' });
+    }
+    if (!verification.ok || verification.record?.metadata?.userId !== userId.toString()) {
+      return res.status(400).json({ success: false, message: 'Invalid confirmation code' });
+    }
+
+    const passwordHash = verification.record?.metadata?.passwordHash;
+    if (!passwordHash) {
+      return res.status(400).json({ success: false, message: 'Invalid password change request' });
+    }
+
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: { password: passwordHash, mustChangePasswordAfterGoogle: false },
+        $inc: { authVersion: 1 },
+      }
+    );
 
     // Send success email
     try {
@@ -2936,12 +2836,12 @@ exports.confirmAuthenticatedPasswordChange = async (req, res) => {
         changedAt: Date.now()
       });
     } catch (error) {
-      console.error('Failed to send success email:', error);
+      logError('Failed to send success email:', error);
     }
 
     res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to change password' });
   }
 };
 
@@ -2949,20 +2849,10 @@ exports.confirmAuthenticatedPasswordChange = async (req, res) => {
 // Check guest username availability
 exports.checkGuestUsername = async (req, res) => {
   try {
-    const username = String(req.params.username || '').trim();
-    
-    if (!username) {
-      return res.status(400).json({ success: false, message: 'Username is required' });
-    }
-
-    if (username.length < 3) {
-      return res.json({ success: true, available: false, message: 'Username must be at least 3 characters' });
-    }
-
-    // Validate username format (letters, numbers, underscore only)
-    const usernameRegex = /^[a-zA-Z0-9_]+$/;
-    if (!usernameRegex.test(username)) {
-      return res.json({ success: true, available: false, message: 'Only letters, numbers, and underscores allowed' });
+    const username = normalizeUsername(req.params.username);
+    const usernameError = getUsernameValidationMessage(username);
+    if (usernameError) {
+      return res.json({ success: true, available: false, message: usernameError });
     }
 
     const existingUser = await User.findOne({ username });
@@ -2973,27 +2863,17 @@ exports.checkGuestUsername = async (req, res) => {
 
     res.json({ success: true, available: true, message: 'Username available' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Failed to check username availability' });
   }
 };
 
 // Guest login
 exports.guestLogin = async (req, res) => {
   try {
-    const username = String(req.body.username || '').trim();
-
-    if (!username) {
-      return res.status(400).json({ success: false, message: 'Username is required' });
-    }
-
-    if (username.length < 3) {
-      return res.status(400).json({ success: false, message: 'Username must be at least 3 characters' });
-    }
-
-    // Validate username format
-    const usernameRegex = /^[a-zA-Z0-9_]+$/;
-    if (!usernameRegex.test(username)) {
-      return res.status(400).json({ success: false, message: 'Only letters, numbers, and underscores allowed' });
+    const username = normalizeUsername(req.body.username);
+    const usernameError = getUsernameValidationMessage(username);
+    if (usernameError) {
+      return res.status(400).json({ success: false, message: usernameError });
     }
 
     // Check if username exists
@@ -3013,7 +2893,7 @@ exports.guestLogin = async (req, res) => {
       isVerified: true
     });
 
-    const token = generateToken(guestUser._id);
+    const token = generateToken(guestUser);
 
     res.status(201).json({
       success: true,
@@ -3026,9 +2906,9 @@ exports.guestLogin = async (req, res) => {
         isGuest: true,
         guestExpiresAt
       },
-      rememberMe: true // Auto remember for guests
+      rememberMe: false
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Guest login failed' });
   }
 };

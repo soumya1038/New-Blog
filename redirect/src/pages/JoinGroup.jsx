@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { FiUsers, FiCheck } from 'react-icons/fi';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const JoinGroup = () => {
   const { inviteCode } = useParams();
@@ -13,6 +14,9 @@ const JoinGroup = () => {
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
+  const groupName = group?.name || 'Group';
+  const groupIcon = getSafeImageUrl(group?.icon)
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(groupName)}&background=0D8ABC&color=fff`;
 
   useEffect(() => {
     if (!user) {
@@ -99,15 +103,16 @@ const JoinGroup = () => {
       <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full">
         <div className="text-center mb-6">
           <img
-            src={group?.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(group?.name || 'Group')}&background=0D8ABC&color=fff`}
-            alt={group?.name}
+            src={groupIcon}
+            alt={groupName}
             className="w-20 h-20 rounded-full mx-auto mb-4 object-cover"
+            referrerPolicy="no-referrer"
           />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">{group?.name}</h2>
           {group?.description && (
             <p className="text-gray-600 mb-2">{group.description}</p>
           )}
-          <p className="text-sm text-gray-500">{group?.members?.length || 0} members</p>
+          <p className="text-sm text-gray-500">{group?.memberCount ?? group?.members?.length ?? 0} members</p>
         </div>
 
         {error && (

@@ -4,10 +4,23 @@ const { protect } = require('../middleware/auth');
 const Blog = require('../models/Blog');
 const Short = require('../models/Short');
 const Article = require('../models/Article');
-const Comment = require('../models/Comment');
-const Notification = require('../models/Notification');
+const { cleanupOldDraftBatch } = require('../utils/draftCleanup');
+const { sendSafeServerError } = require('../utils/safeErrorLog');
 
 const DRAFT_TTL_MS = 42 * 60 * 60 * 1000;
+const DRAFT_LIST_DEFAULT_LIMIT = Math.max(1, Number(process.env.DRAFT_LIST_DEFAULT_LIMIT) || 50);
+const DRAFT_LIST_MAX_LIMIT = Math.max(1, Number(process.env.DRAFT_LIST_MAX_LIMIT) || 100);
+const DRAFT_CLEANUP_BATCH_LIMIT = Math.max(1, Number(process.env.DRAFT_CLEANUP_BATCH_LIMIT) || 25);
+const DRAFT_QUERY_MAX_TIME_MS = Math.max(100, Number(process.env.DRAFT_QUERY_MAX_TIME_MS) || 5000);
+
+const sendDraftServerError = (res, error) =>
+  sendSafeServerError(res, '[draftRoutes] request failed:', error, 'Unable to process drafts request');
+
+const parseBoundedInt = (value, fallback, max) => {
+  const parsed = Number.parseInt(value, 10);
+  const safeValue = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  return Math.min(safeValue, max);
+};
 
 const getDraftFilter = (req) => {
   const isAdmin = req.user.role === 'admin';
@@ -27,9 +40,9 @@ router.get('/summary', protect, async (req, res) => {
   try {
     const filter = getFreshDraftFilter(getDraftFilter(req));
     const [blogs, shorts, articles] = await Promise.all([
-      Blog.countDocuments(filter),
-      Short.countDocuments(filter),
-      Article.countDocuments(filter),
+      Blog.countDocuments(filter).maxTimeMS(DRAFT_QUERY_MAX_TIME_MS),
+      Short.countDocuments(filter).maxTimeMS(DRAFT_QUERY_MAX_TIME_MS),
+      Article.countDocuments(filter).maxTimeMS(DRAFT_QUERY_MAX_TIME_MS),
     ]);
 
     res.json({
@@ -38,7 +51,7 @@ router.get('/summary', protect, async (req, res) => {
       total: blogs + shorts + articles,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendDraftServerError(res, error);
   }
 });
 
@@ -46,40 +59,55 @@ router.get('/summary', protect, async (req, res) => {
 router.get('/', protect, async (req, res) => {
   try {
     const filter = getDraftFilter(req);
+    const limit = parseBoundedInt(req.query.limit, DRAFT_LIST_DEFAULT_LIMIT, DRAFT_LIST_MAX_LIMIT);
 
     // Auto-delete old drafts (42 hours)
     const fortyTwoHoursAgo = new Date(Date.now() - DRAFT_TTL_MS);
     const oldFilter = { ...filter, isScheduled: false, updatedAt: { $lt: fortyTwoHoursAgo } };
-    
-    const oldBlogs = await Blog.find(oldFilter);
-    const oldShorts = await Short.find(oldFilter);
-    const oldArticles = await Article.find(oldFilter);
-    
-    for (const draft of [...oldBlogs, ...oldShorts, ...oldArticles]) {
-      if (draft.cloudinaryPublicId) {
-        const cloudinary = require('../utils/cloudinary');
-        try {
-          await cloudinary.uploader.destroy(draft.cloudinaryPublicId);
-        } catch (err) {
-          console.error('Cloudinary delete error:', err);
-        }
-      }
-      await Comment.deleteMany({ blog: draft._id, short: draft._id, article: draft._id });
-      await Notification.deleteMany({ blog: draft._id, short: draft._id, article: draft._id });
-      await Blog.findByIdAndDelete(draft._id).catch(() => {});
-      await Short.findByIdAndDelete(draft._id).catch(() => {});
-      await Article.findByIdAndDelete(draft._id).catch(() => {});
-    }
+
+    await Promise.all([
+      cleanupOldDraftBatch({
+        Model: Blog,
+        commentField: 'blog',
+        notificationField: 'blog',
+        filter: oldFilter,
+        limit: DRAFT_CLEANUP_BATCH_LIMIT,
+        maxTimeMS: DRAFT_QUERY_MAX_TIME_MS
+      }),
+      cleanupOldDraftBatch({
+        Model: Short,
+        commentField: 'short',
+        filter: oldFilter,
+        limit: DRAFT_CLEANUP_BATCH_LIMIT,
+        maxTimeMS: DRAFT_QUERY_MAX_TIME_MS
+      }),
+      cleanupOldDraftBatch({
+        Model: Article,
+        commentField: 'article',
+        filter: oldFilter,
+        limit: DRAFT_CLEANUP_BATCH_LIMIT,
+        maxTimeMS: DRAFT_QUERY_MAX_TIME_MS
+      })
+    ]);
 
     // Fetch remaining drafts
     const blogDrafts = await Blog.find(filter)
-      .populate('author', 'username profileImage').sort({ updatedAt: -1 });
+      .populate('author', 'username profileImage')
+      .sort({ updatedAt: -1, _id: -1 })
+      .limit(limit)
+      .maxTimeMS(DRAFT_QUERY_MAX_TIME_MS);
 
     const shortDrafts = await Short.find(filter)
-      .populate('author', 'username profileImage').sort({ updatedAt: -1 });
+      .populate('author', 'username profileImage')
+      .sort({ updatedAt: -1, _id: -1 })
+      .limit(limit)
+      .maxTimeMS(DRAFT_QUERY_MAX_TIME_MS);
 
     const articleDrafts = await Article.find(filter)
-      .populate('author', 'username profileImage').sort({ updatedAt: -1 });
+      .populate('author', 'username profileImage')
+      .sort({ updatedAt: -1, _id: -1 })
+      .limit(limit)
+      .maxTimeMS(DRAFT_QUERY_MAX_TIME_MS);
 
     // Mark types
     const markedShorts = shortDrafts.map(short => ({
@@ -93,13 +121,20 @@ router.get('/', protect, async (req, res) => {
     }));
 
     // Combine and sort
-    const allDrafts = [...blogDrafts, ...markedShorts, ...markedArticles].sort((a, b) => 
+    const allDrafts = [...blogDrafts, ...markedShorts, ...markedArticles].sort((a, b) =>
       new Date(b.updatedAt) - new Date(a.updatedAt)
-    );
+    ).slice(0, limit);
 
-    res.json({ success: true, drafts: allDrafts });
+    res.json({
+      success: true,
+      drafts: allDrafts,
+      pagination: {
+        mode: 'limit',
+        limit
+      }
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendDraftServerError(res, error);
   }
 });
 

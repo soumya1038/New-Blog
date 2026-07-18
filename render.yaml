@@ -1,41 +1,413 @@
 services:
-  # Backend API + Redirect frontend (Single Service)
+  # Backend API + Redirect frontend (single service)
   - type: web
     name: blog-backend
     env: node
     region: oregon
     plan: free
     buildCommand: |
-      cd backend && npm install
-      cd ../redirect && npm install --legacy-peer-deps && npm run build
+      cd backend && npm ci --omit=dev
+      cd ../redirect && npm ci --legacy-peer-deps && GENERATE_SOURCEMAP=false npm run build
       mv build ../backend/
     startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
-        value: 5000
+        value: "5000"
       - key: MONGODB_URI
         sync: false
       - key: JWT_SECRET
         sync: false
       - key: JWT_EXPIRE
         value: 7d
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: API_KEY_HASH_SECRET
+        sync: false
+      - key: VERIFICATION_CODE_PEPPER
+        sync: false
+      - key: TWO_FACTOR_SECRET
+        sync: false
+      - key: TEMPORARY_STATE_SECRET
+        sync: false
       - key: FRONTEND_URL
         sync: false
-      - key: EMAIL_USER
+      - key: PUBLIC_SITE_URL
         sync: false
-      - key: EMAIL_PASS
+      - key: BACKEND_PUBLIC_URL
         sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_FROM_EMAIL
+        sync: false
+      - key: BREVO_EMAIL_TIMEOUT_MS
+        value: "15000"
+      - key: BREVO_SMS_TIMEOUT_MS
+        value: "10000"
+      - key: SUPPORT_ADMIN_EMAIL
+        sync: false
+      - key: SUPPORT_SUBMIT_RATE_LIMIT_WINDOW_MS
+        value: "3600000"
+      - key: SUPPORT_SUBMIT_RATE_LIMIT_MAX
+        value: "8"
+      - key: SUPPORT_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: MAX_SUPPORT_PAGE_LIMIT
+        value: "100"
+      - key: MAX_SUPPORT_PAGE
+        value: "1000"
+      - key: REDIS_URL
+        sync: false
+      - key: QUEUE_ENABLED
+        value: "true"
+      - key: QUEUE_START_WORKERS_IN_API
+        value: "true"
+      - key: QUEUE_EMAIL_FAILED_JOB_RETENTION_SECONDS
+        value: "3600"
+      - key: QUEUE_EMAIL_FAILED_JOB_RETENTION_COUNT
+        value: "500"
+      - key: QUEUE_REDIS_READY_TIMEOUT_MS
+        value: "10000"
+      - key: QUEUE_SCHEDULER_COMMAND_TIMEOUT_MS
+        value: "10000"
+      - key: QUEUE_FALLBACK_JOB_DEDUPE_MAX_ENTRIES
+        value: "10000"
+      - key: RATE_LIMIT_REDIS_PREFIX
+        value: lekhon:rl
+      - key: RATE_LIMIT_FAIL_OPEN
+        value: "false"
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: RAZORPAY_PROVIDER_TIMEOUT_MS
+        value: "15000"
+      - key: LIVEKIT_PROVIDER_TIMEOUT_MS
+        value: "10000"
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
+        sync: false
+      - key: LIVEKIT_WS_URL
+        sync: false
       - key: google_client_id
         sync: false
       - key: google_client_Secret
         sync: false
+      - key: OAUTH_PROVIDER_TIMEOUT_MS
+        value: "10000"
       - key: GROQ_API_KEY
         sync: false
+      - key: AI_PROVIDER_TIMEOUT_MS
+        value: "30000"
+      - key: AI_PROVIDER_MAX_RETRIES
+        value: "1"
+      - key: NEWSDATA_API_KEY
+        sync: false
+      - key: OPENWEATHER_API_KEY
+        sync: false
+      - key: WIDGET_PROVIDER_TIMEOUT_MS
+        value: "5000"
+      - key: NEWS_WIDGET_CACHE_TTL_SECONDS
+        value: "300"
+      - key: WEATHER_WIDGET_CACHE_TTL_SECONDS
+        value: "300"
+      - key: CRICKET_WIDGET_CACHE_TTL_SECONDS
+        value: "120"
+      - key: BACKGROUND_REMOVAL_ENABLED
+        value: "false"
+      - key: BACKGROUND_REMOVAL_PROVIDER
+        value: removebg
+      - key: REMOVE_BG_API_KEY
+        sync: false
+      - key: REMOVE_BG_API_URL
+        value: https://api.remove.bg/v1.0/removebg
+      - key: REMOVE_BG_ACCOUNT_URL
+        value: https://api.remove.bg/v1.0/account
+      - key: REMOVE_BG_TIMEOUT_MS
+        value: "45000"
+      - key: BG_REMOVER_URL
+        sync: false
+      - key: BG_REMOVER_API_KEY
+        sync: false
+      - key: BG_REMOVER_TIMEOUT_MS
+        value: "45000"
+      - key: BG_REMOVER_WARMUP_RATE_LIMIT_WINDOW_MS
+        value: "600000"
+      - key: BG_REMOVER_WARMUP_RATE_LIMIT_MAX
+        value: "3"
+      - key: CACHE_MEMORY_MAX_ENTRIES
+        value: "5000"
+      - key: EXPOSE_INTERNAL_ERRORS
+        value: "false"
+      - key: ZOHO_OAUTH_SETUP_ENABLED
+        value: "false"
+      - key: ZOHO_OAUTH_SETUP_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: ZOHO_OAUTH_SETUP_RATE_LIMIT_MAX
+        value: "5"
+      - key: REQUEST_JSON_LIMIT
+        value: 1mb
+      - key: REQUEST_URLENCODED_LIMIT
+        value: 256kb
+      - key: REQUEST_URLENCODED_PARAMETER_LIMIT
+        value: "1000"
+      - key: WEBHOOK_RAW_BODY_LIMIT
+        value: 128kb
+      - key: DIGITAL_MAX_DOWNLOADS
+        value: "100"
+      - key: DIGITAL_FILE_UPLOAD_RATE_LIMIT_WINDOW_MS
+        value: "3600000"
+      - key: DIGITAL_FILE_UPLOAD_RATE_LIMIT_MAX
+        value: "5"
+      - key: ORDER_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: ORDER_AUTO_COMPLETE_DAYS
+        value: "7"
+      - key: ORDER_AUTO_COMPLETE_BATCH_LIMIT
+        value: "100"
+      - key: EARNING_RELEASE_BATCH_LIMIT
+        value: "1000"
+      - key: EARNINGS_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: WHISPER_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: WHISPER_STATUS_RATE_LIMIT_MAX
+        value: "120"
+      - key: WHISPER_TRANSCRIBE_RATE_LIMIT_MAX
+        value: "12"
+      - key: AUTH_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: AUTH_RATE_LIMIT_MAX
+        value: "12"
+      - key: AUTH_USER_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: AUTH_BEARER_TOKEN_MAX_LENGTH
+        value: "4096"
+      - key: AUTH_REGISTRATION_CODE_SEND_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: AUTH_REGISTRATION_CODE_SEND_RATE_LIMIT_MAX
+        value: "3"
+      - key: AUTH_PASSWORD_RESET_SEND_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: AUTH_PASSWORD_RESET_SEND_RATE_LIMIT_MAX
+        value: "4"
+      - key: AUTH_CODE_VERIFY_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: AUTH_CODE_VERIFY_RATE_LIMIT_MAX
+        value: "10"
+      - key: AUTH_PROTECTED_PASSWORD_CHANGE_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: AUTH_PROTECTED_PASSWORD_CHANGE_RATE_LIMIT_MAX
+        value: "5"
+      - key: TWO_FACTOR_SETUP_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: TWO_FACTOR_SETUP_RATE_LIMIT_MAX
+        value: "5"
+      - key: TWO_FACTOR_CHALLENGE_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: TWO_FACTOR_CHALLENGE_RATE_LIMIT_MAX
+        value: "6"
+      - key: TWO_FACTOR_VERIFY_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: TWO_FACTOR_VERIFY_RATE_LIMIT_MAX
+        value: "15"
+      - key: AI_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: AI_RATE_LIMIT_MAX
+        value: "30"
+      - key: CHATBOT_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: CHATBOT_RATE_LIMIT_MAX
+        value: "60"
+      - key: CHAT_FILE_UPLOAD_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: CHAT_FILE_UPLOAD_RATE_LIMIT_MAX
+        value: "10"
+      - key: WIDGET_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: WIDGET_RATE_LIMIT_MAX
+        value: "120"
+      - key: EXTERNAL_API_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: EXTERNAL_API_WRITE_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: EXTERNAL_API_WRITE_RATE_LIMIT_MAX
+        value: "30"
+      - key: API_KEY_AUTH_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: API_KEY_AUTH_MAX_LENGTH
+        value: "256"
+      - key: MARKETPLACE_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: COUPON_CODE_MAX_LENGTH
+        value: "40"
+      - key: COUPON_VALIDATE_MAX_ITEMS
+        value: "100"
+      - key: COUPON_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: STORE_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: SELLER_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: ADMIN_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: DRAFT_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: TEMPLATE_PRESET_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: PRICE_CHANGE_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: SEARCH_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: SEARCH_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: SEARCH_RATE_LIMIT_MAX
+        value: "60"
+      - key: SEO_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: SEO_RATE_LIMIT_MAX
+        value: "120"
+      - key: MARKETPLACE_EXTERNAL_CLICK_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: MARKETPLACE_EXTERNAL_CLICK_RATE_LIMIT_MAX
+        value: "30"
+      - key: PAYOUT_REQUEST_RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: PAYOUT_REQUEST_RATE_LIMIT_MAX
+        value: "6"
+      - key: COMMENT_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: COMMENT_RATE_LIMIT_MAX
+        value: "6"
+      - key: COUPON_VALIDATE_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: COUPON_VALIDATE_RATE_LIMIT_MAX
+        value: "20"
+      - key: COMMENT_DUPLICATE_CACHE_MAX_ENTRIES
+        value: "5000"
+      - key: GUEST_SESSION_ID_MAX_LENGTH
+        value: "128"
+      - key: GUEST_PATH_MAX_LENGTH
+        value: "300"
+      - key: GUEST_USER_AGENT_MAX_LENGTH
+        value: "300"
+      - key: GUEST_MAX_PAGES_PER_SESSION
+        value: "200"
+      - key: GUEST_MAX_PAGE_DURATION_SECONDS
+        value: "3600"
+      - key: GUEST_TRACKING_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: SOCKET_PENDING_DELIVERY_BATCH_LIMIT
+        value: "200"
+      - key: SOCKET_MARK_READ_BATCH_LIMIT
+        value: "200"
+      - key: SOCKET_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: MESSAGE_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: SOCKET_ROOM_NAME_MAX_LENGTH
+        value: "120"
+      - key: SOCKET_ROUTE_MAX_LENGTH
+        value: "120"
+      - key: SOCKET_CALL_SDP_MAX_LENGTH
+        value: "131072"
+      - key: SOCKET_CALL_CANDIDATE_MAX_LENGTH
+        value: "4096"
+      - key: SOCKET_CALL_MID_MAX_LENGTH
+        value: "64"
+      - key: SOCKET_CALL_INITIATE_MAX_AGE_SECONDS
+        value: "600"
+      - key: SOCKET_DIRECT_CALL_SESSION_TTL_SECONDS
+        value: "7200"
+      - key: SOCKET_DIRECT_CALL_SESSION_MAX_ENTRIES
+        value: "10000"
+      - key: CALL_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: NOTIFICATION_LIST_DEFAULT_LIMIT
+        value: "50"
+      - key: NOTIFICATION_LIST_MAX_LIMIT
+        value: "100"
+      - key: NOTIFICATION_LIST_MAX_PAGE
+        value: "1000"
+      - key: NOTIFICATION_RETENTION_HOURS
+        value: "24"
+      - key: NOTIFICATION_CLEANUP_BATCH_LIMIT
+        value: "1000"
+      - key: NOTIFICATION_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: TRACK_ACTIVITY_UPDATE_INTERVAL_SECONDS
+        value: "60"
+      - key: TRACK_ACTIVITY_CACHE_MAX_USERS
+        value: "50000"
+      - key: TRACK_ACTIVITY_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: ALERT_ROUTE_STATS_MAX_ENTRIES
+        value: "500"
+      - key: GROUP_CALL_HISTORY_DEFAULT_LIMIT
+        value: "20"
+      - key: GROUP_CALL_HISTORY_MAX_LIMIT
+        value: "100"
+      - key: GROUP_CALL_ROOM_NAME_MAX_LENGTH
+        value: "120"
+      - key: GROUP_CALL_PARTICIPANT_NAME_MAX_LENGTH
+        value: "80"
+      - key: SCHEDULED_PUBLISH_BATCH_LIMIT
+        value: "50"
+      - key: SCHEDULED_PUBLISH_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: MESSAGE_MEDIA_CLEANUP_BATCH_LIMIT
+        value: "100"
+      - key: STATUS_CLEANUP_USER_BATCH_LIMIT
+        value: "100"
+      - key: STATUS_CLEANUP_LOCK_MS
+        value: "1800000"
+      - key: STATUS_CLEANUP_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: STATUS_MEDIA_URL_TTL_SECONDS
+        value: "300"
+      - key: STATUS_MEDIA_ACCESS_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: STATUS_MEDIA_ACCESS_RATE_LIMIT_MAX
+        value: "120"
+      - key: CLOUDINARY_CLEANUP_CONCURRENCY
+        value: "4"
+      - key: ACCOUNT_CLEANUP_MEDIA_CONCURRENCY
+        value: "4"
+      - key: ACCOUNT_CLEANUP_CHUNK_SIZE
+        value: "500"
+      - key: ACCOUNT_CLEANUP_DB_CONCURRENCY
+        value: "4"
+      - key: ACCOUNT_CLEANUP_QUERY_MAX_TIME_MS
+        value: "10000"
+      - key: DB_STORAGE_ALERT_LIMIT_MB
+        value: "512"
+      - key: DB_MONITOR_MAX_COLLECTIONS
+        value: "100"
+      - key: DB_MONITOR_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: CONTENT_VIEWED_BY_MAX_ENTRIES
+        value: "5000"
+      - key: CONTENT_VIEW_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: BLOG_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: ARTICLE_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: SHORT_QUERY_MAX_TIME_MS
+        value: "5000"
+      - key: CONTENT_VIEW_RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: CONTENT_VIEW_RATE_LIMIT_MAX
+        value: "120"

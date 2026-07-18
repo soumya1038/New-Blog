@@ -1,4 +1,4 @@
-import { useState, useContext, useEffect, useRef } from 'react';
+import React, { useState, useContext, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext';
@@ -9,8 +9,9 @@ import { TbBrandAmongUs } from 'react-icons/tb';
 import GuestUsernameModal from '../components/GuestUsernameModal';
 import GuestInfoModal from '../components/GuestInfoModal';
 import { requestSocialAuthUrl } from '../utils/socialAuth';
+import { API_BASE_URL } from '../utils/apiBaseUrl';
 
-const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+const API = API_BASE_URL;
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
 const LIGHT = {
@@ -55,7 +56,7 @@ function makeUsernameSuggestions(value) {
     .slice(0, 14) || 'lekhon';
 
   const suffixes = [
-    Math.floor(100 + Math.random() * 900),
+    100 + randomInt(900),
     `${new Date().getFullYear()}`,
     'writes',
     'blog',
@@ -84,8 +85,24 @@ function getPasswordStrength(pwd) {
 
 // ── Text CAPTCHA generator ────────────────────────────────────────────────────
 const CAPTCHA_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+let fallbackRandomCounter = 0;
+
+function randomInt(max) {
+  const upperBound = Math.max(1, Number(max) || 1);
+  const cryptoApi = window.crypto || window.msCrypto;
+  if (cryptoApi?.getRandomValues) {
+    const buffer = new Uint32Array(1);
+    cryptoApi.getRandomValues(buffer);
+    return buffer[0] % upperBound;
+  }
+
+  fallbackRandomCounter = (fallbackRandomCounter + 1) % upperBound;
+  const tick = Math.floor((window.performance?.now?.() || 0) * 1000);
+  return Math.abs(Date.now() + tick + fallbackRandomCounter) % upperBound;
+}
+
 function generateCaptchaText() {
-  return Array.from({length:6}, ()=>CAPTCHA_CHARS[Math.floor(Math.random()*CAPTCHA_CHARS.length)]).join('');
+  return Array.from({ length: 6 }, () => CAPTCHA_CHARS[randomInt(CAPTCHA_CHARS.length)]).join('');
 }
 
 // ── Step icons ────────────────────────────────────────────────────────────────
@@ -656,8 +673,7 @@ const Register = () => {
     if (!captchaVerified) { setError(t('Please complete the text verification')); return; }
     setIsRegistering(true); setError('');
     try {
-      const backendCaptchaQuestion = { num1: 1, num2: 1, operator: '+' };
-      await register(username.trim(), email.trim(), password, rememberMe, '2', backendCaptchaQuestion);
+      await register(username.trim(), email.trim(), password, rememberMe);
       navigate('/login');
     } catch(err) {
       setError(err.response?.data?.message || t('Registration failed'));
@@ -671,7 +687,7 @@ const Register = () => {
     setSocialAuthLoading(provider);
     sessionStorage.removeItem('socialConnectIntent');
     try {
-      const authUrl = await requestSocialAuthUrl(provider);
+      const authUrl = await requestSocialAuthUrl(provider, { rememberMe });
       window.location.assign(authUrl);
     } catch (err) {
       setSocialAuthLoading('');
@@ -704,7 +720,7 @@ const Register = () => {
   const handleGuestLogin = async () => {
     try {
       const { data } = await axios.post(`${API}/api/auth/guest-login`, { username: guestUsername });
-      completeLogin(data, true);
+      completeLogin(data, false);
       setShowGuestInfoModal(false); navigate('/home', { replace: true });
     } catch(err) {
       setError(err.response?.data?.message || t('Guest login failed'));
@@ -780,7 +796,7 @@ const Register = () => {
       )}
 
       {/* No custom header — Navbar renders via App.js */}
-      <div style={{minHeight:'100dvh',background:C.bg,display:'flex',flexDirection:'column',
+      <div className="auth-flow-page" style={{minHeight:'100dvh',background:C.bg,display:'flex',flexDirection:'column',
         paddingTop:0,transition:'background 0.35s'}}>
         <AnimatedBg C={C}/>
 
@@ -1130,31 +1146,6 @@ const Register = () => {
       {showGuestModal&&<GuestUsernameModal onClose={()=>setShowGuestModal(false)} onContinue={handleGuestContinue}/>}
       {showGuestInfoModal&&<GuestInfoModal onContinue={handleGuestLogin} onClose={()=>setShowGuestInfoModal(false)}/>}
 
-      <style>{`
-        @keyframes stepIn         {from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes popIn          {from{opacity:0;transform:scale(0.82)}to{opacity:1;transform:scale(1)}}
-        @keyframes spin           {to{transform:rotate(360deg)}}
-        @keyframes shake          {0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
-        @keyframes orbFloat       {0%,100%{transform:translateY(0)}50%{transform:translateY(-22px)}}
-        @keyframes particleFloat  {0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-18px) scale(1.15)}}
-        @keyframes glyphPulse     {0%,100%{opacity:0.28}50%{opacity:0.40}}
-        @keyframes dotPulse       {0%,100%{opacity:0.35;transform:scale(1)}50%{opacity:0.6;transform:scale(1.4)}}
-        @keyframes drawLine       {to{stroke-dashoffset:0}}
-        @keyframes iconPulse      {0%,100%{transform:scale(1);opacity:0.12}50%{transform:scale(1.12);opacity:0.2}}
-        @keyframes quillAppear    {from{opacity:0;transform:rotate(-20deg) scale(0.7)}to{opacity:0.85;transform:rotate(0) scale(1)}}
-        @keyframes drawStroke     {to{stroke-dashoffset:0}}
-        @keyframes flapOpen       {0%,100%{transform:rotateX(0deg)}40%,60%{transform:rotateX(-35deg)}}
-        @keyframes sparkleIn      {from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}
-        @keyframes letterSlide    {0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
-        @keyframes shackleClose   {0%{transform:translateY(-4px)}40%,100%{transform:translateY(0)}}
-        @keyframes starPop        {from{opacity:0;transform:scale(0) rotate(-20deg)}to{opacity:1;transform:scale(1) rotate(0)}}
-        @keyframes verifiedSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes tickPop        {from{transform:scale(0)}to{transform:scale(1)}}
-        @keyframes drawVerifyCheck{to{stroke-dashoffset:0}}
-        *{box-sizing:border-box}
-        input:-webkit-autofill,input:-webkit-autofill:focus{transition:background-color 600000s 0s,color 600000s 0s}
-        @media(max-width:480px){main>div{border-radius:18px!important}main>div>div:last-child{padding:24px 20px 20px!important}}
-      `}</style>
     </>
   );
 };

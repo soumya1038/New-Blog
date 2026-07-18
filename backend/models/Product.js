@@ -24,7 +24,7 @@ const productSchema = new mongoose.Schema({
     enum: ['pending', 'processing', 'done', 'failed', 'skipped'],
     default: 'pending',
   },
-  backgroundRemovalError: { type: String, default: '' },
+  backgroundRemovalError: { type: String, default: '', select: false },
   backgroundRemovedAt: { type: Date, default: null },
   backgroundRemovalSourceHash: { type: String, default: '' },
   videoUrl:      { type: String, default: '' },
@@ -37,8 +37,8 @@ const productSchema = new mongoose.Schema({
 
   // ── Digital ───────────────────────────────────────────────────────────────
   digital: {
-    fileUrl:      { type: String, default: '' },       // private Cloudinary URL
-    filePublicId: { type: String, default: '' },       // for signed URL generation
+    fileUrl:      { type: String, default: '', select: false }, // private Cloudinary URL
+    filePublicId: { type: String, default: '', select: false }, // for signed URL generation
     fileSize:     { type: Number, default: 0 },        // bytes
     fileFormat:   { type: String, default: '' },       // pdf | zip | mp4 | epub …
     maxDownloads: { type: Number, default: 5 },
@@ -130,6 +130,7 @@ productSchema.pre('save', async function (next) {
 
 // ── Indexes ───────────────────────────────────────────────────────────────────
 productSchema.index({ sellerId: 1 });
+productSchema.index({ sellerId: 1, status: 1, 'stats.sales': -1, createdAt: -1 });
 productSchema.index({ status: 1, type: 1 });
 productSchema.index({ title: 'text', description: 'text', tags: 'text' });
 

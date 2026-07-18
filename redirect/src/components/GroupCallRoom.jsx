@@ -8,6 +8,29 @@ import socketService from '../services/socket';
 import soundManager from '../utils/soundManager';
 import { saveCallState, clearCallState } from '../utils/callStateManager';
 import { useGroupCall } from '../context/GroupCallContext';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
+
+const parseParticipantMetadata = (metadata) => {
+  try {
+    return metadata ? JSON.parse(metadata) : {};
+  } catch {
+    return {};
+  }
+};
+
+const getParticipantAvatar = (avatar, name) => (
+  getSafeImageUrl(avatar)
+  || `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=random&color=fff`
+);
+
+const resolveGroupId = (groupId, roomName) => {
+  if (/^[a-f\d]{24}$/i.test(String(groupId || '').trim())) {
+    return String(groupId).trim();
+  }
+
+  const match = String(roomName || '').match(/^group-([a-f\d]{24})-\d+$/i);
+  return match?.[1] || '';
+};
 
 const CustomVideoConference = () => {
   const participants = useParticipants();
@@ -17,7 +40,7 @@ const CustomVideoConference = () => {
     <div className="lk-grid-layout">
       {participants.map((participant) => {
         const cameraTrack = allTracks.find(t => t.participant.identity === participant.identity);
-        const metadata = participant.metadata ? JSON.parse(participant.metadata) : {};
+        const metadata = parseParticipantMetadata(participant.metadata);
         const hasVideo = cameraTrack?.publication?.track && !cameraTrack.publication.isMuted;
 
         return (
@@ -27,9 +50,10 @@ const CustomVideoConference = () => {
             ) : (
               <div style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
                 <img
-                  src={metadata.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(participant.name || 'User')}&background=random&color=fff`}
+                  src={getParticipantAvatar(metadata.avatar, participant.name)}
                   alt={participant.name}
                   className="participant-avatar"
+                  referrerPolicy="no-referrer"
                 />
               </div>
             )}
@@ -207,10 +231,17 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
 
     const getToken = async () => {
       try {
+        const resolvedGroupId = resolveGroupId(groupId, roomName);
+        if (!resolvedGroupId) {
+          setError('Failed to join call. Please try again.');
+          return;
+        }
+
         const { data } = await api.post('/livekit/token', {
           roomName,
           participantName,
-          groupId: groupId || roomName.replace('group-', '')
+          groupId: resolvedGroupId,
+          callType
         });
         setToken(data.token);
         setWsUrl(data.wsUrl);
@@ -219,14 +250,12 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
           type: 'group',
           roomName,
           participantName,
-          groupId: groupId || roomName.replace('group-', ''),
-          token: data.token,
-          wsUrl: data.wsUrl,
+          groupId: resolvedGroupId,
           callType
         });
         
         socketService.socket?.emit('groupcall:join', {
-          groupId: groupId || roomName.replace('group-', ''),
+          groupId: resolvedGroupId,
           roomName
         });
         
@@ -251,14 +280,13 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
   };
 
   const handleMinimize = () => {
+    const resolvedGroupId = resolveGroupId(groupId, roomName);
     saveCallState({
       type: 'group',
       roomName,
       participantName,
-      groupId,
-      callType,
-      token,
-      wsUrl
+      groupId: resolvedGroupId,
+      callType
     });
     if (onMinimize) {
       onMinimize();
@@ -329,82 +357,6 @@ const GroupCallRoom = ({ roomName, participantName, onLeave, groupId, callType =
           </div>
         </div>
       </LiveKitRoom>
-      <style>{`
-        .participant-avatar {
-          width: min(30%, 120px);
-          aspect-ratio: 1;
-          border-radius: 50%;
-          object-fit: cover;
-          border: 4px solid white;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        }
-        @media (max-width: 768px) {
-          .participant-avatar {
-            width: min(40%, 80px);
-            border-width: 3px;
-          }
-        }
-        .lk-participant-tile {
-          border: 2px solid rgba(59, 130, 246, 0.5) !important;
-          border-radius: 12px !important;
-          overflow: hidden !important;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3) !important;
-          aspect-ratio: 16/9 !important;
-        }
-        .lk-participant-tile.lk-speaking {
-          border-color: rgba(34, 197, 94, 0.8) !important;
-          box-shadow: 0 0 20px rgba(34, 197, 94, 0.4) !important;
-        }
-        .lk-participant-placeholder {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        }
-        .lk-participant-metadata-item {
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          width: 100% !important;
-          height: 100% !important;
-        }
-        .lk-participant-metadata-item img {
-          width: 120px !important;
-          height: 120px !important;
-          border-radius: 50% !important;
-          object-fit: cover !important;
-          border: 4px solid white !important;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-        }
-        .lk-grid-layout {
-          gap: 12px !important;
-          padding: 0 !important;
-          width: 100% !important;
-          height: 100% !important;
-          display: grid !important;
-        }
-        .lk-grid-layout > * {
-          width: 100% !important;
-          height: 100% !important;
-          min-width: 0 !important;
-          min-height: 0 !important;
-        }
-        @media (max-width: 768px) {
-          .lk-grid-layout {
-            gap: 8px !important;
-            padding: 0 !important;
-            grid-template-columns: repeat(2, 1fr) !important;
-            grid-auto-rows: minmax(0, 1fr) !important;
-          }
-          .lk-participant-tile {
-            border-width: 1.5px !important;
-          }
-          .lk-participant-metadata-item img {
-            width: 80px !important;
-            height: 80px !important;
-          }
-        }
-        .lk-control-bar {
-          display: none !important;
-        }
-      `}</style>
     </div>
   );
 };

@@ -1,8 +1,10 @@
 import axios from 'axios';
 import { getOAuthRedirectUri } from './oauthRedirects';
+import { setPendingOAuthRememberMe } from './authSession';
 import { isNativeApp } from './nativeApp';
+import { API_BASE_URL } from './apiBaseUrl';
 
-const API = (process.env.REACT_APP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+const API = API_BASE_URL;
 const RETRY_UNTIL_KEY = 'lekhon:social-auth-retry-until';
 
 const PROVIDER_LABELS = {
@@ -107,7 +109,7 @@ const createSocialAuthUnavailableError = (provider) => {
   return new Error(`${label} sign-in could not start. Please check your connection and try again.`);
 };
 
-export const requestSocialAuthUrl = async (provider) => {
+export const requestSocialAuthUrl = async (provider, options = {}) => {
   const retrySeconds = getStoredRetrySeconds();
   if (retrySeconds > 0) {
     throw createRateLimitError(retrySeconds);
@@ -138,6 +140,9 @@ export const requestSocialAuthUrl = async (provider) => {
 
   const authUrl = response?.data?.authUrl;
   if (response.status >= 200 && response.status < 300 && authUrl) {
+    if (Object.prototype.hasOwnProperty.call(options, 'rememberMe')) {
+      setPendingOAuthRememberMe(Boolean(options.rememberMe));
+    }
     return authUrl;
   }
 

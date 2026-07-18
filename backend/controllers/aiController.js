@@ -1,8 +1,64 @@
 const axios = require('axios');
 const groq = require('../utils/openai');
+const { logError, logWarn } = require('../utils/safeErrorLog');
 
 const GEMINI_API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const DEFAULT_GEMINI_PRODUCT_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+
+const AI_INPUT_LIMITS = {
+  title: 180,
+  shortField: 120,
+  mediumField: 500,
+  profileField: 180,
+  promptContent: 12000,
+  summaryContent: 20000,
+  chatMessage: 1200,
+  productContext: 2500
+};
+
+const ALLOWED_BLOG_TONES = new Set(['professional', 'casual', 'friendly', 'formal']);
+const ALLOWED_BIO_STYLES = new Set(['professional', 'casual', 'creative']);
+const ALLOWED_LENGTHS = new Set(['10-50', '50-100', '100-110', 'short', 'medium', 'long', 'article']);
+const ALLOWED_IMPROVEMENTS = new Set(['grammar', 'clarity', 'professional', 'engaging', 'concise']);
+const ALLOWED_ENHANCEMENTS = new Set(['grammar', 'formal', 'casual', 'shorter', 'longer', 'polite']);
+
+const sanitizeAiText = (value = '', maxLength = AI_INPUT_LIMITS.mediumField) =>
+  String(value || '')
+    .replace(/\0/g, '')
+    .trim()
+    .slice(0, maxLength);
+
+const getBoundedText = (res, value, label, maxLength, { required = false } = {}) => {
+  const text = String(value || '').replace(/\0/g, '').trim();
+  if (required && !text) {
+    res.status(400).json({ success: false, message: `${label} is required` });
+    return null;
+  }
+  if (text.length > maxLength) {
+    res.status(400).json({
+      success: false,
+      message: `${label} is too long. Please keep it under ${maxLength} characters.`
+    });
+    return null;
+  }
+  return text;
+};
+
+const pickAllowed = (value, allowed, fallback) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return allowed.has(normalized) ? normalized : fallback;
+};
+
+const clampInt = (value, fallback, min, max) => {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+};
+
+const handleAiProviderError = (res, error, fallbackMessage, label = 'AI Error') => {
+  logError(`${label}:`, error);
+  return res.status(502).json({ success: false, message: fallbackMessage });
+};
 
 const cleanJsonFence = (value = '') =>
   String(value)
@@ -102,23 +158,34 @@ const geminiGenerationConfig = (target, model) => {
 };
 
 const productContextText = (product = {}) => {
+  const title = sanitizeAiText(product.title, AI_INPUT_LIMITS.title);
+  const description = sanitizeAiText(product.description, 1200);
+  const categories = normalizeStringArray(product.category, 8)
+    .map(item => sanitizeAiText(item, 80))
+    .filter(Boolean)
+    .join(', ');
+  const tags = normalizeStringArray(product.tags, 12)
+    .map(item => sanitizeAiText(item, 60))
+    .filter(Boolean)
+    .join(', ');
   const specifications = Array.isArray(product.specifications)
     ? product.specifications
+      .slice(0, 12)
       .filter(item => item?.key || item?.value)
-      .map(item => `${item.key || 'Property'}: ${item.value || ''}`)
+      .map(item => `${sanitizeAiText(item.key || 'Property', 80)}: ${sanitizeAiText(item.value || '', 180)}`)
       .join('\n')
     : '';
 
   return [
-    `Type: ${product.type || 'not selected'}`,
-    `Title: ${product.title || ''}`,
-    `Description: ${product.description || ''}`,
-    `Categories: ${(product.category || []).join(', ')}`,
-    `Tags: ${product.tags || ''}`,
-    `Warranty: ${product.warranty || ''}`,
-    `Country of Origin: ${product.countryOfOrigin || ''}`,
+    `Type: ${sanitizeAiText(product.type || 'not selected', 80)}`,
+    `Title: ${title}`,
+    `Description: ${description}`,
+    `Categories: ${categories}`,
+    `Tags: ${tags}`,
+    `Warranty: ${sanitizeAiText(product.warranty, 500)}`,
+    `Country of Origin: ${sanitizeAiText(product.countryOfOrigin, 80)}`,
     specifications ? `Specifications:\n${specifications}` : '',
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean).join('\n').slice(0, AI_INPUT_LIMITS.productContext);
 };
 
 const buildProductListingPrompt = ({ target, instruction, context }) => `
@@ -194,7 +261,7 @@ const requestGeminiProductListing = async ({ target, instruction, context, compa
       };
     } catch (error) {
       lastError = error;
-      console.warn('[Product AI] Gemini model failed:', model, error.response?.data?.error?.message || error.message);
+      logWarn(`[Product AI] Gemini model failed (${model}):`, error);
     }
   }
 
@@ -283,11 +350,31 @@ const hasProductAiData = (target, data = {}) => {
 // Generate blog content from title and tags
 exports.generateBlog = async (req, res) => {
   try {
-    const { title, tags = '', category = 'General', existingContent = '', tone = 'professional', length = 'medium', isShortMode = false, isArticleMode = false } = req.body;
+    const {
+      title: rawTitle,
+      tags: rawTags = '',
+      category: rawCategory = 'General',
+      existingContent: rawExistingContent = '',
+      tone: rawTone = 'professional',
+      length: rawLength = 'medium',
+      isShortMode = false,
+      isArticleMode = false
+    } = req.body;
 
-    if (!title || !title.trim()) {
-      return res.status(400).json({ success: false, message: 'Title is required' });
-    }
+    const title = getBoundedText(res, rawTitle, 'Title', AI_INPUT_LIMITS.title, { required: true });
+    if (title === null) return;
+
+    const tags = getBoundedText(res, rawTags, 'Tags', AI_INPUT_LIMITS.mediumField);
+    if (tags === null) return;
+
+    const category = getBoundedText(res, rawCategory, 'Category', AI_INPUT_LIMITS.shortField);
+    if (category === null) return;
+
+    const existingContent = getBoundedText(res, rawExistingContent, 'Existing content', AI_INPUT_LIMITS.promptContent);
+    if (existingContent === null) return;
+
+    const tone = pickAllowed(rawTone, ALLOWED_BLOG_TONES, 'professional');
+    const length = pickAllowed(rawLength, ALLOWED_LENGTHS, 'medium');
 
     const lengthMap = {
       '10-50': '10-50 words',
@@ -468,19 +555,24 @@ Write ONLY content, NO title.`;
       metaDescription
     });
   } catch (error) {
-    console.error('AI Error:', error);
-    const errorMessage = error.response?.data?.error?.message || error.message || 'AI generation failed';
-    res.status(500).json({ success: false, message: errorMessage });
+    return handleAiProviderError(res, error, 'AI generation failed. Please try again later.');
   }
 };
 
 exports.generateBio = async (req, res) => {
   try {
-    const { name, profession, interests, style = 'professional' } = req.body;
+    const { name: rawName, profession: rawProfession, interests: rawInterests = '', style: rawStyle = 'professional' } = req.body;
 
-    if (!name || !profession) {
-      return res.status(400).json({ success: false, message: 'Name and profession are required' });
-    }
+    const name = getBoundedText(res, rawName, 'Name', AI_INPUT_LIMITS.profileField, { required: true });
+    if (name === null) return;
+
+    const profession = getBoundedText(res, rawProfession, 'Profession', AI_INPUT_LIMITS.profileField, { required: true });
+    if (profession === null) return;
+
+    const interests = getBoundedText(res, rawInterests, 'Interests', AI_INPUT_LIMITS.mediumField);
+    if (interests === null) return;
+
+    const style = pickAllowed(rawStyle, ALLOWED_BIO_STYLES, 'professional');
 
     const interestsText = interests ? ` Interests: ${interests}.` : '';
 
@@ -504,24 +596,23 @@ exports.generateBio = async (req, res) => {
 
     res.json({ success: true, bio });
   } catch (error) {
-    console.error('AI Error:', error);
-    const errorMessage = error.response?.data?.error?.message || error.message || 'Bio generation failed';
-    res.status(500).json({ success: false, message: errorMessage });
+    return handleAiProviderError(res, error, 'Bio generation failed. Please try again later.');
   }
 };
 
 exports.generateProductListing = async (req, res) => {
   try {
-    const { target, product = {} } = req.body;
+    const { target: rawTarget, product = {} } = req.body;
+    const target = sanitizeAiText(rawTarget, 40);
     if (!target) {
       return res.status(400).json({ success: false, message: 'Target is required.' });
     }
 
-    if (!product.title?.trim()) {
+    if (!sanitizeAiText(product.title, AI_INPUT_LIMITS.title)) {
       return res.status(400).json({ success: false, message: 'Product title is required before using AI.' });
     }
 
-    const context = productContextText(product).slice(0, 2500);
+    const context = productContextText(product);
     const targetInstructions = {
       description: `Return JSON: {"description":"..."}.
 Write a professional marketplace description in 2-4 short paragraphs. Make it clear, trustworthy, buyer-focused, and specific. If product input is limited, use public context and common use-cases cautiously. Do not invent warranty, certifications, or shipping promises.`,
@@ -545,7 +636,7 @@ Create a short promo banner, 1-3 suitable badges from this list only: Bestseller
     try {
       aiResult = await requestGeminiProductListing({ target, instruction, context });
     } catch (geminiError) {
-      console.warn('[Product AI] Gemini generation failed; falling back to Groq:', geminiError.response?.data?.error?.message || geminiError.message);
+      logWarn('[Product AI] Gemini generation failed; falling back to Groq:', geminiError);
     }
 
     if (aiResult?.raw) {
@@ -561,7 +652,7 @@ Create a short promo banner, 1-3 suitable badges from this list only: Bestseller
           data = retryData;
         }
       } catch (geminiRetryError) {
-        console.warn('[Product AI] Gemini retry failed; falling back to Groq:', geminiRetryError.response?.data?.error?.message || geminiRetryError.message);
+        logWarn('[Product AI] Gemini retry failed; falling back to Groq:', geminiRetryError);
       }
     }
 
@@ -585,19 +676,18 @@ Create a short promo banner, 1-3 suitable badges from this list only: Bestseller
       ...data
     });
   } catch (error) {
-    console.error('Product AI Error:', error);
-    const errorMessage = error.response?.data?.error?.message || error.message || 'Product AI generation failed';
-    res.status(500).json({ success: false, message: errorMessage });
+    return handleAiProviderError(res, error, 'Product AI generation failed. Please try again later.', 'Product AI Error');
   }
 };
 
 exports.improveContent = async (req, res) => {
   try {
-    const { content, improvementType = 'grammar', isShortMode = false } = req.body;
+    const { content: rawContent, improvementType: rawImprovementType = 'grammar', isShortMode = false } = req.body;
 
-    if (!content) {
-      return res.status(400).json({ success: false, message: 'Content is required' });
-    }
+    const content = getBoundedText(res, rawContent, 'Content', AI_INPUT_LIMITS.promptContent, { required: true });
+    if (content === null) return;
+
+    const improvementType = pickAllowed(rawImprovementType, ALLOWED_IMPROVEMENTS, 'grammar');
 
     const prompts = {
       grammar: {
@@ -723,15 +813,16 @@ Return the concise version:`
 
     res.json({ success: true, improvedContent });
   } catch (error) {
-    console.error('AI Error:', error);
-    const errorMessage = error.response?.data?.error?.message || error.message || 'Content improvement failed';
-    res.status(500).json({ success: false, message: errorMessage });
+    return handleAiProviderError(res, error, 'Content improvement failed. Please try again later.');
   }
 };
 
 exports.generateTitles = async (req, res) => {
   try {
-    const { topic = '', count = 5 } = req.body;
+    const { topic: rawTopic = '', count: rawCount = 5 } = req.body;
+    const topic = getBoundedText(res, rawTopic, 'Topic', AI_INPUT_LIMITS.mediumField);
+    if (topic === null) return;
+    const count = clampInt(rawCount, 5, 1, 10);
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -774,15 +865,21 @@ Return only titles, one per line, no numbering:`
 
     res.json({ success: true, titles });
   } catch (error) {
-    console.error('AI Error:', error);
-    const errorMessage = error.response?.data?.error?.message || error.message || 'Title generation failed';
-    res.status(500).json({ success: false, message: errorMessage });
+    return handleAiProviderError(res, error, 'Title generation failed. Please try again later.');
   }
 };
 
 exports.generateDescription = async (req, res) => {
   try {
-    const { fullName, email, phone, bio, existingDescription } = req.body;
+    const { fullName: rawFullName, bio: rawBio, existingDescription: rawExistingDescription } = req.body;
+    const fullName = getBoundedText(res, rawFullName, 'Name', AI_INPUT_LIMITS.profileField);
+    if (fullName === null) return;
+
+    const bio = getBoundedText(res, rawBio, 'Bio', 1000);
+    if (bio === null) return;
+
+    const existingDescription = getBoundedText(res, rawExistingDescription, 'Existing description', 1000);
+    if (existingDescription === null) return;
 
     let prompt;
     
@@ -791,12 +888,10 @@ exports.generateDescription = async (req, res) => {
     } else {
       let profileInfo = [];
       if (fullName) profileInfo.push(`Name: ${fullName}`);
-      if (email) profileInfo.push(`Email: ${email}`);
-      if (phone) profileInfo.push(`Phone: ${phone}`);
       if (bio) profileInfo.push(`Bio: ${bio}`);
       
       if (profileInfo.length === 0) {
-        return res.status(400).json({ success: false, message: 'Profile information or existing description is required' });
+        return res.status(400).json({ success: false, message: 'Public profile information or existing description is required' });
       }
       
       prompt = `Write a natural, engaging description (max 200 characters) for this person:\n${profileInfo.join('\n')}\n\nWrite in a professional yet casual tone. Write only the description, no labels or extra text.`;
@@ -823,19 +918,31 @@ exports.generateDescription = async (req, res) => {
 
     res.json({ success: true, description });
   } catch (error) {
-    console.error('AI Error:', error);
-    const errorMessage = error.response?.data?.error?.message || error.message || 'Description generation failed';
-    res.status(500).json({ success: false, message: errorMessage });
+    return handleAiProviderError(res, error, 'Description generation failed. Please try again later.');
   }
 };
 
 exports.generateQuickChat = async (req, res) => {
   try {
-    const { category, recipientName = 'them' } = req.body;
+    const { category: rawCategory, recipientName: rawRecipientName = 'them' } = req.body;
 
+    const quickChatCategories = new Set([
+      'greeting',
+      'question',
+      'thanks',
+      'apology',
+      'meeting',
+      'followup',
+      'congratulations',
+      'support',
+    ]);
+    const category = pickAllowed(rawCategory, quickChatCategories, '');
     if (!category) {
       return res.status(400).json({ success: false, message: 'Category is required' });
     }
+
+    const recipientName = getBoundedText(res, rawRecipientName, 'Recipient name', AI_INPUT_LIMITS.shortField);
+    if (recipientName === null) return;
 
     const prompts = {
       greeting: `Write a short friendly greeting (1 sentence, max 10 words).`,
@@ -868,19 +975,18 @@ exports.generateQuickChat = async (req, res) => {
 
     res.json({ success: true, message });
   } catch (error) {
-    console.error('AI Error:', error);
-    const errorMessage = error.response?.data?.error?.message || error.message || 'Quick chat generation failed';
-    res.status(500).json({ success: false, message: errorMessage });
+    return handleAiProviderError(res, error, 'Quick chat generation failed. Please try again later.');
   }
 };
 
 exports.enhanceMessage = async (req, res) => {
   try {
-    const { message, enhanceType = 'grammar' } = req.body;
+    const { message: rawMessage, enhanceType: rawEnhanceType = 'grammar' } = req.body;
 
-    if (!message || !message.trim()) {
-      return res.status(400).json({ success: false, message: 'Message is required' });
-    }
+    const message = getBoundedText(res, rawMessage, 'Message', AI_INPUT_LIMITS.chatMessage, { required: true });
+    if (message === null) return;
+
+    const enhanceType = pickAllowed(rawEnhanceType, ALLOWED_ENHANCEMENTS, 'grammar');
 
     const prompts = {
       grammar: 'Fix grammar and spelling errors. Keep the same tone and meaning.',
@@ -911,19 +1017,17 @@ exports.enhanceMessage = async (req, res) => {
 
     res.json({ success: true, enhancedMessage });
   } catch (error) {
-    console.error('AI Error:', error);
-    const errorMessage = error.response?.data?.error?.message || error.message || 'Message enhancement failed';
-    res.status(500).json({ success: false, message: errorMessage });
+    return handleAiProviderError(res, error, 'Message enhancement failed. Please try again later.');
   }
 };
 
 exports.generateTags = async (req, res) => {
   try {
-    const { content, count = 5 } = req.body;
+    const { content: rawContent, count: rawCount = 5 } = req.body;
 
-    if (!content) {
-      return res.status(400).json({ success: false, message: 'Content is required' });
-    }
+    const content = getBoundedText(res, rawContent, 'Content', AI_INPUT_LIMITS.promptContent, { required: true });
+    if (content === null) return;
+    const count = clampInt(rawCount, 5, 1, 12);
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -962,19 +1066,16 @@ Return tags as comma-separated list:`
 
     res.json({ success: true, tags: tags.join(', ') });
   } catch (error) {
-    console.error('AI Error:', error);
-    const errorMessage = error.response?.data?.error?.message || error.message || 'Tag generation failed';
-    res.status(500).json({ success: false, message: errorMessage });
+    return handleAiProviderError(res, error, 'Tag generation failed. Please try again later.');
   }
 };
 
 exports.summarizeBlog = async (req, res) => {
   try {
-    const { content } = req.body;
+    const { content: rawContent } = req.body;
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ success: false, message: 'Content is required' });
-    }
+    const content = getBoundedText(res, rawContent, 'Content', AI_INPUT_LIMITS.summaryContent, { required: true });
+    if (content === null) return;
 
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
@@ -1008,8 +1109,6 @@ ${content}`
 
     res.json({ success: true, summary });
   } catch (error) {
-    console.error('AI Error:', error);
-    const errorMessage = error.response?.data?.error?.message || error.message || 'Summarization failed';
-    res.status(500).json({ success: false, message: errorMessage });
+    return handleAiProviderError(res, error, 'Summarization failed. Please try again later.');
   }
 };

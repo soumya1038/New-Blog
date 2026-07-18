@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { FiX, FiUsers, FiCheck } from 'react-icons/fi';
 import api from '../services/api';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
+
+const getUserAvatar = (user) => {
+  const displayName = user?.fullName || user?.name || user?.username || 'User';
+  return getSafeImageUrl(user?.profileImage)
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0D8ABC&color=fff`;
+};
 
 const CreateGroupModal = ({ onClose, onGroupCreated }) => {
   const [groupName, setGroupName] = useState('');
@@ -126,9 +133,10 @@ const CreateGroupModal = ({ onClose, onGroupCreated }) => {
                     className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
                   />
                   <img
-                    src={user.profileImage || `https://ui-avatars.com/api/?name=${user.username}&background=0D8ABC&color=fff`}
+                    src={getUserAvatar(user)}
                     alt={user.username}
                     className="w-8 h-8 rounded-full ml-3"
+                    referrerPolicy="no-referrer"
                   />
                   <span className="ml-3 font-medium text-[var(--text-primary)]">{user.fullName || user.username}</span>
                   {selectedMembers.has(user._id) && (

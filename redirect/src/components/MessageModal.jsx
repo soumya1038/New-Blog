@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
 import { FiSend, FiX } from 'react-icons/fi';
 import api from '../services/api';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const MessageModal = ({ open, onClose, receiver }) => {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const receiverName = receiver?.name || receiver?.fullName || receiver?.username || 'User';
+  const receiverAvatar = getSafeImageUrl(receiver?.profileImage)
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(receiverName)}&background=0D8ABC&color=fff`;
 
   const handleSend = async () => {
     if (!content.trim()) {
@@ -41,13 +45,14 @@ const MessageModal = ({ open, onClose, receiver }) => {
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <img
-              src={receiver?.profileImage || `https://ui-avatars.com/api/?name=${receiver?.name}&background=0D8ABC&color=fff`}
-              alt={receiver?.name}
+              src={receiverAvatar}
+              alt={receiverName}
               className="w-12 h-12 rounded-full object-cover"
+              referrerPolicy="no-referrer"
             />
             <div>
               <h3 className="text-lg font-semibold text-gray-900">Send Message</h3>
-              <p className="text-sm text-gray-500">to {receiver?.name}</p>
+              <p className="text-sm text-gray-500">to {receiverName}</p>
             </div>
           </div>
         </div>

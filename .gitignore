@@ -46,6 +46,10 @@ desktop.ini
 # Local temp / merge leftovers
 *.tmp
 *.temp
+*.bak
+*.backup
+*.backup*
+*.old
 *.orig
 *.rej
 
@@ -57,6 +61,16 @@ desktop.ini
 
 # Turbo
 .turbo/
+
+# Local automation/evidence artifacts
+.playwright-cli/
+playwright-report/
+test-results/
+output/
+
+# Runtime uploads/temp files
+backend/uploads/
+backend/tmp/
 
 # Ignore node modules and cache
 node_modules/
@@ -78,6 +92,7 @@ docs/*
 scripts/
 !scripts/
 scripts/*
+!scripts/scan-tracked-secrets.js
 !scripts/create-help-accessibility-verification-packet.js
 !scripts/create-help-android-evidence-packet.js
 !scripts/create-help-android-verification-worksheet.js

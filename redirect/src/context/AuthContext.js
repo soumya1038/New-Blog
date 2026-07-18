@@ -2,6 +2,8 @@ import React, { createContext, useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import {
   clearAuthSession,
+  getAuthToken,
+  getRememberMePreference,
   getStoredAuthUser,
   hasAuthToken,
   storeAuthSession,
@@ -16,8 +18,8 @@ export const AuthProvider = ({ children }) => {
   const [guestExpired, setGuestExpired] = useState(false);
 
   const checkAuth = useCallback(async () => {
-    const token = localStorage.getItem('token');
-    const rememberMe = localStorage.getItem('rememberMe');
+    const token = getAuthToken();
+    const rememberMe = getRememberMePreference();
 
     if (!token) {
       clearAuthSession();
@@ -36,7 +38,7 @@ export const AuthProvider = ({ children }) => {
       const nextUser = storeAuthSession({
         token,
         user: data.user,
-        rememberMe: rememberMe !== 'false',
+        rememberMe,
       });
       setUser(nextUser || data.user);
       setSessionExpired(false);
@@ -126,8 +128,8 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  const register = async (username, email, password, rememberMe, mathAnswer, mathQuestion) => {
-    const { data } = await api.post('/auth/register', { username, email, password, rememberMe, mathAnswer, mathQuestion });
+  const register = async (username, email, password, rememberMe) => {
+    const { data } = await api.post('/auth/register', { username, email, password, rememberMe });
     return data;
   };
 
@@ -146,7 +148,7 @@ export const AuthProvider = ({ children }) => {
     setSessionExpired(false);
   };
 
-  const completeLogin = (data, rememberMe = true) => {
+  const completeLogin = (data, rememberMe = false) => {
     const nextUser = storeAuthSession({
       token: data?.token,
       user: data?.user,

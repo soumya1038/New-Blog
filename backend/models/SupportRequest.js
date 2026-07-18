@@ -85,6 +85,34 @@ const supportRequestSchema = new mongoose.Schema(
       default: '',
       maxlength: 5000,
     },
+    adminEvents: [
+      {
+        action: {
+          type: String,
+          enum: ['support_request_updated'],
+          required: true,
+        },
+        adminId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'User',
+          default: null,
+        },
+        adminUsername: {
+          type: String,
+          default: '',
+          trim: true,
+          maxlength: 100,
+        },
+        changes: {
+          type: mongoose.Schema.Types.Mixed,
+          default: {},
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
     resolvedAt: {
       type: Date,
       default: null,
@@ -99,8 +127,11 @@ const supportRequestSchema = new mongoose.Schema(
 
 supportRequestSchema.index({ status: 1, createdAt: -1 });
 supportRequestSchema.index({ type: 1, status: 1, createdAt: -1 });
+supportRequestSchema.index({ type: 1, status: 1, priority: 1, createdAt: -1 });
+supportRequestSchema.index({ priority: 1, createdAt: -1 });
 supportRequestSchema.index({ status: 1, priority: 1, createdAt: -1 });
 supportRequestSchema.index({ status: 1, assignedTo: 1, createdAt: -1 });
+supportRequestSchema.index({ createdAt: -1 });
 supportRequestSchema.index({ email: 1, createdAt: -1 });
 
 module.exports = mongoose.model('SupportRequest', supportRequestSchema);

@@ -2,32 +2,20 @@ const axios = require('axios');
 const crypto = require('crypto');
 const cloudinary = require('../utils/cloudinary');
 const Product = require('../models/Product');
+const { logError, logWarn } = require('../utils/safeErrorLog');
+const {
+  getBackgroundRemovalProvider,
+  getBackgroundRemovalServiceBaseUrl,
+  getBackgroundRemovalTimeoutMs,
+  getRemoveBgApiUrl,
+  isBackgroundRemovalEnabled,
+} = require('../utils/backgroundRemovalConfig');
 
-const isEnabled = () => String(process.env.BACKGROUND_REMOVAL_ENABLED || '').toLowerCase() === 'true';
-const getProvider = () => String(process.env.BACKGROUND_REMOVAL_PROVIDER || 'removebg').toLowerCase();
-const getTimeout = () =>
-  Number(process.env.REMOVE_BG_TIMEOUT_MS || process.env.BG_REMOVER_TIMEOUT_MS) || 45000;
+const BACKGROUND_REMOVAL_UNAVAILABLE_MESSAGE = 'Background removal unavailable';
+const BACKGROUND_REMOVAL_FAILED_MESSAGE = 'Background removal failed';
 
 const hashSource = (value) =>
   crypto.createHash('sha256').update(String(value || '')).digest('hex');
-
-const formatBackgroundRemovalError = (error) => {
-  const responseData = error?.response?.data;
-  let detail = '';
-
-  if (Buffer.isBuffer(responseData)) {
-    detail = responseData.toString('utf8');
-  } else if (responseData instanceof ArrayBuffer) {
-    detail = Buffer.from(responseData).toString('utf8');
-  } else if (responseData) {
-    detail = JSON.stringify(responseData);
-  }
-
-  return [error?.message || String(error), detail]
-    .filter(Boolean)
-    .join(' - ')
-    .slice(0, 300);
-};
 
 const uploadPngToCloudinary = (buffer, productId, options = {}) =>
   new Promise((resolve, reject) => {
@@ -47,7 +35,7 @@ const uploadPngToCloudinary = (buffer, productId, options = {}) =>
 
 const removeWithRemoveBg = async (imageUrl) => {
   const apiKey = process.env.REMOVE_BG_API_KEY;
-  const apiUrl = process.env.REMOVE_BG_API_URL || 'https://api.remove.bg/v1.0/removebg';
+  const apiUrl = getRemoveBgApiUrl();
 
   if (!apiKey) {
     throw new Error('remove.bg API key is not configured.');
@@ -62,14 +50,14 @@ const removeWithRemoveBg = async (imageUrl) => {
       'X-Api-Key': apiKey,
     },
     responseType: 'arraybuffer',
-    timeout: getTimeout(),
+    timeout: getBackgroundRemovalTimeoutMs(),
   });
 
   return Buffer.from(response.data);
 };
 
 const removeWithSelfHostedService = async (imageUrl) => {
-  const serviceUrl = String(process.env.BG_REMOVER_URL || '').replace(/\/+$/, '');
+  const serviceUrl = getBackgroundRemovalServiceBaseUrl();
   const apiKey = process.env.BG_REMOVER_API_KEY;
 
   if (!serviceUrl || !apiKey) {
@@ -82,7 +70,7 @@ const removeWithSelfHostedService = async (imageUrl) => {
     {
       headers: { 'x-api-key': apiKey },
       responseType: 'arraybuffer',
-      timeout: getTimeout(),
+      timeout: getBackgroundRemovalTimeoutMs(),
     }
   );
 
@@ -90,7 +78,7 @@ const removeWithSelfHostedService = async (imageUrl) => {
 };
 
 const removeBackground = async (imageUrl) => {
-  if (getProvider() === 'service') {
+  if (getBackgroundRemovalProvider() === 'service') {
     return removeWithSelfHostedService(imageUrl);
   }
 
@@ -116,7 +104,7 @@ const processProductThumbnail = async (productOrId) => {
     : await Product.findById(productOrId);
 
   if (!product) return null;
-  if (!isEnabled()) {
+  if (!isBackgroundRemovalEnabled()) {
     product.backgroundRemovalStatus = 'skipped';
     await product.save();
     return null;
@@ -139,16 +127,16 @@ const processProductThumbnail = async (productOrId) => {
     };
   }
 
-  if (getProvider() === 'removebg' && !process.env.REMOVE_BG_API_KEY) {
+  if (getBackgroundRemovalProvider() === 'removebg' && !process.env.REMOVE_BG_API_KEY) {
     product.backgroundRemovalStatus = 'skipped';
-    product.backgroundRemovalError = 'remove.bg API key is not configured.';
+    product.backgroundRemovalError = BACKGROUND_REMOVAL_UNAVAILABLE_MESSAGE;
     await product.save();
     return null;
   }
 
-  if (getProvider() === 'service' && (!process.env.BG_REMOVER_URL || !process.env.BG_REMOVER_API_KEY)) {
+  if (getBackgroundRemovalProvider() === 'service' && (!getBackgroundRemovalServiceBaseUrl() || !process.env.BG_REMOVER_API_KEY)) {
     product.backgroundRemovalStatus = 'skipped';
-    product.backgroundRemovalError = 'Background remover service is not configured.';
+    product.backgroundRemovalError = BACKGROUND_REMOVAL_UNAVAILABLE_MESSAGE;
     await product.save();
     return null;
   }
@@ -173,8 +161,9 @@ const processProductThumbnail = async (productOrId) => {
       transparentThumbnailPublicId: product.transparentThumbnailPublicId,
     };
   } catch (error) {
+    logError('[backgroundRemoval] Thumbnail processing failed:', error);
     product.backgroundRemovalStatus = 'failed';
-    product.backgroundRemovalError = formatBackgroundRemovalError(error);
+    product.backgroundRemovalError = BACKGROUND_REMOVAL_FAILED_MESSAGE;
     await product.save();
     return null;
   }
@@ -182,11 +171,13 @@ const processProductThumbnail = async (productOrId) => {
 
 const triggerProductThumbnailProcessing = (productOrId) => {
   processProductThumbnail(productOrId).catch((error) => {
-    console.warn('[background-removal] Processing failed:', error?.message || error);
+    logWarn('[background-removal] Processing failed:', error);
   });
 };
 
 module.exports = {
+  BACKGROUND_REMOVAL_FAILED_MESSAGE,
+  BACKGROUND_REMOVAL_UNAVAILABLE_MESSAGE,
   processProductThumbnail,
   removeImageUrlToCloudinary,
   triggerProductThumbnailProcessing,

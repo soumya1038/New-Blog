@@ -1,13 +1,45 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const Blog = require('../models/Blog');
 const Article = require('../models/Article');
 const { parsePositiveInt, getCache, setCache } = require('../utils/cacheStore');
+const { createRedisRateLimitStore } = require('../utils/redisRateLimitStore');
 
 const router = express.Router();
 
-const MAX_FEED_ITEMS = 50;
-const MAX_SITEMAP_ITEMS = 5000;
+const MAX_FEED_ITEMS = Math.min(parsePositiveInt(process.env.SEO_MAX_FEED_ITEMS, 50), 100);
+const MAX_SITEMAP_ITEMS = Math.min(parsePositiveInt(process.env.SEO_MAX_SITEMAP_ITEMS, 5000), 5000);
 const SEO_CACHE_TTL_SECONDS = parsePositiveInt(process.env.CACHE_TTL_SEO_SECONDS, 600);
+const SEO_QUERY_MAX_TIME_MS = parsePositiveInt(process.env.SEO_QUERY_MAX_TIME_MS, 5000);
+const SEO_RATE_LIMIT_WINDOW_MS = parsePositiveInt(process.env.SEO_RATE_LIMIT_WINDOW_MS, 60 * 1000);
+const SEO_RATE_LIMIT_MAX = parsePositiveInt(process.env.SEO_RATE_LIMIT_MAX, 120);
+
+const seoRateLimitStore = createRedisRateLimitStore({
+  prefix: 'seo',
+  windowMs: SEO_RATE_LIMIT_WINDOW_MS,
+});
+const seoRateLimitFailOpen =
+  process.env.NODE_ENV !== 'production' && process.env.RATE_LIMIT_FAIL_OPEN === 'true';
+
+const getRetryAfterSeconds = (req, fallbackMs) => {
+  const resetTime = req.rateLimit?.resetTime;
+  const resetMs = resetTime instanceof Date ? resetTime.getTime() : Number(resetTime);
+  const resetSeconds = Number.isFinite(resetMs) ? Math.ceil((resetMs - Date.now()) / 1000) : 0;
+  return Math.max(1, resetSeconds || Math.ceil(fallbackMs / 1000));
+};
+
+const seoLimiter = rateLimit({
+  windowMs: SEO_RATE_LIMIT_WINDOW_MS,
+  max: SEO_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  passOnStoreError: Boolean(seoRateLimitStore) && seoRateLimitFailOpen,
+  ...(seoRateLimitStore ? { store: seoRateLimitStore } : {}),
+  handler: (req, res) => {
+    res.set('Retry-After', String(getRetryAfterSeconds(req, SEO_RATE_LIMIT_WINDOW_MS)));
+    return res.status(429).type('text/plain').send('Too many SEO requests. Please retry later.');
+  },
+});
 
 const xmlEscape = (value = '') =>
   String(value)
@@ -33,16 +65,35 @@ const toExcerpt = (text = '', max = 220) => {
   return `${compact.slice(0, max - 3).trim()}...`;
 };
 
+const isProductionRuntime = () => process.env.NODE_ENV === 'production';
+
+const normalizeBaseUrl = (value = '') => {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+    return `${parsed.protocol}//${parsed.host}`.replace(/\/+$/, '');
+  } catch (error) {
+    return '';
+  }
+};
+
 const resolvePublicBaseUrl = (req) => {
-  const fromEnv = process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL;
-  if (fromEnv) return fromEnv.replace(/\/+$/, '');
-  return `${req.protocol}://${req.get('host')}`.replace(/\/+$/, '');
+  const fromEnv = normalizeBaseUrl(process.env.PUBLIC_SITE_URL || process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL);
+  if (fromEnv) return fromEnv;
+  if (isProductionRuntime()) return '';
+  return normalizeBaseUrl(`${req.protocol}://${req.get('host')}`);
 };
 
 const buildContentUrl = (baseUrl, type, id) => `${baseUrl}/${type}/${id}`;
 
-router.get('/robots.txt', (req, res) => {
+router.get('/robots.txt', seoLimiter, (req, res) => {
   const baseUrl = resolvePublicBaseUrl(req);
+  if (!baseUrl) {
+    return res.status(503).type('text/plain').send('SEO base URL is not configured.');
+  }
   const body = [
     'User-agent: *',
     'Allow: /',
@@ -56,25 +107,32 @@ router.get('/robots.txt', (req, res) => {
   res.send(body);
 });
 
-router.get('/sitemap.xml', async (req, res) => {
+router.get('/sitemap.xml', seoLimiter, async (req, res) => {
   try {
-    const cachedSitemap = await getCache('seo:sitemap');
+    const baseUrl = resolvePublicBaseUrl(req);
+    if (!baseUrl) {
+      return res.status(503).type('text/plain').send('SEO base URL is not configured.');
+    }
+    const cacheKey = `seo:sitemap:${baseUrl}`;
+    const cachedSitemap = await getCache(cacheKey);
     if (cachedSitemap) {
       res.type('application/xml');
       return res.send(cachedSitemap);
     }
 
-    const baseUrl = resolvePublicBaseUrl(req);
-
     const [blogs, articles] = await Promise.all([
       Blog.find({ isDraft: false })
         .select('_id slug updatedAt createdAt')
         .sort({ updatedAt: -1 })
-        .limit(MAX_SITEMAP_ITEMS),
+        .limit(MAX_SITEMAP_ITEMS)
+        .maxTimeMS(SEO_QUERY_MAX_TIME_MS)
+        .lean(),
       Article.find({ isDraft: false })
         .select('_id slug updatedAt createdAt')
         .sort({ updatedAt: -1 })
         .limit(MAX_SITEMAP_ITEMS)
+        .maxTimeMS(SEO_QUERY_MAX_TIME_MS)
+        .lean()
     ]);
 
     const urls = [
@@ -112,7 +170,7 @@ ${urls
   .join('\n')}
 </urlset>`;
 
-    await setCache('seo:sitemap', xml, SEO_CACHE_TTL_SECONDS);
+    await setCache(cacheKey, xml, SEO_CACHE_TTL_SECONDS);
 
     res.type('application/xml');
     res.send(xml);
@@ -121,25 +179,32 @@ ${urls
   }
 });
 
-router.get('/feed.xml', async (req, res) => {
+router.get('/feed.xml', seoLimiter, async (req, res) => {
   try {
-    const cachedFeed = await getCache('seo:feed');
+    const baseUrl = resolvePublicBaseUrl(req);
+    if (!baseUrl) {
+      return res.status(503).type('text/plain').send('SEO base URL is not configured.');
+    }
+    const cacheKey = `seo:feed:${baseUrl}`;
+    const cachedFeed = await getCache(cacheKey);
     if (cachedFeed) {
       res.type('application/rss+xml');
       return res.send(cachedFeed);
     }
 
-    const baseUrl = resolvePublicBaseUrl(req);
-
     const [blogs, articles] = await Promise.all([
       Blog.find({ isDraft: false })
         .select('_id slug title content metaDescription createdAt updatedAt')
         .sort({ createdAt: -1 })
-        .limit(MAX_FEED_ITEMS),
+        .limit(MAX_FEED_ITEMS)
+        .maxTimeMS(SEO_QUERY_MAX_TIME_MS)
+        .lean(),
       Article.find({ isDraft: false })
         .select('_id slug title content metaDescription createdAt updatedAt')
         .sort({ createdAt: -1 })
         .limit(MAX_FEED_ITEMS)
+        .maxTimeMS(SEO_QUERY_MAX_TIME_MS)
+        .lean()
     ]);
 
     const items = [
@@ -186,7 +251,7 @@ ${items
   </channel>
 </rss>`;
 
-    await setCache('seo:feed', xml, SEO_CACHE_TTL_SECONDS);
+    await setCache(cacheKey, xml, SEO_CACHE_TTL_SECONDS);
 
     res.type('application/rss+xml');
     res.send(xml);

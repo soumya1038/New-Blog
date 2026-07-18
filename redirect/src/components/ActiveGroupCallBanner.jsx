@@ -1,5 +1,12 @@
 import React from 'react';
 import { FiPhone, FiVideo, FiUsers } from 'react-icons/fi';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
+
+const getParticipantAvatar = (participant) => {
+  const displayName = participant?.fullName || participant?.name || 'User';
+  return getSafeImageUrl(participant?.profileImage)
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random&color=fff`;
+};
 
 const ActiveGroupCallBanner = ({ participantCount, callType, onJoin, participants = [] }) => {
   const displayParticipants = participants.slice(0, 5);
@@ -29,9 +36,10 @@ const ActiveGroupCallBanner = ({ participantCount, callType, onJoin, participant
                 {displayParticipants.map((participant, idx) => (
                   <img
                     key={participant._id || idx}
-                    src={participant.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(participant.fullName)}&background=random&color=fff`}
-                    alt={participant.fullName}
+                    src={getParticipantAvatar(participant)}
+                    alt={participant.fullName || participant.name || 'User'}
                     className="w-6 h-6 rounded-full border-2 border-white"
+                    referrerPolicy="no-referrer"
                     title={participant.fullName}
                   />
                 ))}

@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+const GROUP_CALL_ROOM_NAME_MAX_LENGTH = Math.max(
+  1,
+  Number(process.env.GROUP_CALL_ROOM_NAME_MAX_LENGTH || process.env.SOCKET_ROOM_NAME_MAX_LENGTH) || 120
+);
+
 const groupCallSchema = new mongoose.Schema({
   group: {
     type: mongoose.Schema.Types.ObjectId,
@@ -8,7 +13,9 @@ const groupCallSchema = new mongoose.Schema({
   },
   roomName: {
     type: String,
-    required: true
+    required: true,
+    trim: true,
+    maxlength: GROUP_CALL_ROOM_NAME_MAX_LENGTH
   },
   callType: {
     type: String,
@@ -47,6 +54,15 @@ const groupCallSchema = new mongoose.Schema({
 });
 
 groupCallSchema.index({ group: 1, status: 1 });
+groupCallSchema.index({ roomName: 1, status: 1 });
 groupCallSchema.index({ startedAt: -1 });
+groupCallSchema.index(
+  { group: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: 'active' },
+    name: 'unique_active_group_call'
+  }
+);
 
 module.exports = mongoose.model('GroupCall', groupCallSchema);

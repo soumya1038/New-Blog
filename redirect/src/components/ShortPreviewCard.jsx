@@ -2,10 +2,13 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { FaHeart, FaRegHeart } from 'react-icons/fa';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const ShortPreviewCard = ({ short, index = 0 }) => {
   const [isLiked, setIsLiked] = React.useState(false);
   const [likes, setLikes] = React.useState(short?.likes?.length || 0);
+  const authorProfileImage = getSafeImageUrl(short?.author?.profileImage);
+  const shortImage = getSafeImageUrl(short?.image);
 
   const handleLike = (e) => {
     e.preventDefault();
@@ -28,14 +31,17 @@ const ShortPreviewCard = ({ short, index = 0 }) => {
         boxShadow: 'var(--short-shadow)',
         cursor: 'pointer',
         border: '1px solid rgba(34,197,94,0.1)',
+        contentVisibility: 'auto',
+        containIntrinsicSize: '300px',
       }}
     >
       <Link to={`/shorts/${short._id}`} style={{ textDecoration: 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
-          {short.author?.profileImage && (
+          {authorProfileImage && (
             <img
-              src={short.author.profileImage}
+              src={authorProfileImage}
               alt={short.author.username}
+              referrerPolicy="no-referrer"
               style={{ width: '36px', height: '36px', borderRadius: '50%', objectFit: 'cover', border: '2px solid var(--short-accent)' }}
             />
           )}
@@ -79,7 +85,7 @@ const ShortPreviewCard = ({ short, index = 0 }) => {
           {short.content}
         </p>
 
-        {short.image && (
+        {shortImage && (
           <div
             style={{
               width: '100%',
@@ -90,8 +96,11 @@ const ShortPreviewCard = ({ short, index = 0 }) => {
             }}
           >
             <img
-              src={short.image}
+              src={shortImage}
               alt="Short content"
+              loading={index < 2 ? 'eager' : 'lazy'}
+              decoding="async"
+              referrerPolicy="no-referrer"
               style={{
                 width: '100%',
                 height: '100%',

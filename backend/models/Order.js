@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const orderSchema = new mongoose.Schema({
   orderNumber: { type: String, unique: true },   // LEK-2026-0001
   buyerId:     { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  checkoutKeyHash: { type: String, select: false },
+  checkoutRequestHash: { type: String, select: false },
 
   items: [{
     productId:  { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
@@ -34,6 +36,11 @@ const orderSchema = new mongoose.Schema({
     razorpayPaymentId:  { type: String, default: '' },
     razorpaySignature:  { type: String, default: '' },
     paidAt:             { type: Date,   default: null },
+    reservationExpiresAt: { type: Date, default: null },
+    expiryCheckStartedAt: { type: Date, default: null },
+    expiredAt:            { type: Date, default: null },
+    lateRefundId:         { type: String, default: '' },
+    lateRefundInitiatedAt:{ type: Date, default: null },
   },
 
   shipping: {
@@ -60,6 +67,7 @@ const orderSchema = new mongoose.Schema({
   }],
 
   notes: { type: String, default: '' },
+  inventoryReleased: { type: Boolean, default: false },
 }, { timestamps: true });
 
 // ── Auto order number ──────────────────────────────────────────────────────────
@@ -127,7 +135,17 @@ orderSchema.index({ 'items.sellerId': 1, createdAt: -1 });
 orderSchema.index({ buyerId: 1, status: 1, createdAt: -1 });
 orderSchema.index({ 'items.sellerId': 1, status: 1, createdAt: -1 });
 orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ status: 1, 'payment.reservationExpiresAt': 1, 'payment.expiryCheckStartedAt': 1, _id: 1 });
+orderSchema.index({ status: 1, 'shipping.shippedAt': 1, _id: 1 });
 orderSchema.index({ 'payment.razorpayOrderId': 1 });
 orderSchema.index({ 'shipping.trackingNumber': 1 }, { sparse: true });
+orderSchema.index(
+  { buyerId: 1, checkoutKeyHash: 1 },
+  {
+    name: 'buyer_checkout_key_unique',
+    unique: true,
+    partialFilterExpression: { checkoutKeyHash: { $type: 'string' } },
+  }
+);
 
 module.exports = mongoose.model('Order', orderSchema);

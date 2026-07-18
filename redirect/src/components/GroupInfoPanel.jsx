@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FiX, FiUserPlus, FiUserMinus, FiLogOut, FiShield, FiEdit2, FiCamera, FiCheck, FiLink, FiCopy, FiRefreshCw } from 'react-icons/fi';
 import api from '../services/api';
 import ConfirmModal from './ConfirmModal';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const GroupInfoPanel = ({ group: initialGroup, currentUserId, onClose, onUpdate, onLeave }) => {
   const [group, setGroup] = useState(initialGroup);
@@ -42,7 +43,13 @@ const GroupInfoPanel = ({ group: initialGroup, currentUserId, onClose, onUpdate,
 
   const getUserAvatar = (user) => {
     const displayName = getUserDisplayName(user);
-    return user?.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0D8ABC&color=fff`;
+    return getSafeImageUrl(user?.profileImage)
+      || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=0D8ABC&color=fff`;
+  };
+
+  const getGroupAvatar = () => {
+    return getSafeImageUrl(group.icon)
+      || `https://ui-avatars.com/api/?name=${encodeURIComponent(group.name)}&background=0D8ABC&color=fff`;
   };
 
   const isUserAdmin = (userId) => {
@@ -303,9 +310,10 @@ const GroupInfoPanel = ({ group: initialGroup, currentUserId, onClose, onUpdate,
           <div className="flex flex-col items-center mb-6">
             <div className="relative mb-3">
               <img
-                src={group.icon || `https://ui-avatars.com/api/?name=${encodeURIComponent(group.name)}&background=0D8ABC&color=fff`}
+                src={getGroupAvatar()}
                 alt={group.name}
                 className="w-20 h-20 rounded-full object-cover"
+                referrerPolicy="no-referrer"
               />
               {canManage && (
                 <label className="absolute bottom-0 right-0 bg-blue-600 text-white p-2 rounded-full cursor-pointer hover:bg-blue-700 shadow-lg">
@@ -461,7 +469,7 @@ const GroupInfoPanel = ({ group: initialGroup, currentUserId, onClose, onUpdate,
                   {searchResults.map(user => (
                     <div key={user._id} className="flex items-center justify-between p-2 hover:bg-white rounded">
                       <div className="flex items-center gap-2">
-                        <img src={getUserAvatar(user)} alt={getUserDisplayName(user)} className="w-8 h-8 rounded-full" />
+                        <img src={getUserAvatar(user)} alt={getUserDisplayName(user)} className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
                         <span className="text-sm font-medium">{getUserDisplayName(user)}</span>
                       </div>
                       <button
@@ -494,6 +502,7 @@ const GroupInfoPanel = ({ group: initialGroup, currentUserId, onClose, onUpdate,
                         src={getUserAvatar(member)}
                         alt={getUserDisplayName(member)}
                         className="w-10 h-10 rounded-full object-cover"
+                        referrerPolicy="no-referrer"
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">
@@ -607,6 +616,7 @@ const GroupInfoPanel = ({ group: initialGroup, currentUserId, onClose, onUpdate,
                           src={getUserAvatar(member)}
                           alt={getUserDisplayName(member)}
                           className="w-10 h-10 rounded-full object-cover ml-3"
+                          referrerPolicy="no-referrer"
                         />
                         <div className="ml-3 flex-1">
                           <p className="text-sm font-medium text-gray-900">{getUserDisplayName(member)}</p>

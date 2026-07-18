@@ -1,10 +1,86 @@
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const mongoose = require('mongoose');
 const { enqueueEmailJob } = require('../jobs/queueService');
 const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
+const { logError } = require('../utils/safeErrorLog');
+
+const NOTIFICATION_LIST_DEFAULT_LIMIT = Math.max(1, Number(process.env.NOTIFICATION_LIST_DEFAULT_LIMIT) || 50);
+const NOTIFICATION_LIST_MAX_LIMIT = Math.max(1, Number(process.env.NOTIFICATION_LIST_MAX_LIMIT) || 100);
+const NOTIFICATION_LIST_MAX_PAGE = Math.max(1, Number(process.env.NOTIFICATION_LIST_MAX_PAGE) || 1000);
+const NOTIFICATION_RETENTION_HOURS = Math.min(
+  Math.max(1, Number(process.env.NOTIFICATION_RETENTION_HOURS) || 24),
+  24 * 90
+);
+const NOTIFICATION_CLEANUP_BATCH_LIMIT = Math.min(
+  Math.max(1, Number(process.env.NOTIFICATION_CLEANUP_BATCH_LIMIT) || 1000),
+  10000
+);
+const NOTIFICATION_QUERY_MAX_TIME_MS = Math.max(100, Number(process.env.NOTIFICATION_QUERY_MAX_TIME_MS) || 5000);
+const SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS = Math.max(
+  100,
+  Number(process.env.SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS) || 5000
+);
+let notificationCleanupRunning = false;
+
+const parseBoundedInt = (value, fallback, max) => {
+  const parsed = Number.parseInt(value, 10);
+  const safeValue = Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  return Math.min(safeValue, max);
+};
 
 const hasUserId = (ids = [], userId) =>
   Array.isArray(ids) && ids.some((id) => id.toString() === userId.toString());
+
+const getFollowParticipants = async (currentUserId, targetUserId) => {
+  const [currentUser, targetUser] = await Promise.all([
+    User.findById(currentUserId)
+      .select('following blockedUsers')
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS),
+    User.findById(targetUserId)
+      .select('followers blockedUsers email username emailNotifications')
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS)
+  ]);
+
+  return { currentUser, targetUser };
+};
+
+const rejectInvalidFollowTarget = (res, { currentUser, targetUser, currentUserId, targetUserId }) => {
+  if (!currentUser) {
+    res.status(404).json({ success: false, message: 'Current user not found' });
+    return true;
+  }
+
+  if (!targetUser) {
+    res.status(404).json({ success: false, message: 'User not found' });
+    return true;
+  }
+
+  if (hasUserId(currentUser.blockedUsers, targetUserId)) {
+    res.status(403).json({ success: false, message: 'Unblock this user before following' });
+    return true;
+  }
+
+  if (hasUserId(targetUser.blockedUsers, currentUserId)) {
+    res.status(403).json({ success: false, message: 'Cannot follow this user' });
+    return true;
+  }
+
+  return false;
+};
+
+const getFollowerCount = async (userId) => {
+  const user = await User.findById(userId)
+    .select('followers')
+    .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS)
+    .lean();
+  return Array.isArray(user?.followers) ? user.followers.length : 0;
+};
+
+const sendSocialError = (res, error, message) => {
+  logError(message, error);
+  return res.status(500).json({ success: false, message });
+};
 
 const queueNewFollowerNotification = async (req, userToFollow, userId) => {
   await Notification.create({
@@ -27,7 +103,7 @@ const queueNewFollowerNotification = async (req, userToFollow, userId) => {
         jobId: `new-follower:${userId}:${req.user._id}`
       }
     ).catch((error) => {
-      console.error('Failed to queue new follower email:', error?.message || error);
+      logError('Failed to queue new follower email:', error);
     });
   }
 
@@ -44,41 +120,60 @@ exports.toggleFollow = async (req, res) => {
   try {
     const { userId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+
     if (userId === req.user._id.toString()) {
       return res.status(400).json({ success: false, message: 'Cannot follow yourself' });
     }
 
-    const userToFollow = await User.findById(userId);
-    if (!userToFollow) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
+    const { currentUser, targetUser: userToFollow } = await getFollowParticipants(req.user._id, userId);
+    if (rejectInvalidFollowTarget(res, {
+      currentUser,
+      targetUser: userToFollow,
+      currentUserId: req.user._id,
+      targetUserId: userId
+    })) return;
 
-    const currentUser = await User.findById(req.user._id);
     const isFollowing = hasUserId(currentUser.following, userId);
 
     if (isFollowing) {
-      // Unfollow
-      currentUser.following = currentUser.following.filter(id => id.toString() !== userId);
-      userToFollow.followers = userToFollow.followers.filter(id => id.toString() !== req.user._id.toString());
-      
-      await currentUser.save();
-      await userToFollow.save();
+      await Promise.all([
+        User.updateOne({ _id: req.user._id }, { $pull: { following: userId } })
+          .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS),
+        User.updateOne({ _id: userId }, { $pull: { followers: req.user._id } })
+          .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS)
+      ]);
 
       res.json({ success: true, following: false });
     } else {
-      // Follow
-      currentUser.following.push(userId);
-      userToFollow.followers.push(req.user._id);
-      
-      await currentUser.save();
-      await userToFollow.save();
-
-      await queueNewFollowerNotification(req, userToFollow, userId);
+      const followResult = await User.updateOne(
+        { _id: req.user._id, following: { $ne: userId }, blockedUsers: { $ne: userId } },
+        { $addToSet: { following: userId } }
+      ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+      if (followResult.modifiedCount > 0) {
+        const targetResult = await User.updateOne(
+          { _id: userId, blockedUsers: { $ne: req.user._id } },
+          { $addToSet: { followers: req.user._id } }
+        ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+        if (targetResult.matchedCount > 0) {
+          if (targetResult.modifiedCount > 0) {
+            await queueNewFollowerNotification(req, userToFollow, userId);
+          }
+        } else {
+          await User.updateOne(
+            { _id: req.user._id },
+            { $pull: { following: userId } }
+          ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+          return res.status(409).json({ success: false, message: 'Cannot follow this user' });
+        }
+      }
 
       res.json({ success: true, following: true });
     }
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendSocialError(res, error, 'Failed to update follow status');
   }
 };
 
@@ -87,58 +182,116 @@ exports.followOnly = async (req, res) => {
   try {
     const { userId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+
     if (userId === req.user._id.toString()) {
       return res.status(400).json({ success: false, message: 'Cannot follow yourself' });
     }
 
-    const userToFollow = await User.findById(userId);
-    if (!userToFollow) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
+    const { currentUser, targetUser: userToFollow } = await getFollowParticipants(req.user._id, userId);
+    if (rejectInvalidFollowTarget(res, {
+      currentUser,
+      targetUser: userToFollow,
+      currentUserId: req.user._id,
+      targetUserId: userId
+    })) return;
 
-    const currentUser = await User.findById(req.user._id);
     const isFollowing = hasUserId(currentUser.following, userId);
 
     if (isFollowing) {
+      const repairResult = await User.updateOne(
+        { _id: userId, blockedUsers: { $ne: req.user._id } },
+        { $addToSet: { followers: req.user._id } }
+      ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+      if (repairResult.matchedCount === 0) {
+        await User.updateOne(
+          { _id: req.user._id },
+          { $pull: { following: userId } }
+        ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+        return res.status(409).json({ success: false, message: 'Cannot follow this user' });
+      }
+      const followerCount = await getFollowerCount(userId);
       return res.json({
         success: true,
         following: true,
         alreadyFollowing: true,
-        followerCount: Array.isArray(userToFollow.followers) ? userToFollow.followers.length : 0,
+        followerCount,
       });
     }
 
-    currentUser.following.push(userId);
-    if (!hasUserId(userToFollow.followers, req.user._id)) {
-      userToFollow.followers.push(req.user._id);
-    }
+    const followResult = await User.updateOne(
+      { _id: req.user._id, following: { $ne: userId }, blockedUsers: { $ne: userId } },
+      { $addToSet: { following: userId } }
+    ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
 
-    await currentUser.save();
-    await userToFollow.save();
-    await queueNewFollowerNotification(req, userToFollow, userId);
+    if (followResult.modifiedCount > 0) {
+      const targetResult = await User.updateOne(
+        { _id: userId, blockedUsers: { $ne: req.user._id } },
+        { $addToSet: { followers: req.user._id } }
+      ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+      if (targetResult.matchedCount > 0) {
+        if (targetResult.modifiedCount > 0) {
+          await queueNewFollowerNotification(req, userToFollow, userId);
+        }
+      } else {
+        await User.updateOne(
+          { _id: req.user._id },
+          { $pull: { following: userId } }
+        ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+        return res.status(409).json({ success: false, message: 'Cannot follow this user' });
+      }
+    }
+    const followerCount = await getFollowerCount(userId);
 
     res.json({
       success: true,
       following: true,
-      alreadyFollowing: false,
-      followerCount: Array.isArray(userToFollow.followers) ? userToFollow.followers.length : 0,
+      alreadyFollowing: followResult.modifiedCount === 0,
+      followerCount,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendSocialError(res, error, 'Failed to follow user');
   }
 };
 
 // Get notifications
 exports.getNotifications = async (req, res) => {
   try {
-    const notifications = await Notification.find({ recipient: req.user._id })
-      .populate('sender', 'username profileImage')
-      .sort({ createdAt: -1 })
-      .limit(50);
+    const limit = parseBoundedInt(
+      req.query.limit,
+      NOTIFICATION_LIST_DEFAULT_LIMIT,
+      NOTIFICATION_LIST_MAX_LIMIT
+    );
+    const page = parseBoundedInt(req.query.page, 1, NOTIFICATION_LIST_MAX_PAGE);
+    const skip = (page - 1) * limit;
+    const filter = { recipient: req.user._id };
 
-    res.json({ success: true, notifications });
+    const [notifications, total] = await Promise.all([
+      Notification.find(filter)
+        .populate('sender', 'username profileImage')
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .maxTimeMS(NOTIFICATION_QUERY_MAX_TIME_MS)
+        .lean(),
+      Notification.countDocuments(filter).maxTimeMS(NOTIFICATION_QUERY_MAX_TIME_MS)
+    ]);
+
+    res.json({
+      success: true,
+      notifications,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: page * limit < total
+      }
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendSocialError(res, error, 'Failed to fetch notifications');
   }
 };
 
@@ -148,11 +301,11 @@ exports.getUnreadCount = async (req, res) => {
     const unreadCount = await Notification.countDocuments({ 
       recipient: req.user._id, 
       isRead: false 
-    });
+    }).maxTimeMS(NOTIFICATION_QUERY_MAX_TIME_MS);
 
     res.json({ success: true, unreadCount });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendSocialError(res, error, 'Failed to fetch unread count');
   }
 };
 
@@ -160,22 +313,25 @@ exports.getUnreadCount = async (req, res) => {
 exports.markAsRead = async (req, res) => {
   try {
     const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid notification id' });
+    }
     
-    const notification = await Notification.findById(id);
+    const notification = await Notification.findOneAndUpdate(
+      { _id: id, recipient: req.user._id },
+      { $set: { isRead: true } },
+      { new: true }
+    )
+      .populate('sender', 'username profileImage')
+      .maxTimeMS(NOTIFICATION_QUERY_MAX_TIME_MS);
     if (!notification) {
       return res.status(404).json({ success: false, message: 'Notification not found' });
     }
 
-    if (notification.recipient.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
-
-    notification.isRead = true;
-    await notification.save();
-
     res.json({ success: true, notification });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendSocialError(res, error, 'Failed to mark notification as read');
   }
 };
 
@@ -185,22 +341,23 @@ exports.markAllAsRead = async (req, res) => {
     await Notification.updateMany(
       { recipient: req.user._id, isRead: false },
       { isRead: true }
-    );
+    ).maxTimeMS(NOTIFICATION_QUERY_MAX_TIME_MS);
 
     res.json({ success: true, message: 'All notifications marked as read' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendSocialError(res, error, 'Failed to mark notifications as read');
   }
 };
 
 // Clear all notifications
 exports.clearNotifications = async (req, res) => {
   try {
-    await Notification.deleteMany({ recipient: req.user._id });
+    await Notification.deleteMany({ recipient: req.user._id })
+      .maxTimeMS(NOTIFICATION_QUERY_MAX_TIME_MS);
 
     res.json({ success: true, message: 'All notifications cleared' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendSocialError(res, error, 'Failed to clear notifications');
   }
 };
 
@@ -208,14 +365,19 @@ exports.clearNotifications = async (req, res) => {
 exports.deleteMessageNotifications = async (req, res) => {
   try {
     const { senderId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(senderId)) {
+      return res.status(400).json({ success: false, message: 'Invalid sender id' });
+    }
+
     await Notification.deleteMany({ 
       recipient: req.user._id, 
       sender: senderId, 
       type: 'message' 
-    });
+    }).maxTimeMS(NOTIFICATION_QUERY_MAX_TIME_MS);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendSocialError(res, error, 'Failed to delete message notifications');
   }
 };
 
@@ -223,32 +385,47 @@ exports.deleteMessageNotifications = async (req, res) => {
 exports.deleteNotification = async (req, res) => {
   try {
     const { id } = req.params;
-    const notification = await Notification.findById(id);
-    
-    if (!notification) {
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid notification id' });
+    }
+
+    const result = await Notification.deleteOne({ _id: id, recipient: req.user._id })
+      .maxTimeMS(NOTIFICATION_QUERY_MAX_TIME_MS);
+    if (result.deletedCount === 0) {
       return res.status(404).json({ success: false, message: 'Notification not found' });
     }
-    
-    if (notification.recipient.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ success: false, message: 'Not authorized' });
-    }
-    
-    await Notification.findByIdAndDelete(id);
+
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendSocialError(res, error, 'Failed to delete notification');
   }
 };
 
-// Auto-cleanup old notifications (24 hours)
+// Auto-cleanup old notifications in bounded batches.
 exports.cleanupOldNotifications = async () => {
+  if (notificationCleanupRunning) return;
+  notificationCleanupRunning = true;
   try {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const result = await Notification.deleteMany({ 
-      createdAt: { $lt: twentyFourHoursAgo } 
-    });
-    console.log(`Cleaned up ${result.deletedCount} old notifications`);
+    const retentionCutoff = new Date(Date.now() - NOTIFICATION_RETENTION_HOURS * 60 * 60 * 1000);
+    const staleNotifications = await Notification.find({
+      createdAt: { $lt: retentionCutoff }
+    })
+      .select('_id')
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(NOTIFICATION_CLEANUP_BATCH_LIMIT)
+      .maxTimeMS(NOTIFICATION_QUERY_MAX_TIME_MS)
+      .lean();
+
+    if (staleNotifications.length === 0) return;
+
+    const result = await Notification.deleteMany({
+      _id: { $in: staleNotifications.map((notification) => notification._id) }
+    }).maxTimeMS(NOTIFICATION_QUERY_MAX_TIME_MS);
+    console.log(`[notifications] Cleaned up ${result.deletedCount} old notifications`);
   } catch (error) {
-    console.error('Error cleaning up notifications:', error);
+    logError('Error cleaning up notifications:', error);
+  } finally {
+    notificationCleanupRunning = false;
   }
 };

@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
+import { buildSensitiveActionHeaders } from '../utils/twoFactorFlow';
 
 const emptyProfile = {
   fullName: '',
@@ -138,9 +139,18 @@ const useCurrentProfileSummary = () => {
     };
   }, [loadProfileSummary]);
 
-  const updateProfile = useCallback(async (updates) => {
-    const payload = { ...profile, ...updates };
-    const { data } = await api.put('/users/profile', payload);
+  const updateProfile = useCallback(async (updates, actionTokens = {}) => {
+    const twoFactorToken = typeof actionTokens === 'string' ? actionTokens : actionTokens.twoFactorToken || '';
+    const sensitiveActionToken = typeof actionTokens === 'object' ? actionTokens.sensitiveActionToken || '' : '';
+    const payload = {
+      ...profile,
+      ...updates,
+      ...(twoFactorToken ? { twoFactorToken } : {}),
+      ...(sensitiveActionToken ? { sensitiveActionToken } : {}),
+    };
+    const { data } = await api.put('/users/profile', payload, {
+      headers: buildSensitiveActionHeaders({ sensitiveActionToken, twoFactorToken }),
+    });
     const nextProfile = data?.user || payload;
     setProfile(nextProfile);
     setUser((currentUser) => (

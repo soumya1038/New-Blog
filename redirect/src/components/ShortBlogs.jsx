@@ -5,6 +5,7 @@ import { BsThreeDotsVertical, BsFillPlayFill } from 'react-icons/bs';
 import { FiEye } from 'react-icons/fi';
 import { GrView } from 'react-icons/gr';
 import { PiMonitorPlayDuotone } from 'react-icons/pi';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const ShortBlogs = ({ blogs = [], onClose }) => {
   const navigate = useNavigate();
@@ -64,9 +65,10 @@ const ShortBlogs = ({ blogs = [], onClose }) => {
   };
 
   const getBackgroundStyle = (blog, index) => {
-    if (blog.coverImage) {
+    const safeCoverImage = getSafeImageUrl(blog.coverImage);
+    if (safeCoverImage) {
       return {
-        backgroundImage: `url(${blog.coverImage})`,
+        backgroundImage: `url("${safeCoverImage}")`,
         backgroundSize: 'cover',
         backgroundPosition: 'center'
       };

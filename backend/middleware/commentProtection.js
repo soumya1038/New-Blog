@@ -1,34 +1,45 @@
-const rateLimit = require('express-rate-limit');
+const crypto = require('crypto');
+const {
+  createRedisBackedRateLimiter,
+  getUserOrIpRateLimitKey,
+} = require('../utils/rateLimiterFactory');
 
 const toNumber = (value, fallback) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-const createCommentLimiter = rateLimit({
+const createCommentLimiter = createRedisBackedRateLimiter({
   windowMs: toNumber(process.env.COMMENT_RATE_LIMIT_WINDOW_MS, 60 * 1000),
   max: toNumber(process.env.COMMENT_RATE_LIMIT_MAX, 6),
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
+  prefix: 'comment-create',
+  keyGenerator: getUserOrIpRateLimitKey,
+  message: 'Too many comments in a short time. Please slow down and try again.',
+  responseBuilder: ({ retryAfterSeconds }) => ({
     success: false,
-    message: 'Too many comments in a short time. Please slow down and try again.'
-  }
+    message: 'Too many comments in a short time. Please slow down and try again.',
+    retryAfterSeconds,
+  }),
 });
 
 const COMMENT_MAX_LENGTH = toNumber(process.env.COMMENT_MAX_LENGTH, 4000);
 const COMMENT_MAX_LINKS = toNumber(process.env.COMMENT_MAX_LINKS, 4);
 const DUPLICATE_WINDOW_MS = toNumber(process.env.COMMENT_DUPLICATE_WINDOW_MS, 2 * 60 * 1000);
+const DUPLICATE_CACHE_MAX_ENTRIES = toNumber(process.env.COMMENT_DUPLICATE_CACHE_MAX_ENTRIES, 5000);
 
 const duplicateMap = new Map();
 
 const cleanupDuplicateMap = () => {
-  if (duplicateMap.size < 1000) return;
   const now = Date.now();
   for (const [key, timestamp] of duplicateMap.entries()) {
     if (now - timestamp > DUPLICATE_WINDOW_MS) {
       duplicateMap.delete(key);
     }
+  }
+  while (duplicateMap.size > DUPLICATE_CACHE_MAX_ENTRIES) {
+    const oldestKey = duplicateMap.keys().next().value;
+    if (!oldestKey) break;
+    duplicateMap.delete(oldestKey);
   }
 };
 
@@ -44,7 +55,8 @@ const normalizedDuplicateKey = (userId, contentId, content) => {
     .replace(/[^\w\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  return `${userId}:${contentId}:${compact}`;
+  const contentHash = crypto.createHash('sha256').update(compact).digest('hex').slice(0, 32);
+  return `${userId}:${contentId}:${contentHash}`;
 };
 
 const looksLikeSpam = (value) => {

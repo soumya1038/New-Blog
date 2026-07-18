@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaChevronDown, FaChevronUp, FaExternalLinkAlt } from 'react-icons/fa';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const compactPrice = (product) => {
   if (product?.isFree) return 'Free';
@@ -40,7 +41,13 @@ const normalizeProductTags = ({ products, externalLinks, content }) => {
 
   const propExternalLinks = Array.isArray(externalLinks) ? externalLinks : [];
   const normalizedLinks = (propExternalLinks.length ? propExternalLinks : content?.externalProductLinks || [])
-    .filter(link => link && typeof link === 'object' && link.url);
+    .filter(link => link && typeof link === 'object' && link.url)
+    .map((link) => ({
+      ...link,
+      url: getSafeHttpUrl(link.url),
+      thumbnail: getSafeImageUrl(link.thumbnail),
+    }))
+    .filter(link => link.url);
 
   return {
     products: normalizedProducts,
@@ -58,7 +65,7 @@ const ProductTagOverlay = ({ products = [], externalLinks = [], content = null, 
   );
   const total = linkedProducts.length + links.length + unresolvedCount;
   const firstProduct = linkedProducts[0];
-  const firstImage = firstProduct?.transparentThumbnail || firstProduct?.thumbnail || links[0]?.thumbnail;
+  const firstImage = getSafeImageUrl(firstProduct?.transparentThumbnail || firstProduct?.thumbnail || links[0]?.thumbnail);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -94,6 +101,7 @@ const ProductTagOverlay = ({ products = [], externalLinks = [], content = null, 
               filter: 'drop-shadow(1px 0 0 #fff) drop-shadow(-1px 0 0 #fff) drop-shadow(0 1px 0 #fff) drop-shadow(0 -1px 0 #fff) drop-shadow(0 2px 0 #fff) drop-shadow(0 12px 18px rgba(0,0,0,0.32))',
             }}
             loading="lazy"
+            referrerPolicy="no-referrer"
           />
         )}
 
@@ -120,23 +128,27 @@ const ProductTagOverlay = ({ products = [], externalLinks = [], content = null, 
           onClick={(event) => event.stopPropagation()}
         >
           <div className="max-h-80 overflow-y-auto p-2">
-            {linkedProducts.map(product => (
-              <Link
-                key={product._id || product.slug}
-                to={`/marketplace/${product.slug || product._id}`}
-                className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                <img
-                  src={product.transparentThumbnail || product.thumbnail || '/image/lekhon_url.png'}
-                  alt={product.title}
-                  className="h-11 w-11 rounded-md object-cover bg-gray-100 dark:bg-gray-800"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold">{product.title}</span>
-                  <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{compactPrice(product)}</span>
-                </span>
-              </Link>
-            ))}
+            {linkedProducts.map(product => {
+              const safeProductImage = getSafeImageUrl(product.transparentThumbnail || product.thumbnail) || '/image/lekhon_url.png';
+              return (
+                <Link
+                  key={product._id || product.slug}
+                  to={`/marketplace/${product.slug || product._id}`}
+                  className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <img
+                    src={safeProductImage}
+                    alt={product.title}
+                    className="h-11 w-11 rounded-md object-cover bg-gray-100 dark:bg-gray-800"
+                    referrerPolicy="no-referrer"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold">{product.title}</span>
+                    <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{compactPrice(product)}</span>
+                  </span>
+                </Link>
+              );
+            })}
 
             {links.map((link, index) => (
               <a
@@ -147,7 +159,7 @@ const ProductTagOverlay = ({ products = [], externalLinks = [], content = null, 
                 className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-800"
               >
                 {link.thumbnail ? (
-                  <img src={link.thumbnail} alt={link.title} className="h-11 w-11 rounded-md object-cover bg-gray-100 dark:bg-gray-800" />
+                  <img src={link.thumbnail} alt={link.title} className="h-11 w-11 rounded-md object-cover bg-gray-100 dark:bg-gray-800" referrerPolicy="no-referrer" />
                 ) : (
                   <span className="flex h-11 w-11 items-center justify-center rounded-md bg-gray-100 text-gray-500 dark:bg-gray-800">
                     <FaExternalLinkAlt />

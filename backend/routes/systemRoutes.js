@@ -1,15 +1,40 @@
 const express = require('express');
 const axios = require('axios');
+const { adminOrCoAdminAuth } = require('../middleware/auth');
+const {
+  createRedisBackedRateLimiter,
+  getUserOrIpRateLimitKey,
+  toPositiveInt,
+} = require('../utils/rateLimiterFactory');
+const {
+  getBackgroundRemovalProvider,
+  getBackgroundRemovalServiceBaseUrl,
+  getBackgroundRemovalTimeoutMs,
+  getRemoveBgAccountUrl,
+} = require('../utils/backgroundRemovalConfig');
 
 const router = express.Router();
 
-router.get('/bg-remover/warmup', async (req, res) => {
-  const provider = String(process.env.BACKGROUND_REMOVAL_PROVIDER || 'removebg').toLowerCase();
-  const timeout = Number(process.env.REMOVE_BG_TIMEOUT_MS || process.env.BG_REMOVER_TIMEOUT_MS) || 45000;
+const bgRemoverWarmupLimiter = createRedisBackedRateLimiter({
+  windowMs: toPositiveInt(process.env.BG_REMOVER_WARMUP_RATE_LIMIT_WINDOW_MS, 10 * 60 * 1000),
+  max: toPositiveInt(process.env.BG_REMOVER_WARMUP_RATE_LIMIT_MAX, 3),
+  prefix: 'bg-remover-warmup',
+  keyGenerator: getUserOrIpRateLimitKey,
+  message: 'Too many background-remover warmup checks. Please wait and try again.',
+  responseBuilder: ({ retryAfterSeconds }) => ({
+    success: false,
+    status: 'rate_limited',
+    retryAfterSeconds,
+  }),
+});
+
+router.get('/bg-remover/warmup', adminOrCoAdminAuth, bgRemoverWarmupLimiter, async (req, res) => {
+  const provider = getBackgroundRemovalProvider();
+  const timeout = getBackgroundRemovalTimeoutMs();
 
   if (provider === 'removebg') {
     const apiKey = process.env.REMOVE_BG_API_KEY;
-    const accountUrl = process.env.REMOVE_BG_ACCOUNT_URL || 'https://api.remove.bg/v1.0/account';
+    const accountUrl = getRemoveBgAccountUrl();
 
     if (!apiKey) {
       return res.json({ success: false, status: 'not_configured' });
@@ -26,7 +51,7 @@ router.get('/bg-remover/warmup', async (req, res) => {
     }
   }
 
-  const serviceUrl = String(process.env.BG_REMOVER_URL || '').replace(/\/+$/, '');
+  const serviceUrl = getBackgroundRemovalServiceBaseUrl();
   const apiKey = process.env.BG_REMOVER_API_KEY;
 
   if (!serviceUrl || !apiKey) {

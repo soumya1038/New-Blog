@@ -3,6 +3,20 @@ import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiMaximize2, FiX, FiUsers, FiRota
 import { LiveKitRoom, useParticipants, useLocalParticipant, useTracks, RoomAudioRenderer, VideoTrack } from '@livekit/components-react';
 import { Track } from 'livekit-client';
 import { useGroupCall } from '../context/GroupCallContext';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
+
+const parseParticipantMetadata = (metadata) => {
+  try {
+    return metadata ? JSON.parse(metadata) : {};
+  } catch {
+    return {};
+  }
+};
+
+const getParticipantAvatar = (avatar, name) => (
+  getSafeImageUrl(avatar)
+  || `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=random&color=fff`
+);
 
 const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRotate, onToggleAudio, onToggleVideo, onRotateCamera }) => {
   const participants = useParticipants();
@@ -12,22 +26,43 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
   
   // Track speaking state
   useEffect(() => {
-    participants.forEach(p => {
-      if (p.identity !== localParticipant?.identity) {
-        p.on('isSpeakingChanged', (speaking) => {
-          if (speaking) setActiveSpeaker(p);
-        });
-      }
+    const subscriptions = [];
+
+    participants.forEach((participant) => {
+      if (participant.identity === localParticipant?.identity) return;
+
+      const handleSpeakingChanged = (speaking) => {
+        if (speaking) setActiveSpeaker(participant);
+      };
+
+      participant.on?.('isSpeakingChanged', handleSpeakingChanged);
+      subscriptions.push(() => {
+        if (typeof participant.off === 'function') {
+          participant.off('isSpeakingChanged', handleSpeakingChanged);
+        } else if (typeof participant.removeListener === 'function') {
+          participant.removeListener('isSpeakingChanged', handleSpeakingChanged);
+        }
+      });
     });
-  }, [participants, localParticipant]);
+
+    return () => {
+      subscriptions.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [participants, localParticipant?.identity]);
 
   // Get remote participant to display (active speaker or first remote)
   const displayParticipant = activeSpeaker || participants.find(p => p.identity !== localParticipant?.identity);
   const localCameraTrack = allTracks.find(t => t.participant.identity === localParticipant?.identity);
   const remoteCameraTrack = displayParticipant ? allTracks.find(t => t.participant.identity === displayParticipant.identity) : null;
   
-  const remoteMetadata = displayParticipant?.metadata ? JSON.parse(displayParticipant.metadata) : {};
-  const localMetadata = localParticipant?.metadata ? JSON.parse(localParticipant.metadata) : {};
+  const remoteMetadata = parseParticipantMetadata(displayParticipant?.metadata);
+  const localMetadata = parseParticipantMetadata(localParticipant?.metadata);
+
+  useEffect(() => {
+    if (activeSpeaker && !participants.some((participant) => participant.identity === activeSpeaker.identity)) {
+      setActiveSpeaker(null);
+    }
+  }, [activeSpeaker, participants]);
 
   return (
     <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-2xl overflow-hidden w-[220px] md:w-[240px]">
@@ -61,9 +96,10 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
         ) : displayParticipant ? (
           <div className="w-full h-full flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
             <img
-              src={remoteMetadata.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayParticipant.name || 'User')}&background=random&color=fff`}
+              src={getParticipantAvatar(remoteMetadata.avatar, displayParticipant.name)}
               alt={displayParticipant.name}
               className="w-20 h-20 rounded-full object-cover border-2 border-white shadow-lg"
+              referrerPolicy="no-referrer"
             />
           </div>
         ) : (
@@ -83,9 +119,10 @@ const MinimizedContent = ({ onOpen, onEnd, isMicEnabled, isCameraEnabled, showRo
         ) : localParticipant ? (
           <div className="absolute bottom-2 right-2 w-16 h-16 rounded-lg overflow-hidden border-2 border-white/50 shadow-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
             <img
-              src={localMetadata.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(localParticipant.name || 'User')}&background=random&color=fff`}
+              src={getParticipantAvatar(localMetadata.avatar, localParticipant.name)}
               alt={localParticipant.name}
               className="w-12 h-12 rounded-full object-cover"
+              referrerPolicy="no-referrer"
             />
           </div>
         ) : null}

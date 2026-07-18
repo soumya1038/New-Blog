@@ -17,6 +17,7 @@ const runOnce = async ({
   resourceType = '',
   resourceId = '',
   lockMs = DEFAULT_LOCK_MS,
+  retentionMs = 0,
   handler
 }) => {
   if (!key) throw new Error('Idempotency key is required.');
@@ -25,6 +26,7 @@ const runOnce = async ({
 
   const now = new Date();
   const lockedUntil = new Date(now.getTime() + lockMs);
+  const expiresAt = Number(retentionMs) > 0 ? new Date(now.getTime() + Number(retentionMs)) : null;
   let marker = null;
 
   try {
@@ -34,7 +36,8 @@ const runOnce = async ({
       resourceType,
       resourceId,
       status: 'processing',
-      lockedUntil
+      lockedUntil,
+      expiresAt
     });
   } catch (error) {
     if (!isDuplicateKeyError(error)) throw error;
@@ -74,7 +77,8 @@ const runOnce = async ({
           resourceId,
           status: 'processing',
           lockedUntil,
-          error: ''
+          error: '',
+          expiresAt
         },
         $unset: { failedAt: '' }
       },
@@ -100,7 +104,8 @@ const runOnce = async ({
           response: response || {},
           completedAt: new Date(),
           lockedUntil: null,
-          error: ''
+          error: '',
+          expiresAt
         }
       },
       { new: true }
@@ -118,7 +123,8 @@ const runOnce = async ({
         status: 'failed',
         error: errorToMessage(error),
         failedAt: new Date(),
-        lockedUntil: null
+        lockedUntil: null,
+        expiresAt
       }
     });
     throw error;

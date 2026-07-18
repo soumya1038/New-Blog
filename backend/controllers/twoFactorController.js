@@ -2,6 +2,7 @@ const User = require('../models/User');
 const TwoFactorChallenge = require('../models/TwoFactorChallenge');
 const { encrypt, decrypt } = require('../utils/encryption');
 const { sendSms } = require('../utils/mailService');
+const { getActiveVerificationCode } = require('../utils/verificationCodes');
 const {
   ACTION_LABELS,
   CHALLENGE_TTL_MS,
@@ -21,6 +22,26 @@ const {
   normalizePhone,
   verifyTotp,
 } = require('../utils/twoFactor');
+const { logError } = require('../utils/safeErrorLog');
+
+const TWO_FACTOR_SERVER_ERROR_MESSAGE = 'Unable to process two-factor request';
+
+const getSafeErrorStatus = (error) => {
+  const status = Number(error?.statusCode || error?.status);
+  return Number.isInteger(status) && status >= 400 && status < 500 ? status : 500;
+};
+
+const sendTwoFactorError = (res, error, fallbackMessage = TWO_FACTOR_SERVER_ERROR_MESSAGE) => {
+  const status = getSafeErrorStatus(error);
+  if (status >= 500) {
+    logError('Two-factor request failed:', error);
+  }
+
+  return res.status(status).json({
+    success: false,
+    message: status < 500 && error?.message ? error.message : fallbackMessage,
+  });
+};
 
 const getSelectedMethod = (user, requestedMethod) => {
   const status = buildTwoFactorStatus(user);
@@ -108,7 +129,7 @@ const findActiveChallenge = async ({ userId, challengeId, action }) =>
     action,
     consumedAt: null,
     expiresAt: { $gt: new Date() },
-  });
+  }).select('+codeHash +metadata');
 
 const rejectChallengeAttempt = async (challenge, message = 'Invalid verification code') => {
   challenge.attempts += 1;
@@ -146,7 +167,7 @@ exports.getTwoFactorStatus = async (req, res) => {
       twoFactor: buildTwoFactorStatus(user),
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };
 
@@ -182,7 +203,7 @@ exports.startAuthenticatorSetup = async (req, res) => {
       twoFactor: buildTwoFactorStatus(user),
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };
 
@@ -218,7 +239,7 @@ exports.verifyAuthenticatorSetup = async (req, res) => {
       twoFactor: buildTwoFactorStatus(user),
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };
 
@@ -254,7 +275,7 @@ exports.startSmsSetup = async (req, res) => {
       message: 'Verification code sent by SMS',
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };
 
@@ -302,7 +323,7 @@ exports.verifySmsSetup = async (req, res) => {
       twoFactor: buildTwoFactorStatus(user),
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };
 
@@ -326,7 +347,7 @@ exports.setPreferredTwoFactorMethod = async (req, res) => {
       twoFactor: buildTwoFactorStatus(user),
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };
 
@@ -361,7 +382,7 @@ exports.disableTwoFactor = async (req, res) => {
       twoFactor: buildTwoFactorStatus(user),
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };
 
@@ -390,7 +411,7 @@ exports.createTwoFactorChallenge = async (req, res) => {
       ...result.payload,
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };
 
@@ -423,7 +444,7 @@ exports.verifyTwoFactorChallenge = async (req, res) => {
       message: 'Two-factor verification complete',
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };
 
@@ -434,15 +455,21 @@ const getForgotPasswordSessionUser = async ({ username, email }) => {
     throw error;
   }
 
-  const verificationSession = global.forgotPasswordCodes?.[email];
-  const changeSession = global.forgotPasswordChangeCodes?.[email];
+  const verificationSession = await getActiveVerificationCode({
+    email,
+    type: 'forgotPassword',
+    username,
+    requireVerified: true,
+  });
+  const changeSession = await getActiveVerificationCode({
+    email,
+    type: 'forgotPasswordChange',
+    username,
+  });
 
   if (
     !verificationSession ||
-    !verificationSession.verified ||
-    verificationSession.username !== username ||
-    !changeSession ||
-    changeSession.username !== username
+    !changeSession
   ) {
     const error = new Error('Verify your email and request the password change first');
     error.statusCode = 400;
@@ -473,7 +500,7 @@ exports.createForgotPasswordTwoFactorChallenge = async (req, res) => {
       ...result.payload,
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };
 
@@ -505,6 +532,6 @@ exports.verifyForgotPasswordTwoFactorChallenge = async (req, res) => {
       message: 'Two-factor verification complete',
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    return sendTwoFactorError(res, error);
   }
 };

@@ -1,8 +1,12 @@
 import React from 'react';
 import { IoClose } from 'react-icons/io5';
 import { FaClock, FaShareAlt } from 'react-icons/fa';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const NewsModal = ({ news, onClose }) => {
+  const safeImage = getSafeImageUrl(news.image);
+  const safeUrl = getSafeHttpUrl(news.url);
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString('en-IN', {
       year: 'numeric',
@@ -14,18 +18,19 @@ const NewsModal = ({ news, onClose }) => {
   };
 
   const handleShare = async () => {
+    if (!safeUrl) return;
     if (navigator.share) {
       try {
         await navigator.share({
           title: news.title,
           text: news.description,
-          url: news.url
+          url: safeUrl
         });
       } catch (error) {
         console.error('Error sharing:', error);
       }
-    } else {
-      navigator.clipboard.writeText(news.url);
+    } else if (safeUrl) {
+      navigator.clipboard.writeText(safeUrl);
       alert('Link copied to clipboard!');
     }
   };
@@ -60,11 +65,12 @@ const NewsModal = ({ news, onClose }) => {
 
         {/* Content */}
         <div className="p-6">
-          {news.image && (
+          {safeImage && (
             <img
-              src={news.image}
+              src={safeImage}
               alt={news.title}
               className="w-full h-64 md:h-96 object-cover rounded-xl mb-6"
+              referrerPolicy="no-referrer"
             />
           )}
           <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
@@ -80,10 +86,10 @@ const NewsModal = ({ news, onClose }) => {
               </p>
             </div>
           )}
-          {news.url && (
+          {safeUrl && (
             <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
               <a
-                href={news.url}
+                href={safeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 dark:text-blue-400 hover:underline text-sm"

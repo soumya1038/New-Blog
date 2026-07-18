@@ -3,10 +3,43 @@ const Blog = require('../models/Blog');
 const Article = require('../models/Article');
 const Notification = require('../models/Notification');
 const Comment = require('../models/Comment');
+const StatusView = require('../models/StatusView');
+const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const generateApiKey = require('../utils/generateApiKey');
+const crypto = require('crypto');
+const fs = require('fs');
+const generateRawApiKey = require('../utils/generateApiKey');
 const cloudinary = require('../utils/cloudinary');
 const { enqueueEmailJob } = require('../jobs/queueService');
+const { validateEmail } = require('../utils/emailValidator');
+const { createApiKeyRecord, maskApiKey } = require('../utils/apiKeys');
+const { sanitizeOwnerProfile } = require('../utils/userSanitizer');
+const { cleanupUserAccountData } = require('../utils/accountCleanup');
+const { normalizeHttpUrl } = require('../utils/safeUrls');
+const {
+  canViewerSeeStatus,
+  filterVisibleStatusesForViewer,
+  getUserId,
+  getViewerRelationshipToTarget,
+  normalizeStatusAudience,
+  sanitizeStatusesForViewer,
+} = require('../utils/userVisibility');
+const {
+  getImageFileSignatureValidationError,
+  getImageSignatureValidationError,
+} = require('../utils/imageSignatures');
+const { getMediaFileSignatureValidationError } = require('../utils/mediaSignatures');
+const {
+  createVerificationCode,
+  deleteVerificationCodes,
+  verifyVerificationCode,
+} = require('../utils/verificationCodes');
+const { logError } = require('../utils/safeErrorLog');
+const {
+  getPasswordValidationError,
+  isPasswordComparable,
+  normalizePasswordInput,
+} = require('../utils/passwordPolicy');
 const {
   ACTION_LABELS,
   buildTwoFactorStatus,
@@ -16,6 +49,7 @@ const {
   PASSWORD_ATTEMPT_LIMIT,
   recordPasswordAttemptFailure,
   resetPasswordAttemptState,
+  verifySensitiveActionToken,
   verifyTwoFactorActionToken,
 } = require('../utils/twoFactor');
 
@@ -28,8 +62,45 @@ const SOCIAL_PROVIDER_DOMAIN_MATCHERS = {
 };
 
 const SOCIAL_OAUTH_PROVIDERS = new Set(['google', 'facebook', 'twitter', 'linkedin']);
+const PROFILE_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
+const STATUS_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
+const USER_SERVER_ERROR_MESSAGE = 'Unable to process user request';
+const SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS = Math.max(
+  100,
+  Number(process.env.SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS) || 5000
+);
+const STATUS_MEDIA_URL_TTL_SECONDS = Math.max(
+  60,
+  Math.min(60 * 60, Number(process.env.STATUS_MEDIA_URL_TTL_SECONDS) || 300)
+);
+const isValidObjectId = (value) => mongoose.isValidObjectId(String(value || ''));
+
+const getSafeUserErrorStatus = (error) => {
+  const status = Number(error?.statusCode || error?.status);
+  return Number.isInteger(status) && status >= 400 && status < 500 ? status : 500;
+};
+
+const sendUserError = (res, error, fallbackMessage = USER_SERVER_ERROR_MESSAGE) => {
+  const status = getSafeUserErrorStatus(error);
+  if (status >= 500) {
+    logError('User request failed:', error);
+  }
+
+  return res.status(status).json({
+    success: false,
+    message: status < 500 && error?.message ? error.message : fallbackMessage,
+  });
+};
+
+const buildUploadValidationError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+};
 
 const normalizeSocialValue = (value = '') => String(value || '').trim().toLowerCase();
+const normalizeEmailValue = (value = '') => String(value || '').trim().toLowerCase();
+const isDuplicateKeyError = (error) => error?.code === 11000;
 
 const doesSocialEntryMatchProvider = (entry, provider) => {
   const key = normalizeSocialValue(provider);
@@ -39,34 +110,75 @@ const doesSocialEntryMatchProvider = (entry, provider) => {
   return domains.some((domain) => nameValue.includes(domain) || urlValue.includes(domain));
 };
 
-const normalizeStatusAudience = (value) => {
-  const audience = String(value || 'public').toLowerCase();
-  if (['public', 'followers', 'private'].includes(audience)) return audience;
-  return 'public';
+const filterSocialLinksForPrivacy = (socialMedia = [], privacy = {}) => {
+  if (!privacy.showSocialLinks) return [];
+
+  const providerVisibility = {
+    facebook: privacy.showFacebookLinks,
+    twitter: privacy.showTwitterLinks,
+    linkedin: privacy.showLinkedInLinks,
+    github: privacy.showGitHubLinks,
+  };
+
+  return (Array.isArray(socialMedia) ? socialMedia : [])
+    .map((entry) => ({
+      ...entry,
+      url: normalizeHttpUrl(entry?.url, { maxLength: 300 }),
+    }))
+    .filter((entry) => {
+      if (!entry.url) return false;
+      const value = normalizeSocialValue(`${entry?.name || ''} ${entry?.url || ''}`);
+      const provider = Object.keys(providerVisibility).find((key) => value.includes(key));
+      return provider ? providerVisibility[provider] !== false : true;
+    });
 };
 
-const isStatusActive = (status) => {
-  if (!status?.expiresAt) return false;
-  return new Date(status.expiresAt) > new Date();
+const normalizeSocialMediaLinks = (socialMedia = []) =>
+  (Array.isArray(socialMedia) ? socialMedia : [])
+    .filter(entry => entry && typeof entry === 'object')
+    .map((entry) => ({
+      name: String(entry.name || '').trim().slice(0, 80),
+      url: normalizeHttpUrl(entry.url, { maxLength: 300 }),
+    }))
+    .filter(entry => entry.url)
+    .slice(0, 20);
+
+const buildPublicProfile = (user, { relationship, visibleStatuses, counts }) => {
+  const privacy = user.privacy || {};
+  const profileVisibility = privacy.profileVisibility || 'public';
+  const canViewProfile = !relationship?.isBlocked &&
+    (profileVisibility === 'public' || (profileVisibility === 'friends' && relationship?.isFollower));
+
+  const profile = {
+    _id: user._id,
+    username: user.username,
+    name: user.name,
+    fullName: user.fullName,
+    profileImage: user.profileImage,
+    description: canViewProfile ? user.description : '',
+    bio: canViewProfile ? user.bio : '',
+    signature: canViewProfile ? user.signature : '',
+    isVerified: user.isVerified,
+    isSeller: user.isSeller,
+    role: user.role,
+    lastSeen: user.lastSeen,
+    statuses: canViewProfile ? sanitizeStatusesForViewer(visibleStatuses, relationship) : [],
+    hasActiveStatus: canViewProfile && visibleStatuses.length > 0,
+    blogCount: counts.blogCount,
+    articleCount: counts.articleCount,
+    followerCount: counts.followerCount,
+    followingCount: counts.followingCount,
+    followers: canViewProfile ? user.followers : [],
+    following: canViewProfile ? user.following : [],
+    profileVisibility,
+  };
+
+  if (canViewProfile && privacy.showEmail) profile.email = user.email;
+  if (canViewProfile && privacy.showPhone) profile.phone = user.phone;
+  if (canViewProfile) profile.socialMedia = filterSocialLinksForPrivacy(user.socialMedia, privacy);
+
+  return profile;
 };
-
-const getViewerId = (viewer) => String(viewer?._id || '');
-
-const isFollowerOfTarget = (targetUser, viewerId) => {
-  if (!viewerId) return false;
-  const followers = Array.isArray(targetUser?.followers) ? targetUser.followers : [];
-  return followers.some((follower) => String(follower?._id || follower) === viewerId);
-};
-
-const filterVisibleStatusesForViewer = (allStatuses = [], { isOwner = false, isFollower = false } = {}) =>
-  (Array.isArray(allStatuses) ? allStatuses : []).filter((status) => {
-    if (!isStatusActive(status)) return false;
-    if (isOwner) return true;
-    const audience = normalizeStatusAudience(status?.audience);
-    if (audience === 'public') return true;
-    if (audience === 'followers' && isFollower) return true;
-    return false;
-  });
 
 // Get user profile
 exports.getProfile = async (req, res) => {
@@ -84,6 +196,10 @@ exports.getProfile = async (req, res) => {
       });
     }
 
+    if (!isValidObjectId(targetUserId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+
     // Check if user exists first
     const user = await User.findById(targetUserId)
       .select('-password -twoFactor.sms.phone')
@@ -99,6 +215,11 @@ exports.getProfile = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Please login to view profiles' });
     }
 
+    const relationship = getViewerRelationshipToTarget(req.user, user);
+    if (!relationship.isOwner && relationship.isBlocked) {
+      return res.status(403).json({ success: false, message: 'Profile unavailable' });
+    }
+
     // Set default description if empty
     if (!user.description) {
       user.description = 'Passionate blogger on Modern Blog platform. Join me on my writing journey!';
@@ -107,30 +228,33 @@ exports.getProfile = async (req, res) => {
 
     const blogCount = await Blog.countDocuments({ author: user._id, isDraft: false });
     const articleCount = await Article.countDocuments({ author: user._id, isDraft: false });
-    const viewerId = getViewerId(req.user);
-    const isOwner = viewerId && viewerId === String(user._id);
-    const isFollower = isFollowerOfTarget(user, viewerId);
-    const visibleStatuses = filterVisibleStatusesForViewer(user.statuses, { isOwner, isFollower });
+    const isOwner = relationship.isOwner;
+    const visibleStatuses = filterVisibleStatusesForViewer(user.statuses, relationship);
     const hasActiveStatus = visibleStatuses.length > 0;
+
+    const counts = {
+      blogCount,
+      articleCount,
+      followerCount: user.followers.length,
+      followingCount: user.following.length
+    };
+    const userPayload = isOwner
+      ? {
+          ...sanitizeOwnerProfile(user.toObject()),
+          statuses: sanitizeStatusesForViewer(visibleStatuses, relationship),
+          hasActiveStatus,
+          ...counts,
+        }
+      : buildPublicProfile(user, { relationship, visibleStatuses, counts });
 
     res.json({
       success: true,
-      user: {
-        ...user.toObject(),
-        statuses: visibleStatuses,
-        hasActiveStatus,
-        blogCount,
-        articleCount,
-        followerCount: user.followers.length,
-        followingCount: user.following.length
-      }
+      user: userPayload
     });
   } catch (error) {
-    console.error('Error in getProfile:', error);
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
-
 // Disconnect social provider and remove linked social URL entries.
 exports.disconnectSocialProvider = async (req, res) => {
   try {
@@ -171,16 +295,13 @@ exports.disconnectSocialProvider = async (req, res) => {
     user.socialMedia = nextSocial;
     await user.save();
 
-    const safeUser = user.toObject();
-    delete safeUser.password;
-
     return res.json({
       success: true,
       message: `${provider} disconnected successfully`,
-      user: safeUser,
+      user: sanitizeOwnerProfile(user.toObject()),
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -207,11 +328,28 @@ exports.updateProfile = async (req, res) => {
     }
 
     const emailProvided = Object.prototype.hasOwnProperty.call(req.body, 'email');
-    const requestedEmail = emailProvided ? String(email || '').trim() : existingUser.email;
+    const requestedEmail = emailProvided ? normalizeEmailValue(email) : existingUser.email;
     const emailChanged = emailProvided &&
-      String(existingUser.email || '').trim().toLowerCase() !== requestedEmail.toLowerCase();
+      normalizeEmailValue(existingUser.email) !== requestedEmail;
 
-    if (emailChanged && !['admin', 'coAdmin'].includes(existingUser.role)) {
+    if (emailChanged) {
+      const sensitiveActionToken = req.headers['x-sensitive-action-token'] || req.body?.sensitiveActionToken;
+      const passwordVerified = await verifySensitiveActionToken({
+        userId: existingUser._id,
+        action: 'change_email',
+        token: sensitiveActionToken,
+      });
+
+      if (!passwordVerified) {
+        return res.status(403).json({
+          success: false,
+          requiresPassword: true,
+          action: 'change_email',
+          actionLabel: 'change your email',
+          message: 'Account password verification required',
+        });
+      }
+
       const twoFactorStatus = buildTwoFactorStatus(existingUser);
       if (twoFactorStatus.enabled) {
         const token = req.headers['x-two-factor-token'] || req.body?.twoFactorToken;
@@ -234,6 +372,21 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
+    if (emailChanged && requestedEmail) {
+      const emailValidation = validateEmail(requestedEmail);
+      if (!emailValidation.valid) {
+        return res.status(400).json({ success: false, message: emailValidation.message });
+      }
+
+      const emailOwner = await User.findOne({
+        _id: { $ne: existingUser._id },
+        email: requestedEmail,
+      }).select('_id');
+      if (emailOwner) {
+        return res.status(409).json({ success: false, message: 'Email already registered' });
+      }
+    }
+
     const updates = {
       fullName,
       email: requestedEmail,
@@ -243,9 +396,18 @@ exports.updateProfile = async (req, res) => {
       bio,
       description,
       signature,
-      socialMedia,
       privacy,
     };
+
+    if (emailChanged) {
+      updates.isVerified = false;
+      updates.verifiedBy = null;
+      updates.verifiedAt = null;
+    }
+
+    if (socialMedia !== undefined) {
+      updates.socialMedia = normalizeSocialMediaLinks(socialMedia);
+    }
 
     if (emailNotifications) {
       updates.emailNotifications = {
@@ -261,29 +423,36 @@ exports.updateProfile = async (req, res) => {
       { new: true, runValidators: true }
     ).select('-password -twoFactor.sms.phone');
 
-    res.json({ success: true, user });
+    res.json({ success: true, user: sanitizeOwnerProfile(user.toObject()) });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    if (isDuplicateKeyError(error)) {
+      return res.status(409).json({ success: false, message: 'Email or username already registered' });
+    }
+    return sendUserError(res, error);
   }
 };
 
 // Upload profile image
 exports.uploadProfileImage = async (req, res) => {
+  let uploadedProfilePublicId = '';
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No file uploaded' });
     }
+    const signatureError = getImageSignatureValidationError(req.file, PROFILE_IMAGE_MIME_TYPES);
+    if (signatureError) {
+      return res.status(400).json({ success: false, message: signatureError });
+    }
 
     const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
-    // Delete old image from Cloudinary if exists
+    let previousProfilePublicId = '';
     if (user.profileImage && user.profileImage.includes('cloudinary')) {
       const publicId = user.profileImage.split('/').pop().split('.')[0];
-      try {
-        await cloudinary.uploader.destroy(`blog-profiles/${publicId}`);
-      } catch (err) {
-        console.log('Old image not found on Cloudinary');
-      }
+      previousProfilePublicId = `blog-profiles/${publicId}`;
     }
 
     // Upload to Cloudinary from memory buffer
@@ -303,13 +472,21 @@ exports.uploadProfileImage = async (req, res) => {
       ).end(req.file.buffer);
     });
 
+    uploadedProfilePublicId = result.public_id;
     user.profileImage = result.secure_url;
     await user.save();
+    uploadedProfilePublicId = '';
+
+    if (previousProfilePublicId) {
+      await cloudinary.uploader.destroy(previousProfilePublicId).catch(() => {});
+    }
 
     res.json({ success: true, profileImage: user.profileImage });
   } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    if (uploadedProfilePublicId) {
+      await cloudinary.uploader.destroy(uploadedProfilePublicId).catch(() => {});
+    }
+    return sendUserError(res, error);
   }
 };
 
@@ -333,40 +510,72 @@ exports.removeProfileImage = async (req, res) => {
 
     res.json({ success: true, message: 'Profile image removed' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
 // Request password change
 exports.requestPasswordChange = async (req, res) => {
   try {
-    const { currentPassword, newPassword } = req.body;
+    const currentPassword = normalizePasswordInput(req.body?.currentPassword);
+    const newPassword = normalizePasswordInput(req.body?.newPassword);
 
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ success: false, message: 'Please provide both passwords' });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ success: false, message: 'New password must be at least 6 characters' });
+    const passwordError = getPasswordValidationError(newPassword, 'New password');
+    if (passwordError) {
+      return res.status(400).json({ success: false, message: passwordError });
     }
 
-    const user = await User.findById(req.user._id);
-    const isMatch = await user.comparePassword(currentPassword);
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const attemptState = getPasswordAttemptState(user);
+    if (attemptState.isLocked) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many failed password attempts. Try again after the lock expires.',
+        attemptsRemaining: 0,
+        lockedUntil: attemptState.lockedUntil,
+        showForgotPassword: true,
+      });
+    }
+
+    const isMatch = isPasswordComparable(currentPassword) && await user.comparePassword(currentPassword);
 
     if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Current password is incorrect' });
+      const failureState = recordPasswordAttemptFailure(user);
+      await user.save();
+
+      return res.status(failureState.isLocked ? 429 : 401).json({
+        success: false,
+        message: failureState.isLocked
+          ? 'Too many failed password attempts. Try again tomorrow or reset your password.'
+          : 'Current password is incorrect',
+        attemptsRemaining: failureState.attemptsRemaining,
+        failedAttempts: failureState.failedAttempts,
+        lockedUntil: failureState.lockedUntil,
+        showForgotPassword: true,
+      });
     }
 
-    // Generate 6-digit code
-    const confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    resetPasswordAttemptState(user);
+    await user.save();
 
-    global.passwordChangeCodes = global.passwordChangeCodes || {};
-    const passwordChangeExpiresAt = Date.now() + 2 * 60 * 1000;
-    global.passwordChangeCodes[user._id.toString()] = {
-      code: confirmationCode,
-      newPassword,
-      expiresAt: passwordChangeExpiresAt // 2 minutes
-    };
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const { code: confirmationCode, expiresAt: passwordChangeExpiresAt } = await createVerificationCode({
+      email: user.email,
+      type: 'passwordChange',
+      username: user.username,
+      metadata: {
+        userId: user._id.toString(),
+        passwordHash,
+      },
+    });
 
     await enqueueEmailJob('password-change-confirmation', {
       email: user.email,
@@ -377,7 +586,7 @@ exports.requestPasswordChange = async (req, res) => {
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -390,29 +599,38 @@ exports.confirmPasswordChange = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Confirmation code required' });
     }
 
-    const storedData = global.passwordChangeCodes?.[req.user._id.toString()];
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
-    if (!storedData) {
+    const verification = await verifyVerificationCode({
+      email: user.email,
+      type: 'passwordChange',
+      username: user.username,
+      code,
+      consume: true,
+    });
+
+    if (!verification.ok && verification.reason === 'not_found') {
       return res.status(400).json({ success: false, message: 'No password change request found' });
     }
-
-    if (Date.now() > storedData.expiresAt) {
-      delete global.passwordChangeCodes[req.user._id.toString()];
-      return res.status(400).json({ success: false, message: 'Confirmation code expired' });
-    }
-
-    if (storedData.code !== code) {
+    if (!verification.ok || verification.record?.metadata?.userId !== req.user._id.toString()) {
       return res.status(400).json({ success: false, message: 'Invalid confirmation code' });
     }
 
-    const user = await User.findById(req.user._id);
-    user.password = storedData.newPassword;
-    if (user.mustChangePasswordAfterGoogle) {
-      user.mustChangePasswordAfterGoogle = false;
+    const passwordHash = verification.record?.metadata?.passwordHash;
+    if (!passwordHash) {
+      return res.status(400).json({ success: false, message: 'Invalid password change request' });
     }
-    await user.save();
 
-    delete global.passwordChangeCodes[req.user._id.toString()];
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: { password: passwordHash, mustChangePasswordAfterGoogle: false },
+        $inc: { authVersion: 1 },
+      }
+    );
 
     // Send success email
     try {
@@ -422,40 +640,67 @@ exports.confirmPasswordChange = async (req, res) => {
         changedAt: Date.now()
       });
     } catch (error) {
-      console.error('Failed to send success email:', error);
+      logError('Failed to send success email:', error);
     }
 
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
 // Request account deletion
 exports.requestAccountDeletion = async (req, res) => {
   try {
-    const { password } = req.body;
+    const password = normalizePasswordInput(req.body?.password);
 
     if (!password) {
       return res.status(400).json({ success: false, message: 'Password required' });
     }
 
-    const user = await User.findById(req.user._id);
-    const isMatch = await user.comparePassword(password);
-
-    if (!isMatch) {
-      return res.status(401).json({ success: false, message: 'Incorrect password' });
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // Generate 6-digit code
-    const confirmationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const attemptState = getPasswordAttemptState(user);
+    if (attemptState.isLocked) {
+      return res.status(429).json({
+        success: false,
+        message: 'Too many failed password attempts. Try again after the lock expires.',
+        attemptsRemaining: 0,
+        lockedUntil: attemptState.lockedUntil,
+        showForgotPassword: true,
+      });
+    }
 
-    global.accountDeletionCodes = global.accountDeletionCodes || {};
-    const accountDeletionExpiresAt = Date.now() + 2 * 60 * 1000;
-    global.accountDeletionCodes[user._id.toString()] = {
-      code: confirmationCode,
-      expiresAt: accountDeletionExpiresAt // 2 minutes
-    };
+    const isMatch = isPasswordComparable(password) && await user.comparePassword(password);
+
+    if (!isMatch) {
+      const failureState = recordPasswordAttemptFailure(user);
+      await user.save();
+
+      return res.status(failureState.isLocked ? 429 : 401).json({
+        success: false,
+        message: failureState.isLocked
+          ? 'Too many failed password attempts. Try again tomorrow or reset your password.'
+          : 'Incorrect password',
+        attemptsRemaining: failureState.attemptsRemaining,
+        failedAttempts: failureState.failedAttempts,
+        lockedUntil: failureState.lockedUntil,
+        showForgotPassword: true,
+      });
+    }
+
+    resetPasswordAttemptState(user);
+    await user.save();
+
+    const { code: confirmationCode, expiresAt: accountDeletionExpiresAt } = await createVerificationCode({
+      email: user.email,
+      type: 'accountDeletion',
+      username: user.username,
+      metadata: { userId: user._id.toString() },
+    });
 
     await enqueueEmailJob('account-deletion-confirmation', {
       email: user.email,
@@ -466,7 +711,7 @@ exports.requestAccountDeletion = async (req, res) => {
 
     res.json({ success: true, message: 'Confirmation code sent to your email' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -479,47 +724,33 @@ exports.confirmAccountDeletion = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Confirmation code required' });
     }
 
-    const storedData = global.accountDeletionCodes?.[req.user._id.toString()];
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
-    if (!storedData) {
+    const verification = await verifyVerificationCode({
+      email: user.email,
+      type: 'accountDeletion',
+      username: user.username,
+      code,
+      consume: true,
+    });
+
+    if (!verification.ok && verification.reason === 'not_found') {
       return res.status(400).json({ success: false, message: 'No deletion request found' });
     }
-
-    if (Date.now() > storedData.expiresAt) {
-      delete global.accountDeletionCodes[req.user._id.toString()];
-      return res.status(400).json({ success: false, message: 'Confirmation code expired' });
-    }
-
-    if (storedData.code !== code) {
+    if (!verification.ok || verification.record?.metadata?.userId !== req.user._id.toString()) {
       return res.status(400).json({ success: false, message: 'Invalid confirmation code' });
-    }
-
-    const user = await User.findById(req.user._id);
-
-    // Delete user's blogs
-    await Blog.deleteMany({ author: user._id });
-    await Article.deleteMany({ author: user._id });
-
-    // Delete user's notifications
-    await Notification.deleteMany({ $or: [{ recipient: user._id }, { sender: user._id }] });
-
-    // Remove profile image from Cloudinary
-    if (user.profileImage && user.profileImage.includes('cloudinary')) {
-      const publicId = user.profileImage.split('/').pop().split('.')[0];
-      try {
-        await cloudinary.uploader.destroy(`blog-profiles/${publicId}`);
-      } catch (err) {
-        console.log('Image not found on Cloudinary');
-      }
     }
 
     // Send success email before deletion
     const userEmail = user.email;
     const userName = user.username;
 
-    await User.findByIdAndDelete(user._id);
+    await cleanupUserAccountData(user, { deleteUser: true });
 
-    delete global.accountDeletionCodes[user._id.toString()];
+    await deleteVerificationCodes({ email: userEmail, types: ['accountDeletion'] });
 
     // Send success email
     try {
@@ -528,12 +759,12 @@ exports.confirmAccountDeletion = async (req, res) => {
         username: userName
       });
     } catch (error) {
-      console.error('Failed to send success email:', error);
+      logError('Failed to send success email:', error);
     }
 
     res.json({ success: true, message: 'Account deleted successfully' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -546,15 +777,22 @@ exports.generateApiKey = async (req, res) => {
       return res.status(400).json({ success: false, message: 'API key name is required' });
     }
 
-    const apiKey = generateApiKey();
-    const user = await User.findById(req.user._id);
+    const apiKey = generateRawApiKey();
+    const user = await User.findById(req.user._id).select('+apiKeys.keyHash');
 
-    user.apiKeys.push({ name: name.trim(), key: apiKey });
+    user.apiKeys.push(createApiKeyRecord(name.trim(), apiKey));
     await user.save();
 
-    res.json({ success: true, apiKey: user.apiKeys[user.apiKeys.length - 1] });
+    const createdKey = user.apiKeys[user.apiKeys.length - 1];
+    res.json({
+      success: true,
+      apiKey: {
+        ...maskApiKey(createdKey),
+        key: apiKey,
+      },
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -562,9 +800,9 @@ exports.generateApiKey = async (req, res) => {
 exports.getApiKeys = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('apiKeys');
-    res.json({ success: true, apiKeys: user.apiKeys });
+    res.json({ success: true, apiKeys: (user.apiKeys || []).map(maskApiKey) });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -572,14 +810,18 @@ exports.getApiKeys = async (req, res) => {
 exports.revokeApiKey = async (req, res) => {
   try {
     const { keyId } = req.params;
-    const user = await User.findById(req.user._id);
+    if (!mongoose.isValidObjectId(keyId)) {
+      return res.status(400).json({ success: false, message: 'Invalid API key id' });
+    }
 
-    user.apiKeys = user.apiKeys.filter(k => k._id.toString() !== keyId);
-    await user.save();
+    await User.updateOne(
+      { _id: req.user._id },
+      { $pull: { apiKeys: { _id: keyId } } }
+    );
 
     res.json({ success: true, message: 'API key revoked' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -603,16 +845,16 @@ exports.updateUsername = async (req, res) => {
       { new: true }
     ).select('-password');
 
-    res.json({ success: true, user });
+    res.json({ success: true, user: sanitizeOwnerProfile(user.toObject()) });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
 exports.verifySensitiveActionPassword = async (req, res) => {
   try {
     const action = String(req.body.action || '').trim();
-    const password = String(req.body.password || '');
+    const password = normalizePasswordInput(req.body?.password);
 
     if (!ACTION_LABELS[action]) {
       return res.status(400).json({ success: false, message: 'Unsupported sensitive action' });
@@ -622,26 +864,9 @@ exports.verifySensitiveActionPassword = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Account password is required' });
     }
 
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).select('+password');
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    if (['admin', 'coAdmin'].includes(user.role)) {
-      const { token } = await createVerifiedActionToken({
-        userId: user._id,
-        action,
-        method: 'password',
-        metadata: { adminBypass: true },
-      });
-
-      return res.json({
-        success: true,
-        sensitiveActionToken: token,
-        requiresTwoFactor: false,
-        attemptsRemaining: PASSWORD_ATTEMPT_LIMIT,
-        message: 'Admin verification bypassed',
-      });
     }
 
     const attemptState = getPasswordAttemptState(user);
@@ -655,7 +880,7 @@ exports.verifySensitiveActionPassword = async (req, res) => {
       });
     }
 
-    const isMatch = await user.comparePassword(password);
+    const isMatch = isPasswordComparable(password) && await user.comparePassword(password);
     if (!isMatch) {
       const failureState = recordPasswordAttemptFailure(user);
       await user.save();
@@ -695,7 +920,7 @@ exports.verifySensitiveActionPassword = async (req, res) => {
         : 'Password verified',
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -716,7 +941,7 @@ exports.getSensitiveActionPasswordStatus = async (req, res) => {
       limit: PASSWORD_ATTEMPT_LIMIT,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -834,28 +1059,95 @@ const resolveStatusPublicId = (status) => {
   return extractCloudinaryPublicId(status?.video || status?.image || '');
 };
 
+const STATUS_VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
+const isStatusVideoUpload = (file) =>
+  STATUS_VIDEO_MIME_TYPES.has(String(file?.mimetype || '').toLowerCase());
+
+const cleanupTempUpload = async (filePath) => {
+  if (!filePath) return;
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      logError('Status temp cleanup error:', error);
+    }
+  }
+};
+
+const snapshotStatusMedia = (status) => ({
+  mediaPublicId: status?.mediaPublicId || '',
+  mediaType: status?.mediaType || 'text',
+  mediaFormat: status?.mediaFormat || '',
+  mediaResourceType: status?.mediaResourceType || '',
+  mediaDeliveryType: status?.mediaDeliveryType || '',
+  image: status?.image || '',
+  video: status?.video || '',
+});
+
 const destroyStatusMedia = async (status) => {
   const publicId = resolveStatusPublicId(status);
   if (!publicId) return;
 
   const isVideo = status?.mediaType === 'video' || Boolean(status?.video);
+  await cloudinary.uploader.destroy(publicId, {
+    ...(isVideo ? { resource_type: 'video' } : { resource_type: 'image' }),
+    ...(status?.mediaDeliveryType ? { type: status.mediaDeliveryType } : {}),
+    invalidate: true,
+  });
+};
+
+const recordStatusView = async ({ ownerId, status, viewerId }) => {
   try {
-    await cloudinary.uploader.destroy(publicId, isVideo ? { resource_type: 'video' } : {});
+    const result = await StatusView.updateOne(
+      { statusOwnerId: ownerId, statusId: status._id, viewerId },
+      {
+        $setOnInsert: {
+          statusOwnerId: ownerId,
+          statusId: status._id,
+          viewerId,
+          seenAt: new Date(),
+          expiresAt: status.expiresAt,
+        },
+      },
+      { upsert: true }
+    ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+
+    if (result.upsertedCount === 1) {
+      await User.updateOne(
+        { _id: ownerId, 'statuses._id': status._id },
+        { $inc: { 'statuses.$.seenByCount': 1 } }
+      ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+    }
   } catch (error) {
-    console.log('Status media not found on Cloudinary');
+    if (error?.code !== 11000 && error?.code !== 11001) throw error;
   }
 };
 
 const uploadStatusMedia = async (file, trimRange = null) => {
-  const isVideo = String(file?.mimetype || '').startsWith('video/');
+  const isVideo = isStatusVideoUpload(file);
+  if (isVideo) {
+    const signatureError = await getMediaFileSignatureValidationError(file, STATUS_VIDEO_MIME_TYPES);
+    if (signatureError) {
+      throw buildUploadValidationError(signatureError);
+    }
+  } else {
+    const signatureError = await getImageFileSignatureValidationError(file, STATUS_IMAGE_MIME_TYPES);
+    if (signatureError) {
+      throw buildUploadValidationError(signatureError);
+    }
+  }
   const uploadOptions = isVideo
     ? {
         folder: 'blog-status/videos',
         resource_type: 'video',
+        type: 'authenticated',
+        public_id: `${Date.now()}-${crypto.randomBytes(16).toString('hex')}`,
       }
     : {
         folder: 'blog-status/images',
         resource_type: 'image',
+        type: 'authenticated',
+        public_id: `${Date.now()}-${crypto.randomBytes(16).toString('hex')}`,
         transformation: [
           { width: 1080, height: 1920, crop: 'limit' },
           { quality: 'auto' },
@@ -874,22 +1166,51 @@ const uploadStatusMedia = async (file, trimRange = null) => {
     }
   }
 
-  const result = await new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(uploadOptions, (error, uploaded) => {
-      if (error) reject(error);
-      else resolve(uploaded);
-    }).end(file.buffer);
-  });
+  if (!file.path) {
+    throw new Error('Status media temp file missing');
+  }
+  const result = await cloudinary.uploader.upload(file.path, uploadOptions);
 
   return {
     mediaType: isVideo ? 'video' : 'image',
-    mediaUrl: result.secure_url,
+    mediaUrl: '',
     mediaPublicId: result.public_id,
+    mediaFormat: result.format || (isVideo ? 'mp4' : 'jpg'),
+    mediaResourceType: result.resource_type || (isVideo ? 'video' : 'image'),
+    mediaDeliveryType: 'authenticated',
   };
 };
 
+const getStatusMediaUrl = (status) => {
+  if (!status) return '';
+  if (status.mediaPublicId && status.mediaDeliveryType === 'authenticated') {
+    const format = String(status.mediaFormat || (status.mediaType === 'video' ? 'mp4' : 'jpg'))
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '') || 'bin';
+    return cloudinary.utils.private_download_url(status.mediaPublicId, format, {
+      expires_at: Math.floor(Date.now() / 1000) + STATUS_MEDIA_URL_TTL_SECONDS,
+      resource_type: status.mediaResourceType || (status.mediaType === 'video' ? 'video' : 'image'),
+      type: 'authenticated',
+      attachment: false,
+    });
+  }
+  return String(status.video || status.image || '').trim();
+};
+
+const serializeStatusesWithMedia = (statuses, relationship) =>
+  (Array.isArray(statuses) ? statuses : []).map((status) => {
+    const safeStatus = sanitizeStatusesForViewer([status], relationship)[0];
+    const url = getStatusMediaUrl(status);
+    if (/^https:\/\//i.test(url) && url.length <= 8192) {
+      if (status.mediaType === 'video') safeStatus.video = url;
+      else if (status.mediaType === 'image') safeStatus.image = url;
+    }
+    return safeStatus;
+  });
+
 // Create status
 exports.createStatus = async (req, res) => {
+  let uploadedStatusMedia = null;
   try {
     const {
       contentType,
@@ -913,6 +1234,9 @@ exports.createStatus = async (req, res) => {
     let videoUrl = '';
     let mediaType = 'text';
     let mediaPublicId = '';
+    let mediaFormat = '';
+    let mediaResourceType = '';
+    let mediaDeliveryType = '';
     const normalizedContentType = normalizeStatusContentType(contentType);
     const normalizedStickers = normalizeStatusStickers(stickers);
     const normalizedMusicLabel = normalizeStatusMusicLabel(musicLabel);
@@ -920,7 +1244,7 @@ exports.createStatus = async (req, res) => {
     const normalizedMusicSourceUrl =
       normalizedMusicSourceType === 'none' ? '' : normalizeStatusMusicSourceUrl(musicSourceUrl);
     const normalizedTrimRange = normalizeStatusTrimRange(trimStartSec, trimEndSec);
-    const isVideoUpload = Boolean(req.file && String(req.file.mimetype || '').startsWith('video/'));
+    const isVideoUpload = Boolean(req.file && isStatusVideoUpload(req.file));
 
     if (normalizedContentType === 'post' && isVideoUpload) {
       return res.status(400).json({ success: false, message: 'Post mode does not support video uploads' });
@@ -930,13 +1254,17 @@ exports.createStatus = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Please provide text, image, video, or stickers' });
     }
 
-    const user = await User.findById(req.user._id);
+    const now = new Date();
+    const user = await User.findById(req.user._id)
+      .select('statuses.expiresAt')
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS)
+      .lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
     // Check if user already has 5 statuses
-    const existingActiveStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
+    const existingActiveStatuses = (user.statuses || []).filter(s => now < new Date(s.expiresAt));
     if (existingActiveStatuses.length >= 5) {
       return res.status(400).json({ success: false, message: 'Maximum 5 active statuses allowed' });
     }
@@ -944,8 +1272,12 @@ exports.createStatus = async (req, res) => {
     // Upload media if provided
     if (req.file) {
       const uploadResult = await uploadStatusMedia(req.file, normalizedTrimRange);
+      uploadedStatusMedia = uploadResult;
       mediaType = uploadResult.mediaType;
       mediaPublicId = uploadResult.mediaPublicId;
+      mediaFormat = uploadResult.mediaFormat;
+      mediaResourceType = uploadResult.mediaResourceType;
+      mediaDeliveryType = uploadResult.mediaDeliveryType;
       if (mediaType === 'video') {
         videoUrl = uploadResult.mediaUrl;
       } else {
@@ -953,16 +1285,18 @@ exports.createStatus = async (req, res) => {
       }
     }
 
-    const now = new Date();
     const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
-    user.statuses.push({
+    const newStatus = {
       contentType: normalizedContentType,
       text: text || '',
       image: imageUrl,
       video: videoUrl,
       mediaType,
       mediaPublicId,
+      mediaFormat,
+      mediaResourceType,
+      mediaDeliveryType,
       backgroundColor: String(backgroundColor || '#1f2937'),
       textColor: String(textColor || '#ffffff'),
       fontFamily: String(fontFamily || 'Inter'),
@@ -977,43 +1311,81 @@ exports.createStatus = async (req, res) => {
       textPosY: clampStatusPosition(textPosY),
       audience: normalizeStatusAudience(audience),
       seenBy: [],
+      seenByCount: 0,
       durationSec: clampStatusDuration(durationSec),
       createdAt: now,
       expiresAt
+    };
+
+    const updatedUser = await User.findOneAndUpdate(
+      {
+        _id: req.user._id,
+        $expr: {
+          $lt: [
+            {
+              $size: {
+                $filter: {
+                  input: '$statuses',
+                  as: 'status',
+                  cond: { $gt: ['$$status.expiresAt', now] }
+                }
+              }
+            },
+            5
+          ]
+        }
+      },
+      { $push: { statuses: newStatus } },
+      { new: true }
+    )
+      .select('statuses')
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+    if (!updatedUser) {
+      if (uploadedStatusMedia?.mediaPublicId) {
+        await destroyStatusMedia(uploadedStatusMedia);
+        uploadedStatusMedia = null;
+      }
+      return res.status(400).json({ success: false, message: 'Maximum 5 active statuses allowed' });
+    }
+    uploadedStatusMedia = null;
+
+    const responseActiveStatuses = updatedUser.statuses.filter(s => new Date() < new Date(s.expiresAt));
+    res.json({
+      success: true,
+      statuses: serializeStatusesWithMedia(responseActiveStatuses, { isOwner: true }),
     });
-
-    await user.save();
-
-    const responseActiveStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
-    res.json({ success: true, statuses: responseActiveStatuses });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    if (uploadedStatusMedia?.mediaPublicId) {
+      await destroyStatusMedia(uploadedStatusMedia);
+    }
+    return sendUserError(res, error);
+  } finally {
+    await cleanupTempUpload(req.file?.path);
   }
 };
 
 // Get statuses
 exports.getStatuses = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('statuses');
+    const user = await User.findById(req.user._id)
+      .select('statuses')
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS)
+      .lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    const now = new Date();
+    const statuses = Array.isArray(user.statuses) ? user.statuses : [];
     // Filter out expired statuses
-    const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
+    const activeStatuses = statuses.filter(s => now < new Date(s.expiresAt));
 
-    // Clean up expired statuses
-    const expiredStatuses = user.statuses.filter(s => new Date() >= new Date(s.expiresAt));
-    for (const status of expiredStatuses) {
-      await destroyStatusMedia(status);
-    }
-
-    user.statuses = activeStatuses;
-    await user.save();
-
-    res.json({ success: true, statuses: activeStatuses });
+    res.json({
+      success: true,
+      statuses: serializeStatusesWithMedia(activeStatuses, { isOwner: true }),
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -1021,46 +1393,35 @@ exports.getStatuses = async (req, res) => {
 exports.getUserStatuses = async (req, res) => {
   try {
     const { userId } = req.params;
-    const viewerId = getViewerId(req.user);
+    const viewerId = getUserId(req.user);
 
-    const targetUser = await User.findById(userId).select('username followers statuses');
+    if (!isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user id' });
+    }
+
+    const targetUser = await User.findById(userId)
+      .select('username followers blockedUsers statuses')
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
     if (!targetUser) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    const isOwner = viewerId && viewerId === String(targetUser._id);
-    const isFollower = isFollowerOfTarget(targetUser, viewerId);
-    const visibleStatuses = filterVisibleStatusesForViewer(targetUser.statuses, { isOwner, isFollower });
+    const relationship = getViewerRelationshipToTarget(req.user, targetUser);
+    if (!relationship.isOwner && relationship.isBlocked) {
+      return res.status(403).json({ success: false, message: 'Statuses unavailable' });
+    }
+
+    const { isOwner, isFollower } = relationship;
+    const visibleStatuses = filterVisibleStatusesForViewer(targetUser.statuses, relationship);
 
     // Track viewers for stories they can see (except owner viewing own statuses)
     if (!isOwner && viewerId && visibleStatuses.length > 0) {
-      let touched = false;
       for (const status of visibleStatuses) {
-        const alreadySeen = Array.isArray(status.seenBy)
-          ? status.seenBy.some((entry) => String(entry?.user) === viewerId)
-          : false;
-        if (!alreadySeen) {
-          status.seenBy = Array.isArray(status.seenBy) ? status.seenBy : [];
-          status.seenBy.push({ user: req.user._id, seenAt: new Date() });
-          touched = true;
-        }
-      }
-      if (touched) {
-        await targetUser.save();
+        await recordStatusView({ ownerId: targetUser._id, status, viewerId: req.user._id });
       }
     }
 
-    const statusesWithMeta = visibleStatuses.map((status) => {
-      const obj = status.toObject ? status.toObject() : status;
-      const seenByCount = Array.isArray(status?.seenBy) ? status.seenBy.length : 0;
-      if (!isOwner) {
-        delete obj.seenBy;
-      }
-      return {
-        ...obj,
-        seenByCount,
-      };
-    });
+    const statusesWithMeta = serializeStatusesWithMedia(visibleStatuses, relationship);
 
     res.json({
       success: true,
@@ -1074,14 +1435,46 @@ exports.getUserStatuses = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
+  }
+};
+
+exports.getStatusMediaAccess = async (req, res) => {
+  try {
+    const { statusId } = req.params;
+    if (!isValidObjectId(statusId)) {
+      return res.status(400).json({ success: false, message: 'Invalid media request' });
+    }
+
+    const owner = await User.findOne({ 'statuses._id': statusId })
+      .select('followers blockedUsers statuses')
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+    const status = owner?.statuses?.id(statusId);
+    const relationship = owner ? getViewerRelationshipToTarget(req.user, owner) : null;
+    if (!owner || !status || !canViewerSeeStatus(status, relationship)) {
+      return res.status(404).json({ success: false, message: 'Media not found' });
+    }
+
+    const url = getStatusMediaUrl(status);
+    if (!/^https:\/\//i.test(url) || url.length > 8192) {
+      return res.status(404).json({ success: false, message: 'Media not found' });
+    }
+
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ success: true, url, expiresIn: STATUS_MEDIA_URL_TTL_SECONDS });
+  } catch (error) {
+    logError('Status media access error:', error);
+    return res.status(500).json({ success: false, message: 'Unable to access media' });
   }
 };
 
 // Read story mute/hide preferences
 exports.getStoryPreferences = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('mutedStoryUsers hiddenStoryUsers');
+    const user = await User.findById(req.user._id)
+      .select('mutedStoryUsers hiddenStoryUsers')
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS)
+      .lean();
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -1092,7 +1485,7 @@ exports.getStoryPreferences = async (req, res) => {
       hiddenStoryUsers: (user.hiddenStoryUsers || []).map((id) => String(id)),
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -1105,45 +1498,54 @@ exports.updateStoryPreference = async (req, res) => {
     if (!targetUserId || !validActions.has(nextAction)) {
       return res.status(400).json({ success: false, message: 'Invalid story preference request' });
     }
+    if (!isValidObjectId(targetUserId)) {
+      return res.status(400).json({ success: false, message: 'Invalid target user id' });
+    }
 
     if (String(targetUserId) === String(req.user._id)) {
       return res.status(400).json({ success: false, message: 'Cannot apply this action to your own stories' });
     }
 
-    const user = await User.findById(req.user._id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    const targetUserExists = await User.exists({ _id: targetUserId });
+    const targetUserExists = await User.exists({ _id: targetUserId })
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
     if (!targetUserExists) {
       return res.status(404).json({ success: false, message: 'Target user not found' });
     }
 
-    const muted = new Set((user.mutedStoryUsers || []).map((id) => String(id)));
-    const hidden = new Set((user.hiddenStoryUsers || []).map((id) => String(id)));
+    const update = {};
+    if (nextAction === 'mute') update.$addToSet = { mutedStoryUsers: targetUserId };
+    if (nextAction === 'unmute') update.$pull = { mutedStoryUsers: targetUserId };
+    if (nextAction === 'hide') update.$addToSet = { hiddenStoryUsers: targetUserId };
+    if (nextAction === 'unhide') update.$pull = { hiddenStoryUsers: targetUserId };
+    const user = await User.findOneAndUpdate(
+      { _id: req.user._id },
+      update,
+      { new: true, runValidators: true }
+    )
+      .select('mutedStoryUsers hiddenStoryUsers')
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS)
+      .lean();
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
 
-    if (nextAction === 'mute') muted.add(String(targetUserId));
-    if (nextAction === 'unmute') muted.delete(String(targetUserId));
-    if (nextAction === 'hide') hidden.add(String(targetUserId));
-    if (nextAction === 'unhide') hidden.delete(String(targetUserId));
-
-    user.mutedStoryUsers = Array.from(muted);
-    user.hiddenStoryUsers = Array.from(hidden);
-    await user.save();
+    const muted = (user.mutedStoryUsers || []).map((id) => String(id));
+    const hidden = (user.hiddenStoryUsers || []).map((id) => String(id));
 
     res.json({
       success: true,
-      mutedStoryUsers: Array.from(muted),
-      hiddenStoryUsers: Array.from(hidden),
+      mutedStoryUsers: muted,
+      hiddenStoryUsers: hidden,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
 // Update status
 exports.updateStatus = async (req, res) => {
+  let uploadedStatusMedia = null;
+  let staleStatusMedia = null;
   try {
     const { statusId } = req.params;
     const {
@@ -1167,6 +1569,10 @@ exports.updateStatus = async (req, res) => {
     } = req.body;
     const shouldRemoveMedia = ['1', 'true', 'yes'].includes(String(removeMedia || '').toLowerCase());
 
+    if (!isValidObjectId(statusId)) {
+      return res.status(400).json({ success: false, message: 'Invalid status id' });
+    }
+
     const user = await User.findById(req.user._id);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
@@ -1182,12 +1588,17 @@ exports.updateStatus = async (req, res) => {
       contentType !== undefined
         ? normalizeStatusContentType(contentType)
         : normalizeStatusContentType(status.contentType);
-    const incomingVideoUpload = Boolean(req.file && String(req.file.mimetype || '').startsWith('video/'));
+    const incomingVideoUpload = Boolean(req.file && isStatusVideoUpload(req.file));
 
     if (requestedContentType === 'post' && incomingVideoUpload) {
       return res.status(400).json({ success: false, message: 'Post mode does not support video uploads' });
     }
-    if (requestedContentType === 'post' && !req.file && !shouldRemoveMedia && Boolean(status.video)) {
+    if (
+      requestedContentType === 'post'
+      && !req.file
+      && !shouldRemoveMedia
+      && (status.mediaType === 'video' || Boolean(status.video))
+    ) {
       return res.status(400).json({
         success: false,
         message: 'Post mode cannot keep an existing video. Remove or replace video first.',
@@ -1242,11 +1653,14 @@ exports.updateStatus = async (req, res) => {
 
     // Update media if new one provided
     if (req.file) {
-      await destroyStatusMedia(status);
-
+      staleStatusMedia = snapshotStatusMedia(status);
       const uploadResult = await uploadStatusMedia(req.file, normalizedTrimRange);
+      uploadedStatusMedia = uploadResult;
       status.mediaType = uploadResult.mediaType;
       status.mediaPublicId = uploadResult.mediaPublicId;
+      status.mediaFormat = uploadResult.mediaFormat;
+      status.mediaResourceType = uploadResult.mediaResourceType;
+      status.mediaDeliveryType = uploadResult.mediaDeliveryType;
       if (uploadResult.mediaType === 'video') {
         status.video = uploadResult.mediaUrl;
         status.image = '';
@@ -1258,27 +1672,45 @@ exports.updateStatus = async (req, res) => {
         status.trimStartSec = 0;
         status.trimEndSec = null;
       }
-    } else if (shouldRemoveMedia && (status.image || status.video)) {
-      await destroyStatusMedia(status);
+    } else if (shouldRemoveMedia && (status.mediaPublicId || status.image || status.video)) {
+      staleStatusMedia = snapshotStatusMedia(status);
       status.image = '';
       status.video = '';
       status.mediaType = 'text';
       status.mediaPublicId = '';
+      status.mediaFormat = '';
+      status.mediaResourceType = '';
+      status.mediaDeliveryType = '';
       status.trimStartSec = 0;
       status.trimEndSec = null;
-    } else if (!status.image && !status.video) {
+    } else if (!status.mediaPublicId && !status.image && !status.video) {
       status.mediaType = 'text';
       status.mediaPublicId = '';
+      status.mediaFormat = '';
+      status.mediaResourceType = '';
+      status.mediaDeliveryType = '';
       status.trimStartSec = 0;
       status.trimEndSec = null;
     }
 
     await user.save();
+    uploadedStatusMedia = null;
+    if (staleStatusMedia?.mediaPublicId) {
+      await destroyStatusMedia(staleStatusMedia);
+    }
 
     const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
-    res.json({ success: true, statuses: activeStatuses });
+    res.json({
+      success: true,
+      statuses: serializeStatusesWithMedia(activeStatuses, { isOwner: true }),
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    if (uploadedStatusMedia?.mediaPublicId) {
+      await destroyStatusMedia(uploadedStatusMedia);
+    }
+    return sendUserError(res, error);
+  } finally {
+    await cleanupTempUpload(req.file?.path);
   }
 };
 
@@ -1287,9 +1719,15 @@ exports.deleteStatus = async (req, res) => {
   try {
     const { statusId } = req.params;
 
-    const user = await User.findById(req.user._id);
+    if (!isValidObjectId(statusId)) {
+      return res.status(400).json({ success: false, message: 'Invalid status id' });
+    }
+
+    const user = await User.findOne({ _id: req.user._id, 'statuses._id': statusId })
+      .select('statuses')
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
     if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+      return res.status(404).json({ success: false, message: 'Status not found' });
     }
     const status = user.statuses.id(statusId);
 
@@ -1297,15 +1735,31 @@ exports.deleteStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Status not found' });
     }
 
-    await destroyStatusMedia(status);
+    const staleStatusMedia = snapshotStatusMedia(status);
+    await destroyStatusMedia(staleStatusMedia);
+    const updateResult = await User.updateOne(
+      { _id: req.user._id, 'statuses._id': statusId },
+      { $pull: { statuses: { _id: statusId } } }
+    ).maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
 
-    user.statuses.pull(statusId);
-    await user.save();
+    if (updateResult.modifiedCount !== 1) {
+      return res.status(404).json({ success: false, message: 'Status not found' });
+    }
 
-    const activeStatuses = user.statuses.filter(s => new Date() < new Date(s.expiresAt));
-    res.json({ success: true, statuses: activeStatuses });
+    await StatusView.deleteMany({ statusOwnerId: req.user._id, statusId })
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+
+    const updatedUser = await User.findById(req.user._id)
+      .select('statuses')
+      .lean()
+      .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS);
+    const activeStatuses = (updatedUser?.statuses || []).filter(s => new Date() < new Date(s.expiresAt));
+    res.json({
+      success: true,
+      statuses: serializeStatusesWithMedia(activeStatuses, { isOwner: true }),
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };
 
@@ -1320,24 +1774,10 @@ exports.guestLogout = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Not a guest user' });
     }
 
-    const Blog = require('../models/Blog');
-    const Short = require('../models/Short');
-    const Comment = require('../models/Comment');
-    const Notification = require('../models/Notification');
-    const Message = require('../models/Message');
-
-    // Delete all guest data
-    await Promise.all([
-      Blog.deleteMany({ author: userId }),
-      Short.deleteMany({ author: userId }),
-      Comment.deleteMany({ author: userId }),
-      Notification.deleteMany({ $or: [{ user: userId }, { sender: userId }] }),
-      Message.deleteMany({ $or: [{ sender: userId }, { receiver: userId }] }),
-      User.findByIdAndDelete(userId)
-    ]);
+    await cleanupUserAccountData(user, { deleteUser: true });
 
     res.json({ success: true, message: 'Guest account and all data deleted' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendUserError(res, error);
   }
 };

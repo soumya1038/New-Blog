@@ -3,6 +3,8 @@ const Product = require('../models/Product');
 const Shipment = require('../models/Shipment');
 const { runOnce } = require('./idempotencyService');
 
+const SHIPMENT_QUERY_MAX_TIME_MS = Math.max(100, Number(process.env.ORDER_QUERY_MAX_TIME_MS) || 5000);
+
 const toId = (value) => value?.toString?.() || String(value || '');
 
 const isShiprocketConfigured = () => {
@@ -61,7 +63,7 @@ const prepareShipmentsForOrder = async (orderId) => {
     resourceId: toId(orderId),
     lockMs: 15 * 60 * 1000,
     handler: async () => {
-      const order = await Order.findById(orderId);
+      const order = await Order.findById(orderId).maxTimeMS(SHIPMENT_QUERY_MAX_TIME_MS);
       if (!order) throw new Error(`Order not found: ${orderId}`);
 
       const physicalItems = order.items.filter((item) => item.type === 'physical');
@@ -70,7 +72,9 @@ const prepareShipmentsForOrder = async (orderId) => {
       }
 
       const productIds = physicalItems.map((item) => item.productId);
-      const products = await Product.find({ _id: { $in: productIds } }).select('physical');
+      const products = await Product.find({ _id: { $in: productIds } })
+        .select('physical')
+        .maxTimeMS(SHIPMENT_QUERY_MAX_TIME_MS);
       const productMap = new Map(products.map((product) => [toId(product._id), product]));
       const bySeller = groupPhysicalItemsBySeller(order, productMap);
       const providerConfigured = isShiprocketConfigured();
@@ -103,7 +107,7 @@ const prepareShipmentsForOrder = async (orderId) => {
             upsert: true,
             new: true
           }
-        );
+        ).maxTimeMS(SHIPMENT_QUERY_MAX_TIME_MS);
         shipmentCount += 1;
       }
 

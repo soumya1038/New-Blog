@@ -2,6 +2,8 @@ const crypto = require('crypto');
 const TwoFactorChallenge = require('../models/TwoFactorChallenge');
 const User = require('../models/User');
 const { decrypt } = require('./encryption');
+const { logError } = require('./safeErrorLog');
+const { getDedicatedSecret } = require('./secrets');
 
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const ISSUER = process.env.TWO_FACTOR_ISSUER || 'Lekhon';
@@ -15,6 +17,8 @@ const ACTION_LABELS = {
   change_password: 'change your password',
   forgot_password: 'reset your password',
   change_email: 'change your email',
+  change_username: 'change your username',
+  disconnect_social: 'disconnect a social account',
   delete_account: 'delete your account',
   delete_blog: 'delete this blog',
   delete_article: 'delete this article',
@@ -23,13 +27,21 @@ const ACTION_LABELS = {
   disable_2fa: 'turn off two-factor authentication',
   generate_api_key: 'generate an API key',
   revoke_api_key: 'revoke an API key',
+  admin_delete_user: 'delete this user account as an admin',
+  admin_suspend_user: 'change this user suspension as an admin',
+  admin_toggle_verification: 'change this user verification status as an admin',
+  admin_change_role: 'change this user role as an admin',
+  admin_warn_user: 'send this account warning as an admin',
+  admin_pre_delete_user: 'send this pre-deletion warning as an admin',
+  admin_delete_content: 'delete this content as an admin',
+  admin_review_seller_application: 'review this seller application as an admin',
+  admin_mark_payout_paid: 'mark this payout as paid as an admin',
+  admin_review_price_change: 'review this price-change request as an admin',
+  admin_revoke_seller: 'revoke this seller status as an admin',
+  admin_update_support_request: 'update this support request as an admin',
 };
 
-const getSigningSecret = () =>
-  process.env.JWT_SECRET ||
-  process.env.ENCRYPTION_KEY ||
-  process.env.BREVO_API_KEY ||
-  'change-this-two-factor-secret';
+const getSigningSecret = () => getDedicatedSecret({ key: 'TWO_FACTOR_SECRET' });
 
 const normalizeCode = (code) => String(code || '').replace(/\D/g, '').slice(0, 8);
 
@@ -186,8 +198,6 @@ const buildTwoFactorStatus = (user) => {
   };
 };
 
-const isAdminBypass = (user) => ['admin', 'coAdmin'].includes(user?.role);
-
 const getChallengeMethodsPayload = (user) => {
   const status = buildTwoFactorStatus(user);
   return {
@@ -231,12 +241,13 @@ const verifyActionToken = async ({ userId, action, token, methods = [] }) => {
     query.method = { $in: methods };
   }
 
-  const challenge = await TwoFactorChallenge.findOne(query);
+  const challenge = await TwoFactorChallenge.findOneAndUpdate(
+    query,
+    { $set: { consumedAt: new Date() } },
+    { new: true }
+  );
 
   if (!challenge) return false;
-
-  challenge.consumedAt = new Date();
-  await challenge.save();
   return true;
 };
 
@@ -369,8 +380,6 @@ const recordPasswordAttemptFailure = (user) => {
 
 const requireSensitiveActionToken = (action) => async (req, res, next) => {
   try {
-    if (isAdminBypass(req.user)) return next();
-
     const token =
       req.headers['x-sensitive-action-token'] ||
       req.body?.sensitiveActionToken ||
@@ -392,14 +401,13 @@ const requireSensitiveActionToken = (action) => async (req, res, next) => {
       message: 'Account password verification required',
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    logError('Sensitive action token check failed:', error);
+    return res.status(500).json({ success: false, message: 'Account verification failed' });
   }
 };
 
 const requireTwoFactorForAction = (action) => async (req, res, next) => {
   try {
-    if (isAdminBypass(req.user)) return next();
-
     const user = await User.findById(req.user._id);
     const status = buildTwoFactorStatus(user);
 
@@ -427,7 +435,8 @@ const requireTwoFactorForAction = (action) => async (req, res, next) => {
       twoFactor: getChallengeMethodsPayload(user),
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    logError('Two-factor action token check failed:', error);
+    return res.status(500).json({ success: false, message: 'Two-factor verification failed' });
   }
 };
 

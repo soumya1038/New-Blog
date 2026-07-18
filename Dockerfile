@@ -1,52 +1,38 @@
-# Multi-stage build for production
-FROM node:18-alpine AS base
+FROM node:20-alpine AS frontend-builder
 
-# Install dependencies only when needed
-FROM base AS deps
-WORKDIR /app
-COPY package*.json ./
-COPY apps/api/package*.json ./apps/api/
-COPY apps/web/package*.json ./apps/web/
-COPY apps/admin/package*.json ./apps/admin/
-RUN npm ci --only=production
-
-# Build the application
-FROM base AS builder
-WORKDIR /app
-COPY . .
-COPY --from=deps /app/node_modules ./node_modules
+WORKDIR /app/redirect
+ENV GENERATE_SOURCEMAP=false
+COPY redirect/package*.json ./
+RUN npm ci --legacy-peer-deps
+COPY redirect/ ./
 RUN npm run build
 
-# Production image
-FROM base AS runner
-WORKDIR /app
+FROM node:20-alpine AS backend-deps
+
+WORKDIR /app/backend
+COPY backend/package*.json ./
+RUN npm ci --omit=dev
+
+FROM node:20-alpine AS runner
 
 ENV NODE_ENV=production
-ENV PORT=4000
+ENV PORT=5000
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup -S nodejs && adduser -S nodeapp -G nodejs
 
-# Copy built application
-COPY --from=builder --chown=nextjs:nodejs /app/apps/api/dist ./apps/api/dist
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next ./apps/web/.next
-COPY --from=builder --chown=nextjs:nodejs /app/apps/admin/.next ./apps/admin/.next
+WORKDIR /app/backend
+COPY --from=backend-deps /app/backend/node_modules ./node_modules
+COPY backend/ ./
+COPY --from=frontend-builder /app/redirect/build ./build
 
-# Copy package.json files
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/apps/api/package*.json ./apps/api/
-COPY --from=builder /app/apps/web/package*.json ./apps/web/
-COPY --from=builder /app/apps/admin/package*.json ./apps/admin/
+RUN mkdir -p uploads tmp/digital-temp tmp/chat-files tmp/voice tmp/status-media \
+  && chown -R nodeapp:nodejs /app/backend
 
-# Copy production dependencies
-COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
+USER nodeapp
 
-USER nextjs
+EXPOSE 5000
 
-EXPOSE 3000 3001 4000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:4000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:5000/health >/dev/null || exit 1
 
 CMD ["npm", "start"]

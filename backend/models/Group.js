@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const crypto = require('crypto');
 
 const groupSchema = new mongoose.Schema({
   name: {
@@ -68,12 +69,11 @@ groupSchema.index({ members: 1 });
 groupSchema.index({ createdBy: 1 });
 groupSchema.index({ admins: 1 });
 groupSchema.index({ coAdmins: 1 });
-groupSchema.index({ inviteCode: 1 });
 
 // Generate invite code before saving
 groupSchema.pre('save', function(next) {
   if (!this.inviteCode) {
-    this.inviteCode = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+    this.inviteCode = crypto.randomBytes(12).toString('hex');
   }
   next();
 });

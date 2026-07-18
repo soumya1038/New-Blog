@@ -10,6 +10,29 @@ const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCurs
 const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
 const { enqueueSearchIndexRefresh, enqueueEmailJob } = require('../jobs/queueService');
 const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
+const { cleanupOldDraftBatch } = require('../utils/draftCleanup');
+const {
+  normalizeAllowedPublicId,
+  normalizeAllowedPublicIds
+} = require('../utils/cloudinaryPublicIds');
+const { deleteCloudinaryPublicIds } = require('../utils/cloudinaryCleanup');
+const { normalizeHttpUrl } = require('../utils/safeUrls');
+const { logError, logWarn, sendSafeServerError } = require('../utils/safeErrorLog');
+const { trackPublishedContentView } = require('../utils/contentViewTracking');
+const {
+  getFollowerCount,
+  resolveContentAuthorRelationships,
+} = require('../utils/contentAuthorRelationships');
+const {
+  canViewerSeeStatus,
+  filterVisibleStatusesForViewer,
+  getViewerRelationshipToTarget,
+  hasUserId,
+  sanitizeStatusesForViewer,
+} = require('../utils/userVisibility');
+
+const sendArticleServerError = (res, error) =>
+  sendSafeServerError(res, '[articleController] request failed:', error, 'Unable to process article request');
 
 const ARTICLE_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_ARTICLE_LIST_SECONDS,
@@ -20,6 +43,10 @@ const ARTICLE_DETAIL_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_ARTICLE_DETAIL_SECONDS,
   parsePositiveInt(process.env.CACHE_TTL_DETAIL_SECONDS, 300)
 );
+const ARTICLE_QUERY_MAX_TIME_MS = Math.max(
+  100,
+  Number(process.env.ARTICLE_QUERY_MAX_TIME_MS) || 5000
+);
 
 const invalidateArticleReadCache = async () => {
   await invalidateCacheByPrefixes(['articles:list:', 'article:detail:']);
@@ -29,9 +56,63 @@ const invalidateArticlePublishCache = async () => {
   await invalidateCacheByPrefixes(['articles:list:', 'article:detail:', 'seo:sitemap', 'seo:feed']);
 };
 
+const getCommentCountMap = async (field, docs = []) => {
+  const ids = docs.map((doc) => doc?._id).filter(Boolean);
+  if (!ids.length) return new Map();
+
+  const counts = await Comment.aggregate([
+    { $match: { [field]: { $in: ids } } },
+    { $group: { _id: `$${field}`, count: { $sum: 1 } } },
+  ]).option({ maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS });
+
+  return new Map(counts.map((entry) => [String(entry._id), entry.count]));
+};
+
+const serializeMixedRelatedItems = async ({
+  articles = [],
+  blogs = [],
+  shorts = [],
+  currentCategory,
+  relatedCategories,
+  currentTags,
+}) => {
+  const [articleCounts, blogCounts, shortCounts] = await Promise.all([
+    getCommentCountMap('article', articles),
+    getCommentCountMap('blog', blogs),
+    getCommentCountMap('short', shorts),
+  ]);
+
+  return [
+    ...articles.map((item) => serializeRelatedItem({
+      item,
+      type: 'article',
+      commentCount: articleCounts.get(String(item._id)) || 0,
+      currentCategory,
+      relatedCategories,
+      currentTags,
+    })),
+    ...blogs.map((item) => serializeRelatedItem({
+      item,
+      type: 'blog',
+      commentCount: blogCounts.get(String(item._id)) || 0,
+      currentCategory,
+      relatedCategories,
+      currentTags,
+    })),
+    ...shorts.map((item) => serializeRelatedItem({
+      item,
+      type: 'short',
+      commentCount: shortCounts.get(String(item._id)) || 0,
+      currentCategory,
+      relatedCategories,
+      currentTags,
+    })),
+  ];
+};
+
 const triggerSearchIndexRefresh = (reason) => {
   enqueueSearchIndexRefresh(reason).catch((error) => {
-    console.warn('[search] Failed to enqueue search index refresh:', error?.message || error);
+    logWarn('[search] Failed to enqueue search index refresh:', error);
   });
 };
 
@@ -179,17 +260,22 @@ const normalizeProductLinks = (body) => {
 
   const externalProductLinks = parseJsonArrayField(body.externalProductLinks)
     .filter(link => link && typeof link === 'object')
-    .map(link => ({
-      title: String(link.title || '').trim(),
-      url: String(link.url || '').trim(),
-      platform: String(link.platform || 'External').trim() || 'External',
-      thumbnail: String(link.thumbnail || '').trim(),
-      thumbnailPublicId: String(link.thumbnailPublicId || '').trim(),
-      originalThumbnail: String(link.originalThumbnail || '').trim(),
-      originalThumbnailPublicId: String(link.originalThumbnailPublicId || '').trim(),
-      backgroundRemovalStatus: String(link.backgroundRemovalStatus || '').trim(),
-      priceLabel: String(link.priceLabel || '').trim(),
-    }))
+    .map(link => {
+      const url = normalizeHttpUrl(link.url);
+      const thumbnail = normalizeHttpUrl(link.thumbnail, { maxLength: 1000 });
+      const originalThumbnail = normalizeHttpUrl(link.originalThumbnail, { maxLength: 1000 });
+      return {
+        title: String(link.title || '').trim(),
+        url,
+        platform: String(link.platform || 'External').trim() || 'External',
+        thumbnail,
+        thumbnailPublicId: String(link.thumbnailPublicId || '').trim(),
+        originalThumbnail,
+        originalThumbnailPublicId: String(link.originalThumbnailPublicId || '').trim(),
+        backgroundRemovalStatus: String(link.backgroundRemovalStatus || '').trim(),
+        priceLabel: String(link.priceLabel || '').trim(),
+      };
+    })
     .filter(link => link.title && link.url);
 
   return {
@@ -271,11 +357,16 @@ exports.createArticle = async (req, res) => {
     const videoUrlsArray = normalizeStringArray(videoUrls);
     const galleryImagesArray = normalizeStringArray(galleryImages);
     const galleryImagePublicIdsArray = normalizeStringArray(galleryImagePublicIds);
+    const coverPublicIdResult = normalizeAllowedPublicId(cloudinaryPublicId, req.user._id);
+    const galleryPublicIdsResult = normalizeAllowedPublicIds(galleryImagePublicIdsArray, req.user._id);
     const productTagPlacementsArray = normalizeProductTagPlacements(productTagPlacements);
     const templateIdValue = String(templateId || 'city-gazette').trim().slice(0, 64) || 'city-gazette';
     const customTemplateResult = normalizeTemplatePayload(customTemplate);
     if (customTemplateResult.error) {
       return res.status(400).json({ success: false, message: customTemplateResult.error });
+    }
+    if (coverPublicIdResult.error || galleryPublicIdsResult.error) {
+      return res.status(400).json({ success: false, message: 'Invalid image ownership' });
     }
     const templateThemeModeValue = normalizeTemplateThemeMode(templateThemeMode, 'auto');
 
@@ -292,7 +383,7 @@ exports.createArticle = async (req, res) => {
           try {
             await cloudinary.uploader.destroy(existingDraft.cloudinaryPublicId);
           } catch (err) {
-            console.error('Cloudinary delete error:', err);
+            logError('Cloudinary delete error:', err);
           }
         }
         await Article.findByIdAndDelete(existingDraft._id);
@@ -312,9 +403,9 @@ exports.createArticle = async (req, res) => {
       tags: tagArray,
       category: category || 'General',
       coverImage: coverImage || null,
-      cloudinaryPublicId: cloudinaryPublicId || null,
+      cloudinaryPublicId: coverPublicIdResult.publicId || null,
       galleryImages: galleryImagesArray,
-      galleryImagePublicIds: galleryImagePublicIdsArray,
+      galleryImagePublicIds: galleryPublicIdsResult.publicIds,
       productTagPlacements: productTagPlacementsArray,
       videoUrls: videoUrlsArray,
       templateId: templateIdValue,
@@ -352,13 +443,13 @@ exports.createArticle = async (req, res) => {
         },
         { jobId: `content-published:article:${article._id}` }
       ).catch((error) => {
-        console.error('Failed to queue article published email:', error?.message || error);
+        logError('Failed to queue article published email:', error);
       });
     }
 
     res.status(201).json({ success: true, article: populatedArticle });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendArticleServerError(res, error);
   }
 };
 
@@ -369,7 +460,22 @@ exports.getArticles = async (req, res) => {
     const limit = parseLimit(req.query.limit);
     const filter = {};
     const canUseListCache = draft !== 'true';
-    const listCacheKey = `articles:list:${createQueryCacheKey(req.query)}`;
+    const viewerId = String(req.user?._id || 'anon');
+    if (author && !mongoose.Types.ObjectId.isValid(author)) {
+      return res.status(400).json({ success: false, message: 'Invalid author id' });
+    }
+
+    const listCacheKey = `articles:list:${createQueryCacheKey({
+      author,
+      tag,
+      draft,
+      cursor,
+      limit,
+      viewer: viewerId,
+      visibility: 'block-aware-v1',
+      published: 'scheduled-aware-v1',
+      mode: useCursor ? 'cursor' : 'limit'
+    })}`;
 
     if (canUseListCache) {
       const cachedPayload = await getCache(listCacheKey);
@@ -382,35 +488,27 @@ exports.getArticles = async (req, res) => {
     if (tag) filter.tags = tag;
     if (draft !== undefined) {
       filter.isDraft = draft === 'true';
+      if (draft !== 'true') filter.isScheduled = false;
       if (req.user) {
         filter.author = req.user._id;
         
         const fortyTwoHoursAgo = new Date(Date.now() - 42 * 60 * 60 * 1000);
-        const oldDrafts = await Article.find({
-          author: req.user._id,
-          isDraft: true,
-          isScheduled: false,
-          updatedAt: { $lt: fortyTwoHoursAgo }
-        });
-        
-        for (const draft of oldDrafts) {
-          if (draft.cloudinaryPublicId) {
-            const cloudinary = require('../utils/cloudinary');
-            try {
-              await cloudinary.uploader.destroy(draft.cloudinaryPublicId);
-            } catch (err) {
-              console.error('Cloudinary delete error:', err);
-            }
+        await cleanupOldDraftBatch({
+          Model: Article,
+          commentField: 'article',
+          filter: {
+            author: req.user._id,
+            isDraft: true,
+            isScheduled: false,
+            updatedAt: { $lt: fortyTwoHoursAgo }
           }
-          await Comment.deleteMany({ article: draft._id });
-          await Notification.deleteMany({ article: draft._id });
-          await Article.findByIdAndDelete(draft._id);
-        }
+        });
       } else {
         return res.status(401).json({ success: false, message: 'Authentication required for drafts' });
       }
     } else {
       filter.isDraft = false;
+      filter.isScheduled = false;
     }
 
     if (useCursor) {
@@ -427,48 +525,55 @@ exports.getArticles = async (req, res) => {
     }
 
     const query = Article.find(filter)
-      .populate('author', 'username profileImage isGuest role isVerified statuses followers')
-      .populate('linkedProduct', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
-      .populate('linkedProducts', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
+      .populate({
+        path: 'author',
+        select: 'username profileImage isGuest role isVerified statuses.audience statuses.expiresAt',
+        options: { maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS },
+      })
+      .populate({
+        path: 'linkedProduct',
+        select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount',
+        options: { maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS },
+      })
+      .populate({
+        path: 'linkedProducts',
+        select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount',
+        options: { maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS },
+      })
       .sort({ createdAt: -1, _id: -1 });
 
-    if (useCursor) {
-      query.limit(limit + 1);
-    }
+    query.limit(useCursor ? limit + 1 : limit).maxTimeMS(ARTICLE_QUERY_MAX_TIME_MS);
 
     const articles = await query;
     const { pageItems: pagedArticles, hasMore, nextCursor } = useCursor
       ? extractNextCursor(articles, limit)
       : { pageItems: articles, hasMore: false, nextCursor: null };
 
-    const viewerId = String(req.user?._id || '');
-    const canViewerSeeStatus = (status, { isOwner, isFollower }) => {
-      if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
-      if (isOwner) return true;
-      const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
-      if (audience === 'public') return true;
-      if (audience === 'followers' && isFollower) return true;
-      return false;
-    };
+    // Resolve only relationship edges relevant to this viewer, never whole social arrays.
+    const authorIds = [...new Set(
+      pagedArticles.map((article) => String(article.author?._id || '')).filter(Boolean)
+    )];
+    const authorRelationships = await resolveContentAuthorRelationships({
+      viewer: req.user,
+      authorIds,
+      maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS,
+    });
 
-    // Add commentCount and audience-aware hasActiveStatus to each article
-    const articlesWithStatus = await Promise.all(pagedArticles.map(async (article) => {
+    // Add commentCount and audience-aware hasActiveStatus to each article.
+    const commentCountMap = await getCommentCountMap('article', pagedArticles);
+    const articlesWithStatus = pagedArticles.map((article) => {
       const articleObj = article.toObject();
-      articleObj.commentCount = await Comment.countDocuments({ article: article._id });
+      articleObj.commentCount = commentCountMap.get(String(article._id)) || 0;
       if (articleObj.author && articleObj.author.statuses) {
-        const authorId = String(articleObj.author._id || '');
-        const isOwner = viewerId && viewerId === authorId;
-        const isFollower = Array.isArray(articleObj.author.followers)
-          ? articleObj.author.followers.some((id) => String(id) === viewerId)
-          : false;
+        const targetId = String(articleObj.author._id || '');
+        const relationship = authorRelationships.get(targetId) || {};
         articleObj.author.hasActiveStatus = articleObj.author.statuses.some((status) =>
-          canViewerSeeStatus(status, { isOwner, isFollower })
+          canViewerSeeStatus(status, relationship)
         );
         delete articleObj.author.statuses;
-        delete articleObj.author.followers;
       }
       return articleObj;
-    }));
+    });
 
     const payload = {
       success: true,
@@ -491,26 +596,23 @@ exports.getArticles = async (req, res) => {
 
     res.json(payload);
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendArticleServerError(res, error);
   }
 };
 
 exports.getArticle = async (req, res) => {
   try {
     const viewerId = String(req.user?._id || 'anon');
-    const detailCacheKey = `article:detail:v2:${req.params.id}:viewer:${viewerId}`;
+    const detailCacheKey = `article:detail:v5:${req.params.id}:viewer:${viewerId}`;
     const canUseDetailCache = viewerId === 'anon';
-    const cachedPayload = canUseDetailCache ? await getCache(detailCacheKey) : null;
-    if (cachedPayload) {
-      return res.json(cachedPayload);
-    }
 
     const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id, {
+      maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS,
       populate: [
-        { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses followers' },
-        { path: 'likes', select: 'username profileImage' },
-        { path: 'linkedProduct', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount' },
-        { path: 'linkedProducts', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount' }
+        { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses', options: { maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS } },
+        { path: 'likes', select: 'username profileImage', options: { maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS } },
+        { path: 'linkedProduct', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount', options: { maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS } },
+        { path: 'linkedProducts', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount', options: { maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS } }
       ]
     });
 
@@ -521,43 +623,46 @@ exports.getArticle = async (req, res) => {
     }
 
     const authorIdForStats = article.author?._id || article.author;
-    const [commentCount, authorArticleCount] = await Promise.all([
-      Comment.countDocuments({ article: article._id }),
+    const isPublished = !article.isDraft && !article.isScheduled;
+    const isOwner = req.user && String(authorIdForStats) === String(req.user._id);
+    if (!isPublished && !isOwner) {
+      return res.status(404).json({ success: false, message: 'Article not found' });
+    }
+
+    const cachedPayload = canUseDetailCache && isPublished ? await getCache(detailCacheKey) : null;
+    if (cachedPayload) {
+      return res.json(cachedPayload);
+    }
+
+    const [commentCount, authorArticleCount, authorFollowerCount, authorRelationships] = await Promise.all([
+      Comment.countDocuments({ article: article._id }).maxTimeMS(ARTICLE_QUERY_MAX_TIME_MS),
       authorIdForStats
-        ? Article.countDocuments({ author: authorIdForStats, isDraft: false })
+        ? Article.countDocuments({ author: authorIdForStats, isDraft: false, isScheduled: false })
+          .maxTimeMS(ARTICLE_QUERY_MAX_TIME_MS)
         : Promise.resolve(0),
+      getFollowerCount(authorIdForStats, ARTICLE_QUERY_MAX_TIME_MS),
+      resolveContentAuthorRelationships({
+        viewer: req.user,
+        authorIds: authorIdForStats ? [authorIdForStats] : [],
+        maxTimeMS: ARTICLE_QUERY_MAX_TIME_MS,
+      }),
     ]);
 
     const articleObj = article.toObject();
-    let authorIsFollowing = false;
+    const authorRelationship = articleObj.author
+      ? authorRelationships.get(String(articleObj.author._id || '')) || {}
+      : {};
+    let authorIsFollowing = Boolean(authorRelationship.isFollower);
     if (articleObj.author && articleObj.author.statuses) {
-      const authorId = String(articleObj.author._id || '');
-      const isOwner = viewerId !== 'anon' && viewerId === authorId;
-      authorIsFollowing = Array.isArray(articleObj.author.followers)
-        ? articleObj.author.followers.some((id) => String(id) === viewerId)
-        : false;
-      const visibleStatuses = (articleObj.author.statuses || []).filter((status) => {
-        if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
-        if (isOwner) return true;
-        const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
-        if (audience === 'public') return true;
-        if (audience === 'followers' && authorIsFollowing) return true;
-        return false;
-      });
+      const visibleStatuses = filterVisibleStatusesForViewer(articleObj.author.statuses, authorRelationship);
       articleObj.author.hasActiveStatus = visibleStatuses.length > 0;
-      articleObj.author.statuses = visibleStatuses;
+      articleObj.author.statuses = sanitizeStatusesForViewer(visibleStatuses, authorRelationship);
     }
     if (articleObj.author) {
-      if (!authorIsFollowing && Array.isArray(articleObj.author.followers)) {
-        authorIsFollowing = articleObj.author.followers.some((id) => String(id) === viewerId);
-      }
-      articleObj.author.followerCount = Array.isArray(articleObj.author.followers)
-        ? articleObj.author.followers.length
-        : Number(articleObj.author.followerCount || articleObj.author.followersCount || 0);
+      articleObj.author.followerCount = authorFollowerCount;
       articleObj.author.articleCount = authorArticleCount;
       articleObj.author.articlesCount = authorArticleCount;
       articleObj.author.isFollowing = viewerId !== 'anon' && authorIsFollowing;
-      delete articleObj.author.followers;
     }
 
     const payload = {
@@ -573,13 +678,13 @@ exports.getArticle = async (req, res) => {
       }
     };
 
-    if (canUseDetailCache) {
+    if (canUseDetailCache && isPublished) {
       await setCache(detailCacheKey, payload, ARTICLE_DETAIL_CACHE_TTL_SECONDS);
     }
 
     res.json(payload);
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendArticleServerError(res, error);
   }
 };
 
@@ -589,7 +694,7 @@ exports.getRelatedArticleContent = async (req, res) => {
     const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id);
     const article = resolved.doc;
 
-    if (!article || article.isDraft) {
+    if (!article || article.isDraft || article.isScheduled) {
       return res.status(404).json({ success: false, message: 'Article not found' });
     }
 
@@ -605,46 +710,28 @@ exports.getRelatedArticleContent = async (req, res) => {
     const differentAuthorFilter = currentAuthorId ? { author: { $ne: currentAuthorId } } : {};
 
     const [articles, blogs, shorts] = await Promise.all([
-      Article.find({ _id: { $ne: article._id }, isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+      Article.find({ _id: { $ne: article._id }, isDraft: false, isScheduled: false, ...differentAuthorFilter, ...categoryFilter })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
-      Blog.find({ isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+      Blog.find({ isDraft: false, isScheduled: false, ...differentAuthorFilter, ...categoryFilter })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
-      Short.find({ isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+      Short.find({ isDraft: false, isScheduled: false, ...differentAuthorFilter, ...categoryFilter })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
     ]);
 
-    const relatedWithScores = await Promise.all([
-      ...articles.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'article',
-        commentCount: await Comment.countDocuments({ article: item._id }),
-        currentCategory,
-        relatedCategories,
-        currentTags,
-      })),
-      ...blogs.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'blog',
-        commentCount: await Comment.countDocuments({ blog: item._id }),
-        currentCategory,
-        relatedCategories,
-        currentTags,
-      })),
-      ...shorts.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'short',
-        commentCount: await Comment.countDocuments({ short: item._id }),
-        currentCategory,
-        relatedCategories,
-        currentTags,
-      })),
-    ]);
+    const relatedWithScores = await serializeMixedRelatedItems({
+      articles,
+      blogs,
+      shorts,
+      currentCategory,
+      relatedCategories,
+      currentTags,
+    });
 
     const ranked = relatedWithScores
       .filter((item) => {
@@ -658,46 +745,28 @@ exports.getRelatedArticleContent = async (req, res) => {
     if (ranked.length < limit) {
       const fallbackLimit = (limit - ranked.length) * 2;
       const [fallbackArticles, fallbackBlogs, fallbackShorts] = await Promise.all([
-        Article.find({ _id: { $ne: article._id }, isDraft: false, ...differentAuthorFilter })
+        Article.find({ _id: { $ne: article._id }, isDraft: false, isScheduled: false, ...differentAuthorFilter })
           .populate('author', 'fullName username profileImage isGuest role isVerified')
           .sort({ views: -1, createdAt: -1 })
           .limit(fallbackLimit),
-        Blog.find({ isDraft: false, ...differentAuthorFilter })
+        Blog.find({ isDraft: false, isScheduled: false, ...differentAuthorFilter })
           .populate('author', 'fullName username profileImage isGuest role isVerified')
           .sort({ views: -1, createdAt: -1 })
           .limit(fallbackLimit),
-        Short.find({ isDraft: false, ...differentAuthorFilter })
+        Short.find({ isDraft: false, isScheduled: false, ...differentAuthorFilter })
           .populate('author', 'fullName username profileImage isGuest role isVerified')
           .sort({ views: -1, createdAt: -1 })
           .limit(fallbackLimit),
       ]);
 
-      const fallbackItems = await Promise.all([
-        ...fallbackArticles.map(async (item) => serializeRelatedItem({
-          item,
-          type: 'article',
-          commentCount: await Comment.countDocuments({ article: item._id }),
-          currentCategory,
-          relatedCategories,
-          currentTags,
-        })),
-        ...fallbackBlogs.map(async (item) => serializeRelatedItem({
-          item,
-          type: 'blog',
-          commentCount: await Comment.countDocuments({ blog: item._id }),
-          currentCategory,
-          relatedCategories,
-          currentTags,
-        })),
-        ...fallbackShorts.map(async (item) => serializeRelatedItem({
-          item,
-          type: 'short',
-          commentCount: await Comment.countDocuments({ short: item._id }),
-          currentCategory,
-          relatedCategories,
-          currentTags,
-        })),
-      ]);
+      const fallbackItems = await serializeMixedRelatedItems({
+        articles: fallbackArticles,
+        blogs: fallbackBlogs,
+        shorts: fallbackShorts,
+        currentCategory,
+        relatedCategories,
+        currentTags,
+      });
 
       fallbackItems
         .sort(compareRelatedContent)
@@ -717,7 +786,7 @@ exports.getRelatedArticleContent = async (req, res) => {
       relatedCategories,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendArticleServerError(res, error);
   }
 };
 
@@ -727,7 +796,7 @@ exports.getAuthorArticleContent = async (req, res) => {
     const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id);
     const article = resolved.doc;
 
-    if (!article || article.isDraft) {
+    if (!article || article.isDraft || article.isScheduled) {
       return res.status(404).json({ success: false, message: 'Article not found' });
     }
 
@@ -742,46 +811,28 @@ exports.getAuthorArticleContent = async (req, res) => {
       .filter(Boolean));
 
     const [articles, blogs, shorts] = await Promise.all([
-      Article.find({ _id: { $ne: article._id }, author: authorId, isDraft: false })
+      Article.find({ _id: { $ne: article._id }, author: authorId, isDraft: false, isScheduled: false })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
-      Blog.find({ author: authorId, isDraft: false })
+      Blog.find({ author: authorId, isDraft: false, isScheduled: false })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
-      Short.find({ author: authorId, isDraft: false })
+      Short.find({ author: authorId, isDraft: false, isScheduled: false })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
     ]);
 
-    const authorItems = await Promise.all([
-      ...articles.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'article',
-        commentCount: await Comment.countDocuments({ article: item._id }),
-        currentCategory,
-        relatedCategories: [currentCategory],
-        currentTags,
-      })),
-      ...blogs.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'blog',
-        commentCount: await Comment.countDocuments({ blog: item._id }),
-        currentCategory,
-        relatedCategories: [currentCategory],
-        currentTags,
-      })),
-      ...shorts.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'short',
-        commentCount: await Comment.countDocuments({ short: item._id }),
-        currentCategory,
-        relatedCategories: [currentCategory],
-        currentTags,
-      })),
-    ]);
+    const authorItems = await serializeMixedRelatedItems({
+      articles,
+      blogs,
+      shorts,
+      currentCategory,
+      relatedCategories: [currentCategory],
+      currentTags,
+    });
 
     const seen = new Set();
     const ranked = authorItems
@@ -799,7 +850,7 @@ exports.getAuthorArticleContent = async (req, res) => {
       author: authorId,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendArticleServerError(res, error);
   }
 };
 
@@ -854,6 +905,12 @@ exports.updateArticle = async (req, res) => {
       galleryImagePublicIds !== undefined
         ? normalizeStringArray(galleryImagePublicIds)
         : article.galleryImagePublicIds;
+    const coverPublicIdResult = cloudinaryPublicId !== undefined
+      ? normalizeAllowedPublicId(cloudinaryPublicId, req.user._id, [article.cloudinaryPublicId])
+      : { publicId: article.cloudinaryPublicId };
+    const galleryPublicIdsResult = galleryImagePublicIds !== undefined
+      ? normalizeAllowedPublicIds(galleryImagePublicIdsArray, req.user._id, article.galleryImagePublicIds || [])
+      : { publicIds: article.galleryImagePublicIds };
     const productTagPlacementsArray =
       productTagPlacements !== undefined
         ? normalizeProductTagPlacements(productTagPlacements)
@@ -868,6 +925,9 @@ exports.updateArticle = async (req, res) => {
         : { value: article.customTemplate };
     if (customTemplateResult.error) {
       return res.status(400).json({ success: false, message: customTemplateResult.error });
+    }
+    if (coverPublicIdResult.error || galleryPublicIdsResult.error) {
+      return res.status(400).json({ success: false, message: 'Invalid image ownership' });
     }
     const templateThemeModeValue =
       templateThemeMode !== undefined
@@ -891,7 +951,7 @@ exports.updateArticle = async (req, res) => {
           try {
             await cloudinary.uploader.destroy(otherDraft.cloudinaryPublicId);
           } catch (err) {
-            console.error('Cloudinary delete error:', err);
+            logError('Cloudinary delete error:', err);
           }
         }
         await Article.findByIdAndDelete(otherDraft._id);
@@ -903,9 +963,9 @@ exports.updateArticle = async (req, res) => {
     article.tags = tagArray;
     article.category = category || article.category;
     article.coverImage = coverImage !== undefined ? coverImage : article.coverImage;
-    article.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : article.cloudinaryPublicId;
+    article.cloudinaryPublicId = coverPublicIdResult.publicId || null;
     article.galleryImages = galleryImagesArray;
-    article.galleryImagePublicIds = galleryImagePublicIdsArray;
+    article.galleryImagePublicIds = galleryPublicIdsResult.publicIds;
     article.productTagPlacements = productTagPlacementsArray;
     article.videoUrls = videoUrlsArray;
     article.templateId = templateIdValue;
@@ -951,7 +1011,7 @@ exports.updateArticle = async (req, res) => {
         },
         { jobId: `content-published:article:${article._id}` }
       ).catch((error) => {
-        console.error('Failed to queue article published email after draft publish:', error?.message || error);
+        logError('Failed to queue article published email after draft publish:', error);
       });
     }
 
@@ -962,7 +1022,7 @@ exports.updateArticle = async (req, res) => {
 
     res.json({ success: true, article: updatedArticle });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendArticleServerError(res, error);
   }
 };
 
@@ -979,14 +1039,10 @@ exports.deleteArticle = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Not authorized' });
     }
 
-    if (article.cloudinaryPublicId) {
-      const cloudinary = require('../utils/cloudinary');
-      try {
-        await cloudinary.uploader.destroy(article.cloudinaryPublicId);
-      } catch (err) {
-        console.error('Cloudinary delete error:', err);
-      }
-    }
+    await deleteCloudinaryPublicIds([
+      article.cloudinaryPublicId,
+      ...(Array.isArray(article.galleryImagePublicIds) ? article.galleryImagePublicIds : [])
+    ]);
 
     await Comment.deleteMany({ article: article._id });
     await Notification.deleteMany({ article: article._id });
@@ -996,36 +1052,30 @@ exports.deleteArticle = async (req, res) => {
 
     res.json({ success: true, message: 'Article deleted' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendArticleServerError(res, error);
   }
 };
 
 exports.trackView = async (req, res) => {
   try {
-    const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id);
-    const article = resolved.doc;
-    if (!article) {
+    const result = await trackPublishedContentView({
+      Model: Article,
+      identifier: req.params.id,
+      userId: req.user?._id,
+      ip: req.ip || req.connection.remoteAddress,
+    });
+
+    if (!result.found) {
       return res.status(404).json({ success: false, message: 'Article not found' });
     }
 
-    const userId = req.user?._id;
-    const userIp = req.ip || req.connection.remoteAddress;
-
-    const alreadyViewed = article.viewedBy.some(view => 
-      (userId && view.user?.toString() === userId.toString()) || 
-      (!userId && view.ip === userIp)
-    );
-
-    if (!alreadyViewed) {
-      article.views += 1;
-      article.viewedBy.push({ user: userId, ip: userIp });
-      await article.save();
+    if (result.counted) {
       await invalidateArticleReadCache();
     }
 
-    res.json({ success: true, views: article.views });
+    res.json({ success: true, views: result.views });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendArticleServerError(res, error);
   }
 };
 
@@ -1034,23 +1084,44 @@ exports.toggleLike = async (req, res) => {
     const resolved = await resolveDocumentByIdOrSlug(Article, req.params.id);
     const article = resolved.doc;
 
-    if (!article) {
+    if (!article || article.isDraft || article.isScheduled) {
       return res.status(404).json({ success: false, message: 'Article not found' });
     }
 
-    const likeIndex = article.likes.indexOf(req.user._id);
+    const articleAuthor = await User.findById(article.author).select('blockedUsers email username emailNotifications');
+    if (!articleAuthor) {
+      return res.status(404).json({ success: false, message: 'Article author not found' });
+    }
 
-    if (likeIndex > -1) {
-      article.likes.splice(likeIndex, 1);
-      await article.save();
+    const relationship = getViewerRelationshipToTarget(req.user, {
+      _id: article.author,
+      blockedUsers: articleAuthor.blockedUsers,
+    });
+    if (!relationship.isOwner && relationship.isBlocked) {
+      return res.status(403).json({ success: false, message: 'Cannot react to this content' });
+    }
+
+    const wasLiked = hasUserId(article.likes, req.user._id);
+
+    if (wasLiked) {
+      await Article.updateOne({ _id: article._id }, { $pull: { likes: req.user._id } });
+      const updatedArticle = await Article.findById(article._id).select('likes');
       await invalidateArticleReadCache();
-      res.json({ success: true, liked: false, likes: article.likes });
+      return res.json({
+        success: true,
+        liked: false,
+        likes: updatedArticle?.likes || [],
+        likeCount: updatedArticle?.likes?.length || 0,
+      });
     } else {
-      article.likes.push(req.user._id);
-      await article.save();
+      const updateResult = await Article.updateOne(
+        { _id: article._id, likes: { $ne: req.user._id } },
+        { $addToSet: { likes: req.user._id } }
+      );
+      const updatedArticle = await Article.findById(article._id).select('likes');
       await invalidateArticleReadCache();
 
-      if (article.author.toString() !== req.user._id.toString()) {
+      if (updateResult.modifiedCount > 0 && article.author.toString() !== req.user._id.toString()) {
         await Notification.create({
           recipient: article.author,
           sender: req.user._id,
@@ -1059,7 +1130,6 @@ exports.toggleLike = async (req, res) => {
           message: `${req.user.username} liked your article "${article.title}"`
         });
 
-        const articleAuthor = await User.findById(article.author).select('email username emailNotifications');
         if (articleAuthor?.email && isEmailNotificationEnabled(articleAuthor, 'newReaction')) {
           enqueueEmailJob(
             'new-reaction',
@@ -1067,13 +1137,13 @@ exports.toggleLike = async (req, res) => {
               email: articleAuthor.email,
               username: articleAuthor.username,
               reactorName: req.user.username,
-              reactionCount: article.likes.length,
+              reactionCount: updatedArticle?.likes?.length || 0,
               postTitle: article.title,
               postUrl: `/article/${article.slug || article._id}`
             },
             { jobId: `new-reaction:article:${article._id}:${req.user._id}` }
           ).catch((error) => {
-            console.error('Failed to queue article reaction email:', error?.message || error);
+            logError('Failed to queue article reaction email:', error);
           });
         }
         
@@ -1087,9 +1157,14 @@ exports.toggleLike = async (req, res) => {
         }
       }
 
-      res.json({ success: true, liked: true, likes: article.likes, likeCount: article.likes.length });
+      res.json({
+        success: true,
+        liked: true,
+        likes: updatedArticle?.likes || [],
+        likeCount: updatedArticle?.likes?.length || 0,
+      });
     }
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendArticleServerError(res, error);
   }
 };

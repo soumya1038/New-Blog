@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { Link, useNavigate }    from 'react-router-dom';
 import { AuthContext }          from '../context/AuthContext';
 import api                      from '../services/api';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
 import { FaBoxOpen, FaDownload, FaImage, FaRedo, FaSearch, FaStar, FaTag, FaTrash, FaTruck, FaUndoAlt } from 'react-icons/fa';
 
 const STATUS_CONFIG = {
@@ -54,7 +55,11 @@ const MyOrders = () => {
     setDlState(s => ({ ...s, [key]: 'loading' }));
     try {
       const { data } = await api.get(`/payments/orders/${orderId}/download/${productId}`);
-      window.open(data.url, '_blank', 'noopener,noreferrer');
+      const safeDownloadUrl = getSafeHttpUrl(data?.url);
+      if (!safeDownloadUrl) {
+        throw new Error('Download link was rejected. Please try again.');
+      }
+      window.open(safeDownloadUrl, '_blank', 'noopener,noreferrer');
       setDlState(s => ({ ...s, [key]: 'done' }));
     } catch (err) {
       alert(err.response?.data?.message || 'Download failed. Please try again.');
@@ -186,13 +191,14 @@ const MyOrders = () => {
                       const maxDl  = item.productId?.digital?.maxDownloads || 5;
                       const dlKey  = `${order._id}_${pid}`;
                       const dlOver = (dl?.count || 0) >= maxDl;
+                      const safeThumbnail = getSafeImageUrl(item.thumbnail);
 
                       return (
                         <div key={idx} className="flex items-center gap-3 px-4 py-3">
                           {/* Thumbnail */}
                           <Link to={`/order/${order._id}`} className="w-12 h-12 rounded-xl overflow-hidden bg-[var(--bg-secondary)] shrink-0 border border-[var(--border-color)]">
-                            {item.thumbnail
-                              ? <img src={item.thumbnail} alt={item.title} className="w-full h-full object-cover" />
+                            {safeThumbnail
+                              ? <img src={safeThumbnail} alt={item.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                               : <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]"><FaImage size={18} /></div>
                             }
                           </Link>

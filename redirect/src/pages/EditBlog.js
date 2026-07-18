@@ -5,13 +5,14 @@ import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import SimpleMDE from 'react-simplemde-editor';
 import 'easymde/dist/easymde.min.css';
-import ReactMarkdown from 'react-markdown';
 import toast, { Toaster } from 'react-hot-toast';
 import AIBlogGenerator from '../components/AIBlogGenerator';
 import AIContentTools from '../components/AIContentTools';
 import TemplatePreview from '../components/TemplatePreview';
 import ContentProductTagsEditor from '../components/ContentProductTagsEditor';
 import ProductTagPlacementEditor from '../components/ProductTagPlacementEditor';
+import SafeMarkdown from '../components/SafeMarkdown';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 import {
   getArticleTemplateById,
   CUSTOM_ARTICLE_TEMPLATE_ID,
@@ -21,7 +22,7 @@ import {
 import { FaArrowLeft, FaTimes } from 'react-icons/fa';
 import { IoIosCheckmarkCircle, IoIosCloseCircleOutline } from 'react-icons/io';
 import { IoColorPaletteOutline } from 'react-icons/io5';
-import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish } from 'react-icons/md';
+import { MdOutlineSwitchAccessShortcutAdd, MdOutlinePublish, MdStorefront } from 'react-icons/md';
 import { TbBrandBlogger } from 'react-icons/tb';
 import { CiSaveDown2 } from 'react-icons/ci';
 import { BsFillCalendarRangeFill } from 'react-icons/bs';
@@ -79,6 +80,7 @@ const EditBlog = () => {
   const FORCED_TEMPLATE_THEME_MODE = 'auto';
 
   const isBlobUrl = (url = '') => typeof url === 'string' && url.startsWith('blob:');
+  const getSafeEditorImageUrl = (url = '') => (isBlobUrl(url) ? url : getSafeImageUrl(url));
 
   const getPersistedGalleryPayload = () => {
     const persisted = galleryItems.filter((item) => !item.local && item.url && !isBlobUrl(item.url));
@@ -91,7 +93,7 @@ const EditBlog = () => {
   const deleteRemovedGalleryImages = async () => {
     if (!removedGalleryPublicIds.length) return;
     const uniqueIds = [...new Set(removedGalleryPublicIds.filter(Boolean))];
-    await Promise.all(uniqueIds.map((publicId) => api.delete('/blogs/delete-image/' + publicId)));
+    await Promise.all(uniqueIds.map((publicId) => api.delete('/blogs/delete-image', { params: { publicId } })));
     setRemovedGalleryPublicIds([]);
   };
 
@@ -356,7 +358,7 @@ const EditBlog = () => {
 
       if (coverImageFile) {
         if (oldCloudinaryPublicId) {
-          await api.delete(`/blogs/delete-image/${oldCloudinaryPublicId}`);
+          await api.delete('/blogs/delete-image', { params: { publicId: oldCloudinaryPublicId } });
         }
         const formData = new FormData();
         formData.append('image', coverImageFile);
@@ -366,7 +368,7 @@ const EditBlog = () => {
         uploadedImageUrl = imageData.url;
         cloudinaryPublicId = imageData.public_id;
       } else if (!coverImage && oldCloudinaryPublicId) {
-        await api.delete('/blogs/delete-image/' + oldCloudinaryPublicId);
+        await api.delete('/blogs/delete-image', { params: { publicId: oldCloudinaryPublicId } });
         uploadedImageUrl = '';
       }
 
@@ -478,7 +480,7 @@ const EditBlog = () => {
 
       if (coverImageFile) {
         if (oldCloudinaryPublicId) {
-          await api.delete(`/blogs/delete-image/${oldCloudinaryPublicId}`);
+          await api.delete('/blogs/delete-image', { params: { publicId: oldCloudinaryPublicId } });
         }
         const formData = new FormData();
         formData.append('image', coverImageFile);
@@ -488,7 +490,7 @@ const EditBlog = () => {
         uploadedImageUrl = imageData.url;
         cloudinaryPublicId = imageData.public_id;
       } else if (!coverImage && oldCloudinaryPublicId) {
-        await api.delete('/blogs/delete-image/' + oldCloudinaryPublicId);
+        await api.delete('/blogs/delete-image', { params: { publicId: oldCloudinaryPublicId } });
         uploadedImageUrl = '';
       }
 
@@ -898,9 +900,9 @@ const EditBlog = () => {
                   className="w-full px-4 py-3 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--brand-primary)] bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
                 />
                 {uploadingImage && <p className="text-xs mt-1" style={{ color: 'var(--brand-primary)' }}>Uploading...</p>}
-                {coverImage && (
+                {getSafeEditorImageUrl(coverImage) && (
                   <div className="mt-2 relative">
-                    <img src={coverImage} alt="Cover" className="w-full h-32 object-cover rounded-lg" />
+                    <img src={getSafeEditorImageUrl(coverImage)} alt="Cover" className="w-full h-32 object-cover rounded-lg" referrerPolicy="no-referrer" />
                     <button
                       type="button"
                       onClick={handleRemoveImage}
@@ -927,23 +929,33 @@ const EditBlog = () => {
 
                 {galleryItems.length > 0 && (
                   <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {galleryItems.map((item) => (
-                      <div key={item.id} className="relative rounded-lg overflow-hidden border border-[var(--border-default)] bg-[var(--surface-elevated)]">
-                        <img
-                          src={item.url}
-                          alt="Gallery"
-                          className="w-full h-24 object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveGalleryImage(item.id)}
-                          className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition"
-                          aria-label="Remove gallery image"
-                        >
-                          <FaTimes size={12} />
-                        </button>
-                      </div>
-                    ))}
+                    {galleryItems.map((item) => {
+                      const safeGalleryUrl = getSafeEditorImageUrl(item.url);
+                      return (
+                        <div key={item.id} className="relative rounded-lg overflow-hidden border border-[var(--border-default)] bg-[var(--surface-elevated)]">
+                          {safeGalleryUrl ? (
+                            <img
+                              src={safeGalleryUrl}
+                              alt="Gallery"
+                              className="w-full h-24 object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-full h-24 flex items-center justify-center text-[var(--text-muted)]">
+                              <MdStorefront size={18} />
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveGalleryImage(item.id)}
+                            className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition"
+                            aria-label="Remove gallery image"
+                          >
+                            <FaTimes size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1053,7 +1065,7 @@ const EditBlog = () => {
 
               {previewMode ? (
                 <div className="border border-[var(--border-default)] rounded-lg p-4 min-h-[300px] prose dark:prose-invert max-w-none bg-[var(--surface-card)] text-[var(--text-primary)]">
-                  <ReactMarkdown>{content || `*${t('No content to preview')}*`}</ReactMarkdown>
+                  <SafeMarkdown>{content || `*${t('No content to preview')}*`}</SafeMarkdown>
                 </div>
               ) : isShortMode ? (
                 <textarea

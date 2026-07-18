@@ -4,6 +4,7 @@ import { AuthContext }          from '../context/AuthContext';
 import api                      from '../services/api';
 import { FaChevronDown, FaChevronUp, FaCommentDots, FaDownload, FaRedo, FaStar, FaTrash, FaTruck, FaUndoAlt, FaCheckCircle, FaTimesCircle, FaBoxOpen, FaReceipt } from 'react-icons/fa';
 import ReviewForm from '../components/ReviewForm';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const STATUS_STEPS  = ['paid', 'processing', 'shipped', 'delivered'];
 const STATUS_LABELS = {
@@ -32,6 +33,7 @@ const OrderDetail = () => {
   const [reviewMode, setReviewMode] = useState(null);
   const [showDelivery, setShowDelivery] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false);
   const [sellerFeedback, setSellerFeedback] = useState({
     rating: 0,
     arrivedOnTime: '',
@@ -43,7 +45,19 @@ const OrderDetail = () => {
 
   useEffect(() => {
     api.get(`/orders/${id}`)
-      .then(({ data }) => setOrder(data.order))
+      .then(({ data }) => {
+        const nextOrder = data.order;
+        const sellerId = nextOrder?.items?.[0]?.sellerId?._id || nextOrder?.items?.[0]?.sellerId;
+        const hasSellerFeedback = Boolean(
+          sellerId && nextOrder?.sellerFeedbacks?.some(feedback => {
+            const feedbackSellerId = feedback.sellerId?._id || feedback.sellerId;
+            return feedbackSellerId?.toString() === sellerId?.toString();
+          })
+        );
+        setOrder(nextOrder);
+        setFeedbackSubmitted(hasSellerFeedback);
+        if (hasSellerFeedback) setReviewMode(null);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [id]);
@@ -53,7 +67,11 @@ const OrderDetail = () => {
     try {
       const { data } = await api.get(`/payments/orders/${id}/download/${productId}`);
       // Open signed URL in new tab — browser handles download
-      window.open(data.url, '_blank', 'noopener,noreferrer');
+      const safeDownloadUrl = getSafeHttpUrl(data?.url);
+      if (!safeDownloadUrl) {
+        throw new Error('Download link was rejected. Please try again.');
+      }
+      window.open(safeDownloadUrl, '_blank', 'noopener,noreferrer');
       setDlState(s => ({ ...s, [productId]: 'done' }));
       // Re-fetch to update download count
       const res = await api.get(`/orders/${id}`);
@@ -117,13 +135,33 @@ const OrderDetail = () => {
     }
   };
 
-  const submitSellerFeedback = () => {
+  const submitSellerFeedback = async () => {
     if (!sellerFeedback.rating || !sellerFeedback.arrivedOnTime || !sellerFeedback.asDescribed || !sellerFeedback.comments.trim()) {
       setFeedbackError('Please complete every seller feedback field.');
       return;
     }
+    const sellerId = order?.items?.[0]?.sellerId?._id || order?.items?.[0]?.sellerId;
+    if (!sellerId) {
+      setFeedbackError('Seller information is missing for this order.');
+      return;
+    }
     setFeedbackError('');
-    setFeedbackSubmitted(true);
+    setFeedbackSubmitting(true);
+    try {
+      await api.post(`/orders/${id}/seller-feedback`, {
+        sellerId,
+        rating: sellerFeedback.rating,
+        arrivedOnTime: sellerFeedback.arrivedOnTime,
+        asDescribed: sellerFeedback.asDescribed,
+        comments: sellerFeedback.comments,
+      });
+      setFeedbackSubmitted(true);
+      setReviewMode(null);
+    } catch (error) {
+      setFeedbackError(error.response?.data?.message || 'Could not submit seller feedback.');
+    } finally {
+      setFeedbackSubmitting(false);
+    }
   };
 
   if (loading) {
@@ -150,10 +188,12 @@ const OrderDetail = () => {
     const sid = i.sellerId?._id || i.sellerId;
     return sid?.toString() === user?._id?.toString();
   });
+  const sellerHasPhysical = isSeller && order.items?.some(i => i.type === 'physical');
   const displayStatus = order.status === 'completed' ? 'delivered' : order.status;
   const stepIdx  = STATUS_STEPS.indexOf(displayStatus);
   const isFailed = ['failed', 'refunded', 'cancelled'].includes(order.status);
   const canReview = isBuyer && ['completed', 'delivered'].includes(order.status);
+  const sellerFeedbackItem = order.items?.[0];
 
   return (
     <div className="lekhon-orders-page lekhon-order-detail-page min-h-screen bg-[var(--bg-primary)] py-8 px-4">
@@ -292,6 +332,7 @@ const OrderDetail = () => {
           <div className="space-y-3">
             {order.items?.map((item, idx) => {
               const productPath = item.productId?.slug ? `/marketplace/${item.productId.slug}` : '/marketplace';
+              const safeThumbnail = getSafeImageUrl(item.thumbnail || item.productId?.thumbnail);
               return (
                 <Link
                   key={idx}
@@ -299,9 +340,10 @@ const OrderDetail = () => {
                   className="flex items-center gap-3 rounded-xl p-2 hover:bg-[var(--bg-secondary)] transition-colors"
                 >
                   <img
-                    src={item.thumbnail || item.productId?.thumbnail || ''}
+                    src={safeThumbnail || '/image/lekhon_url.png'}
                     alt={item.title}
                     className="w-14 h-14 rounded-xl object-cover bg-[var(--bg-secondary)] shrink-0 border border-[var(--border-color)]"
+                    referrerPolicy="no-referrer"
                   />
                   <p className="text-sm font-medium text-[var(--text-primary)] truncate min-w-0">{item.title}</p>
                 </Link>
@@ -328,12 +370,18 @@ const OrderDetail = () => {
               </button>
               <button
                 type="button"
-                  onClick={() => setReviewMode(mode => mode === 'seller' ? null : 'seller')}
-                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border transition-colors ${reviewMode === 'seller' ? 'bg-violet-600 text-white border-violet-600' : 'border-[var(--border-color)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'}`}
+                onClick={() => setReviewMode(mode => mode === 'seller' ? null : 'seller')}
+                disabled={feedbackSubmitted}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium border transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${reviewMode === 'seller' ? 'bg-violet-600 text-white border-violet-600' : 'border-[var(--border-color)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'}`}
               >
-                  Leave seller feedback {reviewMode === 'seller' ? <FaChevronUp size={11} /> : <FaChevronDown size={11} />}
+                  {feedbackSubmitted ? 'Seller feedback submitted' : 'Leave seller feedback'} {!feedbackSubmitted && (reviewMode === 'seller' ? <FaChevronUp size={11} /> : <FaChevronDown size={11} />)}
               </button>
             </div>
+            {feedbackSubmitted && (
+              <p role="status" className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5">
+                <FaCheckCircle size={12} /> Seller feedback submitted.
+              </p>
+            )}
 
             {reviewMode === 'product' && (
               <div className="space-y-4">
@@ -352,7 +400,7 @@ const OrderDetail = () => {
                       orderId={order._id}
                       productId={pid}
                       productTitle={item.title}
-                      productImage={item.thumbnail || item.productId?.thumbnail || ''}
+                      productImage={getSafeImageUrl(item.thumbnail || item.productId?.thumbnail)}
                       onSubmitted={() => setReviewed(r => ({ ...r, [pid]: true }))}
                     />
                   );
@@ -364,13 +412,14 @@ const OrderDetail = () => {
               <div className="space-y-4 pt-3 border-t border-[var(--border-color)]">
                 <div className="flex items-center gap-3">
                   <img
-                    src={order.items?.[0]?.thumbnail || order.items?.[0]?.productId?.thumbnail || ''}
-                    alt={order.items?.[0]?.title || 'Order item'}
+                    src={getSafeImageUrl(sellerFeedbackItem?.thumbnail || sellerFeedbackItem?.productId?.thumbnail) || '/image/lekhon_url.png'}
+                    alt={sellerFeedbackItem?.title || 'Order item'}
                     className="w-12 h-12 rounded-xl object-cover bg-[var(--bg-secondary)] border border-[var(--border-color)]"
+                    referrerPolicy="no-referrer"
                   />
                   <p className="min-w-0 text-sm font-semibold text-[var(--text-primary)]">
                     <span className="block">Leave seller feedback</span>
-                    <span className="block font-normal text-[var(--text-muted)] truncate">{order.items?.[0]?.title}</span>
+                    <span className="block font-normal text-[var(--text-muted)] truncate">{sellerFeedbackItem?.title}</span>
                   </p>
                 </div>
                 <div className="flex gap-1">
@@ -427,13 +476,13 @@ const OrderDetail = () => {
                 />
                 <p className="text-xs text-[var(--text-muted)] text-right -mt-3">{sellerFeedback.comments.length}/1000</p>
                 {feedbackError && <p className="text-xs text-red-500">{feedbackError}</p>}
-                {feedbackSubmitted && <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5"><FaCheckCircle size={12} /> Seller feedback submitted.</p>}
                 <button
                   type="button"
                   onClick={submitSellerFeedback}
-                  className="px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium transition-colors"
+                  disabled={feedbackSubmitting}
+                  className="px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Submit Seller Feedback
+                  {feedbackSubmitting ? 'Submitting...' : 'Submit Seller Feedback'}
                 </button>
               </div>
             )}
@@ -441,7 +490,7 @@ const OrderDetail = () => {
         )}
 
         {/* ── Delivery address (buyer view) ─────────────────────────────────── */}
-        {isBuyer && order.shipping?.addressLine1 && (
+        {(isBuyer || sellerHasPhysical) && order.shipping?.addressLine1 && (
           <div className="p-5 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)]">
             <button
               type="button"
@@ -454,6 +503,7 @@ const OrderDetail = () => {
             {showDelivery && (
               <p className="text-sm text-[var(--text-secondary)] mt-3">
                 {order.shipping.name}<br />
+                {order.shipping.phone && <>Phone: {order.shipping.phone}<br /></>}
                 {order.shipping.addressLine1}{order.shipping.addressLine2 ? `, ${order.shipping.addressLine2}` : ''}<br />
                 {order.shipping.city}, {order.shipping.state} - {order.shipping.pin}<br />
                 {order.shipping.country}

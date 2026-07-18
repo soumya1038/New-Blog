@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FiMic, FiMicOff, FiVideo, FiVideoOff, FiPhoneOff, FiMinimize2, FiMaximize2, FiRotateCw } from 'react-icons/fi';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const ActiveCallScreen = ({
   remoteUser,
@@ -22,6 +23,9 @@ const ActiveCallScreen = ({
   const [callDuration, setCallDuration] = useState(0);
   const [facingMode, setFacingMode] = useState('user');
   const [isSwapped, setIsSwapped] = useState(false);
+  const remoteDisplayName = remoteUser?.fullName || 'User';
+  const remoteAvatar = getSafeImageUrl(remoteUser?.profileImage)
+    || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteDisplayName)}&background=0D8ABC&color=fff`;
 
   const rotateCamera = async () => {
     if (!localStream) return;
@@ -124,12 +128,13 @@ const ActiveCallScreen = ({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <img
-              src={remoteUser.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUser.fullName)}&background=0D8ABC&color=fff`}
-              alt={remoteUser.fullName}
+              src={remoteAvatar}
+              alt={remoteDisplayName}
               className="w-8 h-8 rounded-full"
+              referrerPolicy="no-referrer"
             />
             <div>
-              <p className="text-white text-sm font-medium">{remoteUser.fullName}</p>
+              <p className="text-white text-sm font-medium">{remoteDisplayName}</p>
               <p className="text-gray-400 text-xs">
                 {callAccepted ? formatDuration(callDuration) : 'Calling...'}
               </p>
@@ -163,7 +168,7 @@ const ActiveCallScreen = ({
       <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/50 to-transparent z-10">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-white text-lg font-semibold">{remoteUser.fullName}</h3>
+            <h3 className="text-white text-lg font-semibold">{remoteDisplayName}</h3>
             <p className="text-gray-300 text-sm">
               {callAccepted ? formatDuration(callDuration) : 'Calling...'}
             </p>
@@ -218,11 +223,12 @@ const ActiveCallScreen = ({
           <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
             <div className="text-center">
               <img
-                src={remoteUser.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(remoteUser.fullName)}&background=0D8ABC&color=fff`}
-                alt={remoteUser.fullName}
+                src={remoteAvatar}
+                alt={remoteDisplayName}
                 className="w-32 h-32 rounded-full mx-auto mb-4"
+                referrerPolicy="no-referrer"
               />
-              <p className="text-white text-xl">{remoteUser.fullName}</p>
+              <p className="text-white text-xl">{remoteDisplayName}</p>
               <p className="text-gray-400">{callAccepted ? 'Connected' : 'Connecting...'}</p>
             </div>
           </div>

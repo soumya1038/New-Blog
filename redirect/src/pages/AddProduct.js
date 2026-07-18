@@ -69,6 +69,12 @@ const LOCAL_WORKING_COPY_DB = 'lekhon-product-working-copy';
 const LOCAL_WORKING_COPY_STORE = 'productWorkingCopies';
 const LOCAL_WORKING_COPY_ID = 'add-product';
 const LOCAL_WORKING_COPY_TTL_MS = 60 * 60 * 1000;
+const LOCAL_WORKING_COPY_CLEANUP_LIMIT = 100;
+
+const getProductWorkingCopyId = (user) => {
+  const userId = user?._id || user?.id;
+  return userId ? `${LOCAL_WORKING_COPY_ID}:${userId}` : '';
+};
 
 const inputCls = 'w-full px-3 py-2.5 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500 transition';
 const sectionCls = 'p-5 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] space-y-4';
@@ -376,27 +382,59 @@ const withWorkingCopyStore = async (mode, callback) => {
   });
 };
 
-const saveProductWorkingCopy = (payload) =>
-  withWorkingCopyStore('readwrite', store => {
+const saveProductWorkingCopy = (workingCopyId, payload) => {
+  if (!workingCopyId) {
+    return Promise.reject(new Error('Sign in before saving product info on this device.'));
+  }
+  return withWorkingCopyStore('readwrite', store => {
     store.put({
-      id: LOCAL_WORKING_COPY_ID,
+      id: workingCopyId,
       savedAt: Date.now(),
       ...payload,
     });
   });
+};
 
-const deleteProductWorkingCopy = () =>
+const deleteProductWorkingCopy = (workingCopyId = LOCAL_WORKING_COPY_ID) => {
+  if (!workingCopyId) return Promise.resolve();
+  return withWorkingCopyStore('readwrite', store => {
+    store.delete(workingCopyId);
+  }).catch(() => {});
+};
+
+const cleanupExpiredProductWorkingCopies = () =>
   withWorkingCopyStore('readwrite', store => {
-    store.delete(LOCAL_WORKING_COPY_ID);
+    const cutoff = Date.now() - LOCAL_WORKING_COPY_TTL_MS;
+    let examined = 0;
+    const request = store.openCursor();
+
+    request.onsuccess = event => {
+      const cursor = event.target.result;
+      if (!cursor || examined >= LOCAL_WORKING_COPY_CLEANUP_LIMIT) {
+        return;
+      }
+
+      examined += 1;
+      const savedAt = Number(cursor.value?.savedAt || 0);
+      if (!savedAt || savedAt <= cutoff) {
+        cursor.delete();
+      }
+      cursor.continue();
+    };
   }).catch(() => {});
 
-const loadProductWorkingCopy = () =>
+const loadProductWorkingCopy = (workingCopyId) =>
   new Promise(async (resolve) => {
+    if (!workingCopyId) {
+      resolve(null);
+      return;
+    }
+
     try {
       const db = await openWorkingCopyDb();
       const transaction = db.transaction(LOCAL_WORKING_COPY_STORE, 'readonly');
       const store = transaction.objectStore(LOCAL_WORKING_COPY_STORE);
-      const request = store.get(LOCAL_WORKING_COPY_ID);
+      const request = store.get(workingCopyId);
 
       request.onsuccess = async () => {
         const record = request.result;
@@ -407,7 +445,7 @@ const loadProductWorkingCopy = () =>
         }
 
         if (Date.now() - Number(record.savedAt || 0) > LOCAL_WORKING_COPY_TTL_MS) {
-          await deleteProductWorkingCopy();
+          await deleteProductWorkingCopy(workingCopyId);
           resolve(null);
           return;
         }
@@ -427,6 +465,7 @@ const loadProductWorkingCopy = () =>
 const AddProduct = () => {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
+  const workingCopyId = getProductWorkingCopyId(user);
   const fileInputRef = useRef();
   const cameraFileInputRef = useRef();
   const digitalRef = useRef();
@@ -476,7 +515,13 @@ const AddProduct = () => {
     let cancelled = false;
 
     const restoreWorkingCopy = async () => {
-      const record = await loadProductWorkingCopy();
+      if (!workingCopyId) return;
+
+      await cleanupExpiredProductWorkingCopies();
+      if (cancelled) return;
+
+      await deleteProductWorkingCopy(LOCAL_WORKING_COPY_ID);
+      const record = await loadProductWorkingCopy(workingCopyId);
       if (cancelled) return;
 
       if (record?.form) {
@@ -508,10 +553,17 @@ const AddProduct = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [workingCopyId]);
 
   const persistWorkingCopy = useCallback(async () => {
-    const previousRecord = await loadProductWorkingCopy();
+    if (!workingCopyId) {
+      setLocalSaveMessage('Sign in before saving product info on this device.');
+      return false;
+    }
+
+    await cleanupExpiredProductWorkingCopies();
+    await deleteProductWorkingCopy(LOCAL_WORKING_COPY_ID);
+    const previousRecord = await loadProductWorkingCopy(workingCopyId);
     const savedForm = { ...createDefaultForm(), ...(previousRecord?.form || {}) };
     const currentStepId = currentStep.id;
 
@@ -525,7 +577,7 @@ const AddProduct = () => {
       : (isBlobLike(previousRecord?.digitalFile) ? previousRecord.digitalFile : null);
 
     if (!hasProductWorkingInput(savedForm, savedImages, savedDigitalFile)) {
-      await deleteProductWorkingCopy();
+      await deleteProductWorkingCopy(workingCopyId);
       setSavedStepIds(new Set());
       setSavedStepSignatures({});
       setLocalSaveMessage('No product inputs to save.');
@@ -535,7 +587,7 @@ const AddProduct = () => {
     const completedSteps = getCompletedSteps(savedForm, savedImages, savedDigitalFile);
     const stepSignatures = getStepSignatures(savedForm, savedImages, savedDigitalFile);
 
-    await saveProductWorkingCopy({
+    await saveProductWorkingCopy(workingCopyId, {
       form: savedForm,
       activeStep,
       highestStep,
@@ -548,7 +600,7 @@ const AddProduct = () => {
     setSavedStepIds(new Set(completedSteps));
     setSavedStepSignatures(stepSignatures);
     return true;
-  }, [activeStep, currentStep.id, highestStep, form, images, digitalFile]);
+  }, [activeStep, currentStep.id, highestStep, form, images, digitalFile, workingCopyId]);
 
   useEffect(() => () => {
     clearTimeout(saveFeedbackTimerRef.current);
@@ -944,7 +996,8 @@ const AddProduct = () => {
 	        setUploadingFile(false);
 	      }
 
-	      await deleteProductWorkingCopy();
+	      await deleteProductWorkingCopy(workingCopyId);
+	      await deleteProductWorkingCopy(LOCAL_WORKING_COPY_ID);
 	      setSavedStepIds(new Set());
 	      setSavedStepSignatures({});
 	      setLocalSaveMessage('');
@@ -1005,7 +1058,8 @@ const AddProduct = () => {
 	    setSavedStepIds(new Set());
 	    setSavedStepSignatures({});
 	    setCancelModalOpen(false);
-	    await deleteProductWorkingCopy();
+	    await deleteProductWorkingCopy(workingCopyId);
+	    await deleteProductWorkingCopy(LOCAL_WORKING_COPY_ID);
 	    navigate('/seller/dashboard');
 	  };
 

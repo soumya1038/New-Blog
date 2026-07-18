@@ -9,6 +9,12 @@ const SEARCH_MIN_QUERY_LENGTH = parsePositiveInt(process.env.SEARCH_MIN_QUERY_LE
 const SEARCH_MAX_LIMIT = parsePositiveInt(process.env.SEARCH_MAX_LIMIT, 20);
 const SEARCH_DEFAULT_LIMIT = Math.min(parsePositiveInt(process.env.SEARCH_DEFAULT_LIMIT, 10), SEARCH_MAX_LIMIT);
 const SEARCH_MAX_PAGE = parsePositiveInt(process.env.SEARCH_MAX_PAGE, 50);
+const SEARCH_MAX_QUERY_LENGTH = parsePositiveInt(process.env.SEARCH_MAX_QUERY_LENGTH, 120);
+const SEARCH_MAX_FILTER_VALUE_LENGTH = parsePositiveInt(process.env.SEARCH_MAX_FILTER_VALUE_LENGTH, 80);
+const SEARCH_MAX_TAG_FILTERS = parsePositiveInt(process.env.SEARCH_MAX_TAG_FILTERS, 10);
+const SEARCH_QUERY_MAX_TIME_MS = parsePositiveInt(process.env.SEARCH_QUERY_MAX_TIME_MS, 5000);
+const SEARCH_REGEX_FALLBACK_ENABLED =
+  process.env.SEARCH_REGEX_FALLBACK_ENABLED === 'true' || process.env.NODE_ENV !== 'production';
 
 const SEARCH_PROJECTION = {
   title: 1,
@@ -63,11 +69,15 @@ const parsePage = (raw) => {
 
 const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+const normalizeFilterValue = (value = '') =>
+  String(value || '').trim().slice(0, SEARCH_MAX_FILTER_VALUE_LENGTH);
+
 const buildBaseFilters = (query = {}) => {
-  const filter = { isDraft: false };
+  const filter = { isDraft: false, isScheduled: false };
 
   if (query.category && String(query.category).toLowerCase() !== 'all') {
-    filter.category = query.category;
+    const category = normalizeFilterValue(query.category);
+    if (category) filter.category = category;
   }
 
   if (query.author && mongoose.Types.ObjectId.isValid(query.author)) {
@@ -83,8 +93,10 @@ const buildBaseFilters = (query = {}) => {
       .filter(Boolean)
       .forEach((value) => tags.push(value));
   }
-  if (tags.length) {
-    filter.tags = { $in: [...new Set(tags)] };
+  const normalizedTags = [...new Set(tags.map(normalizeFilterValue).filter(Boolean))]
+    .slice(0, SEARCH_MAX_TAG_FILTERS);
+  if (normalizedTags.length) {
+    filter.tags = { $in: normalizedTags };
   }
 
   return filter;
@@ -133,11 +145,12 @@ const modelTextSearch = async ({ Model, contentType, searchQuery, baseFilter, li
     $text: { $search: searchQuery }
   };
 
-  const total = await Model.countDocuments(query);
+  const total = await Model.countDocuments(query).maxTimeMS(SEARCH_QUERY_MAX_TIME_MS);
 
   const cursor = Model.find(query, SEARCH_PROJECTION)
     .populate('author', AUTHOR_SELECT)
-    .sort({ score: { $meta: 'textScore' }, createdAt: -1, _id: -1 });
+    .sort({ score: { $meta: 'textScore' }, createdAt: -1, _id: -1 })
+    .maxTimeMS(SEARCH_QUERY_MAX_TIME_MS);
 
   if (typeof topK === 'number') {
     cursor.limit(topK);
@@ -165,11 +178,12 @@ const modelRegexFallback = async ({ Model, contentType, searchQuery, baseFilter,
     ]
   };
 
-  const total = await Model.countDocuments(query);
+  const total = await Model.countDocuments(query).maxTimeMS(SEARCH_QUERY_MAX_TIME_MS);
   const docs = await Model.find(query)
     .populate('author', AUTHOR_SELECT)
     .sort({ createdAt: -1, _id: -1 })
     .limit(typeof topK === 'number' ? topK : skip + limit)
+    .maxTimeMS(SEARCH_QUERY_MAX_TIME_MS)
     .lean();
 
   const scored = docs.map((doc) => {
@@ -201,6 +215,11 @@ const runModelSearch = async (config) => {
     if (!isMissingTextIndexError(error)) {
       throw error;
     }
+    if (!SEARCH_REGEX_FALLBACK_ENABLED) {
+      const unavailable = new Error('Search index is unavailable');
+      unavailable.statusCode = 503;
+      throw unavailable;
+    }
     return modelRegexFallback(config);
   }
 };
@@ -212,6 +231,12 @@ exports.searchContent = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: `Search query must be at least ${SEARCH_MIN_QUERY_LENGTH} characters.`
+      });
+    }
+    if (rawQuery.length > SEARCH_MAX_QUERY_LENGTH) {
+      return res.status(400).json({
+        success: false,
+        message: `Search query must be ${SEARCH_MAX_QUERY_LENGTH} characters or fewer.`
       });
     }
 
@@ -316,6 +341,10 @@ exports.searchContent = async (req, res) => {
       results
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    const statusCode = Number(error?.statusCode) || 500;
+    return res.status(statusCode).json({
+      success: false,
+      message: statusCode === 503 ? 'Search is temporarily unavailable' : 'Search failed'
+    });
   }
 };

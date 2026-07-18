@@ -31,7 +31,7 @@ const tabs = [
     ariaLabel: 'Open marketplace',
     to: '/marketplace',
     icon: FaStore,
-    matches: ['/marketplace', '/store', '/become-seller', '/seller', '/my-orders', '/order'],
+    matches: ['/marketplace', '/store', '/become-seller', '/seller', '/checkout', '/my-orders', '/order'],
   },
   {
     label: 'Create',
@@ -78,8 +78,6 @@ const isSellerUser = (user = {}) =>
     user?.sellerStatus === 'approved'
   );
 
-const isGuestUser = (user = {}) => Boolean(user?.isGuest || user?.role === 'guest');
-
 const dispatchContentAction = (action) => {
   if (typeof window === 'undefined') return;
   window.dispatchEvent(new CustomEvent('lekhon:content-action', { detail: { action } }));
@@ -122,7 +120,7 @@ const buildContentTabs = (pathname) => {
   ];
 };
 
-const buildMarketplaceActions = (user) => {
+const buildMarketplaceTabs = (user) => {
   const username = user?.username ? encodeURIComponent(user.username) : '';
 
   if (isSellerUser(user)) {
@@ -135,7 +133,7 @@ const buildMarketplaceActions = (user) => {
         matches: ['/marketplace'],
       },
       {
-        label: 'Store',
+        label: 'My Store',
         ariaLabel: 'Open seller store',
         to: username ? `/store/${username}` : '/seller/dashboard',
         icon: FaStore,
@@ -147,6 +145,7 @@ const buildMarketplaceActions = (user) => {
         to: '/seller/add-product',
         icon: FaPlusCircle,
         matches: ['/seller/add-product', '/seller/edit-product'],
+        primary: true,
       },
       {
         label: 'Dashboard',
@@ -166,6 +165,13 @@ const buildMarketplaceActions = (user) => {
   }
 
   return [
+    {
+      label: 'Home',
+      ariaLabel: 'Open home workspace',
+      to: '/home',
+      icon: FaHome,
+      matches: ['/home'],
+    },
     {
       label: 'Browse',
       ariaLabel: 'Browse marketplace products',
@@ -188,11 +194,11 @@ const buildMarketplaceActions = (user) => {
       matches: ['/my-orders', '/order'],
     },
     {
-      label: isGuestUser(user) ? 'Join' : 'Sell',
-      ariaLabel: isGuestUser(user) ? 'Create an account to sell' : 'Become a seller',
-      to: isGuestUser(user) ? '/register' : '/become-seller',
-      icon: FaStore,
-      matches: ['/become-seller'],
+      label: 'Profile',
+      ariaLabel: 'Open profile',
+      to: '/profile',
+      icon: FaUserCircle,
+      matches: ['/profile', '/user', '/notifications'],
     },
   ];
 };
@@ -202,10 +208,10 @@ const MobileAppNav = () => {
   const location = useLocation();
   const pathname = (location.pathname || '/').replace(/\/+$/, '') || '/';
   const isMarketplaceContext = pathMatches(pathname, tabs[1].matches);
-  const marketplaceActions = isMarketplaceContext ? buildMarketplaceActions(user) : [];
   const contentTabs = buildContentTabs(pathname);
   const isContentMode = contentTabs.length > 0;
-  const primaryTabs = isContentMode ? contentTabs : tabs;
+  const marketplaceTabs = isMarketplaceContext && !isContentMode ? buildMarketplaceTabs(user) : [];
+  const primaryTabs = isContentMode ? contentTabs : marketplaceTabs.length > 0 ? marketplaceTabs : tabs;
   const [contentStats, setContentStats] = useState({
     likeCount: null,
     commentCount: null,
@@ -241,31 +247,9 @@ const MobileAppNav = () => {
 
   return (
     <nav
-      className={`mobile-app-bottom-nav${marketplaceActions.length > 0 && !isContentMode ? ' mobile-app-bottom-nav--with-context' : ''}${isContentMode ? ' mobile-app-bottom-nav--content-mode' : ''}`}
-      aria-label={isContentMode ? 'Content mobile actions' : 'Primary mobile app navigation'}
+      className={`mobile-app-bottom-nav${isMarketplaceContext && !isContentMode ? ' mobile-app-bottom-nav--marketplace-mode' : ''}${isContentMode ? ' mobile-app-bottom-nav--content-mode' : ''}`}
+      aria-label={isContentMode ? 'Content mobile actions' : isMarketplaceContext ? 'Marketplace mobile navigation' : 'Primary mobile app navigation'}
     >
-      {!isContentMode && marketplaceActions.length > 0 && (
-        <div className="mobile-app-market-context" aria-label="Marketplace shortcuts">
-          {marketplaceActions.map((action) => {
-            const Icon = action.icon;
-            const isActive = pathMatches(pathname, action.matches);
-
-            return (
-              <Link
-                key={action.to}
-                to={action.to}
-                aria-label={action.ariaLabel}
-                aria-current={isActive ? 'page' : undefined}
-                className={`mobile-app-market-context__item${isActive ? ' is-active' : ''}`}
-              >
-                <Icon aria-hidden="true" />
-                <span className="mobile-app-market-context__label">{action.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
       <div className="mobile-app-bottom-nav__main">
         {primaryTabs.map((tab) => {
           const Icon = tab.icon;

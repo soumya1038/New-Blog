@@ -1,7 +1,27 @@
 const express = require('express');
+const { logError } = require('../utils/safeErrorLog');
+const {
+  createRedisBackedRateLimiter,
+  toPositiveInt,
+} = require('../utils/rateLimiterFactory');
 
 const router = express.Router();
 const MAX_MESSAGE_LENGTH = 1200;
+const MAX_CONTEXT_LENGTH = 120;
+const MAX_HISTORY_TEXT_LENGTH = 600;
+const MAX_HISTORY_ITEMS = 8;
+
+const chatbotLimiter = createRedisBackedRateLimiter({
+  windowMs: toPositiveInt(process.env.CHATBOT_RATE_LIMIT_WINDOW_MS, 60 * 1000),
+  max: toPositiveInt(process.env.CHATBOT_RATE_LIMIT_MAX, 60),
+  prefix: 'chatbot',
+  message: 'Too many chatbot requests. Please wait a moment and try again.',
+  responseBuilder: ({ retryAfterSeconds }) => ({
+    response: 'Too many chatbot requests. Please wait a moment and try again.',
+    suggestions: ['Try again later', 'Open help center'],
+    retryAfterSeconds,
+  }),
+});
 
 const INTENTS = {
   createContent: {
@@ -198,6 +218,13 @@ const getHistoryText = (history) => {
   return recent.join(' ');
 };
 
+const sanitizeHistory = (history) => {
+  if (!Array.isArray(history)) return [];
+  return history.slice(-MAX_HISTORY_ITEMS).map((item) => ({
+    text: String(item?.text || '').slice(0, MAX_HISTORY_TEXT_LENGTH)
+  }));
+};
+
 const matchIntent = (message, context, history) => {
   const normalized = (message || '').toLowerCase();
   const historyText = getHistoryText(history);
@@ -236,7 +263,7 @@ const getContextSuggestions = (context) => {
   return CONTEXT_SUGGESTIONS[path] || CONTEXT_SUGGESTIONS.default;
 };
 
-router.post('/message', async (req, res) => {
+router.post('/message', chatbotLimiter, async (req, res) => {
   try {
     const { message, context, history } = req.body;
     const safeMessage = String(message || '').trim();
@@ -250,13 +277,14 @@ router.post('/message', async (req, res) => {
       });
     }
 
-    const safeHistory = Array.isArray(history) ? history.slice(-8) : [];
-    const intent = matchIntent(safeMessage, context, safeHistory);
+    const safeContext = String(context || '').slice(0, MAX_CONTEXT_LENGTH);
+    const safeHistory = sanitizeHistory(history);
+    const intent = matchIntent(safeMessage, safeContext, safeHistory);
     return setTimeout(() => {
       res.json(intent);
     }, 250);
   } catch (error) {
-    console.error('Chatbot error:', error);
+    logError('Chatbot error:', error);
     return res.status(500).json({
       response: 'Sorry, I hit an error while preparing the response. Please try again.',
       suggestions: ['Try again', 'Open support contact']
@@ -264,12 +292,12 @@ router.post('/message', async (req, res) => {
   }
 });
 
-router.get('/suggestions', async (req, res) => {
+router.get('/suggestions', chatbotLimiter, async (req, res) => {
   try {
     const { context = '' } = req.query;
-    res.json({ suggestions: getContextSuggestions(context) });
+    res.json({ suggestions: getContextSuggestions(String(context || '').slice(0, MAX_CONTEXT_LENGTH)) });
   } catch (error) {
-    console.error('Suggestions error:', error);
+    logError('Suggestions error:', error);
     res.status(500).json({ error: 'Failed to get suggestions' });
   }
 });

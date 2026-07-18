@@ -4,165 +4,156 @@ const Short = require('../models/Short');
 const Article = require('../models/Article');
 const Notification = require('../models/Notification');
 const { enqueueSearchIndexRefresh, enqueueEmailJob } = require('./queueService');
+const { parsePositiveInt } = require('../utils/cacheStore');
+const { logError, logWarn } = require('../utils/safeErrorLog');
+
+const SCHEDULED_PUBLISH_BATCH_LIMIT = parsePositiveInt(process.env.SCHEDULED_PUBLISH_BATCH_LIMIT, 50);
+const SCHEDULED_PUBLISH_QUERY_MAX_TIME_MS = parsePositiveInt(
+  process.env.SCHEDULED_PUBLISH_QUERY_MAX_TIME_MS,
+  5000
+);
+
+let publishInProgress = false;
+
+const findDueScheduled = (Model, now) => Model.find({
+  isScheduled: true,
+  isDraft: true,
+  scheduledPublishDate: { $lte: now }
+})
+  .select('_id')
+  .sort({ scheduledPublishDate: 1, _id: 1 })
+  .limit(SCHEDULED_PUBLISH_BATCH_LIMIT)
+  .maxTimeMS(SCHEDULED_PUBLISH_QUERY_MAX_TIME_MS)
+  .lean();
+
+const claimScheduledContent = (Model, id) => Model.findOneAndUpdate(
+  {
+    _id: id,
+    isScheduled: true,
+    isDraft: true,
+    scheduledPublishDate: { $lte: new Date() }
+  },
+  {
+    $set: {
+      isDraft: false,
+      isScheduled: false
+    },
+    $unset: {
+      scheduledPublishDate: ''
+    }
+  },
+  { new: true }
+)
+  .maxTimeMS(SCHEDULED_PUBLISH_QUERY_MAX_TIME_MS)
+  .populate('author', 'username email');
+
+const getContentUrl = (content, type) => {
+  if (type === 'short') {
+    return `/shorts/${content._id}`;
+  }
+  return `/${type}/${content.slug || content._id}`;
+};
+
+const createPublishNotification = async (content, type, authorId) => {
+  const notification = {
+    recipient: authorId,
+    sender: authorId,
+    type: 'publish',
+    message: `Your ${type} "${content.title}" has been published successfully!`
+  };
+
+  if (type === 'blog') {
+    notification.blog = content._id;
+  } else if (type === 'article') {
+    notification.article = content._id;
+  } else if (type === 'short') {
+    notification.short = content._id;
+  }
+
+  try {
+    await Notification.create(notification);
+  } catch (error) {
+    logError(`[schedule] Failed to create ${type} publish notification:`, error);
+  }
+};
+
+const emitPublishNotification = (io, content, type, authorId) => {
+  if (!io) return;
+
+  io.to(`user:${authorId.toString()}`).emit('notification:scheduled-publish', {
+    type,
+    [`${type}Id`]: content._id,
+    [`${type}Title`]: content.title
+  });
+};
+
+const queuePublishedEmail = (content, type) => {
+  if (!content.author?.email) return;
+
+  enqueueEmailJob(
+    'content-published',
+    {
+      email: content.author.email,
+      username: content.author.username,
+      contentType: type,
+      postTitle: content.title,
+      postUrl: getContentUrl(content, type)
+    },
+    { jobId: `content-published:${type}:${content._id}` }
+  ).catch((error) => {
+    logError(`Failed to queue scheduled ${type} published email:`, error);
+  });
+};
+
+const enqueueRefresh = (type) => {
+  enqueueSearchIndexRefresh(`scheduled:${type}:publish`).catch((error) => {
+    logWarn(`[search] Failed to enqueue scheduled ${type} index refresh:`, error);
+  });
+};
+
+const publishDueContent = async ({ Model, type, io, now }) => {
+  const scheduledItems = await findDueScheduled(Model, now);
+  let publishedCount = 0;
+
+  for (const scheduledItem of scheduledItems) {
+    const content = await claimScheduledContent(Model, scheduledItem._id);
+    if (!content) continue;
+
+    const authorId = content.author?._id || content.author;
+    if (authorId) {
+      await createPublishNotification(content, type, authorId);
+      emitPublishNotification(io, content, type, authorId);
+      queuePublishedEmail(content, type);
+    }
+
+    publishedCount += 1;
+    console.log(`[schedule] Published scheduled ${type}: ${content._id}`);
+  }
+
+  if (publishedCount > 0) {
+    enqueueRefresh(type);
+  }
+};
 
 const publishScheduledContent = (io) => {
   cron.schedule('* * * * *', async () => {
+    if (publishInProgress) {
+      console.warn('[schedule] Previous scheduled publish run still active; skipping this tick.');
+      return;
+    }
+
+    publishInProgress = true;
+
     try {
       const now = new Date();
 
-      // Publish scheduled blogs
-      const scheduledBlogs = await Blog.find({
-        isScheduled: true,
-        isDraft: true,
-        scheduledPublishDate: { $lte: now }
-      }).populate('author', 'username email');
-
-      for (const blog of scheduledBlogs) {
-        blog.isDraft = false;
-        blog.isScheduled = false;
-        await blog.save();
-
-        await Notification.create({
-          recipient: blog.author._id,
-          sender: blog.author._id,
-          type: 'publish',
-          blog: blog._id,
-          message: `Your blog "${blog.title}" has been published successfully!`
-        });
-
-        if (io) {
-          io.to(`user:${blog.author._id.toString()}`).emit('notification:scheduled-publish', {
-            blogId: blog._id,
-            blogTitle: blog.title,
-            type: 'blog'
-          });
-        }
-
-        if (blog.author?.email) {
-          enqueueEmailJob(
-            'content-published',
-            {
-              email: blog.author.email,
-              username: blog.author.username,
-              contentType: 'blog',
-              postTitle: blog.title,
-              postUrl: `/blog/${blog.slug || blog._id}`
-            },
-            { jobId: `content-published:blog:${blog._id}` }
-          ).catch((error) => {
-            console.error('Failed to queue scheduled blog published email:', error?.message || error);
-          });
-        }
-
-        console.log(`[schedule] Published scheduled blog: ${blog.title}`);
-      }
-
-      if (scheduledBlogs.length > 0) {
-        enqueueSearchIndexRefresh('scheduled:blog:publish').catch((error) => {
-          console.warn('[search] Failed to enqueue scheduled blog index refresh:', error?.message || error);
-        });
-      }
-
-      // Publish scheduled shorts
-      const scheduledShorts = await Short.find({
-        isScheduled: true,
-        isDraft: true,
-        scheduledPublishDate: { $lte: now }
-      }).populate('author', 'username email');
-
-      for (const short of scheduledShorts) {
-        short.isDraft = false;
-        short.isScheduled = false;
-        await short.save();
-
-        await Notification.create({
-          recipient: short.author._id,
-          sender: short.author._id,
-          type: 'publish',
-          message: `Your short "${short.title}" has been published successfully!`
-        });
-
-        if (io) {
-          io.to(`user:${short.author._id.toString()}`).emit('notification:scheduled-publish', {
-            shortId: short._id,
-            shortTitle: short.title,
-            type: 'short'
-          });
-        }
-
-        if (short.author?.email) {
-          enqueueEmailJob(
-            'content-published',
-            {
-              email: short.author.email,
-              username: short.author.username,
-              contentType: 'short',
-              postTitle: short.title,
-              postUrl: `/shorts/${short._id}`
-            },
-            { jobId: `content-published:short:${short._id}` }
-          ).catch((error) => {
-            console.error('Failed to queue scheduled short published email:', error?.message || error);
-          });
-        }
-
-        console.log(`[schedule] Published scheduled short: ${short.title}`);
-      }
-
-      // Publish scheduled articles
-      const scheduledArticles = await Article.find({
-        isScheduled: true,
-        isDraft: true,
-        scheduledPublishDate: { $lte: now }
-      }).populate('author', 'username email');
-
-      for (const article of scheduledArticles) {
-        article.isDraft = false;
-        article.isScheduled = false;
-        await article.save();
-
-        await Notification.create({
-          recipient: article.author._id,
-          sender: article.author._id,
-          type: 'publish',
-          article: article._id,
-          message: `Your article "${article.title}" has been published successfully!`
-        });
-
-        if (io) {
-          io.to(`user:${article.author._id.toString()}`).emit('notification:scheduled-publish', {
-            articleId: article._id,
-            articleTitle: article.title,
-            type: 'article'
-          });
-        }
-
-        if (article.author?.email) {
-          enqueueEmailJob(
-            'content-published',
-            {
-              email: article.author.email,
-              username: article.author.username,
-              contentType: 'article',
-              postTitle: article.title,
-              postUrl: `/article/${article.slug || article._id}`
-            },
-            { jobId: `content-published:article:${article._id}` }
-          ).catch((error) => {
-            console.error('Failed to queue scheduled article published email:', error?.message || error);
-          });
-        }
-
-        console.log(`[schedule] Published scheduled article: ${article.title}`);
-      }
-
-      if (scheduledArticles.length > 0) {
-        enqueueSearchIndexRefresh('scheduled:article:publish').catch((error) => {
-          console.warn('[search] Failed to enqueue scheduled article index refresh:', error?.message || error);
-        });
-      }
+      await publishDueContent({ Model: Blog, type: 'blog', io, now });
+      await publishDueContent({ Model: Short, type: 'short', io, now });
+      await publishDueContent({ Model: Article, type: 'article', io, now });
     } catch (error) {
-      console.error('[schedule] Scheduled publish job failed:', error);
+      logError('[schedule] Scheduled publish job failed:', error);
+    } finally {
+      publishInProgress = false;
     }
   });
 };

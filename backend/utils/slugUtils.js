@@ -19,7 +19,7 @@ const buildFallbackSlug = () => {
   return `${FALLBACK_SLUG_PREFIX}-${token}`;
 };
 
-const generateUniqueSlug = async ({ Model, title, preferredSlug, excludeId }) => {
+const generateUniqueSlug = async ({ Model, title, preferredSlug, excludeId, maxTimeMS }) => {
   const baseSlug = slugify(preferredSlug || title) || buildFallbackSlug();
   let candidate = baseSlug;
   let suffix = 2;
@@ -29,7 +29,9 @@ const generateUniqueSlug = async ({ Model, title, preferredSlug, excludeId }) =>
     const query = { slug: candidate };
     if (excludeId) query._id = { $ne: excludeId };
 
-    const existing = await Model.exists(query);
+    const existsQuery = Model.exists(query);
+    if (maxTimeMS) existsQuery.maxTimeMS(maxTimeMS);
+    const existing = await existsQuery;
     if (!existing) break;
 
     candidate = `${baseSlug}-${suffix}`;
@@ -70,28 +72,30 @@ const applyPopulate = (query, populate) => {
 
 const resolveDocumentByIdOrSlug = async (Model, identifier, options = {}) => {
   const rawIdentifier = String(identifier || '').trim();
-  const { populate } = options;
+  const { populate, maxTimeMS } = options;
+  const prepareQuery = (query) => {
+    const populatedQuery = applyPopulate(query, populate);
+    if (maxTimeMS) populatedQuery.maxTimeMS(maxTimeMS);
+    return populatedQuery;
+  };
 
   if (!rawIdentifier) {
     return { doc: null, resolution: 'missing', requested: rawIdentifier };
   }
 
   if (mongoose.Types.ObjectId.isValid(rawIdentifier)) {
-    const byIdQuery = Model.findById(rawIdentifier);
-    const byId = await applyPopulate(byIdQuery, populate);
+    const byId = await prepareQuery(Model.findById(rawIdentifier));
     if (byId) {
       return { doc: byId, resolution: 'id', requested: rawIdentifier };
     }
   }
 
-  const bySlugQuery = Model.findOne({ slug: rawIdentifier });
-  const bySlug = await applyPopulate(bySlugQuery, populate);
+  const bySlug = await prepareQuery(Model.findOne({ slug: rawIdentifier }));
   if (bySlug) {
     return { doc: bySlug, resolution: 'slug', requested: rawIdentifier };
   }
 
-  const byLegacySlugQuery = Model.findOne({ slugHistory: rawIdentifier });
-  const byLegacySlug = await applyPopulate(byLegacySlugQuery, populate);
+  const byLegacySlug = await prepareQuery(Model.findOne({ slugHistory: rawIdentifier }));
   if (byLegacySlug) {
     return {
       doc: byLegacySlug,

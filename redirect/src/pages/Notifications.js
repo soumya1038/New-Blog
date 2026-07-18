@@ -5,6 +5,9 @@ import api from '../services/api';
 import { FaHeart, FaComment, FaUserPlus, FaArrowLeft, FaStore } from 'react-icons/fa';
 import { FiMessageCircle } from 'react-icons/fi';
 import soundManager from '../utils/soundManager';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
+
+const getSenderAvatar = (sender) => getSafeImageUrl(sender?.profileImage) || 'https://via.placeholder.com/30';
 
 const Notifications = () => {
   const { t } = useTranslation();
@@ -171,9 +174,10 @@ const Notifications = () => {
                 <div className="flex items-center gap-3">
                   <div className="text-lg flex-shrink-0">{getIcon(notification.type)}</div>
                   <img
-                    src={notification.sender?.profileImage || 'https://via.placeholder.com/30'}
+                    src={getSenderAvatar(notification.sender)}
                     alt={notification.sender?.username}
                     className="w-8 h-8 rounded-full flex-shrink-0"
+                    referrerPolicy="no-referrer"
                   />
                   <div className="flex-1 min-w-0 pr-4">
                     <p className="text-sm text-[var(--text-primary)]">

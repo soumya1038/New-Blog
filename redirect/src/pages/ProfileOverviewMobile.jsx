@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -18,7 +18,10 @@ import { GoVerified } from 'react-icons/go';
 import { ScaleLoader } from 'react-spinners';
 import Avatar from '../components/Avatar';
 import GuestBadge from '../components/GuestBadge';
+import SavedItemsModal from '../components/SavedItemsModal';
+import useSavedItemsLibrary from '../hooks/useSavedItemsLibrary';
 import useCurrentProfileSummary, { formatCompactCount } from '../hooks/useCurrentProfileSummary';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const getProfileRole = (user = {}) => {
   if (user.role === 'admin') return 'Admin';
@@ -51,11 +54,8 @@ const StatPill = ({ value, label }) => (
   </div>
 );
 
-const Shortcut = ({ to, icon: Icon, label, value }) => (
-  <Link
-    to={to}
-    className="flex min-h-[70px] flex-col items-center justify-center gap-2 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-center text-[var(--text-primary)] shadow-sm transition active:scale-[0.98]"
-  >
+const ShortcutContent = ({ icon: Icon, label, value }) => (
+  <>
     <Icon className="text-[var(--brand-primary)]" />
     <span className="text-[11px] font-bold leading-tight">{label}</span>
     {value !== undefined && (
@@ -63,7 +63,21 @@ const Shortcut = ({ to, icon: Icon, label, value }) => (
         {formatCompactCount(value)}
       </span>
     )}
+  </>
+);
+
+const shortcutClassName = 'flex min-h-[70px] flex-col items-center justify-center gap-2 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-center text-[var(--text-primary)] shadow-sm transition active:scale-[0.98]';
+
+const Shortcut = ({ to, onClick, icon, label, value }) => (
+  onClick ? (
+    <button type="button" onClick={onClick} className={shortcutClassName}>
+      <ShortcutContent icon={icon} label={label} value={value} />
+    </button>
+  ) : (
+    <Link to={to} className={shortcutClassName}>
+      <ShortcutContent icon={icon} label={label} value={value} />
   </Link>
+  )
 );
 
 const SecurityRow = ({ to, icon: Icon, label, value }) => (
@@ -82,8 +96,14 @@ const SecurityRow = ({ to, icon: Icon, label, value }) => (
 const ProfileOverviewMobile = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [savedOpen, setSavedOpen] = useState(false);
   const {
+    user,
     displayUser,
+    blogs,
+    articles,
+    shorts,
+    wishlist,
     publishedContent,
     stats,
     twoFactorStatus,
@@ -93,10 +113,13 @@ const ProfileOverviewMobile = () => {
 
   const displayUserId = displayUser?._id || displayUser?.id;
   const recentContent = publishedContent.slice(0, 3);
-  const coverImage = getCoverImage(publishedContent);
+  const coverImage = getSafeImageUrl(getCoverImage(publishedContent)) || '/image/article_logo_light.png';
   const roleLabel = getProfileRole(displayUser);
   const firstLink = Array.isArray(displayUser?.socialMedia) ? displayUser.socialMedia[0] : null;
+  const safeFirstLinkUrl = getSafeHttpUrl(firstLink?.url, { allowBareDomain: true });
   const bioText = displayUser?.bio || t('Add a short bio so readers know what you write about.');
+  const savedLibrary = useSavedItemsLibrary({ user, wishlist, blogs, articles, shorts });
+  const savedShortcutCount = savedLibrary.summary.total || stats.saved;
   const memberSince = displayUser?.createdAt
     ? new Date(displayUser.createdAt).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })
     : '';
@@ -181,9 +204,9 @@ const ProfileOverviewMobile = () => {
             </p>
 
             <div className="mt-3 space-y-1 text-left text-xs text-[var(--text-secondary)]">
-              {firstLink?.url ? (
-                <a href={firstLink.url} target="_blank" rel="noreferrer" className="block truncate text-[var(--brand-primary)]">
-                  {firstLink.url}
+              {safeFirstLinkUrl ? (
+                <a href={safeFirstLinkUrl} target="_blank" rel="noreferrer" className="block truncate text-[var(--brand-primary)]">
+                  {safeFirstLinkUrl}
                 </a>
               ) : null}
               {memberSince ? <p>{t('Joined')} {memberSince}</p> : null}
@@ -212,7 +235,7 @@ const ProfileOverviewMobile = () => {
           <div className="grid grid-cols-4 gap-2">
             <Shortcut to={displayUserId ? `/user/${displayUserId}` : '/profile'} icon={FaRegFileAlt} label={t('My Posts')} value={stats.posts} />
             <Shortcut to="/drafts" icon={FaStickyNote} label={t('Drafts')} value={stats.drafts} />
-            <Shortcut to="/marketplace" icon={FaBookmark} label={t('Saved')} value={stats.saved} />
+            <Shortcut onClick={() => setSavedOpen(true)} icon={FaBookmark} label={t('Saved')} value={savedShortcutCount} />
             <Shortcut to="/my-orders" icon={FaShoppingBag} label={t('Orders')} value={stats.orders} />
           </div>
         </section>
@@ -228,25 +251,28 @@ const ProfileOverviewMobile = () => {
           </div>
           {recentContent.length > 0 ? (
             <div className="space-y-2">
-              {recentContent.map((item) => (
-                <Link
-                  key={`${item.contentType}-${item._id || item.id}`}
-                  to={getContentPath(item)}
-                  className="flex items-center gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3 text-[var(--text-primary)]"
-                >
-                  {getContentImage(item) ? (
-                    <img src={getContentImage(item)} alt="" className="h-14 w-14 rounded-lg object-cover" />
-                  ) : (
-                    <span className="flex h-14 w-14 items-center justify-center rounded-lg bg-[var(--background-secondary)] text-[var(--brand-primary)]">
-                      <FaFileAlt />
+              {recentContent.map((item) => {
+                const safeContentImage = getSafeImageUrl(getContentImage(item));
+                return (
+                  <Link
+                    key={`${item.contentType}-${item._id || item.id}`}
+                    to={getContentPath(item)}
+                    className="flex items-center gap-3 rounded-xl border border-[var(--border-default)] bg-[var(--surface-card)] p-3 text-[var(--text-primary)]"
+                  >
+                    {safeContentImage ? (
+                      <img src={safeContentImage} alt="" className="h-14 w-14 rounded-lg object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <span className="flex h-14 w-14 items-center justify-center rounded-lg bg-[var(--background-secondary)] text-[var(--brand-primary)]">
+                        <FaFileAlt />
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-black">{item.title || t('Untitled')}</span>
+                      <span className="block text-xs capitalize text-[var(--text-secondary)]">{item.contentType}</span>
                     </span>
-                  )}
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-black">{item.title || t('Untitled')}</span>
-                    <span className="block text-xs capitalize text-[var(--text-secondary)]">{item.contentType}</span>
-                  </span>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-[var(--border-default)] bg-[var(--surface-card)] p-4 text-center">
@@ -263,6 +289,13 @@ const ProfileOverviewMobile = () => {
           <SecurityRow to="/profile/settings?target=preferences" icon={FaBoxOpen} label={t('Preferences')} value={t('Open')} />
         </section>
       </div>
+      <SavedItemsModal
+        open={savedOpen}
+        onClose={() => setSavedOpen(false)}
+        itemsByType={savedLibrary.itemsByType}
+        summary={savedLibrary.summary}
+        loading={savedLibrary.loading}
+      />
     </main>
   );
 };

@@ -149,7 +149,7 @@ const ProductTour = ({ onComplete }) => {
 
       {/* Tooltip Card */}
       <div
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl z-[10001] animate-slideUp max-w-md w-full"
+        className="product-tour-tooltip bg-white dark:bg-gray-800 rounded-2xl shadow-2xl z-[10001] animate-slideUp max-w-md w-full"
         style={getTooltipPosition()}
       >
         {/* Header with Gradient */}
@@ -243,34 +243,6 @@ const ProductTour = ({ onComplete }) => {
         </div>
       </div>
 
-      <style jsx>{`
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translate(-50%, -40%) scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: translate(-50%, -50%) scale(1);
-          }
-        }
-        @keyframes spotlight-pulse {
-          0%, 100% {
-            box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.8), 0 0 0 9999px rgba(0, 0, 0, 0.6);
-          }
-          50% {
-            box-shadow: 0 0 0 8px rgba(255, 255, 255, 0.6), 0 0 0 9999px rgba(0, 0, 0, 0.6);
-          }
-        }
-        .animate-slideUp {
-          animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-        }
-        @media (max-width: 640px) {
-          .animate-slideUp {
-            animation: none;
-          }
-        }
-      `}</style>
     </>
   );
 };

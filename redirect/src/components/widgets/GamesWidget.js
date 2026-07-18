@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { IoGameController } from 'react-icons/io5';
 import { FaFire, FaTrophy } from 'react-icons/fa';
+import { getSafeHttpUrl } from '../../utils/safeMediaUrls';
 
 const GamesWidget = () => {
   const [games, setGames] = useState([]);
@@ -47,7 +48,10 @@ const GamesWidget = () => {
       </div>
       <div className="p-3 space-y-2">
         {games.map((game, index) => (
-          <div key={index} onClick={() => window.open(game.source, '_blank')} className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition cursor-pointer border border-transparent hover:border-purple-300 dark:hover:border-purple-600">
+          <div key={index} onClick={() => {
+            const safeUrl = getSafeHttpUrl(game.source);
+            if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer');
+          }} className="p-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition cursor-pointer border border-transparent hover:border-purple-300 dark:hover:border-purple-600">
             <div className="flex items-start justify-between mb-1">
               <div className="flex items-center gap-2">
                 {game.icon}

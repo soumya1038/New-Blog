@@ -1,4 +1,5 @@
 const axios = require('axios');
+const { logError } = require('./safeErrorLog');
 const {
   renderWelcomeEmail,
   renderVerificationEmail,
@@ -7,6 +8,7 @@ const {
   renderPasswordChangedSuccessEmail,
   renderAccountDeletionConfirmationEmail,
   renderAccountDeletedSuccessEmail,
+  renderGenericNotificationEmail,
   renderContactAdminEmail,
   renderNewFollowerEmail,
   renderNewMessageEmail,
@@ -19,11 +21,16 @@ const {
   renderPreDeletionWarningEmail,
 } = require('./emailTemplates');
 
+const parseTimeoutMs = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 1000 && parsed <= 60000 ? parsed : fallback;
+};
+
+const BREVO_EMAIL_TIMEOUT_MS = parseTimeoutMs(process.env.BREVO_EMAIL_TIMEOUT_MS, 15000);
+const BREVO_SMS_TIMEOUT_MS = parseTimeoutMs(process.env.BREVO_SMS_TIMEOUT_MS, 10000);
+
 const sendEmail = async ({ to, subject, html }) => {
-  console.log('[EMAIL] Starting email send process...');
-  console.log('[EMAIL] To:', to);
-  console.log('[EMAIL] Subject:', subject);
-  console.log('[EMAIL] Using Brevo API');
+  console.log('[EMAIL] Sending transactional email via Brevo.');
 
   if (!process.env.BREVO_API_KEY || !process.env.BREVO_FROM_EMAIL) {
     console.error('[EMAIL] Missing Brevo credentials.');
@@ -40,6 +47,7 @@ const sendEmail = async ({ to, subject, html }) => {
         htmlContent: html,
       },
       {
+        timeout: BREVO_EMAIL_TIMEOUT_MS,
         headers: {
           'api-key': process.env.BREVO_API_KEY,
           'Content-Type': 'application/json',
@@ -48,19 +56,16 @@ const sendEmail = async ({ to, subject, html }) => {
     );
 
     console.log('[EMAIL] Email sent successfully.');
-    console.log('[EMAIL] Brevo response:', JSON.stringify(response.data));
     return { success: true };
   } catch (error) {
     console.error('[EMAIL] Email send failed.');
-    console.error('[EMAIL] Error:', error.response?.data || error.message);
-    throw new Error('Failed to send email: ' + (error.response?.data?.message || error.message));
+    logError('[EMAIL] Error:', error);
+    throw new Error('Failed to send email');
   }
 };
 
 const sendSms = async ({ to, content, sender }) => {
-  console.log('[SMS] Starting SMS send process...');
-  console.log('[SMS] To:', to);
-  console.log('[SMS] Using Brevo Transactional SMS API');
+  console.log('[SMS] Sending transactional SMS via Brevo.');
 
   if (!process.env.BREVO_API_KEY) {
     console.error('[SMS] Missing Brevo API key.');
@@ -80,6 +85,7 @@ const sendSms = async ({ to, content, sender }) => {
         tag: 'two-factor-authentication',
       },
       {
+        timeout: BREVO_SMS_TIMEOUT_MS,
         headers: {
           'api-key': process.env.BREVO_API_KEY,
           'Content-Type': 'application/json',
@@ -88,17 +94,16 @@ const sendSms = async ({ to, content, sender }) => {
     );
 
     console.log('[SMS] SMS sent successfully.');
-    console.log('[SMS] Brevo response:', JSON.stringify(response.data));
     return { success: true };
   } catch (error) {
     console.error('[SMS] SMS send failed.');
-    console.error('[SMS] Error:', error.response?.data || error.message);
-    throw new Error('Failed to send SMS: ' + (error.response?.data?.message || error.message));
+    logError('[SMS] Error:', error);
+    throw new Error('Failed to send SMS');
   }
 };
 
 const sendVerificationEmail = async (email, username, verificationCode, expiresAt) => {
-  console.log('[EMAIL] Sending verification email to:', email);
+  console.log('[EMAIL] Queue payload: verification email.');
   const { subject, html } = renderVerificationEmail({
     username,
     code: verificationCode,
@@ -113,7 +118,7 @@ const sendVerificationEmail = async (email, username, verificationCode, expiresA
 };
 
 const sendPasswordResetEmail = async (email, username, resetCode, expiresAt) => {
-  console.log('[EMAIL] Sending password reset email to:', email);
+  console.log('[EMAIL] Queue payload: password reset email.');
   const { subject, html } = renderPasswordResetEmail({
     username,
     code: resetCode,
@@ -128,7 +133,7 @@ const sendPasswordResetEmail = async (email, username, resetCode, expiresAt) => 
 };
 
 const sendWelcomeEmail = async (email, username, options = {}) => {
-  console.log('[EMAIL] Sending welcome email to:', email);
+  console.log('[EMAIL] Queue payload: welcome email.');
   const { subject, html } = renderWelcomeEmail({
     username,
     temporaryPassword: options.temporaryPassword || ''
@@ -142,7 +147,7 @@ const sendWelcomeEmail = async (email, username, options = {}) => {
 };
 
 const sendPasswordChangeConfirmation = async (email, username, confirmationCode, expiresAt) => {
-  console.log('[EMAIL] Sending password change confirmation to:', email);
+  console.log('[EMAIL] Queue payload: password change confirmation email.');
   const { subject, html } = renderPasswordChangeConfirmationEmail({
     username,
     code: confirmationCode,
@@ -157,7 +162,7 @@ const sendPasswordChangeConfirmation = async (email, username, confirmationCode,
 };
 
 const sendAccountDeletionConfirmation = async (email, username, confirmationCode, expiresAt) => {
-  console.log('[EMAIL] Sending account deletion confirmation to:', email);
+  console.log('[EMAIL] Queue payload: account deletion confirmation email.');
   const { subject, html } = renderAccountDeletionConfirmationEmail({
     username,
     code: confirmationCode,
@@ -172,7 +177,7 @@ const sendAccountDeletionConfirmation = async (email, username, confirmationCode
 };
 
 const sendPasswordChangedSuccess = async (email, username, changedAt) => {
-  console.log('[EMAIL] Sending password changed success to:', email);
+  console.log('[EMAIL] Queue payload: password changed success email.');
   const { subject, html } = renderPasswordChangedSuccessEmail({
     username,
     changedAt,
@@ -186,8 +191,27 @@ const sendPasswordChangedSuccess = async (email, username, changedAt) => {
 };
 
 const sendAccountDeletedSuccess = async (email, username) => {
-  console.log('[EMAIL] Sending account deleted success to:', email);
+  console.log('[EMAIL] Queue payload: account deleted success email.');
   const { subject, html } = renderAccountDeletedSuccessEmail({ username });
+
+  return sendEmail({
+    to: email,
+    subject,
+    html,
+  });
+};
+
+const sendGenericNotificationEmail = async (email, username, options = {}) => {
+  console.log('[EMAIL] Queue payload: generic notification email.');
+  const { subject, html } = renderGenericNotificationEmail({
+    username,
+    subject: options.subject,
+    headingText: options.headingText,
+    message: options.message,
+    details: options.details,
+    actionLabel: options.actionLabel,
+    actionPath: options.actionPath,
+  });
 
   return sendEmail({
     to: email,
@@ -198,6 +222,11 @@ const sendAccountDeletedSuccess = async (email, username) => {
 
 const sendContactEmail = async ({ userEmail, username, issue, advice }) => {
   console.log('[EMAIL] Sending contact message to admin');
+  const adminEmail = process.env.SUPPORT_ADMIN_EMAIL || process.env.MY_EMAIL || process.env.My_email;
+  if (!adminEmail) {
+    throw new Error('Contact email recipient is not configured. Please set SUPPORT_ADMIN_EMAIL.');
+  }
+
   const { subject, html } = renderContactAdminEmail({
     username,
     userEmail,
@@ -206,14 +235,14 @@ const sendContactEmail = async ({ userEmail, username, issue, advice }) => {
   });
 
   return sendEmail({
-    to: process.env.My_email || process.env.MY_EMAIL || 'soumyamaiti20@gmail.com',
+    to: adminEmail,
     subject,
     html,
   });
 };
 
 const sendNewFollowerEmail = async (email, username, options = {}) => {
-  console.log('[EMAIL] Sending new follower email to:', email);
+  console.log('[EMAIL] Queue payload: new follower email.');
   const { subject, html } = renderNewFollowerEmail({
     username,
     followerName: options.followerName,
@@ -228,7 +257,7 @@ const sendNewFollowerEmail = async (email, username, options = {}) => {
 };
 
 const sendNewMessageEmail = async (email, username, options = {}) => {
-  console.log('[EMAIL] Sending new message email to:', email);
+  console.log('[EMAIL] Queue payload: new message email.');
   const { subject, html } = renderNewMessageEmail({
     username,
     senderName: options.senderName,
@@ -244,7 +273,7 @@ const sendNewMessageEmail = async (email, username, options = {}) => {
 };
 
 const sendMissedCallEmail = async (email, username, options = {}) => {
-  console.log('[EMAIL] Sending missed call email to:', email);
+  console.log('[EMAIL] Queue payload: missed call email.');
   const { subject, html } = renderMissedCallEmail({
     username,
     callerName: options.callerName,
@@ -260,7 +289,7 @@ const sendMissedCallEmail = async (email, username, options = {}) => {
 };
 
 const sendContentPublishedEmail = async (email, username, options = {}) => {
-  console.log('[EMAIL] Sending content published email to:', email);
+  console.log('[EMAIL] Queue payload: content published email.');
   const { subject, html } = renderContentPublishedEmail({
     username,
     contentType: options.contentType,
@@ -276,7 +305,7 @@ const sendContentPublishedEmail = async (email, username, options = {}) => {
 };
 
 const sendNewCommentEmail = async (email, username, options = {}) => {
-  console.log('[EMAIL] Sending new comment email to:', email);
+  console.log('[EMAIL] Queue payload: new comment email.');
   const { subject, html } = renderNewCommentEmail({
     username,
     commenterName: options.commenterName,
@@ -293,7 +322,7 @@ const sendNewCommentEmail = async (email, username, options = {}) => {
 };
 
 const sendNewReactionEmail = async (email, username, options = {}) => {
-  console.log('[EMAIL] Sending new reaction email to:', email);
+  console.log('[EMAIL] Queue payload: new reaction email.');
   const { subject, html } = renderNewReactionEmail({
     username,
     reactorName: options.reactorName,
@@ -310,7 +339,7 @@ const sendNewReactionEmail = async (email, username, options = {}) => {
 };
 
 const sendAccountWarningEmail = async (email, username, options = {}) => {
-  console.log('[EMAIL] Sending account warning email to:', email);
+  console.log('[EMAIL] Queue payload: account warning email.');
   const { subject, html } = renderAccountWarningEmail({
     username,
     violationReason: options.violationReason,
@@ -325,7 +354,7 @@ const sendAccountWarningEmail = async (email, username, options = {}) => {
 };
 
 const sendAccountSuspensionEmail = async (email, username, options = {}) => {
-  console.log('[EMAIL] Sending account suspension email to:', email);
+  console.log('[EMAIL] Queue payload: account suspension email.');
   const { subject, html } = renderAccountSuspensionEmail({
     username,
     suspensionReason: options.suspensionReason,
@@ -341,7 +370,7 @@ const sendAccountSuspensionEmail = async (email, username, options = {}) => {
 };
 
 const sendPreDeletionWarningEmail = async (email, username, options = {}) => {
-  console.log('[EMAIL] Sending pre-deletion warning email to:', email);
+  console.log('[EMAIL] Queue payload: pre-deletion warning email.');
   const { subject, html } = renderPreDeletionWarningEmail({
     username,
     daysRemaining: options.daysRemaining,
@@ -365,6 +394,7 @@ module.exports = {
   sendAccountDeletionConfirmation,
   sendPasswordChangedSuccess,
   sendAccountDeletedSuccess,
+  sendGenericNotificationEmail,
   sendContactEmail,
   sendNewFollowerEmail,
   sendNewMessageEmail,

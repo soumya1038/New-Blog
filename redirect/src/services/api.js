@@ -1,9 +1,9 @@
 import axios from 'axios';
-import { clearAuthSession } from '../utils/authSession';
+import { clearAuthSession, getAuthToken } from '../utils/authSession';
+import { buildApiUrl } from '../utils/apiBaseUrl';
+import { storeRedirectAfterLogin } from '../utils/authRedirects';
 
-const API_URL = process.env.REACT_APP_API_URL 
-  ? `${process.env.REACT_APP_API_URL}/api`
-  : 'http://localhost:5000/api';
+const API_URL = buildApiUrl('/api');
 
 const api = axios.create({
   baseURL: API_URL,
@@ -23,7 +23,7 @@ api.interceptors.request.use(config => {
     }
   }
 
-  const token = localStorage.getItem('token');
+  const token = getAuthToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -35,7 +35,7 @@ api.interceptors.response.use(
   response => response,
   error => {
     if (error.response?.status === 401) {
-      const token = localStorage.getItem('token');
+      const token = getAuthToken();
       
       // Only show session expired if user actually had a token (was logged in)
       if (token) {
@@ -50,9 +50,9 @@ api.interceptors.response.use(
         clearAuthSession();
         
         // Store current path for redirect after login
-        const currentPath = window.location.pathname;
+        const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
         if (currentPath !== '/login' && currentPath !== '/register') {
-          sessionStorage.setItem('redirectAfterLogin', currentPath);
+          storeRedirectAfterLogin(currentPath);
         }
         
         // Dispatch custom event for AuthContext to handle

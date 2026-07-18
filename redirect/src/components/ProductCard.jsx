@@ -1,12 +1,13 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect, useRef } from 'react';
 import { Link }         from 'react-router-dom';
-import { FaHeart, FaRegHeart, FaShoppingCart, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaHeart, FaRegHeart, FaShoppingBag, FaShoppingCart, FaExternalLinkAlt } from 'react-icons/fa';
 import { MdVerified }   from 'react-icons/md';
 import { AuthContext }  from '../context/AuthContext';
 import StarRating       from './StarRating';
 import SellerBadge      from './SellerBadge';
 import api              from '../services/api';
 import { addGuestCartItem } from '../utils/guestCart';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const TYPE_LABELS = {
   digital:  { label: 'Digital',       color: 'bg-[var(--bg-secondary)] text-[var(--text-secondary)]' },
@@ -15,14 +16,25 @@ const TYPE_LABELS = {
   external: { label: 'External Link', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
 };
 
-const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) => {
+const LONG_PRESS_PREVIEW_MS = 1000;
+const LONG_PRESS_CANCEL_DISTANCE = 28;
+const isProductWishlisted = (product = {}) => Boolean(product.isWishlisted || product.wishlisted || product.saved);
+
+const ProductCard = ({ product, onAddToCart, onProductView, onLongPreview, className = '' }) => {
   const { user }           = useContext(AuthContext);
-  const [wishlisted, setWishlisted] = useState(false);
+  const [wishlisted, setWishlisted] = useState(() => isProductWishlisted(product));
   const [cartLoading, setCartLoading] = useState(false);
+  const longPressTimerRef = useRef(null);
+  const pressStartRef = useRef({ x: 0, y: 0 });
+  const suppressClickUntilRef = useRef(0);
 
   const discountPct = product.compareAtPrice && product.compareAtPrice > product.price
     ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
     : 0;
+
+  useEffect(() => {
+    setWishlisted(isProductWishlisted(product));
+  }, [product._id, product.isWishlisted, product.wishlisted, product.saved]);
 
   const handleWishlist = async (e) => {
     e.preventDefault();
@@ -30,6 +42,9 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
     try {
       const { data } = await api.post(`/marketplace/wishlist/${product._id}`);
       setWishlisted(data.added);
+      window.dispatchEvent(new CustomEvent('lekhon:saved-items-updated', {
+        detail: { type: 'product', id: product._id, saved: data.added },
+      }));
     } catch {}
   };
 
@@ -53,24 +68,129 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
     await api.post(`/marketplace/${product._id}/click`).catch(() => {});
   };
 
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => () => clearLongPressTimer(), []);
+
+  const shouldSkipLongPress = (target) =>
+    target instanceof Element && Boolean(target.closest('button, input, textarea, select'));
+
+  const startLongPress = ({ clientX, clientY, target, pointerType = 'mouse', button = 0 }) => {
+    if (!onLongPreview || shouldSkipLongPress(target)) return;
+    if (pointerType === 'mouse' && button !== 0) return;
+    if (typeof clientX !== 'number' || typeof clientY !== 'number') return;
+
+    clearLongPressTimer();
+    pressStartRef.current = { x: clientX, y: clientY };
+
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTimerRef.current = null;
+      suppressClickUntilRef.current = Date.now() + 850;
+      onLongPreview(product);
+    }, LONG_PRESS_PREVIEW_MS);
+  };
+
+  const cancelLongPressIfMoved = (clientX, clientY) => {
+    if (!longPressTimerRef.current) return;
+    const distance = Math.hypot(
+      clientX - pressStartRef.current.x,
+      clientY - pressStartRef.current.y
+    );
+    if (distance > LONG_PRESS_CANCEL_DISTANCE) clearLongPressTimer();
+  };
+
+  const handlePointerStart = (event) => {
+    if (event.pointerType === 'touch') return;
+    startLongPress(event);
+  };
+
+  const handlePointerMove = (event) => {
+    if (event.pointerType === 'touch') return;
+    cancelLongPressIfMoved(event.clientX, event.clientY);
+  };
+
+  const handlePointerEnd = (event) => {
+    if (event.pointerType === 'touch') return;
+    clearLongPressTimer();
+  };
+
+  const handleMouseStart = (event) => {
+    startLongPress(event);
+  };
+
+  const handleMouseMove = (event) => {
+    cancelLongPressIfMoved(event.clientX, event.clientY);
+  };
+
+  const handleTouchStart = (event) => {
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    startLongPress({
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      target: event.target,
+      pointerType: 'touch',
+    });
+  };
+
+  const handleTouchMove = (event) => {
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    cancelLongPressIfMoved(touch.clientX, touch.clientY);
+  };
+
+  const handlePressEnd = () => {
+    clearLongPressTimer();
+  };
+
   const typeInfo = TYPE_LABELS[product.type] || TYPE_LABELS.digital;
+  const safeThumbnail = getSafeImageUrl(product.thumbnail);
+  const safeSellerImage = getSafeImageUrl(product.sellerId?.profileImage);
 
   return (
     <Link
       to={`/marketplace/${product.slug}`}
       onClick={(event) => {
+        if (Date.now() < suppressClickUntilRef.current) {
+          event.preventDefault();
+          return;
+        }
         if (!event.defaultPrevented) onProductView && onProductView(product);
       }}
+      draggable={false}
+      onDragStart={(event) => event.preventDefault()}
+      onPointerDown={handlePointerStart}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerEnd}
+      onPointerCancel={handlePointerEnd}
+      onMouseDown={handleMouseStart}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handlePressEnd}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handlePressEnd}
+      onTouchCancel={handlePressEnd}
+      onContextMenu={(event) => {
+        if (onLongPreview) event.preventDefault();
+      }}
       className={`marketplace-product-card group relative flex flex-col rounded-xl border border-[var(--border-color)] bg-[var(--bg-card)] hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 overflow-hidden ${className}`}
+      style={{ contentVisibility: 'auto', containIntrinsicSize: '320px' }}
     >
       {/* ── Thumbnail ─────────────────────────────────────────────────────── */}
       <div className="marketplace-product-card__media relative aspect-[4/3] overflow-hidden bg-[var(--bg-secondary)]">
-        {product.thumbnail ? (
+        {safeThumbnail ? (
           <img
-            src={product.thumbnail}
+            src={safeThumbnail}
             alt={product.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center text-[var(--text-muted)]">
@@ -116,8 +236,8 @@ const ProductCard = ({ product, onAddToCart, onProductView, className = '' }) =>
       <div className="marketplace-product-card__content flex flex-col flex-1 p-3 gap-1.5">
         {/* Seller */}
         <div className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
-          {product.sellerId?.profileImage && (
-            <img src={product.sellerId.profileImage} alt="" className="w-4 h-4 rounded-full object-cover" />
+          {safeSellerImage && (
+            <img src={safeSellerImage} alt="" className="w-4 h-4 rounded-full object-cover" referrerPolicy="no-referrer" />
           )}
           <span className="truncate">{product.sellerId?.name || product.sellerId?.username}</span>
           {product.sellerId?.isVerified && <MdVerified size={11} className="text-blue-500 shrink-0" />}

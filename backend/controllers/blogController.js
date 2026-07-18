@@ -10,6 +10,31 @@ const { parseLimit, shouldUseCursorPagination, decodeCursor, buildDescendingCurs
 const { parsePositiveInt, createQueryCacheKey, getCache, setCache, invalidateCacheByPrefixes } = require('../utils/cacheStore');
 const { enqueueSearchIndexRefresh, enqueueEmailJob } = require('../jobs/queueService');
 const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
+const { cleanupOldDraftBatch } = require('../utils/draftCleanup');
+const {
+  normalizeAllowedPublicId,
+  normalizeAllowedPublicIds
+} = require('../utils/cloudinaryPublicIds');
+const {
+  deleteCloudinaryPublicIds: deleteCloudinaryPublicIdsBounded
+} = require('../utils/cloudinaryCleanup');
+const { normalizeHttpUrl } = require('../utils/safeUrls');
+const { logError, logWarn, sendSafeServerError } = require('../utils/safeErrorLog');
+const { trackPublishedContentView } = require('../utils/contentViewTracking');
+const {
+  getFollowerCount,
+  resolveContentAuthorRelationships,
+} = require('../utils/contentAuthorRelationships');
+const {
+  canViewerSeeStatus,
+  filterVisibleStatusesForViewer,
+  getViewerRelationshipToTarget,
+  hasUserId,
+  sanitizeStatusesForViewer,
+} = require('../utils/userVisibility');
+
+const sendBlogServerError = (res, error) =>
+  sendSafeServerError(res, '[blogController] request failed:', error, 'Unable to process blog request');
 
 const BLOG_LIST_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_BLOG_LIST_SECONDS,
@@ -20,6 +45,10 @@ const BLOG_DETAIL_CACHE_TTL_SECONDS = parsePositiveInt(
   process.env.CACHE_TTL_BLOG_DETAIL_SECONDS,
   parsePositiveInt(process.env.CACHE_TTL_DETAIL_SECONDS, 300)
 );
+const BLOG_QUERY_MAX_TIME_MS = Math.max(
+  100,
+  Number(process.env.BLOG_QUERY_MAX_TIME_MS) || 5000
+);
 
 const invalidateBlogReadCache = async () => {
   await invalidateCacheByPrefixes(['blogs:list:', 'blog:detail:']);
@@ -29,9 +58,63 @@ const invalidateBlogPublishCache = async () => {
   await invalidateCacheByPrefixes(['blogs:list:', 'blog:detail:', 'seo:sitemap', 'seo:feed']);
 };
 
+const getCommentCountMap = async (field, docs = []) => {
+  const ids = docs.map((doc) => doc?._id).filter(Boolean);
+  if (!ids.length) return new Map();
+
+  const counts = await Comment.aggregate([
+    { $match: { [field]: { $in: ids } } },
+    { $group: { _id: `$${field}`, count: { $sum: 1 } } },
+  ]).option({ maxTimeMS: BLOG_QUERY_MAX_TIME_MS });
+
+  return new Map(counts.map((entry) => [String(entry._id), entry.count]));
+};
+
+const serializeMixedRelatedItems = async ({
+  articles = [],
+  blogs = [],
+  shorts = [],
+  currentCategory,
+  relatedCategories,
+  currentTags,
+}) => {
+  const [articleCounts, blogCounts, shortCounts] = await Promise.all([
+    getCommentCountMap('article', articles),
+    getCommentCountMap('blog', blogs),
+    getCommentCountMap('short', shorts),
+  ]);
+
+  return [
+    ...articles.map((item) => serializeRelatedItem({
+      item,
+      type: 'article',
+      commentCount: articleCounts.get(String(item._id)) || 0,
+      currentCategory,
+      relatedCategories,
+      currentTags,
+    })),
+    ...blogs.map((item) => serializeRelatedItem({
+      item,
+      type: 'blog',
+      commentCount: blogCounts.get(String(item._id)) || 0,
+      currentCategory,
+      relatedCategories,
+      currentTags,
+    })),
+    ...shorts.map((item) => serializeRelatedItem({
+      item,
+      type: 'short',
+      commentCount: shortCounts.get(String(item._id)) || 0,
+      currentCategory,
+      relatedCategories,
+      currentTags,
+    })),
+  ];
+};
+
 const triggerSearchIndexRefresh = (reason) => {
   enqueueSearchIndexRefresh(reason).catch((error) => {
-    console.warn('[search] Failed to enqueue search index refresh:', error?.message || error);
+    logWarn('[search] Failed to enqueue search index refresh:', error);
   });
 };
 
@@ -129,14 +212,7 @@ const normalizeStringArray = (value) =>
 const deleteCloudinaryPublicIds = async (publicIds = []) => {
   const ids = normalizeStringArray(publicIds);
   if (!ids.length) return;
-  const cloudinary = require('../utils/cloudinary');
-  await Promise.all(ids.map(async (publicId) => {
-    try {
-      await cloudinary.uploader.destroy(publicId);
-    } catch (error) {
-      console.error('Cloudinary delete error:', error);
-    }
-  }));
+  await deleteCloudinaryPublicIdsBounded(ids);
 };
 
 const normalizeProductLinks = (body) => {
@@ -153,17 +229,22 @@ const normalizeProductLinks = (body) => {
 
   const externalProductLinks = parseArrayField(body.externalProductLinks)
     .filter(link => link && typeof link === 'object')
-    .map(link => ({
-      title: String(link.title || '').trim(),
-      url: String(link.url || '').trim(),
-      platform: String(link.platform || 'External').trim() || 'External',
-      thumbnail: String(link.thumbnail || '').trim(),
-      thumbnailPublicId: String(link.thumbnailPublicId || '').trim(),
-      originalThumbnail: String(link.originalThumbnail || '').trim(),
-      originalThumbnailPublicId: String(link.originalThumbnailPublicId || '').trim(),
-      backgroundRemovalStatus: String(link.backgroundRemovalStatus || '').trim(),
-      priceLabel: String(link.priceLabel || '').trim(),
-    }))
+    .map(link => {
+      const url = normalizeHttpUrl(link.url);
+      const thumbnail = normalizeHttpUrl(link.thumbnail, { maxLength: 1000 });
+      const originalThumbnail = normalizeHttpUrl(link.originalThumbnail, { maxLength: 1000 });
+      return {
+        title: String(link.title || '').trim(),
+        url,
+        platform: String(link.platform || 'External').trim() || 'External',
+        thumbnail,
+        thumbnailPublicId: String(link.thumbnailPublicId || '').trim(),
+        originalThumbnail,
+        originalThumbnailPublicId: String(link.originalThumbnailPublicId || '').trim(),
+        backgroundRemovalStatus: String(link.backgroundRemovalStatus || '').trim(),
+        priceLabel: String(link.priceLabel || '').trim(),
+      };
+    })
     .filter(link => link.title && link.url);
 
   return {
@@ -195,12 +276,6 @@ exports.createBlog = async (req, res) => {
     } = req.body;
     const productLinks = normalizeProductLinks(req.body);
 
-    console.log('=== BACKEND CREATE BLOG ===');
-    console.log('isDraft:', isDraft);
-    console.log('isScheduled:', isScheduled);
-    console.log('scheduledPublishDate:', scheduledPublishDate);
-    console.log('title:', title);
-
     if (!title || !content) {
       return res.status(400).json({ success: false, message: 'Title and content required' });
     }
@@ -217,6 +292,12 @@ exports.createBlog = async (req, res) => {
     const videoUrlsArray = videoUrls ? (Array.isArray(videoUrls) ? videoUrls : JSON.parse(videoUrls)).filter(url => url.trim()) : [];
     const galleryImagesArray = normalizeStringArray(galleryImages);
     const galleryImagePublicIdsArray = normalizeStringArray(galleryImagePublicIds);
+    const coverPublicIdResult = normalizeAllowedPublicId(cloudinaryPublicId, req.user._id);
+    const galleryPublicIdsResult = normalizeAllowedPublicIds(galleryImagePublicIdsArray, req.user._id);
+
+    if (coverPublicIdResult.error || galleryPublicIdsResult.error) {
+      return res.status(400).json({ success: false, message: 'Invalid image ownership' });
+    }
 
     // If publishing (not draft and not scheduled), delete any existing draft with same title
     if (!isDraft && !isScheduled) {
@@ -233,7 +314,7 @@ exports.createBlog = async (req, res) => {
           try {
             await cloudinary.uploader.destroy(existingDraft.cloudinaryPublicId);
           } catch (err) {
-            console.error('Cloudinary delete error:', err);
+            logError('Cloudinary delete error:', err);
           }
         }
         await deleteCloudinaryPublicIds(existingDraft.galleryImagePublicIds);
@@ -254,9 +335,9 @@ exports.createBlog = async (req, res) => {
       tags: tagArray,
       category: category || 'General',
       coverImage: coverImage || null,
-      cloudinaryPublicId: cloudinaryPublicId || null,
+      cloudinaryPublicId: coverPublicIdResult.publicId || null,
       galleryImages: galleryImagesArray,
-      galleryImagePublicIds: galleryImagePublicIdsArray,
+      galleryImagePublicIds: galleryPublicIdsResult.publicIds,
       videoUrls: videoUrlsArray,
       metaDescription: metaDescription || null,
       slug: generatedSlug,
@@ -290,13 +371,13 @@ exports.createBlog = async (req, res) => {
         },
         { jobId: `content-published:blog:${blog._id}` }
       ).catch((error) => {
-        console.error('Failed to queue blog published email:', error?.message || error);
+        logError('Failed to queue blog published email:', error);
       });
     }
 
     res.status(201).json({ success: true, blog: populatedBlog });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendBlogServerError(res, error);
   }
 };
 
@@ -308,7 +389,22 @@ exports.getBlogs = async (req, res) => {
     const limit = parseLimit(req.query.limit);
     const filter = {};
     const canUseListCache = draft !== 'true';
-    const listCacheKey = `blogs:list:${createQueryCacheKey(req.query)}`;
+    const viewerId = String(req.user?._id || 'anon');
+    if (author && !mongoose.Types.ObjectId.isValid(author)) {
+      return res.status(400).json({ success: false, message: 'Invalid author id' });
+    }
+
+    const listCacheKey = `blogs:list:${createQueryCacheKey({
+      author,
+      tag,
+      draft,
+      cursor,
+      limit,
+      viewer: viewerId,
+      visibility: 'block-aware-v1',
+      published: 'scheduled-aware-v1',
+      mode: useCursor ? 'cursor' : 'limit'
+    })}`;
 
     if (canUseListCache) {
       const cachedPayload = await getCache(listCacheKey);
@@ -321,38 +417,29 @@ exports.getBlogs = async (req, res) => {
     if (tag) filter.tags = tag;
     if (draft !== undefined) {
       filter.isDraft = draft === 'true';
+      if (draft !== 'true') filter.isScheduled = false;
       // Only show own drafts if user is authenticated
       if (req.user) {
         filter.author = req.user._id;
         
-        // Auto-delete drafts older than 42 hours (exclude scheduled)
         const fortyTwoHoursAgo = new Date(Date.now() - 42 * 60 * 60 * 1000);
-        const oldDrafts = await Blog.find({
-          author: req.user._id,
-          isDraft: true,
-          isScheduled: false,
-          updatedAt: { $lt: fortyTwoHoursAgo }
-        });
-        
-        // Delete old drafts and their images
-        for (const draft of oldDrafts) {
-          if (draft.cloudinaryPublicId) {
-            const cloudinary = require('../utils/cloudinary');
-            try {
-              await cloudinary.uploader.destroy(draft.cloudinaryPublicId);
-            } catch (err) {
-              console.error('Cloudinary delete error:', err);
-            }
+        await cleanupOldDraftBatch({
+          Model: Blog,
+          commentField: 'blog',
+          notificationField: 'blog',
+          filter: {
+            author: req.user._id,
+            isDraft: true,
+            isScheduled: false,
+            updatedAt: { $lt: fortyTwoHoursAgo }
           }
-          await Comment.deleteMany({ blog: draft._id });
-          await Notification.deleteMany({ blog: draft._id });
-          await Blog.findByIdAndDelete(draft._id);
-        }
+        });
       } else {
         return res.status(401).json({ success: false, message: 'Authentication required for drafts' });
       }
     } else {
       filter.isDraft = false; // Default: only published blogs
+      filter.isScheduled = false;
     }
 
     if (useCursor) {
@@ -369,49 +456,50 @@ exports.getBlogs = async (req, res) => {
     }
 
     const query = Blog.find(filter)
-      .populate('author', 'username profileImage isGuest role isVerified statuses followers')
-      .populate('linkedProduct', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
-      .populate('linkedProducts', 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount')
+      .populate({
+        path: 'author',
+        select: 'username profileImage isGuest role isVerified statuses.audience statuses.expiresAt',
+        options: { maxTimeMS: BLOG_QUERY_MAX_TIME_MS },
+      })
+      .populate({
+        path: 'linkedProduct',
+        select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount',
+        options: { maxTimeMS: BLOG_QUERY_MAX_TIME_MS },
+      })
+      .populate({
+        path: 'linkedProducts',
+        select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount',
+        options: { maxTimeMS: BLOG_QUERY_MAX_TIME_MS },
+      })
       .sort({ createdAt: -1, _id: -1 });
 
-    if (useCursor) {
-      query.limit(limit + 1);
-    }
+    query.limit(useCursor ? limit + 1 : limit).maxTimeMS(BLOG_QUERY_MAX_TIME_MS);
 
     const blogs = await query;
     const { pageItems: pagedBlogs, hasMore, nextCursor } = useCursor
       ? extractNextCursor(blogs, limit)
       : { pageItems: blogs, hasMore: false, nextCursor: null };
 
-    const viewerId = String(req.user?._id || '');
-    const canViewerSeeStatus = (status, { isOwner, isFollower }) => {
-      if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
-      if (isOwner) return true;
-      const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
-      if (audience === 'public') return true;
-      if (audience === 'followers' && isFollower) return true;
-      return false;
-    };
+    const authorRelationships = await resolveContentAuthorRelationships({
+      viewer: req.user,
+      authorIds: pagedBlogs.map((blog) => blog.author?._id),
+      maxTimeMS: BLOG_QUERY_MAX_TIME_MS,
+    });
 
     // Add commentCount and audience-aware hasActiveStatus to each blog
-    const Comment = require('../models/Comment');
-    const blogsWithStatus = await Promise.all(pagedBlogs.map(async (blog) => {
+    const commentCountMap = await getCommentCountMap('blog', pagedBlogs);
+    const blogsWithStatus = pagedBlogs.map((blog) => {
       const blogObj = blog.toObject();
-      blogObj.commentCount = await Comment.countDocuments({ blog: blog._id });
+      blogObj.commentCount = commentCountMap.get(String(blog._id)) || 0;
       if (blogObj.author && blogObj.author.statuses) {
-        const authorId = String(blogObj.author._id || '');
-        const isOwner = viewerId && viewerId === authorId;
-        const isFollower = Array.isArray(blogObj.author.followers)
-          ? blogObj.author.followers.some((id) => String(id) === viewerId)
-          : false;
+        const relationship = authorRelationships.get(String(blogObj.author._id || '')) || {};
         blogObj.author.hasActiveStatus = blogObj.author.statuses.some((status) =>
-          canViewerSeeStatus(status, { isOwner, isFollower })
+          canViewerSeeStatus(status, relationship)
         );
         delete blogObj.author.statuses;
-        delete blogObj.author.followers;
       }
       return blogObj;
-    }));
+    });
 
     const payload = {
       success: true,
@@ -434,7 +522,7 @@ exports.getBlogs = async (req, res) => {
 
     res.json(payload);
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendBlogServerError(res, error);
   }
 };
 
@@ -442,18 +530,15 @@ exports.getBlogs = async (req, res) => {
 exports.getBlog = async (req, res) => {
   try {
     const viewerId = String(req.user?._id || 'anon');
-    const detailCacheKey = `blog:detail:v3:${req.params.id}:viewer:${viewerId}`;
-    const cachedPayload = await getCache(detailCacheKey);
-    if (cachedPayload) {
-      return res.json(cachedPayload);
-    }
+    const detailCacheKey = `blog:detail:v6:${req.params.id}:viewer:${viewerId}`;
 
     const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id, {
+      maxTimeMS: BLOG_QUERY_MAX_TIME_MS,
       populate: [
-        { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses followers' },
-        { path: 'likes', select: 'username profileImage' },
-        { path: 'linkedProduct', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount' },
-        { path: 'linkedProducts', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount' }
+        { path: 'author', select: 'username profileImage fullName bio isGuest role isVerified statuses', options: { maxTimeMS: BLOG_QUERY_MAX_TIME_MS } },
+        { path: 'likes', select: 'username profileImage', options: { maxTimeMS: BLOG_QUERY_MAX_TIME_MS } },
+        { path: 'linkedProduct', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount', options: { maxTimeMS: BLOG_QUERY_MAX_TIME_MS } },
+        { path: 'linkedProducts', select: 'title slug thumbnail transparentThumbnail backgroundRemovalStatus price compareAtPrice type isFree averageRating reviewCount', options: { maxTimeMS: BLOG_QUERY_MAX_TIME_MS } }
       ]
     });
 
@@ -464,45 +549,58 @@ exports.getBlog = async (req, res) => {
     }
 
     const authorIdForStats = blog.author?._id || blog.author;
-    const [commentCount, authorArticleCount, authorBlogCount] = await Promise.all([
-      Comment.countDocuments({ blog: blog._id }),
-      authorIdForStats ? Article.countDocuments({ author: authorIdForStats, isDraft: false }) : 0,
-      authorIdForStats ? Blog.countDocuments({ author: authorIdForStats, isDraft: false }) : 0
+    const isPublished = !blog.isDraft && !blog.isScheduled;
+    const isOwner = req.user && String(authorIdForStats) === String(req.user._id);
+    if (!isPublished && !isOwner) {
+      return res.status(404).json({ success: false, message: 'Blog not found' });
+    }
+
+    if (isPublished) {
+      const cachedPayload = await getCache(detailCacheKey);
+      if (cachedPayload) {
+        return res.json(cachedPayload);
+      }
+    }
+
+    const [commentCount, authorArticleCount, authorBlogCount, authorFollowerCount, authorRelationships] = await Promise.all([
+      Comment.countDocuments({ blog: blog._id }).maxTimeMS(BLOG_QUERY_MAX_TIME_MS),
+      authorIdForStats
+        ? Article.countDocuments({ author: authorIdForStats, isDraft: false, isScheduled: false })
+          .maxTimeMS(BLOG_QUERY_MAX_TIME_MS)
+        : 0,
+      authorIdForStats
+        ? Blog.countDocuments({ author: authorIdForStats, isDraft: false, isScheduled: false })
+          .maxTimeMS(BLOG_QUERY_MAX_TIME_MS)
+        : 0,
+      getFollowerCount(authorIdForStats, BLOG_QUERY_MAX_TIME_MS),
+      resolveContentAuthorRelationships({
+        viewer: req.user,
+        authorIds: authorIdForStats ? [authorIdForStats] : [],
+        maxTimeMS: BLOG_QUERY_MAX_TIME_MS,
+      }),
     ]);
 
     const blogObj = blog.toObject();
     // Add audience-aware hasActiveStatus and visible statuses for viewing
-    let authorIsFollowing = false;
-    if (blogObj.author && Array.isArray(blogObj.author.followers)) {
-      authorIsFollowing = blogObj.author.followers.some((id) => String(id) === viewerId);
-    }
+    const authorRelationship = blogObj.author
+      ? authorRelationships.get(String(blogObj.author._id || '')) || {}
+      : {};
+    let authorIsFollowing = Boolean(authorRelationship.isFollower);
 
     if (blogObj.author && blogObj.author.statuses) {
-      const authorId = String(blogObj.author._id || '');
-      const isOwner = viewerId !== 'anon' && viewerId === authorId;
-      const visibleStatuses = (blogObj.author.statuses || []).filter((status) => {
-        if (!status?.expiresAt || new Date(status.expiresAt) <= new Date()) return false;
-        if (isOwner) return true;
-        const audience = ['public', 'followers', 'private'].includes(status?.audience) ? status.audience : 'public';
-        if (audience === 'public') return true;
-        if (audience === 'followers' && authorIsFollowing) return true;
-        return false;
-      });
+      const visibleStatuses = filterVisibleStatusesForViewer(blogObj.author.statuses, authorRelationship);
       blogObj.author.hasActiveStatus = visibleStatuses.length > 0;
-      blogObj.author.statuses = visibleStatuses;
+      blogObj.author.statuses = sanitizeStatusesForViewer(visibleStatuses, authorRelationship);
     }
 
     if (blogObj.author) {
-      blogObj.author.followerCount = Array.isArray(blogObj.author.followers)
-        ? blogObj.author.followers.length
-        : Number(blogObj.author.followerCount || blogObj.author.followersCount || 0);
+      blogObj.author.followerCount = authorFollowerCount;
       blogObj.author.articleCount = authorArticleCount;
       blogObj.author.articlesCount = authorArticleCount;
       blogObj.author.blogCount = authorBlogCount;
       blogObj.author.blogsCount = authorBlogCount;
       blogObj.author.postsCount = authorArticleCount + authorBlogCount;
       blogObj.author.isFollowing = viewerId !== 'anon' && authorIsFollowing;
-      delete blogObj.author.followers;
     }
 
     const payload = {
@@ -518,11 +616,13 @@ exports.getBlog = async (req, res) => {
       }
     };
 
-    await setCache(detailCacheKey, payload, BLOG_DETAIL_CACHE_TTL_SECONDS);
+    if (isPublished) {
+      await setCache(detailCacheKey, payload, BLOG_DETAIL_CACHE_TTL_SECONDS);
+    }
 
     res.json(payload);
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendBlogServerError(res, error);
   }
 };
 
@@ -532,7 +632,7 @@ exports.getRelatedBlogContent = async (req, res) => {
     const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id);
     const blog = resolved.doc;
 
-    if (!blog || blog.isDraft) {
+    if (!blog || blog.isDraft || blog.isScheduled) {
       return res.status(404).json({ success: false, message: 'Blog not found' });
     }
 
@@ -548,46 +648,28 @@ exports.getRelatedBlogContent = async (req, res) => {
     const differentAuthorFilter = currentAuthorId ? { author: { $ne: currentAuthorId } } : {};
 
     const [articles, blogs, shorts] = await Promise.all([
-      Article.find({ isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+      Article.find({ isDraft: false, isScheduled: false, ...differentAuthorFilter, ...categoryFilter })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
-      Blog.find({ _id: { $ne: blog._id }, isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+      Blog.find({ _id: { $ne: blog._id }, isDraft: false, isScheduled: false, ...differentAuthorFilter, ...categoryFilter })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
-      Short.find({ isDraft: false, ...differentAuthorFilter, ...categoryFilter })
+      Short.find({ isDraft: false, isScheduled: false, ...differentAuthorFilter, ...categoryFilter })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
     ]);
 
-    const relatedWithScores = await Promise.all([
-      ...articles.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'article',
-        commentCount: await Comment.countDocuments({ article: item._id }),
-        currentCategory,
-        relatedCategories,
-        currentTags,
-      })),
-      ...blogs.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'blog',
-        commentCount: await Comment.countDocuments({ blog: item._id }),
-        currentCategory,
-        relatedCategories,
-        currentTags,
-      })),
-      ...shorts.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'short',
-        commentCount: await Comment.countDocuments({ short: item._id }),
-        currentCategory,
-        relatedCategories,
-        currentTags,
-      })),
-    ]);
+    const relatedWithScores = await serializeMixedRelatedItems({
+      articles,
+      blogs,
+      shorts,
+      currentCategory,
+      relatedCategories,
+      currentTags,
+    });
 
     const ranked = relatedWithScores
       .filter((item) => {
@@ -601,46 +683,28 @@ exports.getRelatedBlogContent = async (req, res) => {
     if (ranked.length < limit) {
       const fallbackLimit = (limit - ranked.length) * 2;
       const [fallbackArticles, fallbackBlogs, fallbackShorts] = await Promise.all([
-        Article.find({ isDraft: false, ...differentAuthorFilter })
+        Article.find({ isDraft: false, isScheduled: false, ...differentAuthorFilter })
           .populate('author', 'fullName username profileImage isGuest role isVerified')
           .sort({ views: -1, createdAt: -1 })
           .limit(fallbackLimit),
-        Blog.find({ _id: { $ne: blog._id }, isDraft: false, ...differentAuthorFilter })
+        Blog.find({ _id: { $ne: blog._id }, isDraft: false, isScheduled: false, ...differentAuthorFilter })
           .populate('author', 'fullName username profileImage isGuest role isVerified')
           .sort({ views: -1, createdAt: -1 })
           .limit(fallbackLimit),
-        Short.find({ isDraft: false, ...differentAuthorFilter })
+        Short.find({ isDraft: false, isScheduled: false, ...differentAuthorFilter })
           .populate('author', 'fullName username profileImage isGuest role isVerified')
           .sort({ views: -1, createdAt: -1 })
           .limit(fallbackLimit),
       ]);
 
-      const fallbackItems = await Promise.all([
-        ...fallbackArticles.map(async (item) => serializeRelatedItem({
-          item,
-          type: 'article',
-          commentCount: await Comment.countDocuments({ article: item._id }),
-          currentCategory,
-          relatedCategories,
-          currentTags,
-        })),
-        ...fallbackBlogs.map(async (item) => serializeRelatedItem({
-          item,
-          type: 'blog',
-          commentCount: await Comment.countDocuments({ blog: item._id }),
-          currentCategory,
-          relatedCategories,
-          currentTags,
-        })),
-        ...fallbackShorts.map(async (item) => serializeRelatedItem({
-          item,
-          type: 'short',
-          commentCount: await Comment.countDocuments({ short: item._id }),
-          currentCategory,
-          relatedCategories,
-          currentTags,
-        })),
-      ]);
+      const fallbackItems = await serializeMixedRelatedItems({
+        articles: fallbackArticles,
+        blogs: fallbackBlogs,
+        shorts: fallbackShorts,
+        currentCategory,
+        relatedCategories,
+        currentTags,
+      });
 
       fallbackItems
         .sort(compareRelatedContent)
@@ -660,7 +724,7 @@ exports.getRelatedBlogContent = async (req, res) => {
       relatedCategories,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendBlogServerError(res, error);
   }
 };
 
@@ -670,7 +734,7 @@ exports.getAuthorBlogContent = async (req, res) => {
     const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id);
     const blog = resolved.doc;
 
-    if (!blog || blog.isDraft) {
+    if (!blog || blog.isDraft || blog.isScheduled) {
       return res.status(404).json({ success: false, message: 'Blog not found' });
     }
 
@@ -685,46 +749,28 @@ exports.getAuthorBlogContent = async (req, res) => {
       .filter(Boolean));
 
     const [articles, blogs, shorts] = await Promise.all([
-      Article.find({ author: authorId, isDraft: false })
+      Article.find({ author: authorId, isDraft: false, isScheduled: false })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
-      Blog.find({ _id: { $ne: blog._id }, author: authorId, isDraft: false })
+      Blog.find({ _id: { $ne: blog._id }, author: authorId, isDraft: false, isScheduled: false })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
-      Short.find({ author: authorId, isDraft: false })
+      Short.find({ author: authorId, isDraft: false, isScheduled: false })
         .populate('author', 'fullName username profileImage isGuest role isVerified')
         .sort({ views: -1, createdAt: -1 })
         .limit(limit * 2),
     ]);
 
-    const authorItems = await Promise.all([
-      ...articles.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'article',
-        commentCount: await Comment.countDocuments({ article: item._id }),
-        currentCategory,
-        relatedCategories: [currentCategory],
-        currentTags,
-      })),
-      ...blogs.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'blog',
-        commentCount: await Comment.countDocuments({ blog: item._id }),
-        currentCategory,
-        relatedCategories: [currentCategory],
-        currentTags,
-      })),
-      ...shorts.map(async (item) => serializeRelatedItem({
-        item,
-        type: 'short',
-        commentCount: await Comment.countDocuments({ short: item._id }),
-        currentCategory,
-        relatedCategories: [currentCategory],
-        currentTags,
-      })),
-    ]);
+    const authorItems = await serializeMixedRelatedItems({
+      articles,
+      blogs,
+      shorts,
+      currentCategory,
+      relatedCategories: [currentCategory],
+      currentTags,
+    });
 
     const seen = new Set();
     const ranked = authorItems
@@ -742,7 +788,7 @@ exports.getAuthorBlogContent = async (req, res) => {
       author: authorId,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendBlogServerError(res, error);
   }
 };
 
@@ -794,6 +840,16 @@ exports.updateBlog = async (req, res) => {
     const galleryImagePublicIdsArray = galleryImagePublicIds !== undefined
       ? normalizeStringArray(galleryImagePublicIds)
       : blog.galleryImagePublicIds;
+    const coverPublicIdResult = cloudinaryPublicId !== undefined
+      ? normalizeAllowedPublicId(cloudinaryPublicId, req.user._id, [blog.cloudinaryPublicId])
+      : { publicId: blog.cloudinaryPublicId };
+    const galleryPublicIdsResult = galleryImagePublicIds !== undefined
+      ? normalizeAllowedPublicIds(galleryImagePublicIdsArray, req.user._id, blog.galleryImagePublicIds || [])
+      : { publicIds: blog.galleryImagePublicIds };
+
+    if (coverPublicIdResult.error || galleryPublicIdsResult.error) {
+      return res.status(400).json({ success: false, message: 'Invalid image ownership' });
+    }
 
     const publishingFromDraft =
       (blog.isDraft || blog.isScheduled) && isDraft === false && !isScheduled;
@@ -813,7 +869,7 @@ exports.updateBlog = async (req, res) => {
           try {
             await cloudinary.uploader.destroy(otherDraft.cloudinaryPublicId);
           } catch (err) {
-            console.error('Cloudinary delete error:', err);
+            logError('Cloudinary delete error:', err);
           }
         }
         await deleteCloudinaryPublicIds(otherDraft.galleryImagePublicIds);
@@ -826,9 +882,9 @@ exports.updateBlog = async (req, res) => {
     blog.tags = tagArray;
     blog.category = category || blog.category;
     blog.coverImage = coverImage !== undefined ? coverImage : blog.coverImage;
-    blog.cloudinaryPublicId = cloudinaryPublicId !== undefined ? cloudinaryPublicId : blog.cloudinaryPublicId;
+    blog.cloudinaryPublicId = coverPublicIdResult.publicId || null;
     blog.galleryImages = galleryImagesArray;
-    blog.galleryImagePublicIds = galleryImagePublicIdsArray;
+    blog.galleryImagePublicIds = galleryPublicIdsResult.publicIds;
     blog.videoUrls = videoUrlsArray;
     blog.metaDescription = metaDescription !== undefined ? metaDescription : blog.metaDescription;
     if (productLinks) {
@@ -870,7 +926,7 @@ exports.updateBlog = async (req, res) => {
         },
         { jobId: `content-published:blog:${blog._id}` }
       ).catch((error) => {
-        console.error('Failed to queue blog published email after draft publish:', error?.message || error);
+        logError('Failed to queue blog published email after draft publish:', error);
       });
     }
 
@@ -881,7 +937,7 @@ exports.updateBlog = async (req, res) => {
 
     res.json({ success: true, blog: updatedBlog });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendBlogServerError(res, error);
   }
 };
 
@@ -905,7 +961,7 @@ exports.deleteBlog = async (req, res) => {
       try {
         await cloudinary.uploader.destroy(blog.cloudinaryPublicId);
       } catch (err) {
-        console.error('Cloudinary delete error:', err);
+        logError('Cloudinary delete error:', err);
       }
     }
     await deleteCloudinaryPublicIds(blog.galleryImagePublicIds);
@@ -922,38 +978,31 @@ exports.deleteBlog = async (req, res) => {
 
     res.json({ success: true, message: 'Blog deleted' });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendBlogServerError(res, error);
   }
 };
 
 // Track blog view
 exports.trackView = async (req, res) => {
   try {
-    const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id);
-    const blog = resolved.doc;
-    if (!blog) {
+    const result = await trackPublishedContentView({
+      Model: Blog,
+      identifier: req.params.id,
+      userId: req.user?._id,
+      ip: req.ip || req.connection.remoteAddress,
+    });
+
+    if (!result.found) {
       return res.status(404).json({ success: false, message: 'Blog not found' });
     }
 
-    const userId = req.user?._id;
-    const userIp = req.ip || req.connection.remoteAddress;
-
-    // Check if already viewed by this user/IP
-    const alreadyViewed = blog.viewedBy.some(view => 
-      (userId && view.user?.toString() === userId.toString()) || 
-      (!userId && view.ip === userIp)
-    );
-
-    if (!alreadyViewed) {
-      blog.views += 1;
-      blog.viewedBy.push({ user: userId, ip: userIp });
-      await blog.save();
+    if (result.counted) {
       await invalidateBlogReadCache();
     }
 
-    res.json({ success: true, views: blog.views });
+    res.json({ success: true, views: result.views });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendBlogServerError(res, error);
   }
 };
 
@@ -961,20 +1010,31 @@ exports.trackView = async (req, res) => {
 exports.getShortBlogs = async (req, res) => {
   try {
     const { author } = req.query;
-    const filter = { isDraft: false };
+    const filter = { isDraft: false, isScheduled: false };
     
+    if (author && !mongoose.Types.ObjectId.isValid(author)) {
+      return res.status(400).json({ success: false, message: 'Invalid author id' });
+    }
+
     if (author) filter.author = author;
 
-    console.log('Fetching short blogs with filter:', filter);
+    const limit = parseLimit(req.query.limit);
     const shortBlogs = await Blog.find(filter)
       .populate('author', 'username profileImage isGuest role isVerified')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit);
 
-    console.log('Found short blogs:', shortBlogs.length);
-    res.json({ success: true, blogs: shortBlogs });
+    res.json({
+      success: true,
+      blogs: shortBlogs,
+      pagination: {
+        mode: 'limit',
+        limit
+      }
+    });
   } catch (error) {
-    console.error('Error in getShortBlogs:', error);
-    res.status(500).json({ success: false, message: error.message });
+    logError('Error in getShortBlogs:', error);
+    return sendBlogServerError(res, error);
   }
 };
 
@@ -984,26 +1044,45 @@ exports.toggleLike = async (req, res) => {
     const resolved = await resolveDocumentByIdOrSlug(Blog, req.params.id);
     const blog = resolved.doc;
 
-    if (!blog) {
+    if (!blog || blog.isDraft || blog.isScheduled) {
       return res.status(404).json({ success: false, message: 'Blog not found' });
     }
 
-    const likeIndex = blog.likes.indexOf(req.user._id);
+    const blogAuthor = await User.findById(blog.author).select('blockedUsers email username emailNotifications');
+    if (!blogAuthor) {
+      return res.status(404).json({ success: false, message: 'Blog author not found' });
+    }
 
-    if (likeIndex > -1) {
-      // Unlike
-      blog.likes.splice(likeIndex, 1);
-      await blog.save();
+    const relationship = getViewerRelationshipToTarget(req.user, {
+      _id: blog.author,
+      blockedUsers: blogAuthor.blockedUsers,
+    });
+    if (!relationship.isOwner && relationship.isBlocked) {
+      return res.status(403).json({ success: false, message: 'Cannot react to this content' });
+    }
+
+    const wasLiked = hasUserId(blog.likes, req.user._id);
+
+    if (wasLiked) {
+      await Blog.updateOne({ _id: blog._id }, { $pull: { likes: req.user._id } });
+      const updatedBlog = await Blog.findById(blog._id).select('likes');
       await invalidateBlogReadCache();
-      res.json({ success: true, liked: false, likes: blog.likes });
+      return res.json({
+        success: true,
+        liked: false,
+        likes: updatedBlog?.likes || [],
+        likeCount: updatedBlog?.likes?.length || 0,
+      });
     } else {
-      // Like
-      blog.likes.push(req.user._id);
-      await blog.save();
+      const updateResult = await Blog.updateOne(
+        { _id: blog._id, likes: { $ne: req.user._id } },
+        { $addToSet: { likes: req.user._id } }
+      );
+      const updatedBlog = await Blog.findById(blog._id).select('likes');
       await invalidateBlogReadCache();
 
       // Create notification for author
-      if (blog.author.toString() !== req.user._id.toString()) {
+      if (updateResult.modifiedCount > 0 && blog.author.toString() !== req.user._id.toString()) {
         await Notification.create({
           recipient: blog.author,
           sender: req.user._id,
@@ -1012,7 +1091,6 @@ exports.toggleLike = async (req, res) => {
           message: `${req.user.username} liked your post "${blog.title}"`
         });
 
-        const blogAuthor = await User.findById(blog.author).select('email username emailNotifications');
         if (blogAuthor?.email && isEmailNotificationEnabled(blogAuthor, 'newReaction')) {
           enqueueEmailJob(
             'new-reaction',
@@ -1020,13 +1098,13 @@ exports.toggleLike = async (req, res) => {
               email: blogAuthor.email,
               username: blogAuthor.username,
               reactorName: req.user.username,
-              reactionCount: blog.likes.length,
+              reactionCount: updatedBlog?.likes?.length || 0,
               postTitle: blog.title,
               postUrl: `/blog/${blog.slug || blog._id}`
             },
             { jobId: `new-reaction:blog:${blog._id}:${req.user._id}` }
           ).catch((error) => {
-            console.error('Failed to queue blog reaction email:', error?.message || error);
+            logError('Failed to queue blog reaction email:', error);
           });
         }
         
@@ -1041,9 +1119,14 @@ exports.toggleLike = async (req, res) => {
         }
       }
 
-      res.json({ success: true, liked: true, likes: blog.likes, likeCount: blog.likes.length });
+      res.json({
+        success: true,
+        liked: true,
+        likes: updatedBlog?.likes || [],
+        likeCount: updatedBlog?.likes?.length || 0,
+      });
     }
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    return sendBlogServerError(res, error);
   }
 };

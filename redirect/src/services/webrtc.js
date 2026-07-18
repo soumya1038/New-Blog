@@ -1,3 +1,10 @@
+import api from './api';
+
+const DEFAULT_ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+];
+
 class WebRTCService {
   constructor() {
     this.peerConnection = null;
@@ -5,31 +12,8 @@ class WebRTCService {
     this.remoteStream = null;
     this.socket = null;
     this.onRemoteStreamCallback = null;
-    this.configuration = {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-      ]
-    };
-
-    // Optionally load TURN server from environment variables (build-time for CRA)
-    try {
-      const turnUrl = (typeof process !== 'undefined' && process.env.REACT_APP_TURN_URL) || null;
-      const turnUser = (typeof process !== 'undefined' && process.env.REACT_APP_TURN_USERNAME) || null;
-      const turnPass = (typeof process !== 'undefined' && process.env.REACT_APP_TURN_PASSWORD) || null;
-      if (turnUrl && turnUser && turnPass) {
-        this.configuration.iceServers.push({
-          urls: [`turn:${turnUrl}:3478`],
-          username: turnUser,
-          credential: turnPass
-        });
-        // console.log('WebRTC: TURN server added from env');
-      } else {
-        // console.log('WebRTC: No TURN server configured (REACT_APP_TURN_* env vars missing)');
-      }
-    } catch (err) {
-      console.warn('WebRTC: Failed to read TURN env vars', err);
-    }
+    this.configuration = { iceServers: DEFAULT_ICE_SERVERS };
+    this.iceServersLoadedAt = 0;
     // Queue for ICE candidates received before PeerConnection exists
     this._remoteCandidateQueue = [];
   }
@@ -40,6 +24,31 @@ class WebRTCService {
 
   setOnRemoteStream(callback) {
     this.onRemoteStreamCallback = callback;
+  }
+
+  async getPeerConnectionConfiguration() {
+    const maxAgeMs = 5 * 60 * 1000;
+    if (Date.now() - this.iceServersLoadedAt < maxAgeMs) {
+      return this.configuration;
+    }
+
+    try {
+      const { data } = await api.get('/calls/ice-servers');
+      if (Array.isArray(data?.iceServers) && data.iceServers.length > 0) {
+        this.configuration = { iceServers: data.iceServers };
+        this.iceServersLoadedAt = Date.now();
+      }
+    } catch (error) {
+      console.warn('WebRTC: using STUN fallback; failed to load ICE servers', error?.message || error);
+      this.configuration = { iceServers: DEFAULT_ICE_SERVERS };
+      this.iceServersLoadedAt = Date.now();
+    }
+
+    return this.configuration;
+  }
+
+  async createPeerConnection() {
+    return new RTCPeerConnection(await this.getPeerConnectionConfiguration());
   }
 
   async startCall(withVideo = false) {
@@ -71,7 +80,7 @@ class WebRTCService {
 
   async createOffer(receiverId) {
     try {
-      this.peerConnection = new RTCPeerConnection(this.configuration);
+      this.peerConnection = await this.createPeerConnection();
       
       // Set up ontrack BEFORE adding local tracks - CRITICAL for receiving remote tracks
       this.peerConnection.ontrack = (event) => {
@@ -136,7 +145,7 @@ class WebRTCService {
 
   async handleOffer(offer, callerId) {
     try {
-      this.peerConnection = new RTCPeerConnection(this.configuration);
+      this.peerConnection = await this.createPeerConnection();
       
       // Set up ontrack FIRST - CRITICAL for receiving remote tracks
       this.peerConnection.ontrack = (event) => {

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import ProductPromoCard from './ProductPromoCard';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const ProductPromoList = ({ content }) => {
   const [expanded, setExpanded] = useState(false);
@@ -11,7 +12,16 @@ const ProductPromoList = ({ content }) => {
     if (!products.length && content?.linkedProduct && typeof content.linkedProduct === 'object') {
       products.push(content.linkedProduct);
     }
-    const externalLinks = Array.isArray(content?.externalProductLinks) ? content.externalProductLinks.filter(Boolean) : [];
+    const externalLinks = Array.isArray(content?.externalProductLinks)
+      ? content.externalProductLinks
+        .filter(Boolean)
+        .map((externalLink) => ({
+          ...externalLink,
+          url: getSafeHttpUrl(externalLink.url),
+          thumbnail: getSafeImageUrl(externalLink.thumbnail),
+        }))
+        .filter(externalLink => externalLink.url)
+      : [];
     return [
       ...products.map(product => ({ type: 'product', product, key: `product-${product._id || product.slug}` })),
       ...externalLinks.map((externalLink, index) => ({ type: 'external', externalLink, key: `external-${externalLink.url || index}` })),

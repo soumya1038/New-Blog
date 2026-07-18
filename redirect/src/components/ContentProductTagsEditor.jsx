@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { FaChevronDown, FaExternalLinkAlt, FaTimes, FaUpload } from 'react-icons/fa';
 import { MdStorefront } from 'react-icons/md';
 import api from '../services/api';
+import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
 const MAX_EXTERNAL_PRODUCT_IMAGE_BYTES = 3 * 1024 * 1024;
 
@@ -171,20 +172,29 @@ const ContentProductTagsEditor = ({
             className="w-full px-3 py-2 text-sm rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-violet-500"
           />
           {searchingProducts && <p className="text-xs text-[var(--text-muted)]">Searching...</p>}
-          {productResults.map(product => (
-            <button
-              key={product._id}
-              type="button"
-              onClick={() => addLinkedProduct(product)}
-              className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-[var(--border-color)] hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition-colors text-left"
-            >
-              <img src={product.transparentThumbnail || product.thumbnail || ''} alt="" className="w-10 h-10 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" />
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-[var(--text-primary)] truncate">{product.title}</p>
-                <p className="text-xs text-[var(--text-muted)]">INR {product.price?.toLocaleString('en-IN')}</p>
-              </div>
-            </button>
-          ))}
+          {productResults.map(product => {
+            const safeThumbnail = getSafeImageUrl(product.transparentThumbnail || product.thumbnail);
+            return (
+              <button
+                key={product._id}
+                type="button"
+                onClick={() => addLinkedProduct(product)}
+                className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-[var(--border-color)] hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/10 transition-colors text-left"
+              >
+                {safeThumbnail ? (
+                  <img src={safeThumbnail} alt="" className="w-10 h-10 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" referrerPolicy="no-referrer" />
+                ) : (
+                  <span className="flex w-10 h-10 items-center justify-center rounded-lg bg-[var(--bg-secondary)] text-violet-500 shrink-0">
+                    <MdStorefront size={16} />
+                  </span>
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-[var(--text-primary)] truncate">{product.title}</p>
+                  <p className="text-xs text-[var(--text-muted)]">INR {product.price?.toLocaleString('en-IN')}</p>
+                </div>
+              </button>
+            );
+          })}
           {productSearch && productResults.length === 0 && !searchingProducts && (
             <p className="text-xs text-[var(--text-muted)]">No products match "{productSearch}"</p>
           )}
@@ -257,27 +267,38 @@ const ContentProductTagsEditor = ({
 
       {linkedProducts.length > 0 && (
         <div className="space-y-2">
-          {linkedProducts.map(product => (
-            <div key={product._id} className="flex items-center gap-3 p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
-              <img src={product.transparentThumbnail || product.thumbnail || ''} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{product.title}</p>
-                <p className="text-xs text-violet-600 dark:text-violet-400">Marketplace product</p>
+          {linkedProducts.map(product => {
+            const safeThumbnail = getSafeImageUrl(product.transparentThumbnail || product.thumbnail);
+            return (
+              <div key={product._id} className="flex items-center gap-3 p-3 rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800">
+                {safeThumbnail ? (
+                  <img src={safeThumbnail} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" referrerPolicy="no-referrer" />
+                ) : (
+                  <span className="flex w-10 h-10 items-center justify-center rounded-lg bg-[var(--bg-secondary)] text-violet-500 shrink-0">
+                    <MdStorefront size={16} />
+                  </span>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{product.title}</p>
+                  <p className="text-xs text-violet-600 dark:text-violet-400">Marketplace product</p>
+                </div>
+                <button type="button" onClick={() => removeLinkedProduct(product._id)} className="text-[var(--text-muted)] hover:text-red-500">
+                  <FaTimes size={12} />
+                </button>
               </div>
-              <button type="button" onClick={() => removeLinkedProduct(product._id)} className="text-[var(--text-muted)] hover:text-red-500">
-                <FaTimes size={12} />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {externalProductLinks.length > 0 && (
         <div className="space-y-2">
-          {externalProductLinks.map((link, index) => (
+          {externalProductLinks.map((link, index) => {
+            const safeThumbnail = getSafeImageUrl(link.thumbnail);
+            return (
             <div key={`${link.url}-${index}`} className="flex items-center gap-3 p-3 rounded-xl border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20">
-              {link.thumbnail ? (
-                <img src={link.thumbnail} alt="" className="h-10 w-10 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" />
+              {safeThumbnail ? (
+                <img src={safeThumbnail} alt="" className="h-10 w-10 rounded-lg object-cover bg-[var(--bg-secondary)] shrink-0" referrerPolicy="no-referrer" />
               ) : (
                 <FaExternalLinkAlt className="text-orange-500 shrink-0" size={16} />
               )}
@@ -293,7 +314,8 @@ const ContentProductTagsEditor = ({
                 <FaTimes size={12} />
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

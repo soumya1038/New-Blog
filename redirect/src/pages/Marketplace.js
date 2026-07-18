@@ -1,16 +1,24 @@
 import React, { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthContext }     from '../context/AuthContext';
 import api                 from '../services/api';
 import ProductCard         from '../components/ProductCard';
 import CartDrawer          from '../components/CartDrawer';
 import MarketplaceState    from '../components/MarketplaceState';
-import { getGuestCartCount } from '../utils/guestCart';
-import { FaBell, FaBoxOpen, FaCheck, FaChevronDown, FaChevronRight, FaClock, FaExternalLinkAlt, FaFilePdf, FaFilter, FaMapMarkerAlt, FaSearch, FaShoppingBag, FaShoppingCart, FaSpinner, FaStore, FaTag, FaTimes, FaTrash, FaUserCircle, FaWrench } from 'react-icons/fa';
-import { BarLoader } from 'react-spinners';
+import { addGuestCartItem, getGuestCartCount } from '../utils/guestCart';
+import { apiCache } from '../utils/apiCache';
+import {
+  getCheckoutAddressStorageKey,
+  readCheckoutAddresses,
+  writeCheckoutAddresses,
+} from '../utils/checkoutAddressStorage';
+import { readSessionJson, writeSessionJson } from '../utils/sessionBackedStorage';
+import { getSafeHttpUrl, getSafeImageUrl } from '../utils/safeMediaUrls';
+import { FaBell, FaBolt, FaBookmark, FaBoxOpen, FaCheck, FaChevronDown, FaChevronRight, FaClock, FaExternalLinkAlt, FaFilePdf, FaFilter, FaMapMarkerAlt, FaSearch, FaShoppingBag, FaShoppingCart, FaSpinner, FaStore, FaTag, FaTimes, FaTrash, FaUserCircle, FaWrench } from 'react-icons/fa';
 
 const TYPES = [
   { value: '',         label: 'All',      icon: FaShoppingBag },
+  { value: 'saved',    label: 'Saved',    icon: FaBookmark },
   { value: 'digital',  label: 'Digital',  icon: FaFilePdf },
   { value: 'physical', label: 'Physical', icon: FaBoxOpen },
   { value: 'service',  label: 'Services', icon: FaWrench },
@@ -28,6 +36,9 @@ const SORT_OPTIONS = [
 const SEARCH_DEBOUNCE_MS = 1500;
 const SEARCH_MIN_CHARS = 2;
 const MARKETPLACE_REQUEST_TIMEOUT_MS = 15000;
+const MARKETPLACE_CACHE_TTL = 60 * 1000;
+const MARKETPLACE_STALE_TTL = 10 * 60 * 1000;
+const SAVED_TYPE_FILTER = 'saved';
 const PERSONALIZATION_KEY = 'lekhon-marketplace-personalization:v1';
 const PERSONALIZATION_LIMITS = {
   searches: 12,
@@ -57,28 +68,20 @@ const emptyPersonalization = {
 };
 
 const loadPersonalization = () => {
-  try {
-    const raw = window.localStorage.getItem(PERSONALIZATION_KEY);
-    if (!raw) return emptyPersonalization;
-    const parsed = JSON.parse(raw);
-    return {
-      ...emptyPersonalization,
-      ...parsed,
-      recentSearches: Array.isArray(parsed.recentSearches) ? parsed.recentSearches.slice(0, PERSONALIZATION_LIMITS.searches) : [],
-      recentProducts: Array.isArray(parsed.recentProducts) ? parsed.recentProducts.slice(0, PERSONALIZATION_LIMITS.products) : [],
-      recommendedProducts: Array.isArray(parsed.recommendedProducts) ? parsed.recommendedProducts.slice(0, PERSONALIZATION_LIMITS.products) : [],
-      categoryCounts: parsed.categoryCounts && typeof parsed.categoryCounts === 'object' ? parsed.categoryCounts : {},
-      typeCounts: parsed.typeCounts && typeof parsed.typeCounts === 'object' ? parsed.typeCounts : {},
-    };
-  } catch {
-    return emptyPersonalization;
-  }
+  const parsed = readSessionJson(PERSONALIZATION_KEY, emptyPersonalization);
+  return {
+    ...emptyPersonalization,
+    ...parsed,
+    recentSearches: Array.isArray(parsed.recentSearches) ? parsed.recentSearches.slice(0, PERSONALIZATION_LIMITS.searches) : [],
+    recentProducts: Array.isArray(parsed.recentProducts) ? parsed.recentProducts.slice(0, PERSONALIZATION_LIMITS.products) : [],
+    recommendedProducts: Array.isArray(parsed.recommendedProducts) ? parsed.recommendedProducts.slice(0, PERSONALIZATION_LIMITS.products) : [],
+    categoryCounts: parsed.categoryCounts && typeof parsed.categoryCounts === 'object' ? parsed.categoryCounts : {},
+    typeCounts: parsed.typeCounts && typeof parsed.typeCounts === 'object' ? parsed.typeCounts : {},
+  };
 };
 
 const savePersonalization = (value) => {
-  try {
-    window.localStorage.setItem(PERSONALIZATION_KEY, JSON.stringify(value));
-  } catch {}
+  writeSessionJson(PERSONALIZATION_KEY, value);
 };
 
 const addRecentSearch = (state, query) => {
@@ -111,7 +114,7 @@ const addProductSignal = (state, product) => {
         id: product._id,
         title: product.title,
         slug: product.slug,
-        thumbnail: product.thumbnail,
+        thumbnail: getSafeImageUrl(product.thumbnail),
         price: product.price,
         type: product.type,
         viewedAt: Date.now(),
@@ -175,8 +178,282 @@ const isMarketplaceNotification = (notification = {}) => {
   return MARKETPLACE_NOTIFICATION_KEYWORDS.some(keyword => text.includes(keyword));
 };
 
+const QUICK_PREVIEW_CAROUSEL_MS = 2000;
+const QUICK_PREVIEW_DETAIL_TAP_MS = 520;
+
+const getProductPreviewImages = (product = {}) => {
+  const gallery = Array.isArray(product.images) ? product.images : [];
+  return [...new Set([product.thumbnail, ...gallery].map(getSafeImageUrl).filter(Boolean))].slice(0, 6);
+};
+
+const formatProductPrice = (value = 0) => `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
+const getArray = (value) => (Array.isArray(value) ? value : []);
+const getWishlistItems = (data = {}) => getArray(data.products || data.items || data.wishlist);
+const getWishlistProduct = (item = {}) => item.product || item.productId || item;
+const getProductId = (product = {}) => {
+  if (!product) return '';
+  if (typeof product === 'string' || typeof product === 'number') return String(product);
+  const id = product._id || product.id || product.productId;
+  if (!id) return '';
+  if (typeof id === 'object') return getProductId(id);
+  return String(id);
+};
+const getWishlistProductIds = (data = {}) => new Set(
+  getWishlistItems(data)
+    .map(item => getProductId(getWishlistProduct(item)))
+    .filter(Boolean)
+);
+const markProductsWithWishlist = (items = [], savedProductIds = new Set()) => getArray(items).map(product => ({
+  ...product,
+  isWishlisted: Boolean(product.isWishlisted || product.wishlisted || product.saved || savedProductIds.has(getProductId(product))),
+}));
+const getMarketplaceCacheKey = (params = {}) => {
+  const query = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}:${value}`)
+    .join('|');
+
+  return `marketplace-products:${query || 'default'}`;
+};
+const getWishlistCacheKey = (userId = '') => `marketplace-wishlist:${userId || 'guest'}`;
+const normalizeSavedProduct = (item = {}) => {
+  const product = getWishlistProduct(item);
+  if (!product?._id && !product?.id) return null;
+  return {
+    ...product,
+    _id: product._id || product.id,
+    isWishlisted: true,
+  };
+};
+
+const filterSavedProducts = (items = [], filters = {}) => {
+  const search = String(filters.search || '').trim().toLowerCase();
+  const minPrice = filters.minPrice === '' ? null : Number(filters.minPrice);
+  const maxPrice = filters.maxPrice === '' ? null : Number(filters.maxPrice);
+
+  const filtered = items.filter((product) => {
+    const price = Number(product.price || 0);
+    const haystack = [
+      product.title,
+      product.description,
+      product.sellerId?.name,
+      product.sellerId?.username,
+      ...(product.category || []),
+      ...(product.tags || []),
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    if (search && !haystack.includes(search)) return false;
+    if (Number.isFinite(minPrice) && price < minPrice) return false;
+    if (Number.isFinite(maxPrice) && price > maxPrice) return false;
+    if (filters.isFree && !product.isFree) return false;
+    return true;
+  });
+
+  const sorted = [...filtered];
+  if (filters.sort === 'price_asc') sorted.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+  else if (filters.sort === 'price_desc') sorted.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+  else if (filters.sort === 'rating') sorted.sort((a, b) => Number(b.averageRating || 0) - Number(a.averageRating || 0));
+  else if (filters.sort === 'popular') sorted.sort((a, b) => Number(b.reviewCount || b.views || 0) - Number(a.reviewCount || a.views || 0));
+  else sorted.sort((a, b) => new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0));
+
+  return sorted;
+};
+
+const MarketplaceLoading = ({ compact = false }) => (
+  <div
+    className={`marketplace-skeleton-grid${compact ? ' marketplace-skeleton-grid--compact' : ''}`}
+    role="status"
+    aria-live="polite"
+    aria-label="Loading marketplace products"
+  >
+    {(compact ? [0, 1, 2] : [0, 1, 2, 3, 4, 5]).map((item) => (
+      <div key={item} className="marketplace-product-skeleton">
+        <span className="marketplace-skeleton-line marketplace-product-skeleton__image" />
+        <div className="marketplace-product-skeleton__body">
+          <span className="marketplace-skeleton-line marketplace-product-skeleton__seller" />
+          <span className="marketplace-skeleton-line marketplace-product-skeleton__title" />
+          <span className="marketplace-skeleton-line marketplace-product-skeleton__title marketplace-product-skeleton__title--short" />
+          <div className="marketplace-product-skeleton__footer">
+            <span className="marketplace-skeleton-line" />
+            <span className="marketplace-skeleton-line" />
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+const ProductQuickPreview = ({
+  product,
+  busy,
+  onClose,
+  onAddToCart,
+  onBuyNow,
+  onOpenDetail,
+}) => {
+  const [activeImage, setActiveImage] = useState(0);
+  const lastTapRef = useRef(0);
+  const images = useMemo(() => getProductPreviewImages(product), [product]);
+  const compareAtPrice = Number(product?.compareAtPrice || 0);
+  const price = Number(product?.price || 0);
+  const discountPct = compareAtPrice > price
+    ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+    : 0;
+  const seller = product?.sellerId || {};
+  const safeSellerProfileImage = getSafeImageUrl(seller.profileImage);
+  const isExternal = product?.type === 'external';
+
+  useEffect(() => {
+    setActiveImage(0);
+  }, [product?._id]);
+
+  useEffect(() => {
+    if (images.length < 2) return undefined;
+    const interval = window.setInterval(() => {
+      setActiveImage(index => (index + 1) % images.length);
+    }, QUICK_PREVIEW_CAROUSEL_MS);
+    return () => window.clearInterval(interval);
+  }, [images.length]);
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const handleCardClick = (event) => {
+    event.stopPropagation();
+    if (event.target instanceof Element && event.target.closest('button, a')) return;
+    const now = Date.now();
+    if (now - lastTapRef.current <= QUICK_PREVIEW_DETAIL_TAP_MS) {
+      onOpenDetail(product);
+      lastTapRef.current = 0;
+      return;
+    }
+    lastTapRef.current = now;
+  };
+
+  const handleBackdropClose = (event) => {
+    const isBackdrop = event.target === event.currentTarget ||
+      (event.target instanceof Element && event.target.classList.contains('marketplace-quick-preview__glass'));
+
+    if (!isBackdrop) return;
+    event.preventDefault();
+    onClose();
+  };
+
+  const stopPreviewEvent = (event) => {
+    event.stopPropagation();
+  };
+
+  if (!product) return null;
+
+  return (
+    <div
+      className="marketplace-quick-preview"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${product.title || 'Product'} quick preview`}
+      onClick={handleBackdropClose}
+    >
+      <div className="marketplace-quick-preview__glass" aria-hidden="true" />
+      <article
+        className="marketplace-quick-preview__card"
+        onClick={handleCardClick}
+        onPointerDown={stopPreviewEvent}
+        onMouseDown={stopPreviewEvent}
+        onTouchStart={stopPreviewEvent}
+      >
+        <button
+          type="button"
+          className="marketplace-quick-preview__close"
+          onClick={onClose}
+          aria-label="Close product preview"
+        >
+          <FaTimes size={13} />
+        </button>
+
+        <div className="marketplace-quick-preview__media">
+          {images[activeImage] ? (
+            <img src={images[activeImage]} alt={product.title || ''} referrerPolicy="no-referrer" />
+          ) : (
+            <div className="marketplace-quick-preview__empty-media">
+              <FaShoppingBag size={30} />
+            </div>
+          )}
+          {discountPct > 0 && (
+            <span className="marketplace-quick-preview__discount">-{discountPct}%</span>
+          )}
+        </div>
+
+        {images.length > 1 && (
+          <div className="marketplace-quick-preview__dots" aria-label="Product image carousel">
+            {images.map((image, index) => (
+              <button
+                key={`${image}-${index}`}
+                type="button"
+                className={index === activeImage ? 'is-active' : ''}
+                onClick={() => setActiveImage(index)}
+                aria-label={`Show product image ${index + 1}`}
+              />
+            ))}
+          </div>
+        )}
+
+        <div className="marketplace-quick-preview__body">
+          <div className="marketplace-quick-preview__seller">
+            {safeSellerProfileImage ? (
+              <img src={safeSellerProfileImage} alt="" referrerPolicy="no-referrer" />
+            ) : (
+              <span><FaStore size={10} /></span>
+            )}
+            <p>{seller.name || seller.username || 'Lekhon seller'}</p>
+          </div>
+
+          <h2>{product.title}</h2>
+
+          <div className="marketplace-quick-preview__price-row">
+            <div>
+              <strong>{product.isFree ? 'Free' : formatProductPrice(price)}</strong>
+              {compareAtPrice > price && !product.isFree && (
+                <span>{formatProductPrice(compareAtPrice)}</span>
+              )}
+            </div>
+            <p>Double tap preview for details</p>
+          </div>
+
+          <div className="marketplace-quick-preview__actions">
+            <button
+              type="button"
+              className="marketplace-quick-preview__button marketplace-quick-preview__button--secondary"
+              disabled={busy || isExternal}
+              onClick={() => onAddToCart(product)}
+            >
+              <FaShoppingCart size={12} />
+              {isExternal ? 'External' : busy ? 'Adding...' : 'Add to Cart'}
+            </button>
+            <button
+              type="button"
+              className="marketplace-quick-preview__button marketplace-quick-preview__button--primary"
+              disabled={busy}
+              onClick={() => onBuyNow(product)}
+            >
+              <FaBolt size={11} />
+              {busy ? 'Opening...' : 'Buy Now'}
+            </button>
+          </div>
+        </div>
+      </article>
+    </div>
+  );
+};
+
 const Marketplace = () => {
   const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const suggestionsRequestRef = useRef(0);
   const searchBoxRef = useRef(null);
@@ -201,6 +478,8 @@ const Marketplace = () => {
   const [marketplaceError, setMarketplaceError] = useState(null);
   const [cartOpen,    setCartOpen]    = useState(false);
   const [cartCount,   setCartCount]   = useState(0);
+  const [quickPreviewProduct, setQuickPreviewProduct] = useState(null);
+  const [quickPreviewBusy, setQuickPreviewBusy] = useState(false);
   const [filterOpen,  setFilterOpen]  = useState(false);
   const [sortOpen,    setSortOpen]    = useState(false);
   const [marketProfileOpen, setMarketProfileOpen] = useState(false);
@@ -236,7 +515,7 @@ const Marketplace = () => {
     isFree:   false,
   });
 
-  const addressStorageKey = user?._id ? `lekhon_checkout_addresses_${user._id}` : '';
+  const addressStorageKey = getCheckoutAddressStorageKey(user?._id);
 
   const visibleSuggestions = useMemo(() => {
     if (searchInput.trim()) return suggestions;
@@ -278,6 +557,62 @@ const Marketplace = () => {
     }
 
     try {
+      if (filters.type === SAVED_TYPE_FILTER) {
+        if (!user) {
+          if (productsRequestRef.current !== requestId) return;
+          setProducts([]);
+          setTotal(0);
+          setPage(1);
+          setMarketplaceError(null);
+          return;
+        }
+
+        const wishlistCacheKey = getWishlistCacheKey(user._id);
+        const cachedWishlist = isFirstPage
+          ? apiCache.getStale(wishlistCacheKey, { staleTtl: MARKETPLACE_STALE_TTL })
+          : null;
+        const hasFreshWishlist = apiCache.isFresh(wishlistCacheKey, { ttl: MARKETPLACE_CACHE_TTL });
+
+        if (cachedWishlist && isFirstPage) {
+          const cachedProducts = getWishlistItems(cachedWishlist)
+            .map(normalizeSavedProduct)
+            .filter(Boolean);
+          const nextProducts = filterSavedProducts(cachedProducts, filters);
+
+          setProducts(nextProducts);
+          setTotal(nextProducts.length);
+          setPage(1);
+          setMarketplaceError(null);
+          setLoading(false);
+        }
+
+        const data = await apiCache.fetch(wishlistCacheKey, async () => {
+          const response = await api.get('/marketplace/wishlist', {
+            timeout: MARKETPLACE_REQUEST_TIMEOUT_MS,
+          });
+          return response.data;
+        }, {
+          ttl: MARKETPLACE_CACHE_TTL,
+          force: Boolean(cachedWishlist && !hasFreshWishlist),
+        }).catch((error) => {
+          if (cachedWishlist) return cachedWishlist;
+          throw error;
+        });
+
+        if (productsRequestRef.current !== requestId) return;
+
+        const savedProducts = getWishlistItems(data)
+          .map(normalizeSavedProduct)
+          .filter(Boolean);
+        const nextProducts = filterSavedProducts(savedProducts, filters);
+
+        setProducts(nextProducts);
+        setTotal(nextProducts.length);
+        setPage(1);
+        setMarketplaceError(null);
+        return;
+      }
+
       const [sortField, sortOrder] = filters.sort === 'price_asc'
         ? ['price', 'asc']
         : filters.sort === 'price_desc'
@@ -296,14 +631,70 @@ const Marketplace = () => {
         ...(filters.isFree   && { isFree:   'true' }),
       };
 
-      const { data } = await api.get('/marketplace', {
-        params,
-        timeout: MARKETPLACE_REQUEST_TIMEOUT_MS,
-      });
+      const productsCacheKey = getMarketplaceCacheKey(params);
+      const wishlistCacheKey = user?._id ? getWishlistCacheKey(user._id) : '';
+      const cachedMarketplace = isFirstPage
+        ? apiCache.getStale(productsCacheKey, { staleTtl: MARKETPLACE_STALE_TTL })
+        : null;
+      const cachedWishlist = isFirstPage && wishlistCacheKey
+        ? apiCache.getStale(wishlistCacheKey, { staleTtl: MARKETPLACE_STALE_TTL })
+        : null;
+      const productsCacheIsFresh = apiCache.isFresh(productsCacheKey, { ttl: MARKETPLACE_CACHE_TTL });
+      const wishlistCacheIsFresh = wishlistCacheKey
+        ? apiCache.isFresh(wishlistCacheKey, { ttl: MARKETPLACE_CACHE_TTL })
+        : false;
+
+      if (cachedMarketplace && isFirstPage) {
+        const savedProductIds = cachedWishlist ? getWishlistProductIds(cachedWishlist) : new Set();
+        const nextProducts = markProductsWithWishlist(cachedMarketplace.products, savedProductIds);
+
+        setProducts(nextProducts);
+        setTotal(cachedMarketplace.total);
+        setPage(pg);
+        setMarketplaceError(null);
+        setLoading(false);
+      }
+
+      const [marketplaceResult, wishlistResult] = await Promise.allSettled([
+        apiCache.fetch(productsCacheKey, async () => {
+          const { data } = await api.get('/marketplace', {
+            params,
+            timeout: MARKETPLACE_REQUEST_TIMEOUT_MS,
+          });
+
+          return {
+            products: Array.isArray(data.products) ? data.products : [],
+            total: Number(data.total || 0),
+          };
+        }, {
+          ttl: MARKETPLACE_CACHE_TTL,
+          force: Boolean(cachedMarketplace && !productsCacheIsFresh),
+        }),
+        user
+          ? apiCache.fetch(wishlistCacheKey, async () => {
+              const { data } = await api.get('/marketplace/wishlist', { timeout: MARKETPLACE_REQUEST_TIMEOUT_MS });
+              return data;
+            }, {
+              ttl: MARKETPLACE_CACHE_TTL,
+              force: Boolean(cachedWishlist && !wishlistCacheIsFresh),
+            })
+          : Promise.resolve(null),
+      ]);
+
+      if (marketplaceResult.status === 'rejected') {
+        if (cachedMarketplace) return;
+        throw marketplaceResult.reason;
+      }
 
       if (productsRequestRef.current !== requestId) return;
 
-      setProducts(prev => isFirstPage ? data.products : [...prev, ...data.products]);
+      const data = marketplaceResult.value;
+      const savedProductIds = wishlistResult.status === 'fulfilled' && wishlistResult.value
+        ? getWishlistProductIds(wishlistResult.value)
+        : new Set();
+      const nextProducts = markProductsWithWishlist(data.products, savedProductIds);
+
+      setProducts(prev => isFirstPage ? nextProducts : [...prev, ...nextProducts]);
       setTotal(data.total);
       setPage(pg);
       setMarketplaceError(null);
@@ -327,9 +718,36 @@ const Marketplace = () => {
         fetchingProductsRef.current = false;
       }
     }
-  }, [filters]);
+  }, [filters, user]);
 
   useEffect(() => { fetchProducts(1, true); }, [fetchProducts]);
+
+  useEffect(() => {
+    const handleSavedItemsUpdated = (event) => {
+      const { type, id, saved } = event.detail || {};
+      if (type !== 'product' || !id) return;
+      const productId = String(id);
+
+      if (user?._id) {
+        apiCache.clear(getWishlistCacheKey(user._id));
+      }
+
+      if (filters.type === SAVED_TYPE_FILTER && saved === false) {
+        setTotal(current => Math.max(current - 1, 0));
+      }
+
+      setProducts(prev => {
+        return prev
+          .map(product => getProductId(product) === productId
+            ? { ...product, isWishlisted: Boolean(saved), saved: Boolean(saved), wishlisted: Boolean(saved) }
+            : product)
+          .filter(product => filters.type !== SAVED_TYPE_FILTER || product.isWishlisted);
+      });
+    };
+
+    window.addEventListener('lekhon:saved-items-updated', handleSavedItemsUpdated);
+    return () => window.removeEventListener('lekhon:saved-items-updated', handleSavedItemsUpdated);
+  }, [filters.type, user?._id]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams();
@@ -361,8 +779,7 @@ const Marketplace = () => {
       return;
     }
     try {
-      const parsed = JSON.parse(localStorage.getItem(addressStorageKey) || '[]');
-      setSavedAddresses(Array.isArray(parsed) ? parsed : []);
+      setSavedAddresses(readCheckoutAddresses(addressStorageKey));
     } catch {
       setSavedAddresses([]);
     }
@@ -465,7 +882,72 @@ const Marketplace = () => {
       .catch(() => {});
   }, [user, updatePersonalization]);
 
+  useEffect(() => {
+    if (!quickPreviewProduct) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [quickPreviewProduct]);
+
   const handleAddToCart = () => setCartCount(c => c + 1);
+
+  const closeQuickPreview = useCallback(() => {
+    setQuickPreviewProduct(null);
+    setQuickPreviewBusy(false);
+  }, []);
+
+  const openQuickPreview = useCallback((product) => {
+    if (!product) return;
+    setQuickPreviewProduct(product);
+  }, []);
+
+  const addPreviewProductToCart = useCallback(async (product, { goToCheckout = false } = {}) => {
+    if (!product || product.type === 'external') return false;
+    setQuickPreviewBusy(true);
+    try {
+      if (user) {
+        await api.post('/marketplace/cart/add', { productId: product._id, qty: 1 });
+        window.dispatchEvent(new Event('cartUpdated'));
+      } else {
+        addGuestCartItem(product, 1);
+      }
+      handleAddToCart(product);
+      if (goToCheckout) {
+        closeQuickPreview();
+        navigate('/checkout');
+      }
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setQuickPreviewBusy(false);
+    }
+  }, [closeQuickPreview, navigate, user]);
+
+  const handlePreviewBuyNow = useCallback(async (product) => {
+    if (!product) return;
+    if (product.type === 'external') {
+      await api.post(`/marketplace/${product._id}/click`).catch(() => {});
+      const safeExternalUrl = getSafeHttpUrl(product.external?.url);
+      if (safeExternalUrl) {
+        window.open(safeExternalUrl, '_blank', 'noopener,noreferrer');
+      } else if (product.slug) {
+        closeQuickPreview();
+        navigate(`/marketplace/${product.slug}`);
+      }
+      return;
+    }
+    await addPreviewProductToCart(product, { goToCheckout: true });
+  }, [addPreviewProductToCart, closeQuickPreview, navigate]);
+
+  const openPreviewProductDetail = useCallback((product) => {
+    if (!product?.slug) return;
+    updatePersonalization(prev => addProductSignal(prev, product));
+    closeQuickPreview();
+    navigate(`/marketplace/${product.slug}`);
+  }, [closeQuickPreview, navigate, updatePersonalization]);
 
   const blankAddress = () => ({
     name: user?.name || user?.fullName || '',
@@ -479,10 +961,9 @@ const Marketplace = () => {
   });
 
   const persistAddresses = (addresses) => {
-    setSavedAddresses(addresses);
-    if (addressStorageKey) {
-      localStorage.setItem(addressStorageKey, JSON.stringify(addresses));
-    }
+    const nextAddresses = writeCheckoutAddresses(addressStorageKey, addresses);
+    setSavedAddresses(nextAddresses);
+    return nextAddresses;
   };
 
   const startAddressAdd = () => {
@@ -648,8 +1129,8 @@ const Marketplace = () => {
   const selectedTypeOption = TYPES.find(type => type.value === filters.type);
   const emptyStateType = marketplaceError?.type || (filters.search && !filters.type ? 'search' : filters.type || 'overall');
   const hasMarketplaceState = !loading && (Boolean(marketplaceError) || products.length === 0);
-  const hasMoreProducts = products.length < total;
-  const showPersonalizedSections = !hasMarketplaceState && !filters.search;
+  const hasMoreProducts = filters.type !== SAVED_TYPE_FILTER && products.length < total;
+  const showPersonalizedSections = !hasMarketplaceState && !filters.search && filters.type !== SAVED_TYPE_FILTER;
   const addressDraftComplete = ['name', 'phone', 'addressLine1', 'city', 'state', 'pin', 'country']
     .every(key => String(addressDraft[key] || '').trim());
 
@@ -722,6 +1203,7 @@ const Marketplace = () => {
                     {visibleSuggestions.map((suggestion, index) => {
                       const isProduct = suggestion.type === 'product';
                       const isHighlighted = index === highlightedSuggestion;
+                      const safeSuggestionThumbnail = getSafeImageUrl(suggestion.thumbnail);
                       return (
                         <button
                           key={`${suggestion.type}-${suggestion.value || suggestion.label}-${index}`}
@@ -736,8 +1218,8 @@ const Marketplace = () => {
                         >
                           {isProduct ? (
                             <div className="w-10 h-10 rounded-xl overflow-hidden bg-[var(--bg-secondary)] border border-[var(--border-color)] shrink-0">
-                              {suggestion.thumbnail ? (
-                                <img src={suggestion.thumbnail} alt="" className="w-full h-full object-cover" />
+                              {safeSuggestionThumbnail ? (
+                                <img src={safeSuggestionThumbnail} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                               ) : (
                                 <div className="w-full h-full grid place-items-center text-[var(--text-muted)]">
                                   <FaShoppingBag size={14} />
@@ -1159,11 +1641,11 @@ const Marketplace = () => {
         </div>
       )}
 
-      {/* Loading bar */}
-      {loading && <BarLoader width="100%" color="#7c3aed" />}
-
+      {/* Marketplace loading state */}
       {/* ── Product grid ──────────────────────────────────────────────────────── */}
       <div className="lekhon-marketplace-content max-w-7xl mx-auto px-4 py-6">
+        {loading && <MarketplaceLoading compact={products.length > 0} />}
+
         {personalization.recommendedProducts.length > 0 && showPersonalizedSections && (
           <section className="mb-8">
             <div className="mb-3">
@@ -1176,6 +1658,7 @@ const Marketplace = () => {
                   product={product}
                   onAddToCart={handleAddToCart}
                   onProductView={handleProductView}
+                  onLongPreview={openQuickPreview}
                 />
               ))}
             </div>
@@ -1191,36 +1674,39 @@ const Marketplace = () => {
               {personalization.recentProducts
                 .filter(item => item.slug && item.title)
                 .slice(0, 8)
-                .map(item => (
-                  <Link
-                    key={item.id}
-                    to={`/marketplace/${item.slug}`}
-                    className="shrink-0 w-56 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-lg transition-all overflow-hidden"
-                  >
-                    <div className="h-24 bg-[var(--bg-secondary)]">
-                      {item.thumbnail ? (
-                        <img src={item.thumbnail} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full grid place-items-center text-[var(--text-muted)]">
-                          <FaShoppingBag size={18} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="p-3">
-                      <p className="text-xs font-semibold text-[var(--text-primary)] line-clamp-2 min-h-[2rem]">{item.title}</p>
-                      <div className="mt-2 flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-[var(--text-primary)]">
-                          {item.isFree ? 'Free' : `Rs. ${Number(item.price || 0).toLocaleString('en-IN')}`}
-                        </span>
-                        {item.type && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] capitalize">
-                            {item.type}
-                          </span>
+                .map(item => {
+                  const safeThumbnail = getSafeImageUrl(item.thumbnail);
+                  return (
+                    <Link
+                      key={item.id}
+                      to={`/marketplace/${item.slug}`}
+                      className="shrink-0 w-56 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] hover:border-violet-300 dark:hover:border-violet-700 hover:shadow-lg transition-all overflow-hidden"
+                    >
+                      <div className="h-24 bg-[var(--bg-secondary)]">
+                        {safeThumbnail ? (
+                          <img src={safeThumbnail} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                        ) : (
+                          <div className="w-full h-full grid place-items-center text-[var(--text-muted)]">
+                            <FaShoppingBag size={18} />
+                          </div>
                         )}
                       </div>
-                    </div>
-                  </Link>
-                ))}
+                      <div className="p-3">
+                        <p className="text-xs font-semibold text-[var(--text-primary)] line-clamp-2 min-h-[2rem]">{item.title}</p>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-[var(--text-primary)]">
+                            {item.isFree ? 'Free' : `Rs. ${Number(item.price || 0).toLocaleString('en-IN')}`}
+                          </span>
+                          {item.type && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] capitalize">
+                              {item.type}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
             </div>
           </section>
         )}
@@ -1243,7 +1729,13 @@ const Marketplace = () => {
             )}
             <div className="lekhon-market-grid grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {products.map(p => (
-                <ProductCard key={p._id} product={p} onAddToCart={handleAddToCart} onProductView={handleProductView} />
+                <ProductCard
+                  key={p._id}
+                  product={p}
+                  onAddToCart={handleAddToCart}
+                  onProductView={handleProductView}
+                  onLongPreview={openQuickPreview}
+                />
               ))}
             </div>
 
@@ -1265,6 +1757,16 @@ const Marketplace = () => {
       </div>
 
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />
+      {quickPreviewProduct && (
+        <ProductQuickPreview
+          product={quickPreviewProduct}
+          busy={quickPreviewBusy}
+          onClose={closeQuickPreview}
+          onAddToCart={addPreviewProductToCart}
+          onBuyNow={handlePreviewBuyNow}
+          onOpenDetail={openPreviewProductDetail}
+        />
+      )}
     </div>
   );
 };

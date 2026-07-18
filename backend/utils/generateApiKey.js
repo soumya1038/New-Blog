@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 
-// Generate OpenAI-style API key
+// Generate Lekhon API key
 const generateApiKey = () => {
   const randomBytes = crypto.randomBytes(32).toString('hex');
-  return `sk-proj-${randomBytes}`;
+  return `lk_live_${randomBytes}`;
 };
 
 module.exports = generateApiKey;
