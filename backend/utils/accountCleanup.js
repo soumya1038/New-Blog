@@ -435,9 +435,11 @@ const cleanupUserAccountData = async (userOrId, { deleteUser = false } = {}) => 
         }
       }
     )),
-    () => withAccountCleanupMaxTime(Blog.updateMany({}, { $pull: { likes: userId, views: { user: userId } } })),
-    () => withAccountCleanupMaxTime(Article.updateMany({}, { $pull: { likes: userId, views: { user: userId } } })),
-    () => withAccountCleanupMaxTime(Short.updateMany({}, { $pull: { likes: userId, views: { user: userId } } })),
+    // `views` is a numeric counter on these content models, not a per-user array.
+    // Only remove the deleted user's id from fields that actually store user ids.
+    () => withAccountCleanupMaxTime(Blog.updateMany({}, { $pull: { likes: userId } })),
+    () => withAccountCleanupMaxTime(Article.updateMany({}, { $pull: { likes: userId } })),
+    () => withAccountCleanupMaxTime(Short.updateMany({}, { $pull: { likes: userId } })),
     () => withAccountCleanupMaxTime(Cart.deleteMany({ userId })),
     () => withAccountCleanupMaxTime(CallLog.deleteMany({ $or: [{ caller: userId }, { receiver: userId }] })),
     () => withAccountCleanupMaxTime(TwoFactorChallenge.deleteMany({ user: userId })),

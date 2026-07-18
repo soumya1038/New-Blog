@@ -9,6 +9,7 @@ const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 const ISSUER = process.env.TWO_FACTOR_ISSUER || 'Lekhon';
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const TOKEN_TTL_MS = 10 * 60 * 1000;
+const ADMIN_DELETE_TOKEN_TTL_MS = 2 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const PASSWORD_ATTEMPT_LIMIT = 5;
 const PASSWORD_ATTEMPT_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -275,9 +276,12 @@ const getTwoFactorSecretForUser = async (userId, field = 'twoFactor.authenticato
 
 const completeChallengeWithToken = async (challenge) => {
   const token = createToken();
+  const tokenTtlMs = challenge?.action === 'admin_delete_user'
+    ? ADMIN_DELETE_TOKEN_TTL_MS
+    : TOKEN_TTL_MS;
   challenge.tokenHash = hashActionToken(token);
   challenge.verifiedAt = new Date();
-  challenge.expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
+  challenge.expiresAt = new Date(Date.now() + tokenTtlMs);
   await challenge.save();
   return token;
 };

@@ -447,6 +447,14 @@ const AdminDashboard = () => {
   const [verifyingUserId, setVerifyingUserId] = useState(null);
   const [sensitiveAuthPrompt, setSensitiveAuthPrompt] = useState(null);
   const [twoFactorPrompt, setTwoFactorPrompt] = useState(null);
+  const [modalClock, setModalClock] = useState(Date.now());
+
+  useEffect(() => {
+    if (modalConfig.type !== 'delete-user-final' || !modalConfig.expiresAt) return undefined;
+    setModalClock(Date.now());
+    const timer = window.setInterval(() => setModalClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [modalConfig.type, modalConfig.expiresAt]);
 
   useEffect(() => {
     const checkTheme = () => {
@@ -615,24 +623,66 @@ const AdminDashboard = () => {
   };
 
   const handleDeleteUser = (userId, username) => {
+    const deleteVerifiedUser = async (tokens, expiresAt) => {
+      if (Date.now() >= expiresAt) {
+        setModalError('Deletion confirmation session expired. Cancel and verify again.');
+        return;
+      }
+      try {
+        await api.delete(`/admin/users/${userId}`, adminStepUpConfig(tokens));
+        setUsers((currentUsers) => currentUsers.filter((listedUser) => listedUser._id !== userId));
+        closeModal();
+        openModal({ type: 'success', title: t('Success!'), message: t('User deleted successfully') });
+      } catch (error) {
+        setModalError(error.response?.data?.message || 'Error deleting user');
+      }
+    };
+
+    const showFinalDeleteConfirmation = (tokens) => {
+      const expiresAt = Date.now() + ADMIN_DELETE_CONFIRMATION_SESSION_MS;
+      openModal({
+        type: 'delete-user-final',
+        title: t('Confirm Permanent Deletion'),
+        message: `${username} has passed admin security verification. Click Confirm to permanently delete this user and all associated account data.`,
+        confirmText: t('Confirm Delete'),
+        expiresAt,
+        onConfirm: () => deleteVerifiedUser(tokens, expiresAt),
+      });
+    };
+
+    const beginDeleteVerification = () => {
+      openSensitiveAuthPrompt({
+        requirement: {
+          action: 'admin_delete_user',
+          actionLabel: 'permanently delete this user account',
+        },
+        title: 'Verify user deletion',
+        description: 'Confirm your password before permanently deleting this user account.',
+        onVerified: async (result) => {
+          const sensitiveActionToken = result?.sensitiveActionToken || '';
+          if (result?.requiresTwoFactor) {
+            openTwoFactorPrompt({
+              requirement: {
+                action: result.action || 'admin_delete_user',
+                actionLabel: result.actionLabel || 'permanently delete this user account',
+                twoFactor: result.twoFactor,
+              },
+              onVerified: async (twoFactorToken) =>
+                showFinalDeleteConfirmation({ sensitiveActionToken, twoFactorToken }),
+            });
+            return;
+          }
+          showFinalDeleteConfirmation({ sensitiveActionToken });
+        },
+      });
+    };
+
     openModal({
       type: 'delete-user',
       title: t('Delete User'),
       message: `${t('Are you sure you want to delete')} ${username}? ${t('All their blogs and comments will be permanently deleted.')}`,
       confirmText: t('Delete'),
-      onConfirm: async () => {
-        await runAdminProtectedAction({
-          title: 'Verify user deletion',
-          description: 'Confirm your password before permanently deleting this user account.',
-          request: async (tokens) => {
-            await api.delete(`/admin/users/${userId}`, adminStepUpConfig(tokens));
-            setUsers(users.filter(u => u._id !== userId));
-            closeModal();
-            openModal({ type: 'success', title: t('Success!'), message: t('User deleted successfully') });
-          },
-          onFailure: (error) => setModalError(error.response?.data?.message || 'Error deleting user'),
-        });
-      }
+      onConfirm: beginDeleteVerification,
     });
   };
 
@@ -2050,6 +2100,13 @@ const AdminDashboard = () => {
                 'text-orange-600'
               }`}>{modalConfig.title}</h3>
               <p className="text-[var(--text-secondary)] mb-4">{modalConfig.message}</p>
+              {modalConfig.type === 'delete-user-final' && modalConfig.expiresAt && (
+                <p className={`mb-4 text-sm font-semibold ${modalClock >= modalConfig.expiresAt ? 'text-red-600' : 'text-amber-600'}`}>
+                  {modalClock >= modalConfig.expiresAt
+                    ? t('Confirmation session expired. Cancel and verify again.')
+                    : `${t('Confirmation session expires in')} ${Math.max(0, Math.ceil((modalConfig.expiresAt - modalClock) / 1000))}s`}
+                </p>
+              )}
               
               {modalError && <div className="bg-red-100/80 dark:bg-red-900/30 text-red-700 dark:text-red-300 p-3 rounded-lg mb-4 text-sm border border-red-200 dark:border-red-700/60">{modalError}</div>}
               
@@ -2114,12 +2171,13 @@ const AdminDashboard = () => {
                           ? confirmPreDeletionEmail
                           : modalConfig.onConfirm
                       }
+                      disabled={modalConfig.type === 'delete-user-final' && modalClock >= modalConfig.expiresAt}
                       className={`flex-1 px-6 py-2 rounded-lg hover:opacity-90 font-semibold text-white ${
                         modalConfig.type === 'delete-user' || modalConfig.type === 'delete-blog' || modalConfig.type === 'delete-article' || modalConfig.type === 'delete-short' || modalConfig.type === 'remove-coadmin' ? 'bg-red-600' :
                         modalConfig.type === 'make-admin' ? 'bg-purple-600' :
                         modalConfig.type === 'make-coadmin' ? 'bg-blue-600' :
                         'bg-orange-600'
-                      }`}
+                      } disabled:cursor-not-allowed disabled:opacity-50`}
                     >
                       {modalConfig.confirmText}
                     </button>
@@ -2163,6 +2221,8 @@ const AdminDashboard = () => {
     </div>
   );
 };
+
+const ADMIN_DELETE_CONFIRMATION_SESSION_MS = 60 * 1000;
 
 export default AdminDashboard;
 
