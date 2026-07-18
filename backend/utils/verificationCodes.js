@@ -8,6 +8,15 @@ const MAX_CODE_ATTEMPTS = Math.max(1, Number(process.env.VERIFICATION_CODE_MAX_A
 const normalizeEmail = (email = '') => String(email || '').trim().toLowerCase();
 const normalizeCode = (code = '') => String(code || '').replace(/\s+/g, '').trim();
 
+const getUserVerificationKey = (user = {}) => {
+  const email = normalizeEmail(user.email);
+  if (email) return email;
+  const telegramUserId = String(user?.oauthProviders?.telegram?.id || '').trim();
+  if (telegramUserId) return `telegram:${telegramUserId}`;
+  const userId = String(user?._id || user?.id || '').trim();
+  return userId ? `user:${userId}` : '';
+};
+
 const getCodeSecret = () => getDedicatedSecret({ key: 'VERIFICATION_CODE_PEPPER' });
 
 const generateNumericCode = () => String(crypto.randomInt(100000, 1000000));
@@ -132,8 +141,9 @@ const verifyVerificationCode = async ({
   username,
   markVerified = false,
   consume = false,
+  requireVerified = false,
 }) => {
-  const record = await getActiveVerificationCode({ email, type, username });
+  const record = await getActiveVerificationCode({ email, type, username, requireVerified });
   if (!record) {
     return { ok: false, reason: 'not_found' };
   }
@@ -182,6 +192,7 @@ module.exports = {
   consumeVerificationCode,
   deleteVerificationCodes,
   getActiveVerificationCode,
+  getUserVerificationKey,
   hashVerificationCode,
   normalizeCode,
   normalizeEmail,

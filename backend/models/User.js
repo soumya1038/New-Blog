@@ -173,6 +173,7 @@ const userSchema = new mongoose.Schema({
   guestCleanupStartedAt: { type: Date, default: null },
   statusCleanupStartedAt: { type: Date, default: null, select: false },
   mustChangePasswordAfterGoogle: { type: Boolean, default: false },
+  telegramOnboardingPasswordPending: { type: Boolean, default: false, select: false },
   authVersion: { type: Number, default: 0, min: 0 },
   isActive: { type: Boolean, default: true },
   suspendedUntil: { type: Date, default: null },

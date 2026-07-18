@@ -16,11 +16,13 @@ const sendAccountMessage = async ({
   emailJobOptions = {},
   telegramText = '',
   telegramErrorContext = 'Telegram account message',
+  channels = null,
 }) => {
   const available = getAccountDeliveryChannels(user);
   const delivered = { email: false, telegram: false, sms: false };
+  const channelAllowed = (channel) => !Array.isArray(channels) || channels.includes(channel);
 
-  if (available.email && emailJobType) {
+  if (available.email && emailJobType && channelAllowed('email')) {
     try {
       await enqueueEmailJob(emailJobType, { ...emailPayload, email: user.email }, emailJobOptions);
       delivered.email = true;
@@ -29,7 +31,7 @@ const sendAccountMessage = async ({
     }
   }
 
-  if (available.telegram && telegramText) {
+  if (available.telegram && telegramText && channelAllowed('telegram')) {
     delivered.telegram = await sendTelegramMessage({
       telegramUserId: user.oauthProviders.telegram.id,
       text: telegramText,

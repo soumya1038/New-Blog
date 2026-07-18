@@ -34,7 +34,10 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.status === 401) {
+    const isCredentialRejection =
+      Number.isFinite(Number(error.response?.data?.attemptsRemaining)) ||
+      error.response?.data?.showForgotPassword === true;
+    if (error.response?.status === 401 && !error.config?.skipAuthFailureLogout && !isCredentialRejection) {
       const token = getAuthToken();
       
       // Only show session expired if user actually had a token (was logged in)

@@ -23,6 +23,59 @@ import {
 } from '../utils/twoFactorFlow';
 import { getSafeImageUrl } from '../utils/safeMediaUrls';
 
+const ADMIN_DELETE_CONFIRMATION_SESSION_MS = 60 * 1000;
+
+const HorizontalScrollbar = ({ targetId, label = 'Horizontal table navigation' }) => {
+  const [metrics, setMetrics] = useState({ visible: false, max: 0, position: 0 });
+
+  useEffect(() => {
+    const target = document.getElementById(targetId);
+    if (!target) return undefined;
+
+    const updateMetrics = () => {
+      const max = Math.max(0, target.scrollWidth - target.clientWidth);
+      setMetrics({ visible: max > 1, max, position: Math.min(target.scrollLeft, max) });
+    };
+
+    updateMetrics();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateMetrics) : null;
+    observer?.observe(target);
+    if (target.firstElementChild) observer?.observe(target.firstElementChild);
+    window.addEventListener('resize', updateMetrics);
+    target.addEventListener('scroll', updateMetrics, { passive: true });
+
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', updateMetrics);
+      target.removeEventListener('scroll', updateMetrics);
+    };
+  }, [targetId]);
+
+  const handleChange = (event) => {
+    const position = Number(event.target.value);
+    const target = document.getElementById(targetId);
+    if (target) target.scrollLeft = position;
+    setMetrics((current) => ({ ...current, position }));
+  };
+
+  return (
+    <div
+      className={`admin-horizontal-scrollbar-wrap ${metrics.visible ? 'block' : 'hidden'}`}
+    >
+      <input
+        type="range"
+        className="admin-horizontal-scrollbar"
+        min="0"
+        max={Math.max(1, metrics.max)}
+        step="1"
+        value={metrics.position}
+        onChange={handleChange}
+        aria-label={label}
+      />
+    </div>
+  );
+};
+
 const AdminPayoutsPanel = ({ runAdminProtectedAction, adminStepUpConfig }) => {
   const [payouts, setPayouts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -98,7 +151,9 @@ const AdminPayoutsPanel = ({ runAdminProtectedAction, adminStepUpConfig }) => {
           <BarLoader color="var(--brand-primary)" />
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+          <HorizontalScrollbar targetId="admin-payouts-table" label="Payout table navigation" />
+          <div id="admin-payouts-table" className="overflow-x-auto">
           <table className="w-full text-[var(--text-primary)]">
             <thead className="bg-[var(--surface-elevated)]">
               <tr>
@@ -142,7 +197,8 @@ const AdminPayoutsPanel = ({ runAdminProtectedAction, adminStepUpConfig }) => {
               )}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
       {markPaidModal.open && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/50">
@@ -282,7 +338,9 @@ const AdminPriceChangesPanel = ({ runAdminProtectedAction, adminStepUpConfig }) 
           <BarLoader color="var(--brand-primary)" />
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+          <HorizontalScrollbar targetId="admin-price-changes-table" label="Price changes table navigation" />
+          <div id="admin-price-changes-table" className="overflow-x-auto">
           <table className="w-full text-[var(--text-primary)]">
             <thead className="bg-[var(--surface-elevated)]">
               <tr>
@@ -377,7 +435,8 @@ const AdminPriceChangesPanel = ({ runAdminProtectedAction, adminStepUpConfig }) 
               )}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
 
       {rejectModal.open && (
@@ -1076,7 +1135,8 @@ const AdminDashboard = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-[var(--border-default)] overflow-x-auto pb-2">
+        <HorizontalScrollbar targetId="admin-dashboard-tabs" label="Admin dashboard section navigation" />
+        <div id="admin-dashboard-tabs" className="flex gap-2 mb-6 border-b border-[var(--border-default)] overflow-x-auto pb-2">
           <button
             onClick={() => setActiveTab('overview')}
             className={`px-3 py-2 font-semibold whitespace-nowrap text-sm md:text-base ${activeTab === 'overview' ? 'border-b-2 border-[var(--brand-primary)] text-[var(--brand-primary)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}
@@ -1578,7 +1638,8 @@ const AdminDashboard = () => {
                 />
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <HorizontalScrollbar targetId="admin-guests-table" label="Guest users table navigation" />
+            <div id="admin-guests-table" className="overflow-x-auto">
               <table className="w-full text-[var(--text-primary)]">
                 <thead className="bg-[var(--background-secondary)]">
                   <tr>
@@ -1650,7 +1711,8 @@ const AdminDashboard = () => {
                 />
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <HorizontalScrollbar targetId="admin-users-table" label="Users table navigation" />
+            <div id="admin-users-table" className="overflow-x-auto">
               <table className="w-full text-[var(--text-primary)]">
                 <thead className="bg-[var(--background-secondary)]">
                   <tr>
@@ -1846,7 +1908,8 @@ const AdminDashboard = () => {
                 />
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <HorizontalScrollbar targetId="admin-shorts-table" label="Shorts table navigation" />
+            <div id="admin-shorts-table" className="overflow-x-auto">
               <table className="w-full text-[var(--text-primary)]">
                 <thead className="bg-[var(--background-secondary)]">
                   <tr>
@@ -1951,7 +2014,8 @@ const AdminDashboard = () => {
                 />
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <HorizontalScrollbar targetId="admin-blogs-table" label="Blogs table navigation" />
+            <div id="admin-blogs-table" className="overflow-x-auto">
               <table className="w-full text-[var(--text-primary)]">
                 <thead className="bg-[var(--background-secondary)]">
                   <tr>
@@ -2027,7 +2091,8 @@ const AdminDashboard = () => {
                 />
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <HorizontalScrollbar targetId="admin-articles-table" label="Articles table navigation" />
+            <div id="admin-articles-table" className="overflow-x-auto">
               <table className="w-full text-[var(--text-primary)]">
                 <thead className="bg-[var(--background-secondary)]">
                   <tr>
@@ -2221,8 +2286,6 @@ const AdminDashboard = () => {
     </div>
   );
 };
-
-const ADMIN_DELETE_CONFIRMATION_SESSION_MS = 60 * 1000;
 
 export default AdminDashboard;
 

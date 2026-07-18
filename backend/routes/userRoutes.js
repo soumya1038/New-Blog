@@ -11,7 +11,10 @@ const {
   requestPasswordChange,
   confirmPasswordChange,
   requestAccountDeletion,
+  verifyAccountDeletionCode,
+  cancelAccountDeletion,
   confirmAccountDeletion,
+  confirmAccountDeletionWithAuthenticator,
   generateApiKey,
   getApiKeys,
   revokeApiKey,
@@ -117,7 +120,10 @@ router.post('/password/confirm', protect, requireTwoFactorForAction('change_pass
 router.get('/security/password-challenge', protect, getSensitiveActionPasswordStatus);
 router.post('/security/password-challenge', protect, verifySensitiveActionPassword);
 router.post('/account/delete-request', protect, requestAccountDeletion);
-router.post('/account/delete-confirm', protect, requireTwoFactorForAction('delete_account'), confirmAccountDeletion);
+router.post('/account/delete-verify', protect, verifyAccountDeletionCode);
+router.post('/account/delete-cancel', protect, cancelAccountDeletion);
+router.post('/account/delete-confirm', protect, confirmAccountDeletion);
+router.post('/account/delete-confirm-authenticator', protect, requireTwoFactorForAction('delete_account'), confirmAccountDeletionWithAuthenticator);
 router.get('/2fa/status', protect, getTwoFactorStatus);
 router.post('/2fa/authenticator/setup', protect, twoFactorSetupLimiter, requireSensitiveActionToken('manage_2fa'), requireTwoFactorForAction('manage_2fa'), startAuthenticatorSetup);
 router.post('/2fa/authenticator/verify', protect, twoFactorVerifyLimiter, verifyAuthenticatorSetup);

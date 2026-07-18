@@ -12,6 +12,7 @@ const {
   createVerificationCode,
   deleteVerificationCodes,
   getActiveVerificationCode,
+  getUserVerificationKey,
   normalizeEmail,
   verifyVerificationCode,
 } = require('../utils/verificationCodes');
@@ -33,6 +34,7 @@ const {
 const { sanitizeOwnerProfile } = require('../utils/userSanitizer');
 const { logError } = require('../utils/safeErrorLog');
 const { sendTelegramMessage } = require('../utils/telegramMessages');
+const { sendAccountMessage } = require('../services/accountMessagingService');
 const { getOAuthProviderTimeoutMs } = require('../utils/providerTimeouts');
 
 const GOOGLE_AUTH_BASE_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
@@ -2805,7 +2807,7 @@ exports.requestAuthenticatedPasswordChange = async (req, res) => {
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
     const { code: confirmCode, expiresAt: authenticatedChangeExpiresAt } = await createVerificationCode({
-      email: user.email,
+      email: getUserVerificationKey(user),
       type: 'authenticatedPasswordChange',
       username: user.username,
       metadata: {
@@ -2814,14 +2816,27 @@ exports.requestAuthenticatedPasswordChange = async (req, res) => {
       },
     });
 
-    await enqueueEmailJob('password-change-confirmation', {
-      email: user.email,
-      username: user.username,
-      code: confirmCode,
-      expiresAt: authenticatedChangeExpiresAt
+    const delivery = await sendAccountMessage({
+      user,
+      emailJobType: 'password-change-confirmation',
+      emailPayload: {
+        username: user.username,
+        code: confirmCode,
+        expiresAt: authenticatedChangeExpiresAt,
+      },
+      telegramText: `Lekhon password reset confirmation code: ${confirmCode}\n\nThis code expires soon. Never share it with anyone.`,
+      telegramErrorContext: 'Telegram authenticated password reset code',
     });
+    if (!delivery.anyDelivered) {
+      return res.status(503).json({ success: false, message: 'We could not send the confirmation code through any linked contact channel.' });
+    }
 
-    res.json({ success: true, message: 'Confirmation code sent to your email' });
+    res.json({
+      success: true,
+      deliveryChannel: delivery.channels.length > 1 ? 'both' : delivery.channels[0],
+      deliveryChannels: delivery.channels,
+      message: `Confirmation code sent through ${delivery.channels.join(' and ')}`,
+    });
   } catch (error) {
     logError('Authenticated password change request error:', error);
     res.status(500).json({ success: false, message: 'Failed to send confirmation code' });
@@ -2844,7 +2859,7 @@ exports.confirmAuthenticatedPasswordChange = async (req, res) => {
     }
 
     const verification = await verifyVerificationCode({
-      email: user.email,
+      email: getUserVerificationKey(user),
       type: 'authenticatedPasswordChange',
       username: user.username,
       code,
@@ -2871,16 +2886,13 @@ exports.confirmAuthenticatedPasswordChange = async (req, res) => {
       }
     );
 
-    // Send success email
-    try {
-      await enqueueEmailJob('password-changed-success', {
-        email: user.email,
-        username: user.username,
-        changedAt: Date.now()
-      });
-    } catch (error) {
-      logError('Failed to send success email:', error);
-    }
+    await sendAccountMessage({
+      user,
+      emailJobType: 'password-changed-success',
+      emailPayload: { username: user.username, changedAt: Date.now() },
+      telegramText: 'Your Lekhon password was reset successfully. If this was not you, contact Lekhon support immediately.',
+      telegramErrorContext: 'Telegram password reset notification',
+    });
 
     res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {
@@ -3018,7 +3030,8 @@ exports.exchangeTelegramLogin = async (req, res) => {
     const telegramHandle = String(telegram.username || '').trim().replace(/^@+/, '').slice(0, 64);
     const picture = String(telegram.photo_url || '').trim();
 
-    let user = await User.findOne({ 'oauthProviders.telegram.id': telegramUserId });
+    let user = await User.findOne({ 'oauthProviders.telegram.id': telegramUserId })
+      .select('+telegramOnboardingPasswordPending');
     let telegramPasswordDelivered = false;
     if (!user) {
       const username = await makeUniqueUsername(telegramHandle || displayName || `telegram_${telegramUserId.slice(-8)}`);
@@ -3031,6 +3044,7 @@ exports.exchangeTelegramLogin = async (req, res) => {
         profileImage: picture,
         isVerified: false,
         mustChangePasswordAfterGoogle: true,
+        telegramOnboardingPasswordPending: true,
         socialMedia: buildTelegramProfileUrl(telegramHandle)
           ? [{ name: 'Telegram', url: buildTelegramProfileUrl(telegramHandle) }]
           : [],
@@ -3041,6 +3055,10 @@ exports.exchangeTelegramLogin = async (req, res) => {
         username,
         temporaryPassword,
       });
+      if (telegramPasswordDelivered) {
+        user.telegramOnboardingPasswordPending = false;
+        await user.save();
+      }
     } else {
       let changed = false;
       if (!user.fullName && displayName) { user.fullName = displayName; changed = true; }
@@ -3048,7 +3066,7 @@ exports.exchangeTelegramLogin = async (req, res) => {
       if (!user.profileImage && picture) { user.profileImage = picture; changed = true; }
       const telegramUrl = buildTelegramProfileUrl(telegramHandle);
       if (telegramUrl && ensureSocialLink(user, 'Telegram', (name, url) => name.includes('telegram') || url.includes('t.me/'), telegramUrl)) changed = true;
-      if (user.mustChangePasswordAfterGoogle && !user.email) {
+      if (user.telegramOnboardingPasswordPending) {
         const temporaryPassword = generateTemporaryPassword();
         telegramPasswordDelivered = await sendTelegramTemporaryPassword({
           telegramUserId,
@@ -3057,6 +3075,7 @@ exports.exchangeTelegramLogin = async (req, res) => {
         });
         if (telegramPasswordDelivered) {
           user.password = temporaryPassword;
+          user.telegramOnboardingPasswordPending = false;
           changed = true;
         }
       }

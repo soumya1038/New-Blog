@@ -32,6 +32,7 @@ const { getMediaFileSignatureValidationError } = require('../utils/mediaSignatur
 const {
   createVerificationCode,
   deleteVerificationCodes,
+  getUserVerificationKey,
   verifyVerificationCode,
 } = require('../utils/verificationCodes');
 const { logError } = require('../utils/safeErrorLog');
@@ -279,6 +280,15 @@ exports.disconnectSocialProvider = async (req, res) => {
     if (SOCIAL_OAUTH_PROVIDERS.has(provider)) {
       const currentProviderId = String(user?.oauthProviders?.[provider]?.id || '').trim();
       if (currentProviderId) {
+        const linkedAuthProviderCount = ['google', 'facebook', 'twitter', 'linkedin', 'telegram']
+          .filter((key) => Boolean(String(user?.oauthProviders?.[key]?.id || '').trim()))
+          .length;
+        if (linkedAuthProviderCount <= 1 && user.mustChangePasswordAfterGoogle) {
+          return res.status(409).json({
+            success: false,
+            message: 'Set a permanent password or connect another sign-in method before removing this connection.',
+          });
+        }
         user.oauthProviders = {
           ...(user.oauthProviders || {}),
           google: { id: provider === 'google' ? '' : user?.oauthProviders?.google?.id || '' },
@@ -571,7 +581,7 @@ exports.requestPasswordChange = async (req, res) => {
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
     const { code: confirmationCode, expiresAt: passwordChangeExpiresAt } = await createVerificationCode({
-      email: user.email,
+      email: getUserVerificationKey(user),
       type: 'passwordChange',
       username: user.username,
       metadata: {
@@ -621,7 +631,7 @@ exports.confirmPasswordChange = async (req, res) => {
     }
 
     const verification = await verifyVerificationCode({
-      email: user.email,
+      email: getUserVerificationKey(user),
       type: 'passwordChange',
       username: user.username,
       code,
@@ -662,10 +672,29 @@ exports.confirmPasswordChange = async (req, res) => {
   }
 };
 
+const permanentlyDeleteUserAccount = async (user, res) => {
+  const userEmail = user.email;
+  const userName = user.username;
+  const verificationKey = getUserVerificationKey(user);
+  const oauthProviders = user.oauthProviders;
+
+  await cleanupUserAccountData(user, { deleteUser: true });
+  await deleteVerificationCodes({ email: verificationKey, types: ['accountDeletion'] });
+  await sendAccountMessage({
+    user: { email: userEmail, oauthProviders },
+    emailJobType: 'account-deleted-success',
+    emailPayload: { username: userName },
+    telegramText: 'Your Lekhon account and its associated data were deleted successfully.',
+    telegramErrorContext: 'Telegram account deletion notification',
+  });
+  return res.json({ success: true, message: 'Account deleted successfully' });
+};
+
 // Request account deletion
 exports.requestAccountDeletion = async (req, res) => {
   try {
     const password = normalizePasswordInput(req.body?.password);
+    const requestedMethod = String(req.body?.deliveryMethod || '').trim().toLowerCase();
 
     if (!password) {
       return res.status(400).json({ success: false, message: 'Password required' });
@@ -708,8 +737,33 @@ exports.requestAccountDeletion = async (req, res) => {
     resetPasswordAttemptState(user);
     await user.save();
 
+    const twoFactor = buildTwoFactorStatus(user);
+    const methods = [
+      ...(user.email ? ['email'] : []),
+      ...(user?.oauthProviders?.telegram?.id ? ['telegram'] : []),
+      ...(twoFactor.methods?.includes('authenticator') ? ['authenticator'] : []),
+    ];
+    if (!methods.length) {
+      return res.status(409).json({ success: false, message: 'Add an email or connect Telegram before deleting this account.' });
+    }
+    if (!requestedMethod && methods.length > 1) {
+      return res.json({ success: true, requiresDeliveryMethod: true, methods });
+    }
+    const deliveryMethod = requestedMethod || methods[0];
+    if (!methods.includes(deliveryMethod)) {
+      return res.status(400).json({ success: false, message: 'Selected verification method is unavailable.' });
+    }
+    if (deliveryMethod === 'authenticator') {
+      return res.json({
+        success: true,
+        requiresAuthenticator: true,
+        deliveryMethod,
+        twoFactor: getChallengeMethodsPayload(user),
+      });
+    }
+
     const { code: confirmationCode, expiresAt: accountDeletionExpiresAt } = await createVerificationCode({
-      email: user.email,
+      email: getUserVerificationKey(user),
       type: 'accountDeletion',
       username: user.username,
       metadata: { userId: user._id.toString() },
@@ -717,6 +771,7 @@ exports.requestAccountDeletion = async (req, res) => {
 
     const delivery = await sendAccountMessage({
       user,
+      channels: [deliveryMethod],
       emailJobType: 'account-deletion-confirmation',
       emailPayload: {
         username: user.username,
@@ -735,14 +790,15 @@ exports.requestAccountDeletion = async (req, res) => {
       deliveryChannel: delivery.channels.length > 1 ? 'both' : delivery.channels[0],
       deliveryChannels: delivery.channels,
       message: `Confirmation code sent through ${delivery.channels.join(' and ')}`,
+      deliveryMethod,
     });
   } catch (error) {
     return sendUserError(res, error);
   }
 };
 
-// Confirm account deletion
-exports.confirmAccountDeletion = async (req, res) => {
+// Verify the delivery code without deleting. The final user confirmation uses the verified record.
+exports.verifyAccountDeletionCode = async (req, res) => {
   try {
     const { code } = req.body;
 
@@ -756,11 +812,12 @@ exports.confirmAccountDeletion = async (req, res) => {
     }
 
     const verification = await verifyVerificationCode({
-      email: user.email,
+      email: getUserVerificationKey(user),
       type: 'accountDeletion',
       username: user.username,
       code,
-      consume: true,
+      markVerified: true,
+      consume: false,
     });
 
     if (!verification.ok && verification.reason === 'not_found') {
@@ -770,23 +827,52 @@ exports.confirmAccountDeletion = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid confirmation code' });
     }
 
-    // Send success email before deletion
-    const userEmail = user.email;
-    const userName = user.username;
+    return res.json({ success: true, message: 'Deletion code verified' });
+  } catch (error) {
+    return sendUserError(res, error);
+  }
+};
 
-    await cleanupUserAccountData(user, { deleteUser: true });
-
-    await deleteVerificationCodes({ email: userEmail, types: ['accountDeletion'] });
-
-    await sendAccountMessage({
-      user: { email: userEmail, oauthProviders: user.oauthProviders },
-      emailJobType: 'account-deleted-success',
-      emailPayload: { username: userName },
-      telegramText: 'Your Lekhon account and its associated data were deleted successfully.',
-      telegramErrorContext: 'Telegram account deletion notification',
+exports.cancelAccountDeletion = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    await deleteVerificationCodes({
+      email: getUserVerificationKey(user),
+      types: ['accountDeletion'],
     });
+    return res.json({ success: true, message: 'Account deletion cancelled' });
+  } catch (error) {
+    return sendUserError(res, error);
+  }
+};
 
-    res.json({ success: true, message: 'Account deleted successfully' });
+// Permanently delete only after the code was verified and the user confirms again.
+exports.confirmAccountDeletion = async (req, res) => {
+  try {
+    const { code } = req.body;
+    if (!code) {
+      return res.status(400).json({ success: false, message: 'Confirmation code required' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const verification = await verifyVerificationCode({
+      email: getUserVerificationKey(user),
+      type: 'accountDeletion',
+      username: user.username,
+      code,
+      requireVerified: true,
+      consume: true,
+    });
+    if (!verification.ok || verification.record?.metadata?.userId !== req.user._id.toString()) {
+      return res.status(400).json({ success: false, message: 'Deletion verification expired. Start again.' });
+    }
+
+    return permanentlyDeleteUserAccount(user, res);
   } catch (error) {
     return sendUserError(res, error);
   }
@@ -825,6 +911,19 @@ exports.getApiKeys = async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select('apiKeys');
     res.json({ success: true, apiKeys: (user.apiKeys || []).map(maskApiKey) });
+  } catch (error) {
+    return sendUserError(res, error);
+  }
+};
+
+exports.confirmAccountDeletionWithAuthenticator = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (!buildTwoFactorStatus(user).methods.includes('authenticator')) {
+      return res.status(400).json({ success: false, message: 'Authenticator verification is unavailable.' });
+    }
+    return permanentlyDeleteUserAccount(user, res);
   } catch (error) {
     return sendUserError(res, error);
   }

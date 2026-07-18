@@ -38,6 +38,7 @@ import useCompactProfileLayout from '../hooks/useCompactProfileLayout';
 import useSavedItemsLibrary from '../hooks/useSavedItemsLibrary';
 import ProfileOverviewMobile from './ProfileOverviewMobile';
 import { authorizeWithTelegram, isTelegramAuthOrigin, TELEGRAM_AUTH_ORIGIN } from '../utils/telegramAuth';
+import { clearAuthSession } from '../utils/authSession';
 
 const STORY_STYLE_PRESETS = [
   {
@@ -248,6 +249,7 @@ export const ProfileLegacy = () => {
   const [sendingForgotPasswordCode, setSendingForgotPasswordCode] = useState(false);
   const [showForgotPasswordCodeModal, setShowForgotPasswordCodeModal] = useState(false);
   const [forgotPasswordCode, setForgotPasswordCode] = useState('');
+  const [forgotPasswordCodeDelivery, setForgotPasswordCodeDelivery] = useState('email');
   const [confirmingForgotPassword, setConfirmingForgotPassword] = useState(false);
   const [twoFactorStatus, setTwoFactorStatus] = useState(null);
   const [twoFactorLoading, setTwoFactorLoading] = useState(false);
@@ -269,10 +271,20 @@ export const ProfileLegacy = () => {
   const [contactLoading, setContactLoading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
+  const [deletePasswordError, setDeletePasswordError] = useState('');
+  const [deleteAttemptsRemaining, setDeleteAttemptsRemaining] = useState(5);
   const [sendingDeleteCode, setSendingDeleteCode] = useState(false);
   const [showDeleteCodeModal, setShowDeleteCodeModal] = useState(false);
   const [deleteCode, setDeleteCode] = useState('');
   const [deleteCodeDelivery, setDeleteCodeDelivery] = useState('email');
+  const [verifyingDeleteCode, setVerifyingDeleteCode] = useState(false);
+  const [showDeleteFinalConfirm, setShowDeleteFinalConfirm] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [cancellingDelete, setCancellingDelete] = useState(false);
+  const [showDeleteMethodModal, setShowDeleteMethodModal] = useState(false);
+  const [deleteVerificationMethods, setDeleteVerificationMethods] = useState([]);
+  const [selectedDeleteMethod, setSelectedDeleteMethod] = useState('');
+  const [deleteVerificationMethod, setDeleteVerificationMethod] = useState('');
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [usernameLoading, setUsernameLoading] = useState(false);
@@ -696,6 +708,26 @@ export const ProfileLegacy = () => {
 
     return accounts;
   }, [profile?.socialMedia, profile?.linkedProviders]);
+
+  const availableDeleteMethods = [
+    ...(String(profile?.email || '').trim() ? ['email'] : []),
+    ...(profile?.linkedProviders?.telegram ? ['telegram'] : []),
+    ...(twoFactorStatus?.methods?.includes('authenticator') ? ['authenticator'] : []),
+  ];
+
+  const maskEmailAddress = (email = '') => {
+    const [localPart = '', domain = ''] = String(email).trim().split('@');
+    if (!localPart || !domain) return 'Email';
+    const first = localPart.slice(0, Math.min(2, localPart.length));
+    const last = localPart.length > 2 ? localPart.slice(-1) : '';
+    return `${first}***${last}@${domain}`;
+  };
+
+  const linkedAuthProviderCount = ['google', 'facebook', 'twitter', 'linkedin', 'telegram']
+    .filter((providerKey) => Boolean(profile?.linkedProviders?.[providerKey]))
+    .length;
+  const hasPermanentPasswordLogin = !profile?.mustChangePasswordAfterGoogle;
+  const canDisconnectAuthProvider = linkedAuthProviderCount > 1 || hasPermanentPasswordLogin;
 
   const closeModal = () => {
     setModal({ show: false, type: '', title: '', message: '', onConfirm: null });
@@ -1628,10 +1660,11 @@ export const ProfileLegacy = () => {
 
     setSendingForgotPasswordCode(true);
     try {
-      await api.post('/auth/forgot-password/change-authenticated', { newPassword: nextPassword });
+      const { data } = await api.post('/auth/forgot-password/change-authenticated', { newPassword: nextPassword });
+      setForgotPasswordCodeDelivery(data?.deliveryChannel || 'email');
       setShowForgotPassword(false);
       setShowForgotPasswordCodeModal(true);
-      showModal('success', 'Code Sent', 'Confirmation code sent to your email.');
+      showModal('success', 'Code Sent', data?.message || 'Confirmation code sent.');
     } catch (error) {
       showModal('error', 'Error', error.response?.data?.message || 'Failed to send confirmation code');
     } finally {
@@ -2021,45 +2054,159 @@ export const ProfileLegacy = () => {
     }
   };
 
-  const handleDeleteAccount = async (e) => {
-    e.preventDefault();
-    if (!deletePassword) return;
+  const requestDeleteVerification = async (deliveryMethod = '') => {
+    setDeletePasswordError('');
     setSendingDeleteCode(true);
     try {
-      const { data } = await api.post('/users/account/delete-request', { password: deletePassword });
+      const { data } = await api.post(
+        '/users/account/delete-request',
+        { password: deletePassword, ...(deliveryMethod ? { deliveryMethod } : {}) },
+        { skipAuthFailureLogout: true }
+      );
+      if (data?.requiresDeliveryMethod) {
+        const methods = Array.isArray(data.methods) ? data.methods : [];
+        setDeleteVerificationMethods(methods);
+        setSelectedDeleteMethod(methods[0] || '');
+        setShowDeleteModal(false);
+        setShowDeleteMethodModal(true);
+        return;
+      }
+      if (data?.requiresAuthenticator) {
+        setDeleteVerificationMethod('authenticator');
+        setShowDeleteModal(false);
+        setShowDeleteMethodModal(false);
+        openTwoFactorPrompt({
+          requirement: {
+            action: 'delete_account',
+            actionLabel: 'delete your account',
+            twoFactor: { ...data.twoFactor, methods: ['authenticator'], preferredMethod: 'authenticator' },
+          },
+          onVerified: async (token) => {
+            sessionStorage.setItem('pendingDeleteAuthenticatorToken', token);
+            setShowDeleteFinalConfirm(true);
+          },
+        });
+        return;
+      }
       setDeleteCodeDelivery(data?.deliveryChannel || 'email');
+      setDeleteVerificationMethod(data?.deliveryMethod || deliveryMethod || data?.deliveryChannel || 'email');
+      setDeleteAttemptsRemaining(5);
       setShowDeleteModal(false);
+      setShowDeleteMethodModal(false);
       setShowDeleteCodeModal(true);
       showModal('success', 'Code Sent', data?.message || 'Confirmation code sent.');
     } catch (error) {
-      showModal('error', 'Error', error.response?.data?.message || 'Failed');
+      const status = error.response?.status;
+      const remaining = Number(error.response?.data?.attemptsRemaining);
+      if (Number.isFinite(remaining)) setDeleteAttemptsRemaining(Math.max(0, remaining));
+
+      if (status === 401) {
+        setDeletePasswordError(`Wrong password. Try again.${Number.isFinite(remaining) ? ` ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.` : ''}`);
+      } else if (status === 429 && remaining === 0) {
+        setDeletePasswordError('Too many wrong password attempts. You will be signed out.');
+        window.setTimeout(() => {
+          clearAuthSession();
+          navigate('/login', { replace: true });
+        }, 1200);
+      } else {
+        setDeletePasswordError(error.response?.data?.message || 'Unable to start account deletion.');
+      }
     } finally {
       setSendingDeleteCode(false);
     }
   };
 
-  const handleConfirmDeleteAccount = async (e) => {
+  const handleDeleteAccount = async (e) => {
     e.preventDefault();
+    if (!deletePassword) return;
+    await requestDeleteVerification('');
+  };
+
+  const handleSelectedDeleteMethod = async (e) => {
+    e.preventDefault();
+    if (!selectedDeleteMethod) return;
+    await requestDeleteVerification(selectedDeleteMethod);
+  };
+
+  const verifyDeleteCode = async ({ twoFactorToken = '' } = {}) => {
+    const { data } = await api.post('/users/account/delete-verify', {
+      code: deleteCode,
+      ...(twoFactorToken ? { twoFactorToken } : {}),
+    }, twoFactorToken ? { headers: buildTwoFactorHeaders(twoFactorToken) } : undefined);
+    setShowDeleteCodeModal(false);
+    setShowDeleteFinalConfirm(true);
+    return data;
+  };
+
+  const handleVerifyDeleteCode = async (e) => {
+    e.preventDefault();
+    setVerifyingDeleteCode(true);
     try {
-      await api.post('/users/account/delete-confirm', { code: deleteCode });
-      showModal('success', 'Success', 'Account deleted');
-      setTimeout(() => navigate('/login'), 2000);
+      await verifyDeleteCode();
     } catch (error) {
       const requirement = getTwoFactorRequirement(error);
       if (requirement) {
         openTwoFactorPrompt({
           requirement,
           onVerified: async (token) => {
-            await api.post('/users/account/delete-confirm', { code: deleteCode, twoFactorToken: token }, {
-              headers: buildTwoFactorHeaders(token),
-            });
-            showModal('success', 'Success', 'Account deleted');
-            setTimeout(() => navigate('/login'), 2000);
+            await verifyDeleteCode({ twoFactorToken: token });
           },
         });
         return;
       }
-      showModal('error', 'Error', 'Invalid code');
+      showModal('error', 'Invalid Code', error.response?.data?.message || 'Wrong verification code. Try again.');
+    } finally {
+      setVerifyingDeleteCode(false);
+    }
+  };
+
+  const executeFinalDeleteAccount = async ({ twoFactorToken = '' } = {}) => {
+    const authenticatorToken = twoFactorToken || sessionStorage.getItem('pendingDeleteAuthenticatorToken') || '';
+    const usesAuthenticator = deleteVerificationMethod === 'authenticator';
+    const endpoint = usesAuthenticator
+      ? '/users/account/delete-confirm-authenticator'
+      : '/users/account/delete-confirm';
+    await api.post(endpoint, {
+      ...(usesAuthenticator ? { twoFactorToken: authenticatorToken } : { code: deleteCode }),
+    }, usesAuthenticator ? { headers: buildTwoFactorHeaders(authenticatorToken) } : undefined);
+    sessionStorage.removeItem('pendingDeleteAuthenticatorToken');
+    clearAuthSession();
+    setShowDeleteFinalConfirm(false);
+    navigate('/login', { replace: true });
+  };
+
+  const handleFinalDeleteAccount = async () => {
+    setDeletingAccount(true);
+    try {
+      await executeFinalDeleteAccount();
+    } catch (error) {
+      const requirement = getTwoFactorRequirement(error);
+      if (requirement) {
+        openTwoFactorPrompt({
+          requirement,
+          onVerified: async (token) => executeFinalDeleteAccount({ twoFactorToken: token }),
+        });
+        return;
+      }
+      showModal('error', 'Deletion Failed', error.response?.data?.message || 'Account could not be deleted. Please start again.');
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const handleCancelFinalDelete = async () => {
+    setCancellingDelete(true);
+    try {
+      await api.post('/users/account/delete-cancel');
+      sessionStorage.removeItem('pendingDeleteAuthenticatorToken');
+      setShowDeleteFinalConfirm(false);
+      setDeleteCode('');
+      setDeletePassword('');
+      showModal('success', 'Deletion Cancelled', 'Your account was not deleted.');
+    } catch (error) {
+      showModal('error', 'Error', error.response?.data?.message || 'Could not cancel the deletion request.');
+    } finally {
+      setCancellingDelete(false);
     }
   };
 
@@ -2594,8 +2741,14 @@ export const ProfileLegacy = () => {
                           ? disconnectSocialAccount(account.providerKey)
                           : deleteCustomSocialMedia(account.socialIndex)
                       }
-                      className="text-red-600 hover:text-red-800 shrink-0"
-                      aria-label={`Delete ${account.label} connection`}
+                      disabled={account.actionType === 'provider' && !canDisconnectAuthProvider}
+                      className="text-red-600 hover:text-red-800 shrink-0 disabled:cursor-not-allowed disabled:text-[var(--text-muted)] disabled:opacity-50"
+                      aria-label={account.actionType === 'provider' && !canDisconnectAuthProvider
+                        ? `Cannot remove ${account.label} until another sign-in method is available`
+                        : `Delete ${account.label} connection`}
+                      title={account.actionType === 'provider' && !canDisconnectAuthProvider
+                        ? 'Set a permanent password or connect another sign-in method first.'
+                        : `Remove ${account.label}`}
                     >
                       <FaTrash size={16} />
                     </button>
@@ -3253,7 +3406,7 @@ export const ProfileLegacy = () => {
               {showForgotPassword && (
                 <form onSubmit={handleAuthenticatedForgotPasswordRequest} className="space-y-4 mt-4 p-4 rounded-lg border border-[var(--border-default)] bg-[var(--background-secondary)]">
                   <p className="text-sm text-[var(--text-primary)]">
-                    {t('Set a new password and confirm it with a code sent to')} <strong>{displayUser.email}</strong>.
+                    {t('Set a new password and confirm it with a code sent through your linked email or Telegram account.')}
                   </p>
                   <input
                     type="password"
@@ -3394,7 +3547,13 @@ export const ProfileLegacy = () => {
         <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4">
           <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-orange-600 mb-4">{t('Enter Confirmation Code')}</h3>
-            <p className="text-gray-700 dark:text-gray-300 mb-4">{t('6-digit code sent to email')}</p>
+            <p className="text-gray-700 dark:text-gray-300 mb-4">
+              {forgotPasswordCodeDelivery === 'both'
+                ? t('Enter the 6-digit code sent to your email and privately by the Lekhon Telegram bot')
+                : forgotPasswordCodeDelivery === 'telegram'
+                  ? t('Enter the 6-digit code sent privately by the Lekhon Telegram bot')
+                  : t('6-digit code sent to email')}
+            </p>
             <form onSubmit={handleConfirmAuthenticatedForgotPassword}>
               <input
                 type="text"
@@ -3424,12 +3583,59 @@ export const ProfileLegacy = () => {
             <p className="text-gray-700 dark:text-gray-300 mb-4">{t('This will permanently delete all your data')}</p>
             <p className="text-red-600 font-semibold mb-4">{t('This cannot be undone!')}</p>
             <form onSubmit={handleDeleteAccount}>
-              <input type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} placeholder={t('Your password')} className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 mb-4 dark:bg-gray-700 dark:border-gray-600 dark:text-white" required />
+              <input type="password" value={deletePassword} onChange={(e) => { setDeletePassword(e.target.value); setDeletePasswordError(''); }} placeholder={t('Your password')} className="w-full px-4 py-2 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 mb-2 bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" disabled={sendingDeleteCode} required />
+              {deletePasswordError && <p className="mb-2 text-sm font-semibold text-red-600">{t(deletePasswordError)}</p>}
+              <p className="mb-4 text-xs text-[var(--text-secondary)]">{t('Maximum 5 password attempts.')} {deleteAttemptsRemaining} {t('remaining')}.</p>
               <div className="flex gap-3">
                 <button type="submit" className="flex-1 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 flex items-center justify-center gap-2" disabled={sendingDeleteCode}>
-                  {sendingDeleteCode ? <SyncLoader color="#fff" size={8} /> : t('Delete')}
+                  {sendingDeleteCode
+                    ? <SyncLoader color="#fff" size={8} />
+                    : t(availableDeleteMethods.length > 1 ? 'Continue' : 'Send Code')}
                 </button>
-                <button type="button" onClick={() => { setShowDeleteModal(false); setDeletePassword(''); }} className="flex-1 theme-soft-button px-6 py-2 rounded-lg">{t('Cancel')}</button>
+                <button type="button" disabled={sendingDeleteCode} onClick={() => { setShowDeleteModal(false); setDeletePassword(''); setDeletePasswordError(''); }} className="flex-1 theme-soft-button px-6 py-2 rounded-lg disabled:opacity-60">{t('Cancel')}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Account Deletion Verification Method */}
+      {showDeleteMethodModal && (
+        <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4">
+          <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-red-600 mb-2">{t('Choose Verification Method')}</h3>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">{t('Select where you want to verify this account deletion request.')}</p>
+            <form onSubmit={handleSelectedDeleteMethod}>
+              <div className="space-y-2 mb-5">
+                {deleteVerificationMethods.map((method) => {
+                  const methodLabel = method === 'email'
+                    ? `Email${profile?.email ? ` (${maskEmailAddress(profile.email)})` : ''}`
+                    : method === 'telegram'
+                      ? 'Telegram'
+                      : 'Authenticator app';
+                  return (
+                    <label key={method} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-colors ${selectedDeleteMethod === method ? 'border-[var(--brand-primary)] bg-[var(--brand-soft)]' : 'border-[var(--border-default)] bg-[var(--background-secondary)]'}`}>
+                      <input
+                        type="radio"
+                        name="deleteVerificationMethod"
+                        value={method}
+                        checked={selectedDeleteMethod === method}
+                        onChange={() => setSelectedDeleteMethod(method)}
+                        disabled={sendingDeleteCode}
+                        className="h-4 w-4 accent-[var(--brand-primary)]"
+                      />
+                      <span className="font-semibold text-[var(--text-primary)]">{t(methodLabel)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="flex gap-3">
+                <button type="submit" disabled={sendingDeleteCode || !selectedDeleteMethod} className="flex-1 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 disabled:opacity-60 flex items-center justify-center gap-2">
+                  {sendingDeleteCode
+                    ? <SyncLoader color="#fff" size={8} />
+                    : t(selectedDeleteMethod === 'authenticator' ? 'Continue' : 'Send Code')}
+                </button>
+                <button type="button" disabled={sendingDeleteCode} onClick={() => { setShowDeleteMethodModal(false); setDeletePassword(''); }} className="flex-1 theme-soft-button px-6 py-2 rounded-lg disabled:opacity-60">{t('Cancel')}</button>
               </div>
             </form>
           </div>
@@ -3449,13 +3655,34 @@ export const ProfileLegacy = () => {
                   : t('6-digit code sent to email')}
             </p>
             <p className="text-red-600 font-semibold mb-4 flex items-center gap-1"><FaExclamationCircle className="text-red-500" /> {t('Permanent!')}</p>
-            <form onSubmit={handleConfirmDeleteAccount}>
-              <input type="text" value={deleteCode} onChange={(e) => setDeleteCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 mb-4 text-center text-2xl tracking-widest dark:bg-gray-700 dark:border-gray-600 dark:text-white" maxLength={6} required />
+            <form onSubmit={handleVerifyDeleteCode}>
+              <input type="text" value={deleteCode} onChange={(e) => setDeleteCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" className="w-full px-4 py-2 border border-[var(--border-default)] rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 mb-4 text-center text-2xl tracking-widest bg-[var(--surface-card)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]" maxLength={6} disabled={verifyingDeleteCode} required />
               <div className="flex gap-3">
-                <button type="submit" className="flex-1 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700">{t('Delete')}</button>
-                <button type="button" onClick={() => { setShowDeleteCodeModal(false); setDeleteCode(''); }} className="flex-1 theme-soft-button px-6 py-2 rounded-lg">{t('Cancel')}</button>
+                <button type="submit" disabled={verifyingDeleteCode || deleteCode.length < 6} className="flex-1 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 disabled:opacity-60 flex items-center justify-center gap-2">
+                  {verifyingDeleteCode ? <SyncLoader color="#fff" size={8} /> : t('Verify Code')}
+                </button>
+                <button type="button" disabled={verifyingDeleteCode} onClick={() => { setShowDeleteCodeModal(false); setDeleteCode(''); }} className="flex-1 theme-soft-button px-6 py-2 rounded-lg disabled:opacity-60">{t('Cancel')}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Final Account Deletion Confirmation */}
+      {showDeleteFinalConfirm && (
+        <div className="fixed inset-0 theme-modal-overlay flex items-center justify-center z-50 p-4">
+          <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-red-600 mb-4">{t('Final Confirmation')}</h3>
+            <p className="text-[var(--text-primary)] mb-2">{t('Your verification code was accepted.')}</p>
+            <p className="text-red-600 font-semibold mb-5">{t('Do you still want to permanently delete your account and all corresponding data?')}</p>
+            <div className="flex gap-3">
+              <button type="button" onClick={handleFinalDeleteAccount} disabled={deletingAccount || cancellingDelete} className="flex-1 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 disabled:opacity-60 flex items-center justify-center gap-2">
+                {deletingAccount ? <SyncLoader color="#fff" size={8} /> : t('Permanently Delete')}
+              </button>
+              <button type="button" disabled={deletingAccount || cancellingDelete} onClick={handleCancelFinalDelete} className="flex-1 theme-soft-button px-6 py-2 rounded-lg disabled:opacity-60 flex items-center justify-center gap-2">
+                {cancellingDelete ? <SyncLoader color="var(--text-primary)" size={8} /> : t('Keep Account')}
+              </button>
+            </div>
           </div>
         </div>
       )}
