@@ -35,7 +35,7 @@ const {
   verifyVerificationCode,
 } = require('../utils/verificationCodes');
 const { logError } = require('../utils/safeErrorLog');
-const { sendTelegramMessage } = require('../utils/telegramMessages');
+const { sendAccountMessage } = require('../services/accountMessagingService');
 const {
   getPasswordValidationError,
   isPasswordComparable,
@@ -580,28 +580,27 @@ exports.requestPasswordChange = async (req, res) => {
       },
     });
 
-    let deliveryChannel = 'email';
-    if (user.email) {
-      await enqueueEmailJob('password-change-confirmation', {
-        email: user.email,
+    const delivery = await sendAccountMessage({
+      user,
+      emailJobType: 'password-change-confirmation',
+      emailPayload: {
         username: user.username,
         code: confirmationCode,
-        expiresAt: passwordChangeExpiresAt
-      });
-    } else {
-      const telegramUserId = user?.oauthProviders?.telegram?.id;
-      const delivered = await sendTelegramMessage({
-        telegramUserId,
-        text: `Lekhon password change confirmation code: ${confirmationCode}\n\nThis code expires soon. Never share it with anyone.`,
-        errorContext: 'Telegram password change code',
-      });
-      if (!delivered) {
-        return res.status(503).json({ success: false, message: 'We could not send the confirmation code to Telegram. Open the Lekhon bot, tap Start, and try again.' });
-      }
-      deliveryChannel = 'telegram';
+        expiresAt: passwordChangeExpiresAt,
+      },
+      telegramText: `Lekhon password change confirmation code: ${confirmationCode}\n\nThis code expires soon. Never share it with anyone.`,
+      telegramErrorContext: 'Telegram password change code',
+    });
+    if (!delivery.anyDelivered) {
+      return res.status(503).json({ success: false, message: 'We could not send the confirmation code through any linked contact channel.' });
     }
 
-    res.json({ success: true, deliveryChannel, message: `Confirmation code sent to your ${deliveryChannel}` });
+    res.json({
+      success: true,
+      deliveryChannel: delivery.channels.length > 1 ? 'both' : delivery.channels[0],
+      deliveryChannels: delivery.channels,
+      message: `Confirmation code sent through ${delivery.channels.join(' and ')}`,
+    });
   } catch (error) {
     return sendUserError(res, error);
   }
@@ -649,18 +648,13 @@ exports.confirmPasswordChange = async (req, res) => {
       }
     );
 
-    // Send success email
-    try {
-      if (user.email) {
-        await enqueueEmailJob('password-changed-success', {
-          email: user.email,
-          username: user.username,
-          changedAt: Date.now()
-        });
-      }
-    } catch (error) {
-      logError('Failed to send success email:', error);
-    }
+    await sendAccountMessage({
+      user,
+      emailJobType: 'password-changed-success',
+      emailPayload: { username: user.username, changedAt: Date.now() },
+      telegramText: 'Your Lekhon password was changed successfully. If this was not you, contact Lekhon support immediately.',
+      telegramErrorContext: 'Telegram password change notification',
+    });
 
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
@@ -721,28 +715,27 @@ exports.requestAccountDeletion = async (req, res) => {
       metadata: { userId: user._id.toString() },
     });
 
-    let deliveryChannel = 'email';
-    if (user.email) {
-      await enqueueEmailJob('account-deletion-confirmation', {
-        email: user.email,
+    const delivery = await sendAccountMessage({
+      user,
+      emailJobType: 'account-deletion-confirmation',
+      emailPayload: {
         username: user.username,
         code: confirmationCode,
-        expiresAt: accountDeletionExpiresAt
-      });
-    } else {
-      const telegramUserId = user?.oauthProviders?.telegram?.id;
-      const delivered = await sendTelegramMessage({
-        telegramUserId,
-        text: `Lekhon account deletion confirmation code: ${confirmationCode}\n\nThis action permanently deletes your account. Never share this code.`,
-        errorContext: 'Telegram account deletion code',
-      });
-      if (!delivered) {
-        return res.status(503).json({ success: false, message: 'We could not send the deletion code to Telegram. Open the Lekhon bot, tap Start, and try again.' });
-      }
-      deliveryChannel = 'telegram';
+        expiresAt: accountDeletionExpiresAt,
+      },
+      telegramText: `Lekhon account deletion confirmation code: ${confirmationCode}\n\nThis action permanently deletes your account. Never share this code.`,
+      telegramErrorContext: 'Telegram account deletion code',
+    });
+    if (!delivery.anyDelivered) {
+      return res.status(503).json({ success: false, message: 'We could not send the deletion code through any linked contact channel.' });
     }
 
-    res.json({ success: true, deliveryChannel, message: `Confirmation code sent to your ${deliveryChannel}` });
+    res.json({
+      success: true,
+      deliveryChannel: delivery.channels.length > 1 ? 'both' : delivery.channels[0],
+      deliveryChannels: delivery.channels,
+      message: `Confirmation code sent through ${delivery.channels.join(' and ')}`,
+    });
   } catch (error) {
     return sendUserError(res, error);
   }
@@ -785,17 +778,13 @@ exports.confirmAccountDeletion = async (req, res) => {
 
     await deleteVerificationCodes({ email: userEmail, types: ['accountDeletion'] });
 
-    // Send success email
-    try {
-      if (userEmail) {
-        await enqueueEmailJob('account-deleted-success', {
-          email: userEmail,
-          username: userName
-        });
-      }
-    } catch (error) {
-      logError('Failed to send success email:', error);
-    }
+    await sendAccountMessage({
+      user: { email: userEmail, oauthProviders: user.oauthProviders },
+      emailJobType: 'account-deleted-success',
+      emailPayload: { username: userName },
+      telegramText: 'Your Lekhon account and its associated data were deleted successfully.',
+      telegramErrorContext: 'Telegram account deletion notification',
+    });
 
     res.json({ success: true, message: 'Account deleted successfully' });
   } catch (error) {

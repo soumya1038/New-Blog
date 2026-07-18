@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const Notification = require('../models/Notification');
 const mongoose = require('mongoose');
-const { enqueueEmailJob } = require('../jobs/queueService');
+const { sendAccountMessage } = require('../services/accountMessagingService');
 const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
 const { logError } = require('../utils/safeErrorLog');
 
@@ -38,7 +38,7 @@ const getFollowParticipants = async (currentUserId, targetUserId) => {
       .select('following blockedUsers')
       .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS),
     User.findById(targetUserId)
-      .select('followers blockedUsers email username emailNotifications')
+      .select('followers blockedUsers email username emailNotifications oauthProviders.telegram.id')
       .maxTimeMS(SOCIAL_RELATIONSHIP_QUERY_MAX_TIME_MS)
   ]);
 
@@ -90,20 +90,20 @@ const queueNewFollowerNotification = async (req, userToFollow, userId) => {
     message: `${req.user.username} started following you`
   });
 
-  if (userToFollow.email && isEmailNotificationEnabled(userToFollow, 'newFollower')) {
-    enqueueEmailJob(
-      'new-follower',
-      {
-        email: userToFollow.email,
+  if (isEmailNotificationEnabled(userToFollow, 'newFollower')) {
+    sendAccountMessage({
+      user: userToFollow,
+      emailJobType: 'new-follower',
+      emailPayload: {
         username: userToFollow.username,
         followerName: req.user.username,
-        followerProfileUrl: `/user/${req.user._id}`
+        followerProfileUrl: `/user/${req.user._id}`,
       },
-      {
-        jobId: `new-follower:${userId}:${req.user._id}`
-      }
-    ).catch((error) => {
-      logError('Failed to queue new follower email:', error);
+      emailJobOptions: { jobId: `new-follower:${userId}:${req.user._id}` },
+      telegramText: `${req.user.username} started following you on Lekhon.`,
+      telegramErrorContext: 'Telegram new follower notification',
+    }).catch((error) => {
+      logError('Failed to send new follower update:', error);
     });
   }
 

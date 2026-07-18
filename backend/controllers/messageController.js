@@ -5,7 +5,7 @@ const Group = require('../models/Group');
 const Notification = require('../models/Notification');
 const CallLog = require('../models/CallLog');
 const { encrypt, decrypt } = require('../utils/encryption');
-const { enqueueEmailJob } = require('../jobs/queueService');
+const { sendAccountMessage } = require('../services/accountMessagingService');
 const { isEmailNotificationEnabled } = require('../utils/emailPreferences');
 const { deleteCloudinaryPublicIdAcrossResourceTypes } = require('../utils/cloudinaryCleanup');
 const {
@@ -154,7 +154,7 @@ exports.sendMessage = async (req, res) => {
     }
 
     const receiver = await User.findById(receiverId)
-      .select('blockedUsers email username emailNotifications')
+      .select('blockedUsers email username emailNotifications oauthProviders.telegram.id')
       .maxTimeMS(MESSAGE_QUERY_MAX_TIME_MS)
       .lean();
     if (!receiver) {
@@ -193,19 +193,21 @@ exports.sendMessage = async (req, res) => {
       message: `${req.user.username} sent you a message`
     });
 
-    if (shouldSendNewMessageEmail(receiver) && receiver.email) {
-      enqueueEmailJob(
-        'new-message',
-        {
-          email: receiver.email,
+    if (shouldSendNewMessageEmail(receiver)) {
+      sendAccountMessage({
+        user: receiver,
+        emailJobType: 'new-message',
+        emailPayload: {
           username: receiver.username,
           senderName: req.user.username,
           messagePreview: messageContent,
-          chatUrl: '/chat'
+          chatUrl: '/chat',
         },
-        { jobId: `new-message:${message._id}` }
-      ).catch((error) => {
-        logMessageError('Failed to queue new message email:', error);
+        emailJobOptions: { jobId: `new-message:${message._id}` },
+        telegramText: `${req.user.username} sent you a new message on Lekhon. Open Lekhon Chat to read and reply.`,
+        telegramErrorContext: 'Telegram new message notification',
+      }).catch((error) => {
+        logMessageError('Failed to send new message update:', error);
       });
     }
 

@@ -3372,9 +3372,11 @@ export const ProfileLegacy = () => {
           <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-blue-600 mb-4">{t('Enter Code')}</h3>
             <p className="text-gray-700 dark:text-gray-300 mb-4">
-              {passwordCodeDelivery === 'telegram'
-                ? t('Enter the 6-digit code sent privately by the Lekhon Telegram bot')
-                : t('6-digit code sent to email')}
+              {passwordCodeDelivery === 'both'
+                ? t('Enter the 6-digit code sent to your email and privately by the Lekhon Telegram bot')
+                : passwordCodeDelivery === 'telegram'
+                  ? t('Enter the 6-digit code sent privately by the Lekhon Telegram bot')
+                  : t('6-digit code sent to email')}
             </p>
             <form onSubmit={handleConfirmPasswordChange}>
               <input type="text" value={passwordCode} onChange={(e) => setPasswordCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 mb-4 text-center text-2xl tracking-widest dark:bg-gray-700 dark:border-gray-600 dark:text-white" maxLength={6} required />
@@ -3440,9 +3442,11 @@ export const ProfileLegacy = () => {
           <div className="theme-modal-card rounded-lg p-6 max-w-md w-full">
             <h3 className="text-xl font-bold text-red-600 mb-4">{t('Enter Code')}</h3>
             <p className="text-gray-700 dark:text-gray-300 mb-2">
-              {deleteCodeDelivery === 'telegram'
-                ? t('Enter the 6-digit deletion code sent privately by the Lekhon Telegram bot')
-                : t('6-digit code sent to email')}
+              {deleteCodeDelivery === 'both'
+                ? t('Enter the 6-digit deletion code sent to your email and privately by the Lekhon Telegram bot')
+                : deleteCodeDelivery === 'telegram'
+                  ? t('Enter the 6-digit deletion code sent privately by the Lekhon Telegram bot')
+                  : t('6-digit code sent to email')}
             </p>
             <p className="text-red-600 font-semibold mb-4 flex items-center gap-1"><FaExclamationCircle className="text-red-500" /> {t('Permanent!')}</p>
             <form onSubmit={handleConfirmDeleteAccount}>
